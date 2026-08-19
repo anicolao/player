@@ -127,4 +127,4 @@ Before implementation begins, contributions should align with the priorities and
 
 Player is intended for DRM-free audio that a listener owns or is authorized to use. It will not include DRM circumvention.
 
-No source-code license has been selected yet. Until a `LICENSE` file is added, all rights are reserved.
+Player is free software licensed under the [GNU General Public License v3.0](LICENSE).
