@@ -1,0 +1,13 @@
+{
+  "id": "US-001",
+  "title": "Player launches into an empty local library",
+  "narrative": "As a new listener, I want Player to open into a ready and understandable library so I can add my first audiobook.",
+  "fixtures": [
+    "empty-library"
+  ],
+  "surface": "ios",
+  "steps": [
+    "empty-library"
+  ]
+}
+

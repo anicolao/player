@@ -1,0 +1,61 @@
+name: iOS
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - apps/ios/**
+      - tests/e2e/**
+      - E2E_GUIDE.md
+      - MVP_DESIGN.md
+      - .github/workflows/ios.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/ios/**
+      - tests/e2e/**
+      - E2E_GUIDE.md
+      - MVP_DESIGN.md
+      - .github/workflows/ios.yml
+
+permissions:
+  contents: read
+
+jobs:
+  launch-story:
+    name: Build and exact launch walkthrough
+    runs-on: macos-26
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify pinned environment
+        run: |
+          xcodebuild -version
+          xcrun simctl list runtimes
+
+      - name: Generate Xcode project
+        run: apps/ios/scripts/generate-project.sh
+
+      - name: Require reproducible project generation
+        run: git diff --exit-code -- apps/ios/Player.xcodeproj
+
+      - name: Run semantic and exact-pixel launch story
+        run: apps/ios/scripts/run-e2e.sh
+
+      - name: Upload reviewable diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-launch-walkthrough
+          path: |
+            apps/ios/DerivedData/ActualWalkthrough/
+            apps/ios/DerivedData/LaunchAttachments/
+            apps/ios/DerivedData/Launch.xcresult/
+          if-no-files-found: warn
+          retention-days: 7
+

@@ -1,0 +1,63 @@
+name: Player
+
+options:
+  minimumXcodeGenVersion: 2.46.0
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+configs:
+  Debug: debug
+  E2E: debug
+  Release: release
+
+targets:
+  Player:
+    type: application
+    platform: iOS
+    sources:
+      - path: Player
+    configFiles:
+      Debug: Config/Debug.xcconfig
+      E2E: Config/E2E.xcconfig
+      Release: Config/Release.xcconfig
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: false
+        INFOPLIST_FILE: Player/Info.plist
+        PRODUCT_NAME: Player
+        TARGETED_DEVICE_FAMILY: "1"
+
+  PlayerUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: PlayerUITests
+    configFiles:
+      Debug: Config/Debug.xcconfig
+      E2E: Config/E2E.xcconfig
+      Release: Config/Release.xcconfig
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: true
+        PRODUCT_BUNDLE_IDENTIFIER: org.boardgamescafe.player.uitests
+        TEST_TARGET_NAME: Player
+    dependencies:
+      - target: Player
+
+schemes:
+  Player:
+    build:
+      targets:
+        Player: all
+        PlayerUITests: [test]
+    run:
+      config: Debug
+    test:
+      config: E2E
+      gatherCoverageData: false
+      targets:
+        - PlayerUITests
+    archive:
+      config: Release
+

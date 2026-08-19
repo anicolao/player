@@ -1,0 +1,10 @@
+.DS_Store
+
+# Local audiobook samples may be copyrighted and must never be committed.
+books/
+
+# Xcode local state and generated build products
+apps/ios/.tools/
+apps/ios/DerivedData/
+apps/ios/Player.xcodeproj/project.xcworkspace/xcuserdata/
+apps/ios/Player.xcodeproj/xcuserdata/
