@@ -3,12 +3,15 @@ name: iOS
 on:
   workflow_dispatch:
   pull_request:
-    branches: [main]
     paths:
       - apps/ios/**
       - tests/e2e/**
       - E2E_GUIDE.md
+      - IMPLEMENTATION_PLAN.md
       - MVP_DESIGN.md
+      - README.md
+      - UX_DESIGN.md
+      - VISION.md
       - .github/workflows/ios.yml
       - flake.nix
       - flake.lock
