@@ -1,7 +1,7 @@
 import Foundation
 
 actor CodableLibraryStore: LibraryPersisting {
-  static let currentSchemaVersion = 8
+  static let currentSchemaVersion = 9
 
   private let fileURL: URL
   private let fileManager: FileManager
@@ -86,7 +86,15 @@ actor CodableLibraryStore: LibraryPersisting {
       }
     case 8:
       do {
-        return try JSONDecoder.playerDecoder.decode(EnvelopeV8.self, from: data).library
+        return migrateSearchDefaults(
+          in: try JSONDecoder.playerDecoder.decode(EnvelopeV8.self, from: data).library
+        )
+      } catch {
+        throw PlayerCoreError.invalidStore
+      }
+    case 9:
+      do {
+        return try JSONDecoder.playerDecoder.decode(EnvelopeV9.self, from: data).library
       } catch {
         throw PlayerCoreError.invalidStore
       }
@@ -99,7 +107,7 @@ actor CodableLibraryStore: LibraryPersisting {
     let directory = fileURL.deletingLastPathComponent()
     try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
 
-    let envelope = EnvelopeV8(
+    let envelope = EnvelopeV9(
       schemaVersion: Self.currentSchemaVersion,
       library: snapshot
     )
@@ -191,6 +199,12 @@ actor CodableLibraryStore: LibraryPersisting {
     }
     return migrated
   }
+
+  private func migrateSearchDefaults(in snapshot: LibrarySnapshot) -> LibrarySnapshot {
+    var migrated = snapshot
+    migrated.searchPreferences = .default
+    return migrated
+  }
 }
 
 actor InMemoryLibraryStore: LibraryPersisting {
@@ -253,6 +267,11 @@ private struct EnvelopeV7: Codable {
 }
 
 private struct EnvelopeV8: Codable {
+  let schemaVersion: Int
+  let library: LibrarySnapshot
+}
+
+private struct EnvelopeV9: Codable {
   let schemaVersion: Int
   let library: LibrarySnapshot
 }

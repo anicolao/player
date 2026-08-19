@@ -216,7 +216,7 @@ final class LibraryOrganizationTests: XCTestCase {
     XCTAssertEqual(try Data(contentsOf: managedURL), bytes)
   }
 
-  func testSchemaSevenMigratesListeningPositionAndOrganizationDefaultsToEight() async throws {
+  func testSchemaSevenMigratesListeningPositionAndOrganizationDefaultsThroughCurrentSchema() async throws {
     let root = FileManager.default.temporaryDirectory.appending(
       path: "LibraryOrganizationMigration-\(UUID().uuidString)",
       directoryHint: .isDirectory
@@ -268,7 +268,7 @@ final class LibraryOrganizationTests: XCTestCase {
     let current = try XCTUnwrap(
       JSONSerialization.jsonObject(with: Data(contentsOf: fileURL)) as? [String: Any]
     )
-    XCTAssertEqual(current["schemaVersion"] as? Int, 8)
+    XCTAssertEqual(current["schemaVersion"] as? Int, 9)
   }
 
   private func makeModel(

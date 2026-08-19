@@ -566,6 +566,7 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
   var collections: [BookCollection]
   var allBooksViewStyle: LibraryViewStyle
   var trashTransactions: [LibraryTrashTransaction]
+  var searchPreferences: LibrarySearchPreferences
 
   init(
     books: [Book],
@@ -578,7 +579,8 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
     upNextBookIDs: [UUID] = [],
     collections: [BookCollection] = [],
     allBooksViewStyle: LibraryViewStyle = .grid,
-    trashTransactions: [LibraryTrashTransaction] = []
+    trashTransactions: [LibraryTrashTransaction] = [],
+    searchPreferences: LibrarySearchPreferences = .default
   ) {
     self.books = books
     self.importJobs = importJobs
@@ -591,13 +593,14 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
     self.collections = collections
     self.allBooksViewStyle = allBooksViewStyle
     self.trashTransactions = trashTransactions
+    self.searchPreferences = searchPreferences
   }
 
 
   private enum CodingKeys: String, CodingKey {
     case books, importJobs, currentBookID, playbackPosition, positionJournal, shareImportReceipts
     case metadataTransactions
-    case upNextBookIDs, collections, allBooksViewStyle, trashTransactions
+    case upNextBookIDs, collections, allBooksViewStyle, trashTransactions, searchPreferences
   }
 
   init(from decoder: any Decoder) throws {
@@ -625,6 +628,10 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
       [LibraryTrashTransaction].self,
       forKey: .trashTransactions
     ) ?? []
+    searchPreferences = try values.decodeIfPresent(
+      LibrarySearchPreferences.self,
+      forKey: .searchPreferences
+    ) ?? .default
   }
 
   static let empty = LibrarySnapshot(books: [], importJobs: [], currentBookID: nil)

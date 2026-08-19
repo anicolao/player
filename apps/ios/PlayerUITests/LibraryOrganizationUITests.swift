@@ -205,6 +205,92 @@ final class LibraryOrganizationUITests: XCTestCase {
         .exists(anyElement(restoredApp, "all-books-book-\(books[4])"), "The restored book is visible again"),
       ]
     )
+
+    navigateBack(restoredApp)
+    restoredApp.buttons["open-library-search"].tap()
+    try requireValue(anyElement(restoredApp, "library-search-screen"), "ready")
+    let searchInput = restoredApp.textFields["library-search-input"]
+    XCTAssertTrue(searchInput.waitForExistence(timeout: 2))
+    searchInput.tap()
+    searchInput.typeText("Mina Sol\n")
+    let searchProbe = anyElement(restoredApp, "library-search-probe")
+    try tester.step(
+      "metadata-search",
+      description: "Local search finds contributor metadata without a network",
+      verifications: [
+        .valueEquals(
+          searchProbe,
+          searchValue(query: "mina sol", count: 2, order: [books[4], books[2]]),
+          "Normalized contributor search returns exactly the two matching books in title order"
+        ),
+        .exists(searchInput, "The local query remains available for immediate refinement"),
+        .exists(anyElement(restoredApp, "library-search-summary"), "The result count and active order are visible"),
+      ]
+    )
+
+    restoredApp.buttons["clear-search-query"].tap()
+    searchInput.tap()
+    searchInput.typeText("Quiet Evenings\n")
+    try requireValue(
+      searchProbe,
+      searchValue(query: "quiet evenings", count: 2, order: [books[0], books[1]])
+    )
+    restoredApp.buttons["clear-search-query"].tap()
+    searchInput.tap()
+    searchInput.typeText("Full Book\n")
+    try requireValue(
+      searchProbe,
+      searchValue(query: "full book", count: 5, order: allBookOrder)
+    )
+    restoredApp.buttons["clear-search-query"].tap()
+
+    restoredApp.buttons["search-sort"].tap()
+    restoredApp.buttons["search-sort-recently-added"].tap()
+    restoredApp.buttons["search-sort"].tap()
+    restoredApp.buttons["search-sort-direction"].tap()
+    restoredApp.buttons["search-filter"].tap()
+    restoredApp.buttons["search-filter-finished"].tap()
+    let persistedSearchValue = searchValue(
+      query: "", count: 2, sort: "recentlyAdded", direction: "descending",
+      status: "finished", order: [books[3], books[2]]
+    )
+    try tester.step(
+      "filtered-search",
+      description: "Search combines a listening-state filter with a meaningful sort",
+      verifications: [
+        .valueEquals(searchProbe, persistedSearchValue, "Finished books are sorted newest-first"),
+        .exists(restoredApp.staticTexts["2 books · Finished · Recently added"], "The active result summary is explicit"),
+        .exists(restoredApp.buttons["clear-library-search"], "All active choices can be cleared in one tap"),
+      ]
+    )
+
+    restoredApp.terminate()
+    let searchRelaunch = try makeApplication(reset: false)
+    searchRelaunch.launch()
+    searchRelaunch.buttons["open-library-search"].tap()
+    let relaunchedProbe = anyElement(searchRelaunch, "library-search-probe")
+    try requireValue(relaunchedProbe, persistedSearchValue)
+    let relaunchedInput = searchRelaunch.textFields["library-search-input"]
+    relaunchedInput.tap()
+    relaunchedInput.typeText("No Such Audiobook\n")
+    try tester.step(
+      "no-search-matches",
+      description: "No search matches is distinct from an empty library",
+      verifications: [
+        .valueEquals(
+          relaunchedProbe,
+          searchValue(
+            query: "no such audiobook", count: 0, sort: "recentlyAdded",
+            direction: "descending", status: "finished", empty: "query", order: []
+          ),
+          "The durable sort and filter remain active while the query has no matches"
+        ),
+        .exists(anyElement(searchRelaunch, "library-search-empty"), "A dedicated no-match state is shown"),
+        .exists(searchRelaunch.buttons["Clear Search and Filters"], "The no-match state offers one-tap recovery"),
+      ]
+    )
+    searchRelaunch.buttons["Clear Search and Filters"].tap()
+    try requireValue(relaunchedProbe, searchValue(query: "", count: 5, order: allBookOrder))
     tester.generateDocs()
   }
 
@@ -283,6 +369,20 @@ final class LibraryOrganizationUITests: XCTestCase {
 
   private func allBooksValue(view: String, order: [String]) -> String {
     "all-books:count=5:view=\(view):order=\(order.joined(separator: ","))"
+  }
+
+  private func searchValue(
+    query: String,
+    count: Int,
+    sort: String = "title",
+    direction: String = "ascending",
+    status: String = "any",
+    formats: String = "any",
+    missing: Bool = false,
+    empty: String = "none",
+    order: [String]
+  ) -> String {
+    "search:query=\(query):count=\(count):sort=\(sort):direction=\(direction):status=\(status):formats=\(formats):missing=\(missing):empty=\(empty):order=\(order.isEmpty ? "none" : order.joined(separator: ","))"
   }
 
   private func requireValue(_ element: XCUIElement, _ expected: String) throws {

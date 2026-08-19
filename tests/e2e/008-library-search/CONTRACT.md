@@ -2,8 +2,8 @@
 
 ## Scope
 
-This first Story 008 extension covers T09 organization only. T10 extends this
-same story with local search, filters, and sorting. The test must exercise
+Story 008 covers T09 organization and T10 local search, filters, and sorting.
+The test must exercise
 production shelves, playback, ordering, persistence, contributor indexes,
 collections, and Trash transactions. The E2E bootstrap may seed deterministic
 records and files; it must not implement any operation asserted by the test.
@@ -217,8 +217,39 @@ Only after the associated programmatic assertions pass, TestStepHelper attaches:
 001-curated-collection.png
 002-recoverable-trash.png
 003-restored-library-list.png
+004-metadata-search.png
+005-filtered-search.png
+006-no-search-matches.png
 README.md
 ```
 
 Screenshots use only fixed synthetic metadata and artwork. No baselines are
 recorded by this scaffold task.
+
+## Local search, sort, and filters
+
+`open-library-search` opens the production local index. `library-search-input`
+matches normalized title, contributor, narrator, series, chapter, original
+filename, collection name, descriptive metadata, and future bookmark-note
+fields without network access. Results are `search-result-<book UUID>`.
+
+The Story first searches `Mina Sol` and requires b5 then b3 in title order. It
+also programmatically requires `Quiet Evenings` to find the two collection
+members and `Full Book` to find all five chapter matches. Search state is exposed
+by `library-search-probe`:
+
+```text
+search:query=<normalized query>:count=<n>:sort=<sort>:direction=<direction>:status=<status-or-any>:formats=<csv-or-any>:missing=<bool>:empty=<none|query|filters>:order=<canonical UUID csv-or-none>
+```
+
+Controls are `search-sort`, `search-sort-recently-added`,
+`search-sort-direction`, `search-filter`, `search-filter-finished`, and
+`clear-library-search`. Finished plus recently-added descending yields b4 then
+b3 and the visible summary `2 books · Finished · Recently added`. Sort and
+filter preferences persist across process termination; the query intentionally
+does not.
+
+After relaunch, `No Such Audiobook` must expose `library-search-empty` with
+`empty=query`, while the library still contains five books and the durable sort
+and filter remain explicit. `empty-search-clear-all` restores default title
+order and all five results. This state must never reuse the empty-library copy.

@@ -17,6 +17,17 @@ struct LibraryOrganizationHome: View {
       .padding(.vertical, 18)
     }
     .navigationDestination(isPresented: $showUpNext) { UpNextView(model: model) }
+    .toolbar {
+      ToolbarItem(placement: .topBarTrailing) {
+        NavigationLink {
+          LibrarySearchView(model: model)
+        } label: {
+          Image(systemName: "magnifyingglass")
+        }
+        .accessibilityLabel("Search Library")
+        .accessibilityIdentifier("open-library-search")
+      }
+    }
     LibraryOrganizerStateProbe(model: model)
   }
 

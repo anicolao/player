@@ -1078,6 +1078,18 @@ final class PlayerModel {
   }
 
   @discardableResult
+  func setLibrarySearchPreferences(_ preferences: LibrarySearchPreferences) async -> Bool {
+    await applyLibraryOrganizationMutation { candidate in
+      candidate.searchPreferences = preferences
+    }
+  }
+
+  @discardableResult
+  func clearLibrarySearchPreferences() async -> Bool {
+    await setLibrarySearchPreferences(.default)
+  }
+
+  @discardableResult
   func removeBook(
     bookID: UUID,
     mediaPolicy: LibraryRemovalMediaPolicy

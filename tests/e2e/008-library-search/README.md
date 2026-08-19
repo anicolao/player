@@ -60,3 +60,33 @@
 - [x] Restore atomically returns the book to its prior Up Next position
 - [x] The list choice survives restart and Trash restore
 - [x] The restored book is visible again
+
+## Local search finds contributor metadata without a network
+
+![Local search finds contributor metadata without a network](./screenshots/ios/004-metadata-search.png)
+
+**Verifications:**
+
+- [x] Normalized contributor search returns exactly the two matching books in title order
+- [x] The local query remains available for immediate refinement
+- [x] The result count and active order are visible
+
+## Search combines a listening-state filter with a meaningful sort
+
+![Search combines a listening-state filter with a meaningful sort](./screenshots/ios/005-filtered-search.png)
+
+**Verifications:**
+
+- [x] Finished books are sorted newest-first
+- [x] The active result summary is explicit
+- [x] All active choices can be cleared in one tap
+
+## No search matches is distinct from an empty library
+
+![No search matches is distinct from an empty library](./screenshots/ios/006-no-search-matches.png)
+
+**Verifications:**
+
+- [x] The durable sort and filter remain active while the query has no matches
+- [x] A dedicated no-match state is shown
+- [x] The no-match state offers one-tap recovery

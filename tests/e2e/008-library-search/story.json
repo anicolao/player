@@ -7,6 +7,9 @@
     "000-populated-library.png",
     "001-curated-collection.png",
     "002-recoverable-trash.png",
-    "003-restored-library-list.png"
+    "003-restored-library-list.png",
+    "004-metadata-search.png",
+    "005-filtered-search.png",
+    "006-no-search-matches.png"
   ]
 }
