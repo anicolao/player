@@ -1,0 +1,16 @@
+{
+  "fixture": "safe-zip-import",
+  "limits": {
+    "maximumEntries": 32,
+    "maximumEntryBytes": 131072,
+    "maximumCompressionRatio": 20
+  },
+  "cases": {
+    "valid": "valid-multifile.zip",
+    "traversal": "path-traversal.zip",
+    "symlink": "symlink-escape.zip",
+    "ratio": "ratio-limit.zip",
+    "count": "count-limit.zip",
+    "size": "size-limit.zip"
+  }
+}

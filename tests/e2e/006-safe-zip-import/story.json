@@ -1,0 +1,10 @@
+{
+  "id": "006-safe-zip-import",
+  "platform": "ios",
+  "test": "PlayerUITests/SafeZIPImportUITests/testRejectsHostileZIPsThenCancelsAndRetriesAValidArchive",
+  "fixture": "safe-zip-import",
+  "screenshots": [
+    "000-traversal-rejected.png",
+    "001-retry-ready.png"
+  ]
+}

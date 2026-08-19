@@ -17,11 +17,34 @@ protocol MediaManaging: Sendable {
   func managedURL(for relativePath: String) async throws -> URL
   func discardStaging(for jobID: UUID) async
   func acquireSelection(_ selectedURLs: [URL], jobID: UUID) async throws -> [AcquiredAudioFile]
+  func stageArchive(sourceURL: URL, jobID: UUID) async throws -> StagedAudio
+  func zipWorkspace(for jobID: UUID) async throws -> ZipImportWorkspace
+  func acquireExtractedAudio(
+    _ files: [ZipExtractedFile],
+    in workspace: ZipImportWorkspace,
+    jobID: UUID
+  ) async throws -> [AcquiredAudioFile]
 }
 
 extension MediaManaging {
   func acquireSelection(_ selectedURLs: [URL], jobID: UUID) async throws -> [AcquiredAudioFile] {
     throw PlayerCoreError.fileOperation("This media source does not support multi-item acquisition.")
+  }
+
+  func stageArchive(sourceURL: URL, jobID: UUID) async throws -> StagedAudio {
+    throw PlayerCoreError.fileOperation("This media source does not support ZIP acquisition.")
+  }
+
+  func zipWorkspace(for jobID: UUID) async throws -> ZipImportWorkspace {
+    throw PlayerCoreError.fileOperation("This media source does not support ZIP extraction.")
+  }
+
+  func acquireExtractedAudio(
+    _ files: [ZipExtractedFile],
+    in workspace: ZipImportWorkspace,
+    jobID: UUID
+  ) async throws -> [AcquiredAudioFile] {
+    throw PlayerCoreError.fileOperation("This media source does not support extracted audio.")
   }
 }
 
@@ -106,6 +129,7 @@ struct PlayerEnvironment {
   let nowPlaying: any NowPlayingPublishing
   let clock: any PlayerClock
   let ids: any PlayerIDGenerating
+  let zipExtractor: any ZipExtracting
 
   init(
     persistence: any LibraryPersisting,
@@ -116,7 +140,8 @@ struct PlayerEnvironment {
     remoteCommands: any RemoteCommandControlling = DisabledRemoteCommandController(),
     nowPlaying: any NowPlayingPublishing = DisabledNowPlayingPublisher(),
     clock: any PlayerClock = SystemPlayerClock(),
-    ids: any PlayerIDGenerating = SystemPlayerIDGenerator()
+    ids: any PlayerIDGenerating = SystemPlayerIDGenerator(),
+    zipExtractor: any ZipExtracting = SafeZipExtractor()
   ) {
     self.persistence = persistence
     self.media = media
@@ -127,6 +152,7 @@ struct PlayerEnvironment {
     self.nowPlaying = nowPlaying
     self.clock = clock
     self.ids = ids
+    self.zipExtractor = zipExtractor
   }
 
   static func production(rootURL: URL? = nil) throws -> PlayerEnvironment {

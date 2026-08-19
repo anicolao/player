@@ -19,6 +19,8 @@ extension PlayerEnvironment {
           return try metadataRichBookEnvironment()
         case "messy-multifile-unicode":
           return try messyMultifileEnvironment(reset: arguments.contains("-e2e-reset"))
+        case "safe-zip-import":
+          return try safeZipEnvironment(reset: arguments.contains("-e2e-reset"))
         default:
           break
         }
@@ -358,6 +360,65 @@ extension PlayerEnvironment {
       )
     }
 
+    private static func safeZipEnvironment(reset: Bool) throws -> PlayerEnvironment {
+      let arguments = ProcessInfo.processInfo.arguments
+      let root = FileManager.default.temporaryDirectory.appending(
+        path: "PlayerE2ESafeZIP",
+        directoryHint: .isDirectory
+      )
+      if reset { try? FileManager.default.removeItem(at: root) }
+      try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+
+      let zipCase = argumentValue(after: "-e2e-zip-case", in: arguments) ?? "valid"
+      guard
+        let encoded = ProcessInfo.processInfo.environment["PLAYER_E2E_ZIP_FIXTURE_BASE64"],
+        let bytes = Data(base64Encoded: encoded)
+      else {
+        throw PlayerCoreError.fileOperation("The E2E ZIP fixture was not provided.")
+      }
+      let sourceURL = root.appending(path: "selected-audiobook.zip")
+      try bytes.write(to: sourceURL, options: .atomic)
+      E2EZipAcquisition.shared.configure(zipCase: zipCase, sourceURL: sourceURL, sourceBytes: bytes)
+
+      var policy = ZipExtractionPolicy.audiobook
+      if let limits = argumentValue(after: "-e2e-zip-limits", in: arguments) {
+        let values = limits.split(separator: ",").compactMap { Double($0) }
+        if values.count == 3 {
+          policy.maximumEntryCount = Int(values[0])
+          policy.maximumEntryBytes = UInt64(values[1])
+          policy.maximumEntryExpansionRatio = values[2]
+        }
+      }
+      let result = InspectedAudio(
+        title: nil,
+        authors: [],
+        durationSeconds: 60,
+        artworkData: nil,
+        container: "M4A"
+      )
+      let shouldFailOnce = arguments.contains("-e2e-zip-fail-once")
+        && argumentValue(after: "-e2e-zip-fail-once", in: arguments) == "inspection"
+      let ids = (1...12).compactMap {
+        UUID(uuidString: String(format: "60000000-0000-0000-0000-%012d", $0))
+      }
+      return PlayerEnvironment(
+        persistence: CodableLibraryStore(fileURL: root.appending(path: "Library.json")),
+        media: FileSystemMediaManager(rootURL: root.appending(path: "PlayerData")),
+        inspector: E2EZipAudioInspector(result: result, failOnce: shouldFailOnce),
+        playback: DeterministicPlaybackController(),
+        clock: FixedPlayerClock(value: Date(timeIntervalSince1970: 1_700_000_000)),
+        ids: DeterministicPlayerIDGenerator(values: ids),
+        zipExtractor: SafeZipExtractor(policy: policy)
+      )
+    }
+
+    private static func argumentValue(after marker: String, in arguments: [String]) -> String? {
+      guard let index = arguments.firstIndex(of: marker), arguments.indices.contains(index + 1) else {
+        return nil
+      }
+      return arguments[index + 1]
+    }
+
     private static func metadataRichArtwork() -> Data {
       let renderer = UIGraphicsImageRenderer(size: CGSize(width: 240, height: 240))
       return renderer.pngData { context in
@@ -429,6 +490,46 @@ extension PlayerEnvironment {
         }
       }
       return files.sorted { $0.path < $1.path }
+    }
+  }
+
+  @MainActor
+  final class E2EZipAcquisition {
+    static let shared = E2EZipAcquisition()
+
+    private(set) var zipCase: String?
+    private(set) var sourceURL: URL?
+    private var sourceBytes: Data?
+
+    var isConfigured: Bool { zipCase != nil && sourceURL != nil }
+
+    func configure(zipCase: String, sourceURL: URL, sourceBytes: Data) {
+      self.zipCase = zipCase
+      self.sourceURL = sourceURL
+      self.sourceBytes = sourceBytes
+    }
+
+    var sourceIsUnchanged: Bool {
+      guard let sourceURL, let sourceBytes else { return false }
+      return (try? Data(contentsOf: sourceURL)) == sourceBytes
+    }
+  }
+
+  private actor E2EZipAudioInspector: AudioInspecting {
+    let result: InspectedAudio
+    var shouldFail: Bool
+
+    init(result: InspectedAudio, failOnce: Bool) {
+      self.result = result
+      self.shouldFail = failOnce
+    }
+
+    func inspect(url: URL) async throws -> InspectedAudio {
+      if shouldFail {
+        shouldFail = false
+        throw PlayerCoreError.fileOperation("Audio inspection was interrupted. Try again.")
+      }
+      return result
     }
   }
 

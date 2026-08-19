@@ -12,6 +12,7 @@ final class PlayerModel {
   @ObservationIgnored private let environment: PlayerEnvironment
   @ObservationIgnored private var playbackIntegrationsConfigured = false
   @ObservationIgnored private var wasPlayingBeforeInterruption = false
+  @ObservationIgnored private var zipImportTasks: [UUID: Task<Void, Never>] = [:]
 
   init(environment: PlayerEnvironment) {
     self.environment = environment
@@ -21,6 +22,7 @@ final class PlayerModel {
   func restore() async {
     do {
       library = try await environment.persistence.load()
+      let recoveredInterruptedImports = recoverInterruptedZipImports()
       let storedPosition = library.playbackPosition
       let recoveredPosition = PositionJournalRecovery.recover(from: library)
       library.playbackPosition = recoveredPosition
@@ -46,7 +48,7 @@ final class PlayerModel {
       if library.currentBookID != nil {
         try await loadCurrentBookIntoPlayback()
       }
-      if storedPosition != recoveredPosition {
+      if storedPosition != recoveredPosition || recoveredInterruptedImports {
         try await persist()
       }
       isRestored = true
@@ -57,6 +59,30 @@ final class PlayerModel {
       lastErrorMessage = error.localizedDescription
       environment.nowPlaying.clear()
     }
+  }
+
+  private func recoverInterruptedZipImports() -> Bool {
+    var changed = false
+    for index in library.importJobs.indices {
+      guard
+        [.acquiring, .extracting, .inspecting].contains(library.importJobs[index].phase),
+        var status = library.importJobs[index].zipStatus
+      else { continue }
+      status.failureReasonCode = "import-interrupted"
+      status.retryAllowed = true
+      library.importJobs[index].zipStatus = status
+      library.importJobs[index].phase = .failed
+      library.importJobs[index].failure = ImportFailure(
+        message: "The ZIP import was interrupted and can continue from its checkpoint.",
+        affectedFilename: library.importJobs[index].sourceFilename,
+        sourceIsUnchanged: true,
+        isRecoverable: true,
+        reasonCode: "import-interrupted",
+        recoveryAction: .retry
+      )
+      changed = true
+    }
+    return changed
   }
 
   func configurePlaybackIntegrations() {
@@ -180,6 +206,15 @@ final class PlayerModel {
     guard !selectedURLs.isEmpty else {
       lastErrorMessage = PlayerCoreError.invalidAssetSelection.localizedDescription
       return nil
+    }
+
+    let archiveURLs = selectedURLs.filter { $0.pathExtension.lowercased() == "zip" }
+    if !archiveURLs.isEmpty {
+      guard selectedURLs.count == 1, archiveURLs.count == 1 else {
+        lastErrorMessage = "Import one ZIP archive at a time."
+        return nil
+      }
+      return await importZipArchive(from: archiveURLs[0])
     }
 
     let jobID = await environment.ids.next()
@@ -317,6 +352,47 @@ final class PlayerModel {
       lastErrorMessage = error.localizedDescription
       return jobID
     }
+  }
+
+  @discardableResult
+  func retryImport(jobID: UUID) async -> Bool {
+    guard
+      let job = library.importJobs.first(where: { $0.id == jobID }),
+      job.phase == .failed,
+      job.zipStatus?.retryAllowed == true
+    else {
+      lastErrorMessage = PlayerCoreError.missingImport(jobID).localizedDescription
+      return false
+    }
+    await executeZipImport(jobID: jobID, sourceURL: nil)
+    return library.importJobs.first(where: { $0.id == jobID }).map {
+      $0.phase == .ready || $0.phase == .needsReview
+    } ?? false
+  }
+
+  func cancelImport(jobID: UUID) async {
+    guard var job = library.importJobs.first(where: { $0.id == jobID }) else { return }
+    zipImportTasks[jobID]?.cancel()
+    if job.zipStatus != nil, let workspace = try? await environment.media.zipWorkspace(for: jobID) {
+      try? await environment.zipExtractor.cancelAndClean(
+        destinationRoot: workspace.destinationRoot,
+        checkpointURL: workspace.checkpointURL
+      )
+    }
+    await environment.media.discardStaging(for: jobID)
+    job.phase = .cancelled
+    job.progress = .none
+    job.proposals = []
+    job.stagedAssets = []
+    job.failure = nil
+    if var status = job.zipStatus {
+      status.extractedEntryCount = 0
+      status.failureReasonCode = nil
+      status.retryAllowed = false
+      job.zipStatus = status
+    }
+    try? await replaceAndPersist(job)
+    lastErrorMessage = nil
   }
 
   @discardableResult
@@ -773,6 +849,240 @@ final class PlayerModel {
         playbackRate: playbackState.status == .playing ? 1 : 0,
         artworkData: book.artworkData
       )
+    )
+  }
+
+  private func importZipArchive(from sourceURL: URL) async -> UUID {
+    let jobID = await environment.ids.next()
+    let now = environment.clock.now()
+    let job = ImportJob(
+      id: jobID,
+      sourceFilename: sourceURL.lastPathComponent,
+      phase: .queued,
+      progress: .none,
+      createdAt: now,
+      updatedAt: now
+    )
+    library.importJobs.append(job)
+    do { try await persist() }
+    catch { lastErrorMessage = error.localizedDescription }
+    await executeZipImport(jobID: jobID, sourceURL: sourceURL)
+    return jobID
+  }
+
+  private func executeZipImport(jobID: UUID, sourceURL: URL?) async {
+    let task = Task<Void, Never> { [weak self] in
+      guard let self else { return }
+      await self.runZipImport(jobID: jobID, sourceURL: sourceURL)
+    }
+    zipImportTasks[jobID] = task
+    await task.value
+    zipImportTasks.removeValue(forKey: jobID)
+  }
+
+  private func runZipImport(jobID: UUID, sourceURL: URL?) async {
+    guard var job = library.importJobs.first(where: { $0.id == jobID }) else { return }
+    do {
+      let workspace = try await environment.media.zipWorkspace(for: jobID)
+      let archive: StagedAudio
+      if let status = job.zipStatus {
+        archive = StagedAudio(
+          relativePath: status.archiveStagedRelativePath,
+          originalFilename: job.sourceFilename,
+          checksumSHA256: "",
+          byteCount: 0
+        )
+      } else {
+        guard let sourceURL else { throw PlayerCoreError.invalidAssetSelection }
+        job.phase = .acquiring
+        job.failure = nil
+        try await replaceAndPersist(job)
+        archive = try await environment.media.stageArchive(sourceURL: sourceURL, jobID: jobID)
+        job.zipStatus = ZipImportStatus(
+          archiveStagedRelativePath: archive.relativePath,
+          extractionRelativePath: workspace.extractionRelativePath,
+          checkpointRelativePath: workspace.checkpointRelativePath,
+          totalEntryCount: 0,
+          extractedEntryCount: 0,
+          failureReasonCode: nil,
+          retryAllowed: false
+        )
+      }
+
+      job.phase = .extracting
+      job.failure = nil
+      job.proposals = []
+      job.stagedAssets = []
+      try await replaceAndPersist(job)
+      let archiveURL = try await environment.media.stagedURL(for: archive.relativePath)
+      let result = try await environment.zipExtractor.extract(
+        archiveURL: archiveURL,
+        destinationRoot: workspace.destinationRoot,
+        checkpointURL: workspace.checkpointURL
+      ) { [weak self] progress in
+        await self?.recordZipProgress(jobID: jobID, progress: progress)
+      }
+
+      guard var current = library.importJobs.first(where: { $0.id == jobID }) else { return }
+      if var status = current.zipStatus {
+        status.totalEntryCount = result.checkpoint.totalEntries
+        status.extractedEntryCount = result.files.count
+        status.failureReasonCode = nil
+        status.retryAllowed = false
+        current.zipStatus = status
+      }
+      current.phase = .inspecting
+      try await replaceAndPersist(current)
+      let acquired = try await environment.media.acquireExtractedAudio(
+        result.files,
+        in: workspace,
+        jobID: jobID
+      )
+      let review = try await buildImportReview(from: acquired)
+      guard var completed = library.importJobs.first(where: { $0.id == jobID }) else { return }
+      completed.stagedRelativePath = acquired.first?.staged.relativePath
+      completed.stagedAssets = review.stagedAssets
+      completed.proposals = review.proposals
+      completed.progress = ImportProgress(
+        completed: Int64(clamping: result.checkpoint.extractedBytes),
+        total: Int64(clamping: result.checkpoint.totalBytes)
+      )
+      completed.phase = review.proposals.contains(where: { !$0.warnings.isEmpty })
+        ? .needsReview : .ready
+      completed.failure = nil
+      try await replaceAndPersist(completed)
+      lastErrorMessage = nil
+    } catch is CancellationError {
+      await cancelImport(jobID: jobID)
+    } catch {
+      guard var failed = library.importJobs.first(where: { $0.id == jobID }) else { return }
+      let workspace = try? await environment.media.zipWorkspace(for: jobID)
+      let checkpoint = workspace.flatMap {
+        try? JSONDecoder().decode(
+          ZipExtractionCheckpoint.self,
+          from: Data(contentsOf: $0.checkpointURL)
+        )
+      }
+      let zipError = error as? ZipImportError
+      let reason = zipError?.reasonCode ?? "inspection-transient"
+      let canRetry = zipError == nil || zipError?.isRecoverable == true
+      if var status = failed.zipStatus {
+        status.totalEntryCount = checkpoint?.totalEntries ?? status.totalEntryCount
+        status.extractedEntryCount = checkpoint?.completedEntries.count ?? status.extractedEntryCount
+        status.failureReasonCode = reason
+        status.retryAllowed = canRetry
+        failed.zipStatus = status
+      }
+      failed.phase = .failed
+      failed.failure = ImportFailure(
+        message: error.localizedDescription,
+        affectedFilename: zipError?.affectedPath,
+        sourceIsUnchanged: true,
+        isRecoverable: canRetry,
+        reasonCode: reason,
+        recoveryAction: canRetry ? .retry : .changeSelection
+      )
+      try? await replaceAndPersist(failed)
+      lastErrorMessage = error.localizedDescription
+    }
+  }
+
+  private func recordZipProgress(jobID: UUID, progress: ZipExtractionProgress) async {
+    guard var job = library.importJobs.first(where: { $0.id == jobID }) else { return }
+    job.progress = ImportProgress(
+      completed: Int64(clamping: progress.extractedBytes),
+      total: Int64(clamping: progress.totalBytes)
+    )
+    if var status = job.zipStatus {
+      status.extractedEntryCount = progress.completedEntries
+      job.zipStatus = status
+    }
+    try? await replaceAndPersist(job)
+  }
+
+  private func buildImportReview(
+    from acquired: [AcquiredAudioFile]
+  ) async throws -> (stagedAssets: [StagedImportAsset], proposals: [BookProposal]) {
+    var prepared: [PreparedImportAsset] = []
+    for (selectionIndex, item) in acquired.enumerated() {
+      let url = try await environment.media.stagedURL(for: item.staged.relativePath)
+      let inspected = try await environment.inspector.inspect(url: url)
+      let assetID = await environment.ids.next()
+      prepared.append(PreparedImportAsset(
+        asset: AudioAsset(
+          id: assetID,
+          originalFilename: item.staged.originalFilename,
+          managedRelativePath: "",
+          checksumSHA256: item.staged.checksumSHA256,
+          byteCount: item.staged.byteCount,
+          durationSeconds: inspected.durationSeconds,
+          container: inspected.container,
+          discNumber: inspected.discNumber,
+          trackNumber: inspected.trackNumber,
+          importOrder: selectionIndex
+        ),
+        inspected: inspected,
+        acquired: item
+      ))
+    }
+    var proposals: [BookProposal] = []
+    let groups = groupedImportAssets(prepared)
+    for group in groups {
+      let ordered = NaturalTrackOrdering.order(group.map(\.asset))
+      let byID = Dictionary(uniqueKeysWithValues: group.map { ($0.asset.id, $0) })
+      var assets: [AudioAsset] = []
+      var chapters: [Chapter] = []
+      var start = 0.0
+      for var asset in ordered.assets {
+        guard let item = byID[asset.id] else { continue }
+        asset.timelineStartSeconds = start
+        assets.append(asset)
+        chapters += item.inspected.chapters.map {
+          Chapter(
+            id: "\(asset.id.uuidString.lowercased())-\($0.id)",
+            title: $0.title,
+            startSeconds: $0.startSeconds + start,
+            durationSeconds: $0.durationSeconds,
+            source: $0.source,
+            assetID: asset.id
+          )
+        }
+        start += asset.durationSeconds
+      }
+      guard let first = assets.first else { throw PlayerCoreError.invalidAssetSelection }
+      let proposalID = await environment.ids.next()
+      let bookID = await environment.ids.next()
+      let commonFolder = commonNonBlank(group.compactMap(\.acquired.commonFolderName))
+      let commonTitle = commonNonBlank(group.compactMap(\.inspected.title))
+      proposals.append(BookProposal(
+        id: proposalID,
+        proposedBookID: bookID,
+        title: commonFolder ?? commonTitle ?? filenameStem(for: first.originalFilename).display,
+        authors: uniqueContributors(group.flatMap(\.inspected.authors)),
+        durationSeconds: start,
+        artworkData: group.compactMap(\.inspected.artworkData).first,
+        asset: first,
+        warnings: (groups.count > 1 ? ["Confirm that this selection is one audiobook."] : [])
+          + ordered.warnings,
+        narrators: uniqueContributors(group.flatMap(\.inspected.narrators)),
+        seriesName: group.compactMap(\.inspected.seriesName).first,
+        seriesPosition: group.compactMap(\.inspected.seriesPosition).first,
+        artworkMediaType: group.compactMap(\.inspected.artworkMediaType).first,
+        chapters: chapters.sorted { $0.startSeconds < $1.startSeconds },
+        additionalAssets: Array(assets.dropFirst()),
+        groupingEvidence: groupingEvidence(for: group),
+        orderingEvidence: ordered.evidence
+      ))
+    }
+    return (
+      prepared.map {
+        StagedImportAsset(
+          assetID: $0.asset.id,
+          stagedRelativePath: $0.acquired.staged.relativePath,
+          sourceRelativePath: $0.acquired.sourceRelativePath
+        )
+      },
+      proposals
     )
   }
 

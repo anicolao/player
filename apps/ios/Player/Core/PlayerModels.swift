@@ -143,12 +143,14 @@ struct Chapter: Codable, Equatable, Identifiable, Sendable {
 enum ImportPhase: String, Codable, Equatable, Sendable {
   case queued
   case acquiring
+  case extracting
   case inspecting
   case needsReview
   case ready
   case committing
   case committed
   case failed
+  case cancelled
 }
 
 struct ImportProgress: Codable, Equatable, Sendable {
@@ -158,11 +160,58 @@ struct ImportProgress: Codable, Equatable, Sendable {
   static let none = ImportProgress(completed: 0, total: nil)
 }
 
+enum ImportRecoveryAction: String, Codable, Equatable, Sendable {
+  case retry
+  case changeSelection
+}
+
 struct ImportFailure: Codable, Equatable, Sendable {
   var message: String
   var affectedFilename: String?
   var sourceIsUnchanged: Bool
   var isRecoverable: Bool
+  var reasonCode: String?
+  var recoveryAction: ImportRecoveryAction?
+
+  init(
+    message: String,
+    affectedFilename: String?,
+    sourceIsUnchanged: Bool,
+    isRecoverable: Bool,
+    reasonCode: String? = nil,
+    recoveryAction: ImportRecoveryAction? = nil
+  ) {
+    self.message = message
+    self.affectedFilename = affectedFilename
+    self.sourceIsUnchanged = sourceIsUnchanged
+    self.isRecoverable = isRecoverable
+    self.reasonCode = reasonCode
+    self.recoveryAction = recoveryAction
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case message, affectedFilename, sourceIsUnchanged, isRecoverable, reasonCode, recoveryAction
+  }
+
+  init(from decoder: any Decoder) throws {
+    let values = try decoder.container(keyedBy: CodingKeys.self)
+    message = try values.decode(String.self, forKey: .message)
+    affectedFilename = try values.decodeIfPresent(String.self, forKey: .affectedFilename)
+    sourceIsUnchanged = try values.decode(Bool.self, forKey: .sourceIsUnchanged)
+    isRecoverable = try values.decode(Bool.self, forKey: .isRecoverable)
+    reasonCode = try values.decodeIfPresent(String.self, forKey: .reasonCode)
+    recoveryAction = try values.decodeIfPresent(ImportRecoveryAction.self, forKey: .recoveryAction)
+  }
+}
+
+struct ZipImportStatus: Codable, Equatable, Sendable {
+  var archiveStagedRelativePath: String
+  var extractionRelativePath: String
+  var checkpointRelativePath: String
+  var totalEntryCount: Int
+  var extractedEntryCount: Int
+  var failureReasonCode: String?
+  var retryAllowed: Bool
 }
 
 enum GroupingEvidenceKind: String, Codable, Equatable, Sendable {
@@ -303,6 +352,7 @@ struct ImportJob: Codable, Equatable, Identifiable, Sendable {
   var stagedAssets: [StagedImportAsset]
   var additionalProposals: [BookProposal]
   var reviewRevision: Int
+  var zipStatus: ZipImportStatus?
 
   var proposals: [BookProposal] {
     get { proposal.map { [$0] + additionalProposals } ?? additionalProposals }
@@ -325,7 +375,8 @@ struct ImportJob: Codable, Equatable, Identifiable, Sendable {
     updatedAt: Date,
     stagedAssets: [StagedImportAsset] = [],
     additionalProposals: [BookProposal] = [],
-    reviewRevision: Int = 0
+    reviewRevision: Int = 0,
+    zipStatus: ZipImportStatus? = nil
   ) {
     self.id = id
     self.sourceFilename = sourceFilename
@@ -340,12 +391,13 @@ struct ImportJob: Codable, Equatable, Identifiable, Sendable {
     self.stagedAssets = stagedAssets
     self.additionalProposals = additionalProposals
     self.reviewRevision = reviewRevision
+    self.zipStatus = zipStatus
   }
 
   private enum CodingKeys: String, CodingKey {
     case id, sourceFilename, phase, progress, stagedRelativePath, proposal
     case committedBookID, failure, createdAt, updatedAt, stagedAssets, additionalProposals
-    case reviewRevision
+    case reviewRevision, zipStatus
   }
 
   init(from decoder: any Decoder) throws {
@@ -363,6 +415,7 @@ struct ImportJob: Codable, Equatable, Identifiable, Sendable {
     stagedAssets = try values.decodeIfPresent([StagedImportAsset].self, forKey: .stagedAssets) ?? []
     additionalProposals = try values.decodeIfPresent([BookProposal].self, forKey: .additionalProposals) ?? []
     reviewRevision = try values.decodeIfPresent(Int.self, forKey: .reviewRevision) ?? 0
+    zipStatus = try values.decodeIfPresent(ZipImportStatus.self, forKey: .zipStatus)
   }
 }
 

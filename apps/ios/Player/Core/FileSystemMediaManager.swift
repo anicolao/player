@@ -21,6 +21,57 @@ actor FileSystemMediaManager: MediaManaging {
     try stageFile(sourceURL: sourceURL, jobID: jobID, storageName: "source")
   }
 
+  func stageArchive(sourceURL: URL, jobID: UUID) throws -> StagedAudio {
+    try stageFile(
+      sourceURL: sourceURL,
+      jobID: jobID,
+      storageName: "archive",
+      allowedExtensions: ["zip"]
+    )
+  }
+
+  func zipWorkspace(for jobID: UUID) throws -> ZipImportWorkspace {
+    try prepareDirectories()
+    let jobDirectory = stagingURL.appending(
+      path: jobID.uuidString.lowercased(),
+      directoryHint: .isDirectory
+    )
+    try fileManager.createDirectory(at: jobDirectory, withIntermediateDirectories: true)
+    let destination = jobDirectory.appending(path: "Extracted", directoryHint: .isDirectory)
+    let checkpoint = jobDirectory.appending(path: "zip-checkpoint.json")
+    return ZipImportWorkspace(
+      destinationRoot: destination,
+      checkpointURL: checkpoint,
+      extractionRelativePath: relativePath(for: destination),
+      checkpointRelativePath: relativePath(for: checkpoint)
+    )
+  }
+
+  func acquireExtractedAudio(
+    _ files: [ZipExtractedFile],
+    in workspace: ZipImportWorkspace,
+    jobID: UUID
+  ) throws -> [AcquiredAudioFile] {
+    let expectedRoot = workspace.destinationRoot.standardizedFileURL.path + "/"
+    return try files.map { file in
+      let url = file.fileURL.standardizedFileURL
+      guard url.path.hasPrefix(expectedRoot), fileManager.fileExists(atPath: url.path) else {
+        throw PlayerCoreError.fileOperation("Extracted audio escaped its ZIP workspace.")
+      }
+      let pathComponents = file.relativePath.split(separator: "/").map(String.init)
+      return AcquiredAudioFile(
+        staged: StagedAudio(
+          relativePath: relativePath(for: url),
+          originalFilename: url.lastPathComponent,
+          checksumSHA256: try hashFile(at: url),
+          byteCount: Int64(file.byteCount)
+        ),
+        sourceRelativePath: file.relativePath,
+        commonFolderName: pathComponents.count > 1 ? pathComponents[0] : nil
+      )
+    }
+  }
+
   func acquireSelection(_ selectedURLs: [URL], jobID: UUID) throws -> [AcquiredAudioFile] {
     var acquired: [AcquiredAudioFile] = []
     for selectedURL in selectedURLs {
@@ -89,10 +140,15 @@ actor FileSystemMediaManager: MediaManaging {
     return acquired
   }
 
-  private func stageFile(sourceURL: URL, jobID: UUID, storageName: String) throws -> StagedAudio {
+  private func stageFile(
+    sourceURL: URL,
+    jobID: UUID,
+    storageName: String,
+    allowedExtensions: Set<String> = supportedExtensions
+  ) throws -> StagedAudio {
     let filename = sourceURL.lastPathComponent
     let fileExtension = sourceURL.pathExtension.lowercased()
-    guard Self.supportedExtensions.contains(fileExtension) else {
+    guard allowedExtensions.contains(fileExtension) else {
       throw PlayerCoreError.unsupportedFile(filename)
     }
 
@@ -240,6 +296,18 @@ actor FileSystemMediaManager: MediaManaging {
       try output.write(contentsOf: chunk)
     }
     try output.synchronize()
+    return hash.finalize().map { String(format: "%02x", $0) }.joined()
+  }
+
+  private func hashFile(at url: URL) throws -> String {
+    let input = try FileHandle(forReadingFrom: url)
+    defer { try? input.close() }
+    var hash = SHA256()
+    while true {
+      try Task.checkCancellation()
+      guard let chunk = try input.read(upToCount: 1_024 * 1_024), !chunk.isEmpty else { break }
+      hash.update(data: chunk)
+    }
     return hash.finalize().map { String(format: "%02x", $0) }.joined()
   }
 

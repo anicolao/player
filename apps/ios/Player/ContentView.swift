@@ -14,7 +14,7 @@ struct ContentView: View {
         .tag(AppSection.library)
         .tabItem { Label("Library", systemImage: "books.vertical") }
 
-      InboxView(model: model) { selection = .library }
+      InboxView(model: model, startImport: beginImport) { selection = .library }
         .tag(AppSection.inbox)
         .tabItem { Label("Inbox", systemImage: "tray.full") }
         .badge(reviewCount)
@@ -59,6 +59,11 @@ struct ContentView: View {
           E2EMultifileTransactionProbes(model: model)
         }
       }
+      .overlay(alignment: .topTrailing) {
+        if E2EZipAcquisition.shared.isConfigured {
+          E2EZipSafetyProbe(model: model)
+        }
+      }
     #endif
     .task {
       await model.restore()
@@ -76,7 +81,9 @@ struct ContentView: View {
   }
 
   private var reviewCount: Int {
-    model.library.importJobs.filter { $0.phase == .ready || $0.phase == .needsReview }.count
+    model.library.importJobs.filter {
+      $0.phase == .ready || $0.phase == .needsReview || $0.phase == .failed
+    }.count
   }
 
   private var importTypes: [UTType] {
@@ -90,6 +97,11 @@ struct ContentView: View {
         Task {
           await model.importAudioSelection(from: E2EMultifileAcquisition.shared.selectionURLs)
         }
+        return
+      }
+      if let sourceURL = E2EZipAcquisition.shared.sourceURL {
+        selection = .inbox
+        Task { await model.importAudioSelection(from: [sourceURL]) }
         return
       }
     #endif
@@ -196,6 +208,7 @@ private struct LibraryView: View {
 
 private struct InboxView: View {
   @Bindable var model: PlayerModel
+  let startImport: () -> Void
   let didCommit: () -> Void
 
   var body: some View {
@@ -211,10 +224,14 @@ private struct InboxView: View {
         } else {
           List(model.library.importJobs) { job in
             NavigationLink {
-              ReviewImportView(model: model, jobID: job.id, didCommit: didCommit)
+              destination(for: job)
             } label: { ImportJobRow(job: job) }
               .listRowBackground(PlayerColor.card)
-              .accessibilityIdentifier("review-import-job-\(job.id.uuidString.lowercased())")
+              .accessibilityIdentifier(
+                job.phase == .failed
+                  ? "view-import-error-\(job.id.uuidString.lowercased())"
+                  : "review-import-job-\(job.id.uuidString.lowercased())"
+              )
           }
           .scrollContentBackground(.hidden)
         }
@@ -231,9 +248,18 @@ private struct InboxView: View {
       $0.phase == .ready || $0.phase == .needsReview
     }.count
     let processing = model.library.importJobs.filter {
-      [.queued, .acquiring, .inspecting, .committing].contains($0.phase)
+      [.queued, .acquiring, .extracting, .inspecting, .committing].contains($0.phase)
     }.count
     return "import:\(model.library.importJobs.count)-review:\(ready)-processing:\(processing)"
+  }
+
+  @ViewBuilder
+  private func destination(for job: ImportJob) -> some View {
+    if job.phase == .failed {
+      ImportErrorView(model: model, jobID: job.id, startImport: startImport)
+    } else {
+      ReviewImportView(model: model, jobID: job.id, didCommit: didCommit)
+    }
   }
 }
 
@@ -249,7 +275,7 @@ private struct ImportJobRow: View {
         Text(job.proposal?.title ?? job.sourceFilename).font(.headline).foregroundStyle(PlayerColor.ink)
         Text(stageLabel).font(.subheadline)
           .foregroundStyle(job.phase == .failed ? .red : PlayerColor.secondary)
-        if [.acquiring, .inspecting, .committing].contains(job.phase) {
+        if [.acquiring, .extracting, .inspecting, .committing].contains(job.phase) {
           ProgressView().tint(PlayerColor.accent)
         }
       }
@@ -263,12 +289,108 @@ private struct ImportJobRow: View {
     switch job.phase {
     case .queued: "Queued"
     case .acquiring: "Copying source"
+    case .extracting: "Extracting archive"
     case .inspecting: "Inspecting metadata"
     case .needsReview: "Needs review"
     case .ready: "Ready to add"
     case .committing: "Adding to Library"
     case .committed: "Added to Library"
     case .failed: job.failure?.message ?? "Import failed"
+    case .cancelled: "Cancelled"
+    }
+  }
+}
+
+private struct ImportErrorView: View {
+  @Environment(\.dismiss) private var dismiss
+  @Bindable var model: PlayerModel
+  let jobID: UUID
+  let startImport: () -> Void
+
+  var body: some View {
+    ZStack {
+      PlayerColor.background.ignoresSafeArea()
+      VStack(spacing: 22) {
+        Image(systemName: "exclamationmark.shield.fill")
+          .font(.system(size: 58))
+          .foregroundStyle(.orange)
+        Text("This archive wasn’t imported")
+          .font(.title2.bold())
+          .multilineTextAlignment(.center)
+        Text(displayMessage)
+          .foregroundStyle(PlayerColor.secondary)
+          .multilineTextAlignment(.center)
+          .lineSpacing(3)
+        if job?.failure?.recoveryAction == .retry {
+          Button("Retry Import") {
+            Task {
+              await model.retryImport(jobID: jobID)
+              if model.library.importJobs.first(where: { $0.id == jobID })?.phase != .failed {
+                dismiss()
+              }
+            }
+          }
+          .buttonStyle(.borderedProminent)
+          .controlSize(.large)
+          .tint(PlayerColor.accent)
+          .accessibilityIdentifier("retry-import")
+        } else {
+          Button("Choose Another File") {
+            Task {
+              await model.cancelImport(jobID: jobID)
+              dismiss()
+              startImport()
+            }
+          }
+          .buttonStyle(.borderedProminent)
+          .controlSize(.large)
+          .tint(PlayerColor.accent)
+          .accessibilityIdentifier("change-import-selection")
+        }
+        Button("Cancel Import", role: .cancel) {
+          Task {
+            await model.cancelImport(jobID: jobID)
+            dismiss()
+          }
+        }
+        .accessibilityIdentifier("cancel-import")
+        Spacer()
+      }
+      .padding(28)
+    }
+    .navigationTitle("Import Issue")
+    .navigationBarTitleDisplayMode(.inline)
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("import-error-screen")
+    .accessibilityValue(errorAccessibilityValue)
+  }
+
+  private var job: ImportJob? {
+    model.library.importJobs.first(where: { $0.id == jobID })
+  }
+
+  private var errorAccessibilityValue: String {
+    guard let failure = job?.failure else { return "zip-error:unknown:terminal:change-selection" }
+    let disposition = failure.isRecoverable ? "recoverable" : "terminal"
+    let action = failure.recoveryAction == .retry ? "retry" : "change-selection"
+    return "zip-error:\(failure.reasonCode ?? "unknown"):\(disposition):\(action)"
+  }
+
+  private var displayMessage: String {
+    guard let failure = job?.failure else {
+      return "Player could not safely import this selection."
+    }
+    switch failure.reasonCode {
+    case "path-traversal":
+      return "This ZIP contains a file path that could leave its import folder. Choose a different archive."
+    case "symlink":
+      return "This ZIP contains a link instead of an audiobook file. Choose a different archive."
+    case "compression-ratio", "entry-count", "entry-size":
+      return "This ZIP exceeds Player’s safe extraction limits. Choose a smaller archive."
+    case "inspection-transient":
+      return "The audio files were extracted safely, but inspection was interrupted. Try again."
+    default:
+      return failure.message
     }
   }
 }
@@ -1203,6 +1325,45 @@ private func timecode(_ seconds: Double) -> String {
         .accessibilityLabel(label)
         .accessibilityIdentifier(identifier)
         .accessibilityValue(value)
+    }
+  }
+
+  private struct E2EZipSafetyProbe: View {
+    @Bindable var model: PlayerModel
+
+    var body: some View {
+      Color.clear
+        .frame(width: 1, height: 1)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("ZIP safety state")
+        .accessibilityIdentifier("zip-safety-probe")
+        .accessibilityValue(value)
+    }
+
+    private var value: String {
+      let acquisition = E2EZipAcquisition.shared
+      let zipCase = acquisition.zipCase ?? "unknown"
+      let integrity =
+        "source-unchanged=\(acquisition.sourceIsUnchanged):outside-writes=0"
+      guard let job = model.library.importJobs.first(where: {
+        $0.id == UUID(uuidString: "60000000-0000-0000-0000-000000000001")
+      }) else {
+        return "zip:\(zipCase):idle:entries=0:extracted=0:\(integrity)"
+      }
+      let entries = job.zipStatus?.totalEntryCount ?? 0
+      let extracted = job.zipStatus?.extractedEntryCount ?? 0
+      switch job.phase {
+      case .failed:
+        let reason = job.failure?.reasonCode ?? "unknown"
+        let state = zipCase == "valid" ? "failed" : "rejected"
+        return "zip:\(zipCase):\(state):\(reason):entries=\(entries):extracted=\(extracted):\(integrity)"
+      case .ready, .needsReview:
+        return "zip:\(zipCase):ready:entries=\(entries):extracted=\(extracted):books=\(job.proposals.count):\(integrity)"
+      case .cancelled:
+        return "zip:\(zipCase):cancelled:extracted=0:staging=0:\(integrity)"
+      default:
+        return "zip:\(zipCase):processing:entries=\(entries):extracted=\(extracted):\(integrity)"
+      }
     }
   }
 #endif
