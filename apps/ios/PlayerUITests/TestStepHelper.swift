@@ -53,8 +53,12 @@ final class TestStepHelper {
   static let conditionTimeout: TimeInterval = 2
 
   private unowned let testCase: XCTestCase
-  private var title = ""
-  private var narrative = ""
+  private var metadata = StoryMetadata(
+    title: "",
+    narrative: "",
+    fixture: "unspecified",
+    additionalPreconditions: []
+  )
   private var steps: [Step] = []
   private var nextScreenshotIndex = 0
 
@@ -62,9 +66,18 @@ final class TestStepHelper {
     self.testCase = testCase
   }
 
-  func setMetadata(title: String, narrative: String) {
-    self.title = title
-    self.narrative = narrative
+  func setMetadata(
+    title: String,
+    narrative: String,
+    fixture: String,
+    additionalPreconditions: [String] = []
+  ) {
+    metadata = StoryMetadata(
+      title: title,
+      narrative: narrative,
+      fixture: fixture,
+      additionalPreconditions: additionalPreconditions
+    )
   }
 
   func step(
@@ -84,7 +97,7 @@ final class TestStepHelper {
     let filename = String(format: "%03d-%@.png", nextScreenshotIndex, identifier)
     nextScreenshotIndex += 1
 
-    let screenshot = XCUIScreen.main.screenshot()
+    let screenshot = stableScreenshot()
     let attachment = XCTAttachment(screenshot: screenshot)
     attachment.name = filename
     attachment.lifetime = .keepAlways
@@ -99,21 +112,41 @@ final class TestStepHelper {
     )
   }
 
+  private func stableScreenshot() -> XCUIScreenshot {
+    var previous = XCUIScreen.main.screenshot()
+    var previousPixels = previous.image.pngData()
+
+    for _ in 0..<20 {
+      RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+      let current = XCUIScreen.main.screenshot()
+      let currentPixels = current.image.pngData()
+      if currentPixels == previousPixels {
+        return current
+      }
+      previous = current
+      previousPixels = currentPixels
+    }
+
+    XCTFail("The screen did not reach two consecutive pixel-identical frames")
+    return previous
+  }
+
   func generateDocs() {
     let readme = """
-      # Test: \(title)
+      # Test: \(metadata.title)
 
-      > \(narrative)
+      > \(metadata.narrative)
 
       ## Deterministic preconditions
 
-      - Fixture: `empty-library`
+      - Fixture: `\(metadata.fixture)`
       - Xcode: 26.6
       - Device: iPhone 17 on iOS 26.5, portrait, light appearance, standard Dynamic Type
       - Locale and time zone: `en_CA`, `America/Toronto`
       - Status bar: fixed at 9:41 AM, full battery, and full network indicators
       - Animations: disabled by the E2E build configuration
       - Network and clock data: unused by this story
+      \(metadata.additionalPreconditions.map { "- \($0)" }.joined(separator: "\n"))
 
       \(steps.map(markdown).joined(separator: "\n\n"))
       """ + "\n"
@@ -139,6 +172,13 @@ final class TestStepHelper {
       \(checks)
       """
   }
+}
+
+private struct StoryMetadata {
+  let title: String
+  let narrative: String
+  let fixture: String
+  let additionalPreconditions: [String]
 }
 
 private struct Step {

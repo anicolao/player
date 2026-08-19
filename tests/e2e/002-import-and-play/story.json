@@ -1,0 +1,12 @@
+{
+  "id": "002-import-and-play",
+  "platform": "ios",
+  "test": "PlayerUITests/ImportPlaybackUITests/testReviewsCommitsAndPlaysOneAudiobook",
+  "fixture": "single-audiobook-ready",
+  "screenshots": [
+    "000-review-import.png",
+    "001-committed-library.png",
+    "002-book-detail.png",
+    "003-paused-now-playing.png"
+  ]
+}

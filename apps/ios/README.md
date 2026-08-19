@@ -1,6 +1,6 @@
 # Player for iOS
 
-This directory contains the initial native SwiftUI scaffold and its deterministic launch-story test. The project is generated from `project.yml`; the generated `Player.xcodeproj` is committed so it can be opened directly and checked for reproducibility.
+This directory contains the native SwiftUI app, its imported-media core, and deterministic launch/import/playback tests. The project is generated from `project.yml`; the generated `Player.xcodeproj` is committed so it can be opened directly and checked for reproducibility.
 
 ## Pinned environment
 
@@ -18,30 +18,43 @@ apps/ios/scripts/generate-project.sh
 
 The script downloads the pinned XcodeGen archive when needed and verifies its SHA-256 digest before executing it.
 
-## Run the E2E launch story
+## Run an E2E story
 
 ```bash
 apps/ios/scripts/run-e2e.sh
 ```
 
-The runner owns a temporary simulator named `Player E2E`, normalizes its rendering state, builds the E2E configuration, runs the semantic launch assertions, exports the screenshot and generated walkthrough, and requires an exact pixel match with the committed baseline.
+With no arguments the runner executes Story 001. A story and XCTest selector can be named explicitly:
+
+```bash
+apps/ios/scripts/run-e2e.sh \
+  002-import-and-play \
+  PlayerUITests/ImportPlaybackUITests/testReviewsCommitsAndPlaysOneAudiobook
+```
+
+The runner owns a story-specific temporary simulator, verifies the pinned toolchain, normalizes rendering state, runs semantic assertions, exports every generated step, and requires an exact pixel match with the committed baseline.
 
 To intentionally record a reviewed baseline on the pinned environment:
 
 ```bash
-PLAYER_RECORD_SCREENSHOTS=1 apps/ios/scripts/run-e2e.sh
+apps/ios/scripts/run-e2e.sh --story 002-import-and-play \
+  --test PlayerUITests/ImportPlaybackUITests/testReviewsCommitsAndPlaysOneAudiobook \
+  --record 002-import-and-play
 ```
 
 See [E2E_GUIDE.md](../../E2E_GUIDE.md) for the complete contract.
 
-## Current scaffold
+## Current product slice
 
 - Library, Inbox, and Settings tabs
-- Empty-library state and Files importer entry point
+- Files importer with queued, acquiring, inspecting, review, and committed states
+- Versioned atomic local persistence and immutable managed-media storage
+- Streaming SHA-256 copy verification and storage preflight
+- AVFoundation duration/basic metadata inspection and play/pause
+- Review Import, populated Library, Book Detail, and Now Playing screens
 - Light-mode E2E configuration with animations disabled
 - Accessibility identifiers and an explicit `ready:library-empty` state value
-- One generated launch walkthrough and full-screen baseline
+- Generated launch and import/playback walkthroughs with full-screen baselines
 - Exact native sRGB RGBA screenshot comparator with zero differing pixels allowed
 
-Import processing, persistence, metadata editing, and playback are specified in [MVP_DESIGN.md](../../MVP_DESIGN.md) but are not implemented yet.
-
+Multi-file grouping, metadata repair, and advanced listening tools remain sequenced in [IMPLEMENTATION_PLAN.md](../../IMPLEMENTATION_PLAN.md).

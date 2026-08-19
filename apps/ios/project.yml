@@ -45,19 +45,40 @@ targets:
     dependencies:
       - target: Player
 
+  PlayerTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: PlayerTests
+      - path: PlayerUITests/Fixtures/SyntheticAudiobook
+        buildPhase: resources
+    configFiles:
+      Debug: Config/Debug.xcconfig
+      E2E: Config/E2E.xcconfig
+      Release: Config/Release.xcconfig
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: true
+        PRODUCT_BUNDLE_IDENTIFIER: org.boardgamescafe.player.tests
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Player.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Player"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+    dependencies:
+      - target: Player
+
 schemes:
   Player:
     build:
       targets:
         Player: all
         PlayerUITests: [test]
+        PlayerTests: [test]
     run:
       config: Debug
     test:
       config: E2E
       gatherCoverageData: false
       targets:
+        - PlayerTests
         - PlayerUITests
     archive:
       config: Release
-

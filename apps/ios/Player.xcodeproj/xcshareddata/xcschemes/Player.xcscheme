@@ -29,6 +29,20 @@
             buildForAnalyzing = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
+               BlueprintIdentifier = "BD147BACC9FBDB21707188AE"
+               BuildableName = "PlayerTests.xctest"
+               BlueprintName = "PlayerTests"
+               ReferencedContainer = "container:Player.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
                BlueprintIdentifier = "8DA48459DF19DCAFCEDD3018"
                BuildableName = "PlayerUITests.xctest"
                BlueprintName = "PlayerUITests"
@@ -53,6 +67,17 @@
          </BuildableReference>
       </MacroExpansion>
       <Testables>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "BD147BACC9FBDB21707188AE"
+               BuildableName = "PlayerTests.xctest"
+               BlueprintName = "PlayerTests"
+               ReferencedContainer = "container:Player.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
          <TestableReference
             skipped = "NO"
             parallelizable = "NO">

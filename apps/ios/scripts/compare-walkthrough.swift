@@ -5,6 +5,7 @@ import ImageIO
 enum ComparisonError: LocalizedError {
   case usage
   case directoryUnreadable(String)
+  case noImages(String)
   case fileSetDifference(expected: [String], actual: [String])
   case imageUnreadable(String)
   case dimensionDifference(String, expected: CGSize, actual: CGSize)
@@ -16,6 +17,8 @@ enum ComparisonError: LocalizedError {
       "usage: compare-walkthrough.swift <baseline-directory> <actual-directory>"
     case .directoryUnreadable(let path):
       "Could not read screenshot directory: \(path)"
+    case .noImages(let path):
+      "No PNG screenshots found in: \(path)"
     case .fileSetDifference(let expected, let actual):
       "Screenshot file sets differ. Expected \(expected); received \(actual)."
     case .imageUnreadable(let path):
@@ -110,6 +113,10 @@ let actualDirectory = URL(filePath: CommandLine.arguments[2], directoryHint: .is
 let baselineNames = try pngNames(in: baselineDirectory)
 let actualNames = try pngNames(in: actualDirectory)
 
+guard !baselineNames.isEmpty else {
+  throw ComparisonError.noImages(baselineDirectory.path)
+}
+
 guard baselineNames == actualNames else {
   throw ComparisonError.fileSetDifference(expected: baselineNames, actual: actualNames)
 }
@@ -131,4 +138,3 @@ for name in baselineNames {
   }
   print("Exact pixel match: \(name)")
 }
-

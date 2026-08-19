@@ -30,10 +30,10 @@ permissions:
   contents: read
 
 jobs:
-  launch-story:
-    name: Build and exact launch walkthrough
+  ios-tests:
+    name: Core tests and exact E2E walkthroughs
     runs-on: macos-26
-    timeout-minutes: 20
+    timeout-minutes: 30
     defaults:
       run:
         shell: nix develop --command bash --noprofile --norc -e -o pipefail {0}
@@ -49,9 +49,7 @@ jobs:
         uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
 
       - name: Verify pinned environment
-        run: |
-          xcodebuild -version
-          xcrun simctl list runtimes
+        run: apps/ios/scripts/verify-e2e-environment.sh
 
       - name: Generate Xcode project
         run: apps/ios/scripts/generate-project.sh
@@ -59,17 +57,40 @@ jobs:
       - name: Require reproducible project generation
         run: git diff --exit-code -- apps/ios/Player.xcodeproj
 
-      - name: Run semantic and exact-pixel launch story
-        run: apps/ios/scripts/run-e2e.sh
+      - name: Run import, storage, persistence, and playback tests
+        run: |
+          xcodebuild -quiet \
+            -project apps/ios/Player.xcodeproj \
+            -scheme Player \
+            -configuration E2E \
+            -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' \
+            -only-testing:PlayerTests \
+            test \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Run exact-pixel launch story
+        run: >-
+          apps/ios/scripts/run-e2e.sh
+          001-ios-launch
+          PlayerUITests/LaunchUITests/testLaunchesIntoEmptyLibrary
+
+      - name: Run exact-pixel import and playback story
+        run: >-
+          apps/ios/scripts/run-e2e.sh
+          002-import-and-play
+          PlayerUITests/ImportPlaybackUITests/testReviewsCommitsAndPlaysOneAudiobook
 
       - name: Upload reviewable diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ios-launch-walkthrough
+          name: ios-e2e-walkthroughs
           path: |
-            apps/ios/DerivedData/ActualWalkthrough/
-            apps/ios/DerivedData/LaunchAttachments/
-            apps/ios/DerivedData/Launch.xcresult/
+            apps/ios/DerivedData/E2E/001-ios-launch/ActualWalkthrough/
+            apps/ios/DerivedData/E2E/001-ios-launch/Attachments/
+            apps/ios/DerivedData/E2E/001-ios-launch/Results/Story.xcresult/
+            apps/ios/DerivedData/E2E/002-import-and-play/ActualWalkthrough/
+            apps/ios/DerivedData/E2E/002-import-and-play/Attachments/
+            apps/ios/DerivedData/E2E/002-import-and-play/Results/Story.xcresult/
           if-no-files-found: warn
           retention-days: 7

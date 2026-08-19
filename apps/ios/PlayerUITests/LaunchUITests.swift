@@ -11,7 +11,8 @@ final class LaunchUITests: XCTestCase {
     tester.setMetadata(
       title: "Player launches into an empty local library",
       narrative:
-        "As a new listener, I want Player to open into a ready and understandable library so I can add my first audiobook."
+        "As a new listener, I want Player to open into a ready and understandable library so I can add my first audiobook.",
+      fixture: "empty-library"
     )
 
     app.launch()
