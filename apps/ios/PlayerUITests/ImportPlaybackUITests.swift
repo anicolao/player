@@ -74,7 +74,7 @@ final class ImportPlaybackUITests: XCTestCase {
       verifications: [
         .valueEquals(
           app.otherElements["now-playing-screen"],
-          "player:paused:0",
+          "player:paused:10000000-0000-0000-0000-000000000004:0:0",
           "The deterministic engine acknowledges a paused loaded book"
         ),
         .exists(app.staticTexts["The Lighthouse Signal"], "Now Playing retains the book identity"),

@@ -25,7 +25,9 @@ protocol AudioInspecting: Sendable {
 @MainActor
 protocol AudioPlaybackControlling: AnyObject {
   var state: PlaybackState { get }
+  var currentPositionSeconds: Double { get }
   func load(url: URL, bookID: UUID, at seconds: Double) async throws
+  func seek(to seconds: Double) async
   func play()
   func pause()
 }

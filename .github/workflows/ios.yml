@@ -21,7 +21,11 @@ on:
       - apps/ios/**
       - tests/e2e/**
       - E2E_GUIDE.md
+      - IMPLEMENTATION_PLAN.md
       - MVP_DESIGN.md
+      - README.md
+      - UX_DESIGN.md
+      - VISION.md
       - .github/workflows/ios.yml
       - flake.nix
       - flake.lock
@@ -80,6 +84,12 @@ jobs:
           002-import-and-play
           PlayerUITests/ImportPlaybackUITests/testReviewsCommitsAndPlaysOneAudiobook
 
+      - name: Run exact-pixel position restoration story
+        run: >-
+          apps/ios/scripts/run-e2e.sh
+          005-play-and-restore
+          PlayerUITests/PositionRestoreUITests/testRestoresAnAcknowledgedPausedPositionAfterTermination
+
       - name: Upload reviewable diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -92,5 +102,8 @@ jobs:
             apps/ios/DerivedData/E2E/002-import-and-play/ActualWalkthrough/
             apps/ios/DerivedData/E2E/002-import-and-play/Attachments/
             apps/ios/DerivedData/E2E/002-import-and-play/Results/Story.xcresult/
+            apps/ios/DerivedData/E2E/005-play-and-restore/ActualWalkthrough/
+            apps/ios/DerivedData/E2E/005-play-and-restore/Attachments/
+            apps/ios/DerivedData/E2E/005-play-and-restore/Results/Story.xcresult/
           if-no-files-found: warn
           retention-days: 7

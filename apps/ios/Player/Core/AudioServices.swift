@@ -69,6 +69,13 @@ final class AVPlayerPlaybackController: AudioPlaybackControlling {
   private var player: AVPlayer?
   private(set) var state: PlaybackState = .unloaded
 
+  var currentPositionSeconds: Double {
+    guard let seconds = player?.currentTime().seconds, seconds.isFinite else {
+      return state.elapsedSeconds
+    }
+    return max(0, seconds)
+  }
+
   func load(url: URL, bookID: UUID, at seconds: Double = 0) async throws {
     let asset = AVURLAsset(url: url)
     guard try await asset.load(.isPlayable) else {
@@ -90,6 +97,13 @@ final class AVPlayerPlaybackController: AudioPlaybackControlling {
     state.status = .playing
   }
 
+  func seek(to seconds: Double) async {
+    guard let player else { return }
+    let destination = max(0, seconds)
+    await player.seek(to: CMTime(seconds: destination, preferredTimescale: 1_000))
+    state.elapsedSeconds = currentPositionSeconds
+  }
+
   func pause() {
     player?.pause()
     guard state.loadedBookID != nil else { return }
@@ -109,6 +123,8 @@ final class DeterministicPlaybackController: AudioPlaybackControlling {
     self.state = state
   }
 
+  var currentPositionSeconds: Double { state.elapsedSeconds }
+
   func load(url: URL, bookID: UUID, at seconds: Double) async throws {
     loadedURL = url
     state = PlaybackState(status: .paused, loadedBookID: bookID, elapsedSeconds: seconds)
@@ -117,6 +133,11 @@ final class DeterministicPlaybackController: AudioPlaybackControlling {
   func play() {
     guard state.loadedBookID != nil else { return }
     state.status = .playing
+  }
+
+  func seek(to seconds: Double) async {
+    guard state.loadedBookID != nil else { return }
+    state.elapsedSeconds = max(0, seconds)
   }
 
   func pause() {

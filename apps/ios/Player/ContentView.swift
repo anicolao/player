@@ -39,7 +39,20 @@ struct ContentView: View {
     .fullScreenCover(item: $presentedPlayerBook) { book in
       NowPlayingView(model: model, book: book)
     }
+    .overlay(alignment: .bottom) {
+      if let currentBook, presentedPlayerBook == nil {
+        MiniPlayerView(model: model, book: currentBook) {
+          presentedPlayerBook = currentBook
+        }
+        .padding(.bottom, 83)
+      }
+    }
     .task { await model.restore() }
+  }
+
+  private var currentBook: Book? {
+    guard let id = model.library.currentBookID else { return nil }
+    return model.library.books.first(where: { $0.id == id })
   }
 
   private var reviewCount: Int {
@@ -88,7 +101,12 @@ private struct LibraryView: View {
       }
       .navigationDestination(for: UUID.self) { id in
         if let book = model.library.books.first(where: { $0.id == id }) {
-          BookDetailView(book: book) { presentPlayer(book) }
+          BookDetailView(book: book) {
+            Task {
+              await model.play(bookID: book.id)
+              presentPlayer(book)
+            }
+          }
         }
       }
       .accessibilityElement(children: .contain)
@@ -316,6 +334,7 @@ private struct NowPlayingView: View {
   @Environment(\.dismiss) private var dismiss
   @Bindable var model: PlayerModel
   let book: Book
+  @State private var requestedPosition: Double?
   var body: some View {
     NavigationStack {
       ZStack {
@@ -327,9 +346,29 @@ private struct NowPlayingView: View {
             Text(book.title).font(.title2.bold()).multilineTextAlignment(.center)
             Text(book.authors.first ?? "Unknown Author").foregroundStyle(PlayerColor.secondary)
           }
+          Slider(
+            value: Binding(
+              get: { requestedPosition ?? model.playbackState.elapsedSeconds },
+              set: { requestedPosition = $0 }
+            ),
+            in: 0...max(1, book.durationSeconds),
+            step: 30,
+            onEditingChanged: { isEditing in
+              guard !isEditing, let position = requestedPosition else { return }
+              Task {
+                await model.seek(to: position)
+                requestedPosition = nil
+              }
+            }
+          )
+          .tint(PlayerColor.accent)
+          .accessibilityLabel("Listening position")
+          .accessibilityIdentifier("player-position-slider")
           Button {
-            if model.playbackState.status == .playing { model.pause() }
-            else { Task { await model.play(bookID: book.id) } }
+            Task {
+              if model.playbackState.status == .playing { await model.pause() }
+              else { await model.play(bookID: book.id) }
+            }
           } label: {
             Image(systemName: model.playbackState.status == .playing ? "pause.fill" : "play.fill")
               .font(.system(size: 30, weight: .semibold)).frame(width: 72, height: 72)
@@ -344,9 +383,67 @@ private struct NowPlayingView: View {
       .toolbar { ToolbarItem(placement: .topBarLeading) { Button("Done") { dismiss() } } }
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("now-playing-screen")
-      .accessibilityValue("player:\(model.playbackState.status.rawValue):0")
+      .accessibilityValue(playerValue)
     }
-    .task { await model.play(bookID: book.id) }
+  }
+
+  private var playerValue: String {
+    let milliseconds = Int((model.playbackState.elapsedSeconds * 1_000).rounded())
+    return "player:\(model.playbackState.status.rawValue):\(book.id.uuidString.lowercased()):0:\(milliseconds)"
+  }
+}
+
+private struct MiniPlayerView: View {
+  @Bindable var model: PlayerModel
+  let book: Book
+  let open: () -> Void
+
+  var body: some View {
+    HStack(spacing: 12) {
+      Button(action: open) {
+        HStack(spacing: 12) {
+          ArtworkView(data: book.artworkData, size: 44)
+          VStack(alignment: .leading, spacing: 2) {
+            Text(book.title).font(.subheadline.weight(.semibold)).lineLimit(1)
+            Text(positionLabel).font(.caption).foregroundStyle(PlayerColor.secondary)
+          }
+        }
+      }
+      .buttonStyle(.plain)
+      Spacer()
+      Button {
+        Task {
+          if model.playbackState.status == .playing {
+            await model.pause()
+          } else {
+            await model.play(bookID: book.id, at: model.playbackState.elapsedSeconds)
+          }
+        }
+      } label: {
+        Image(systemName: model.playbackState.status == .playing ? "pause.fill" : "play.fill")
+          .frame(width: 44, height: 44)
+      }
+      .accessibilityLabel(model.playbackState.status == .playing ? "Pause" : "Play")
+      .accessibilityIdentifier("mini-player-play-pause")
+    }
+    .padding(.horizontal, 12)
+    .padding(.vertical, 8)
+    .background(.regularMaterial)
+    .contentShape(Rectangle())
+    .onTapGesture(perform: open)
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("mini-player")
+    .accessibilityValue(miniPlayerValue)
+  }
+
+  private var miniPlayerValue: String {
+    let milliseconds = Int((model.playbackState.elapsedSeconds * 1_000).rounded())
+    return "player:\(model.playbackState.status.rawValue):\(book.id.uuidString.lowercased()):0:\(milliseconds)"
+  }
+
+  private var positionLabel: String {
+    let seconds = max(0, Int(model.playbackState.elapsedSeconds.rounded()))
+    return String(format: "%d:%02d", seconds / 60, seconds % 60)
   }
 }
 

@@ -1,0 +1,10 @@
+{
+  "id": "005-play-and-restore",
+  "platform": "ios",
+  "test": "PlayerUITests/PositionRestoreUITests/testRestoresAnAcknowledgedPausedPositionAfterTermination",
+  "fixture": "committed-current-book",
+  "screenshots": [
+    "000-restored-library.png",
+    "001-restored-now-playing.png"
+  ]
+}

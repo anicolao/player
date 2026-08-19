@@ -19,6 +19,34 @@ final class PlayerModel {
   func restore() async {
     do {
       library = try await environment.persistence.load()
+      let storedPosition = library.playbackPosition
+      let recoveredPosition = PositionJournalRecovery.recover(from: library)
+      library.playbackPosition = recoveredPosition
+      if let recoveredPosition {
+        library.currentBookID = recoveredPosition.bookID
+        playbackState = PlaybackState(
+          status: .paused,
+          loadedBookID: recoveredPosition.bookID,
+          elapsedSeconds: recoveredPosition.seconds
+        )
+      } else if let currentBookID = library.currentBookID,
+        library.books.contains(where: { $0.id == currentBookID })
+      {
+        playbackState = PlaybackState(
+          status: .paused,
+          loadedBookID: currentBookID,
+          elapsedSeconds: 0
+        )
+      } else {
+        library.currentBookID = nil
+        playbackState = .unloaded
+      }
+      if library.currentBookID != nil {
+        try await loadCurrentBookIntoPlayback()
+      }
+      if storedPosition != recoveredPosition {
+        try await persist()
+      }
       isRestored = true
       lastErrorMessage = nil
     } catch {
@@ -157,7 +185,16 @@ final class PlayerModel {
     }
   }
 
-  func play(bookID: UUID, at seconds: Double = 0) async {
+  func loadCurrentBook() async {
+    do {
+      try await loadCurrentBookIntoPlayback()
+      lastErrorMessage = nil
+    } catch {
+      lastErrorMessage = error.localizedDescription
+    }
+  }
+
+  func play(bookID: UUID, at seconds: Double? = nil) async {
     guard
       let book = library.books.first(where: { $0.id == bookID }),
       let asset = book.assets.first
@@ -168,20 +205,107 @@ final class PlayerModel {
 
     do {
       let url = try await environment.media.managedURL(for: asset.managedRelativePath)
-      try await environment.playback.load(url: url, bookID: bookID, at: seconds)
+      let startSeconds = seconds
+        ?? (library.playbackPosition?.bookID == bookID ? library.playbackPosition?.seconds : nil)
+        ?? 0
+      try await environment.playback.load(url: url, bookID: bookID, at: startSeconds)
       environment.playback.play()
       playbackState = environment.playback.state
       library.currentBookID = bookID
-      try await persist()
-      lastErrorMessage = nil
+      await acknowledgePlaybackPosition(
+        environment.playback.currentPositionSeconds,
+        reason: .play
+      )
     } catch {
       lastErrorMessage = error.localizedDescription
     }
   }
 
-  func pause() {
+  func seek(to seconds: Double) async {
+    guard playbackState.loadedBookID != nil else { return }
+    await environment.playback.seek(to: seconds)
+    playbackState = environment.playback.state
+    await acknowledgePlaybackPosition(
+      environment.playback.currentPositionSeconds,
+      reason: .seek
+    )
+  }
+
+  func pause() async {
+    let seconds = pausePlayback()
+    await acknowledgePlaybackPosition(seconds, reason: .pause)
+  }
+
+  private func pausePlayback() -> Double {
     environment.playback.pause()
     playbackState = environment.playback.state
+    return environment.playback.currentPositionSeconds
+  }
+
+  private func loadCurrentBookIntoPlayback() async throws {
+    guard let bookID = library.currentBookID else { return }
+    guard
+      let book = library.books.first(where: { $0.id == bookID }),
+      let asset = book.assets.first
+    else {
+      throw PlayerCoreError.missingBook(bookID)
+    }
+    let url = try await environment.media.managedURL(for: asset.managedRelativePath)
+    let seconds = library.playbackPosition?.bookID == bookID
+      ? library.playbackPosition?.seconds ?? 0
+      : 0
+    try await environment.playback.load(url: url, bookID: bookID, at: seconds)
+    playbackState = environment.playback.state
+  }
+
+  /// Records a position only after the playback boundary acknowledges that the
+  /// listener reached it. Periodic observers, background handlers, and audio
+  /// interruption handlers all use this entry point.
+  func acknowledgePlaybackPosition(
+    _ seconds: Double,
+    reason: PositionEventReason = .periodic
+  ) async {
+    guard
+      seconds.isFinite,
+      let bookID = playbackState.loadedBookID ?? library.currentBookID,
+      let book = library.books.first(where: { $0.id == bookID })
+    else { return }
+
+    let previousLibrary = library
+    let maximumMilliseconds = Int64((book.durationSeconds * 1_000).rounded(.down))
+    let acknowledgedMilliseconds = Int64((max(0, seconds) * 1_000).rounded(.down))
+    let safeMilliseconds = min(acknowledgedMilliseconds, maximumMilliseconds)
+    let eventID = await environment.ids.next()
+    let nextSequence = (library.positionJournal.map(\.sequence).max() ?? 0) + 1
+    let event = PositionEvent.acknowledged(
+      id: eventID,
+      bookID: bookID,
+      positionMilliseconds: safeMilliseconds,
+      sequence: nextSequence,
+      reason: reason,
+      acknowledgedAt: environment.clock.now(),
+      previousEventID: library.playbackPosition?.sourceEventID
+    )
+    let position = PlaybackPosition(
+      bookID: bookID,
+      positionMilliseconds: safeMilliseconds,
+      sequence: nextSequence,
+      sourceEventID: eventID,
+      updatedAt: event.acknowledgedAt
+    )
+
+    library.positionJournal.append(event)
+    library.playbackPosition = position
+    library.currentBookID = bookID
+    playbackState.loadedBookID = bookID
+    playbackState.elapsedSeconds = position.seconds
+    do {
+      try await persist()
+      lastErrorMessage = nil
+    } catch {
+      library = previousLibrary
+      lastErrorMessage = error.localizedDescription
+    }
   }
 
   private func replaceAndPersist(_ job: ImportJob) async throws {

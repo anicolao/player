@@ -1,7 +1,7 @@
 import Foundation
 
 actor CodableLibraryStore: LibraryPersisting {
-  static let currentSchemaVersion = 1
+  static let currentSchemaVersion = 2
 
   private let fileURL: URL
   private let fileManager: FileManager
@@ -31,7 +31,18 @@ actor CodableLibraryStore: LibraryPersisting {
     switch header.schemaVersion {
     case 1:
       do {
-        return try JSONDecoder.playerDecoder.decode(EnvelopeV1.self, from: data).library
+        let legacy = try JSONDecoder.playerDecoder.decode(EnvelopeV1.self, from: data).library
+        return LibrarySnapshot(
+          books: legacy.books,
+          importJobs: legacy.importJobs,
+          currentBookID: legacy.currentBookID
+        )
+      } catch {
+        throw PlayerCoreError.invalidStore
+      }
+    case 2:
+      do {
+        return try JSONDecoder.playerDecoder.decode(EnvelopeV2.self, from: data).library
       } catch {
         throw PlayerCoreError.invalidStore
       }
@@ -44,7 +55,7 @@ actor CodableLibraryStore: LibraryPersisting {
     let directory = fileURL.deletingLastPathComponent()
     try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
 
-    let envelope = EnvelopeV1(
+    let envelope = EnvelopeV2(
       schemaVersion: Self.currentSchemaVersion,
       library: snapshot
     )
@@ -71,7 +82,18 @@ private struct SchemaHeader: Decodable {
   let schemaVersion: Int
 }
 
+private struct LegacyLibrarySnapshotV1: Codable {
+  var books: [Book]
+  var importJobs: [ImportJob]
+  var currentBookID: UUID?
+}
+
 private struct EnvelopeV1: Codable {
+  let schemaVersion: Int
+  let library: LegacyLibrarySnapshotV1
+}
+
+private struct EnvelopeV2: Codable {
   let schemaVersion: Int
   let library: LibrarySnapshot
 }
