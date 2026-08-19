@@ -1,0 +1,11 @@
+{
+  "id": "004-metadata-repair",
+  "platform": "ios",
+  "test": "PlayerUITests/MetadataRepairUITests/testRepairsLocksCommitsAndUndoesMetadataWithoutChangingAudio",
+  "fixture": "synthetic-metadata-repair",
+  "screenshots": [
+    "000-metadata-provenance.png",
+    "001-repaired-book-detail.png",
+    "002-undo-restored-book-detail.png"
+  ]
+}

@@ -67,6 +67,7 @@ jobs:
           apps/ios/scripts/fixtures/verify-messy-multifile-fixture.sh
           apps/ios/scripts/fixtures/verify-zip-fixtures.sh
           apps/ios/scripts/fixtures/verify-import-channel-fixtures.sh
+          apps/ios/scripts/fixtures/verify-metadata-repair-fixture.sh
 
       - name: Run import, storage, persistence, and playback tests
         run: |
@@ -100,6 +101,12 @@ jobs:
           003-multifile-grouping
           PlayerUITests/MultifileGroupingUITests/testRepairsMessyMultifileGroupingAndCommitsOneBookAtomically
 
+      - name: Run exact-pixel metadata repair story
+        run: >-
+          apps/ios/scripts/run-e2e.sh
+          004-metadata-repair
+          PlayerUITests/MetadataRepairUITests/testRepairsLocksCommitsAndUndoesMetadataWithoutChangingAudio
+
       - name: Run exact-pixel safe ZIP story
         run: >-
           apps/ios/scripts/run-e2e.sh
@@ -128,6 +135,9 @@ jobs:
             apps/ios/DerivedData/E2E/003-multifile-grouping/ActualWalkthrough/
             apps/ios/DerivedData/E2E/003-multifile-grouping/Attachments/
             apps/ios/DerivedData/E2E/003-multifile-grouping/Results/Story.xcresult/
+            apps/ios/DerivedData/E2E/004-metadata-repair/ActualWalkthrough/
+            apps/ios/DerivedData/E2E/004-metadata-repair/Attachments/
+            apps/ios/DerivedData/E2E/004-metadata-repair/Results/Story.xcresult/
             apps/ios/DerivedData/E2E/006-safe-zip-import/ActualWalkthrough/
             apps/ios/DerivedData/E2E/006-safe-zip-import/Attachments/
             apps/ios/DerivedData/E2E/006-safe-zip-import/Results/Story.xcresult/

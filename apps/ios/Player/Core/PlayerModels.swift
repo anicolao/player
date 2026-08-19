@@ -14,6 +14,7 @@ struct Book: Codable, Equatable, Identifiable, Sendable {
   var seriesPosition: String?
   var artworkMediaType: String?
   var chapters: [Chapter]
+  var metadata: AudiobookMetadata
 
   init(
     id: UUID,
@@ -27,7 +28,8 @@ struct Book: Codable, Equatable, Identifiable, Sendable {
     seriesName: String? = nil,
     seriesPosition: String? = nil,
     artworkMediaType: String? = nil,
-    chapters: [Chapter] = []
+    chapters: [Chapter] = [],
+    metadata: AudiobookMetadata? = nil
   ) {
     self.id = id
     self.title = title
@@ -41,11 +43,22 @@ struct Book: Codable, Equatable, Identifiable, Sendable {
     self.seriesPosition = seriesPosition
     self.artworkMediaType = artworkMediaType
     self.chapters = chapters
+    self.metadata = metadata ?? .imported(
+      title: title,
+      authors: authors,
+      narrators: narrators,
+      seriesName: seriesName,
+      seriesPosition: seriesPosition,
+      artworkData: artworkData,
+      artworkMediaType: artworkMediaType,
+      provenance: .legacyLibrary,
+      confidence: .medium
+    )
   }
 
   private enum CodingKeys: String, CodingKey {
     case id, title, authors, durationSeconds, artworkData, assets, dateAdded
-    case narrators, seriesName, seriesPosition, artworkMediaType, chapters
+    case narrators, seriesName, seriesPosition, artworkMediaType, chapters, metadata
   }
 
   init(from decoder: any Decoder) throws {
@@ -62,6 +75,17 @@ struct Book: Codable, Equatable, Identifiable, Sendable {
     seriesPosition = try values.decodeIfPresent(String.self, forKey: .seriesPosition)
     artworkMediaType = try values.decodeIfPresent(String.self, forKey: .artworkMediaType)
     chapters = try values.decodeIfPresent([Chapter].self, forKey: .chapters) ?? []
+    metadata = try values.decodeIfPresent(AudiobookMetadata.self, forKey: .metadata) ?? .imported(
+      title: title,
+      authors: authors,
+      narrators: narrators,
+      seriesName: seriesName,
+      seriesPosition: seriesPosition,
+      artworkData: artworkData,
+      artworkMediaType: artworkMediaType,
+      provenance: .legacyLibrary,
+      confidence: .medium
+    )
   }
 }
 
@@ -342,6 +366,7 @@ struct BookProposal: Codable, Equatable, Identifiable, Sendable {
   var additionalAssets: [AudioAsset]
   var groupingEvidence: [GroupingEvidence]
   var orderingEvidence: [TrackOrderingEvidence]
+  var metadata: AudiobookMetadata
 
   var assets: [AudioAsset] {
     get { [asset] + additionalAssets }
@@ -368,7 +393,8 @@ struct BookProposal: Codable, Equatable, Identifiable, Sendable {
     chapters: [Chapter] = [],
     additionalAssets: [AudioAsset] = [],
     groupingEvidence: [GroupingEvidence] = [],
-    orderingEvidence: [TrackOrderingEvidence] = []
+    orderingEvidence: [TrackOrderingEvidence] = [],
+    metadata: AudiobookMetadata? = nil
   ) {
     self.id = id
     self.proposedBookID = proposedBookID
@@ -386,12 +412,21 @@ struct BookProposal: Codable, Equatable, Identifiable, Sendable {
     self.additionalAssets = additionalAssets
     self.groupingEvidence = groupingEvidence
     self.orderingEvidence = orderingEvidence
+    self.metadata = metadata ?? .imported(
+      title: title,
+      authors: authors,
+      narrators: narrators,
+      seriesName: seriesName,
+      seriesPosition: seriesPosition,
+      artworkData: artworkData,
+      artworkMediaType: artworkMediaType
+    )
   }
 
   private enum CodingKeys: String, CodingKey {
     case id, proposedBookID, title, authors, durationSeconds, artworkData, asset, warnings
     case narrators, seriesName, seriesPosition, artworkMediaType, chapters
-    case additionalAssets, groupingEvidence, orderingEvidence
+    case additionalAssets, groupingEvidence, orderingEvidence, metadata
   }
 
   init(from decoder: any Decoder) throws {
@@ -412,6 +447,17 @@ struct BookProposal: Codable, Equatable, Identifiable, Sendable {
     additionalAssets = try values.decodeIfPresent([AudioAsset].self, forKey: .additionalAssets) ?? []
     groupingEvidence = try values.decodeIfPresent([GroupingEvidence].self, forKey: .groupingEvidence) ?? []
     orderingEvidence = try values.decodeIfPresent([TrackOrderingEvidence].self, forKey: .orderingEvidence) ?? []
+    metadata = try values.decodeIfPresent(AudiobookMetadata.self, forKey: .metadata) ?? .imported(
+      title: title,
+      authors: authors,
+      narrators: narrators,
+      seriesName: seriesName,
+      seriesPosition: seriesPosition,
+      artworkData: artworkData,
+      artworkMediaType: artworkMediaType,
+      provenance: .legacyLibrary,
+      confidence: .medium
+    )
   }
 }
 
@@ -507,6 +553,7 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
   var playbackPosition: PlaybackPosition?
   var positionJournal: [PositionEvent]
   var shareImportReceipts: [ShareImportReceipt]
+  var metadataTransactions: [MetadataTransaction]
 
   init(
     books: [Book],
@@ -514,7 +561,8 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
     currentBookID: UUID?,
     playbackPosition: PlaybackPosition? = nil,
     positionJournal: [PositionEvent] = [],
-    shareImportReceipts: [ShareImportReceipt] = []
+    shareImportReceipts: [ShareImportReceipt] = [],
+    metadataTransactions: [MetadataTransaction] = []
   ) {
     self.books = books
     self.importJobs = importJobs
@@ -522,11 +570,13 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
     self.playbackPosition = playbackPosition
     self.positionJournal = positionJournal
     self.shareImportReceipts = shareImportReceipts
+    self.metadataTransactions = metadataTransactions
   }
 
 
   private enum CodingKeys: String, CodingKey {
     case books, importJobs, currentBookID, playbackPosition, positionJournal, shareImportReceipts
+    case metadataTransactions
   }
 
   init(from decoder: any Decoder) throws {
@@ -539,6 +589,10 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
     shareImportReceipts = try values.decodeIfPresent(
       [ShareImportReceipt].self,
       forKey: .shareImportReceipts
+    ) ?? []
+    metadataTransactions = try values.decodeIfPresent(
+      [MetadataTransaction].self,
+      forKey: .metadataTransactions
     ) ?? []
   }
 

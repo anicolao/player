@@ -1,7 +1,7 @@
 import Foundation
 
 actor CodableLibraryStore: LibraryPersisting {
-  static let currentSchemaVersion = 6
+  static let currentSchemaVersion = 7
 
   private let fileURL: URL
   private let fileManager: FileManager
@@ -70,7 +70,15 @@ actor CodableLibraryStore: LibraryPersisting {
       }
     case 6:
       do {
-        return try JSONDecoder.playerDecoder.decode(EnvelopeV6.self, from: data).library
+        return migrateMetadataRepairDefaults(
+          in: try JSONDecoder.playerDecoder.decode(EnvelopeV6.self, from: data).library
+        )
+      } catch {
+        throw PlayerCoreError.invalidStore
+      }
+    case 7:
+      do {
+        return try JSONDecoder.playerDecoder.decode(EnvelopeV7.self, from: data).library
       } catch {
         throw PlayerCoreError.invalidStore
       }
@@ -83,7 +91,7 @@ actor CodableLibraryStore: LibraryPersisting {
     let directory = fileURL.deletingLastPathComponent()
     try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
 
-    let envelope = EnvelopeV6(
+    let envelope = EnvelopeV7(
       schemaVersion: Self.currentSchemaVersion,
       library: snapshot
     )
@@ -151,6 +159,15 @@ actor CodableLibraryStore: LibraryPersisting {
     }
     return migrated
   }
+
+  /// Book and proposal decoders synthesize metadata from their v6 display
+  /// fields. Keeping this migration explicit makes the schema boundary visible
+  /// and provides one place for future normalization of those synthesized values.
+  private func migrateMetadataRepairDefaults(in snapshot: LibrarySnapshot) -> LibrarySnapshot {
+    var migrated = snapshot
+    migrated.metadataTransactions = []
+    return migrated
+  }
 }
 
 actor InMemoryLibraryStore: LibraryPersisting {
@@ -203,6 +220,11 @@ private struct EnvelopeV5: Codable {
 }
 
 private struct EnvelopeV6: Codable {
+  let schemaVersion: Int
+  let library: LibrarySnapshot
+}
+
+private struct EnvelopeV7: Codable {
   let schemaVersion: Int
   let library: LibrarySnapshot
 }

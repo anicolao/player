@@ -72,6 +72,17 @@ struct ContentView: View {
           E2EImportIngressProbes(model: model, queueRevision: sharedImportQueueRevision)
         }
       }
+      .overlay(alignment: .topLeading) {
+        if E2EMetadataRepairBridge.shared.isConfigured {
+          Color.clear
+            .frame(width: 1, height: 1)
+            .id(model.library.books.count)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Metadata audio integrity")
+            .accessibilityIdentifier("metadata-integrity-probe")
+            .accessibilityValue(E2EMetadataRepairBridge.shared.integrityValue)
+        }
+      }
     #endif
     .task {
       await model.restore()
@@ -203,8 +214,8 @@ private struct LibraryView: View {
       }
       .navigationTitle("Library")
       .navigationDestination(for: UUID.self) { id in
-        if let book = model.library.books.first(where: { $0.id == id }) {
-          BookDetailView(book: book) { position in
+        if model.library.books.contains(where: { $0.id == id }) {
+          BookDetailView(model: model, bookID: id) { book, position in
             Task {
               await model.play(bookID: book.id, at: position)
               presentPlayer(book)
@@ -580,6 +591,16 @@ private struct ReviewImportView: View {
       }
       .padding(.horizontal)
       .background(PlayerColor.card, in: RoundedRectangle(cornerRadius: 16))
+      NavigationLink {
+        MetadataEditorView(model: model, target: .proposal(jobID: jobID, proposalID: proposal.id))
+      } label: {
+        Label("Edit Details", systemImage: "pencil")
+          .frame(maxWidth: .infinity)
+      }
+      .buttonStyle(.bordered)
+      .controlSize(.large)
+      .tint(PlayerColor.accent)
+      .accessibilityIdentifier("edit-metadata")
       Button("Add to Library") {
         Task {
           if await model.addImportToLibrary(jobID: jobID) != nil { didCommit() }
@@ -986,66 +1007,95 @@ private struct BookRow: View {
 }
 
 private struct BookDetailView: View {
-  let book: Book
-  let play: (Double?) -> Void
+  @Bindable var model: PlayerModel
+  let bookID: UUID
+  let play: (Book, Double?) -> Void
+
   var body: some View {
     ZStack {
       PlayerColor.background.ignoresSafeArea()
-      ScrollView {
-        VStack(spacing: 18) {
-          ArtworkView(data: book.artworkData, size: 210)
-          VStack(spacing: 6) {
-            Text(book.title).font(.title.bold()).multilineTextAlignment(.center)
-            Text(book.authors.first ?? "Unknown Author").foregroundStyle(PlayerColor.secondary)
-            if let narrator = book.narrators.first {
-              Text("Narrated by \(narrator)")
-                .font(.subheadline)
-                .foregroundStyle(PlayerColor.secondary)
+      if let book {
+        ScrollView {
+          VStack(spacing: 18) {
+            ArtworkView(data: book.artworkData, size: 210)
+            VStack(spacing: 6) {
+              Text(book.title).font(.title.bold()).multilineTextAlignment(.center)
+              Text(book.authors.first ?? "Unknown Author").foregroundStyle(PlayerColor.secondary)
+              if let narrator = book.narrators.first {
+                Text("Narrated by \(narrator)")
+                  .font(.subheadline)
+                  .foregroundStyle(PlayerColor.secondary)
+              }
+              if let seriesName = book.seriesName {
+                Text(seriesLabel(name: seriesName, position: book.seriesPosition))
+                  .font(.subheadline.weight(.semibold))
+                  .foregroundStyle(PlayerColor.accent)
+              }
+              Text("\(book.assets.count) file · \(duration(book.durationSeconds))")
+                .font(.subheadline).foregroundStyle(PlayerColor.secondary)
             }
-            if let seriesName = book.seriesName {
-              Text(seriesLabel(name: seriesName, position: book.seriesPosition))
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(PlayerColor.accent)
+            Button { play(book, nil) } label: {
+              Label("Play", systemImage: "play.fill").frame(maxWidth: .infinity)
             }
-            Text("\(book.assets.count) file · \(duration(book.durationSeconds))")
-              .font(.subheadline).foregroundStyle(PlayerColor.secondary)
-          }
-          Button { play(nil) } label: {
-            Label("Play", systemImage: "play.fill").frame(maxWidth: .infinity)
-          }
-          .buttonStyle(.borderedProminent).controlSize(.large).tint(PlayerColor.accent)
-          .accessibilityIdentifier("play-book")
+            .buttonStyle(.borderedProminent).controlSize(.large).tint(PlayerColor.accent)
+            .accessibilityIdentifier("play-book")
 
-          if !book.chapters.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-              Text("Chapters").font(.title3.bold())
-              ForEach(Array(book.chapters.enumerated()), id: \.element.id) { index, chapter in
-                Button { play(chapter.startSeconds) } label: {
-                  HStack(spacing: 12) {
-                    Text("\(index + 1)")
-                      .font(.caption.bold())
-                      .foregroundStyle(PlayerColor.accent)
-                      .frame(width: 28, height: 28)
-                      .background(PlayerColor.accent.opacity(0.12), in: Circle())
-                    VStack(alignment: .leading, spacing: 3) {
-                      Text(chapter.title).font(.headline).foregroundStyle(PlayerColor.ink)
-                      Text(timecode(chapter.durationSeconds))
-                        .font(.caption).foregroundStyle(PlayerColor.secondary)
-                    }
-                    Spacer()
-                    Image(systemName: "play.fill").foregroundStyle(PlayerColor.accent)
-                  }
-                  .padding(12)
-                  .background(PlayerColor.card, in: RoundedRectangle(cornerRadius: 14))
+            HStack(spacing: 12) {
+              NavigationLink {
+                MetadataEditorView(model: model, target: .book(book.id))
+              } label: {
+                Label("Edit", systemImage: "pencil").frame(maxWidth: .infinity)
+              }
+              .buttonStyle(.bordered)
+              .accessibilityIdentifier("edit-book-metadata")
+
+              if hasUndoableMetadata(book) {
+                Button {
+                  Task { _ = await model.undoLastMetadataTransaction(for: .book(book.id)) }
+                } label: {
+                  Label("Undo Edit", systemImage: "arrow.uturn.backward")
+                    .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("chapter-\(index + 1)")
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("undo-metadata-repair")
               }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if !book.chapters.isEmpty {
+              VStack(alignment: .leading, spacing: 10) {
+                Text("Chapters").font(.title3.bold())
+                ForEach(Array(book.chapters.enumerated()), id: \.element.id) { index, chapter in
+                  Button { play(book, chapter.startSeconds) } label: {
+                    HStack(spacing: 12) {
+                      Text("\(index + 1)")
+                        .font(.caption.bold())
+                        .foregroundStyle(PlayerColor.accent)
+                        .frame(width: 28, height: 28)
+                        .background(PlayerColor.accent.opacity(0.12), in: Circle())
+                      VStack(alignment: .leading, spacing: 3) {
+                        Text(chapter.title).font(.headline).foregroundStyle(PlayerColor.ink)
+                        Text(timecode(chapter.durationSeconds))
+                          .font(.caption).foregroundStyle(PlayerColor.secondary)
+                      }
+                      Spacer()
+                      Image(systemName: "play.fill").foregroundStyle(PlayerColor.accent)
+                    }
+                    .padding(12)
+                    .background(PlayerColor.card, in: RoundedRectangle(cornerRadius: 14))
+                  }
+                  .buttonStyle(.plain)
+                  .accessibilityIdentifier("chapter-\(index + 1)")
+                }
+              }
+              .frame(maxWidth: .infinity, alignment: .leading)
+            }
           }
+          .padding(24)
         }
-        .padding(24)
+        metadataProbe(id: "book-metadata-probe", value: bookMetadataValue(book))
+        metadataProbe(id: "book-metadata-provenance-probe", value: bookProvenanceValue(book))
+      } else {
+        ProgressView("Loading book…")
       }
     }
     .navigationTitle("Book Detail")
@@ -1055,7 +1105,12 @@ private struct BookDetailView: View {
     .accessibilityValue(bookDetailValue)
   }
 
+  private var book: Book? {
+    model.library.books.first(where: { $0.id == bookID })
+  }
+
   private var bookDetailValue: String {
+    guard let book else { return "book:loading" }
     let container = book.assets.first?.container.lowercased() ?? "unknown"
     return "book:ready:\(book.id.uuidString.lowercased()):\(book.chapters.count)-chapters:\(container)"
   }
@@ -1063,6 +1118,55 @@ private struct BookDetailView: View {
   private func seriesLabel(name: String, position: String?) -> String {
     guard let position, !position.isEmpty else { return name }
     return "\(name) · Book \(position)"
+  }
+
+  private func hasUndoableMetadata(_ book: Book) -> Bool {
+    MetadataField.allCases.contains { book.metadata.state(for: $0)?.lastTransactionID != nil }
+  }
+
+  private func metadataProbe(id: String, value: String) -> some View {
+    Color.clear
+      .frame(width: 1, height: 1)
+      .id(value)
+      .accessibilityElement(children: .ignore)
+      .accessibilityLabel(id)
+      .accessibilityIdentifier(id)
+      .accessibilityValue(value)
+  }
+
+  private func bookMetadataValue(_ book: Book) -> String {
+    let metadata = book.metadata
+    let series = metadata.seriesMemberships.first.map { membership in
+      membership.position.map { "\(membership.name) #\($0)" } ?? membership.name
+    } ?? ""
+    let cover = metadata.cover == nil
+      ? "none"
+      : metadata.state(for: .cover)?.provenance == .user ? "replacement" : "original"
+    let locked = [
+      (MetadataField.title, "title"), (MetadataField.narrators, "narrators"),
+      (MetadataField.seriesName, "series"), (MetadataField.cover, "cover"),
+    ].compactMap { field, label in
+      metadata.state(for: field)?.isLocked == true ? label : nil
+    }.joined(separator: ",")
+    return "metadata:book:title=\(metadata.title):authors=\(metadata.authors.count):narrators=\(metadata.narrators.count):series=\(series):cover=\(cover):locked=\(locked.isEmpty ? "none" : locked)"
+  }
+
+  private func bookProvenanceValue(_ book: Book) -> String {
+    let metadata = book.metadata
+    return "provenance:title=\(provenanceToken(metadata, .title)):authors=\(provenanceToken(metadata, .authors)):narrators=\(provenanceToken(metadata, .narrators)):series=\(provenanceToken(metadata, .seriesName)):cover=\(provenanceToken(metadata, .cover))"
+  }
+
+  private func provenanceToken(_ metadata: AudiobookMetadata, _ field: MetadataField) -> String {
+    guard let state = metadata.state(for: field) else { return "legacy-library" }
+    if state.isExplicitlyCleared { return "user-clear" }
+    switch state.provenance {
+    case .embeddedTag: return field == .cover ? "embedded-artwork" : "embedded-tag"
+    case .filename: return "filename"
+    case .folderName: return "folder-name"
+    case .fileOrder: return "file-order"
+    case .legacyLibrary: return "legacy-library"
+    case .user: return "user"
+    }
   }
 }
 
@@ -1197,7 +1301,7 @@ private struct MiniPlayerView: View {
   }
 }
 
-private struct ArtworkView: View {
+struct ArtworkView: View {
   let data: Data?
   let size: CGFloat
   var body: some View {

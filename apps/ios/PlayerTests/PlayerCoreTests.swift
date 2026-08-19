@@ -95,7 +95,7 @@ final class PlayerCoreTests: XCTestCase {
     try await store.save(migrated)
     let data = try Data(contentsOf: fileURL)
     let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-    XCTAssertEqual(object["schemaVersion"] as? Int, 6)
+    XCTAssertEqual(object["schemaVersion"] as? Int, 7)
   }
 
   func testVersionedStoreMigratesSchemaTwoMetadataAndTimelineDefaults() async throws {
@@ -215,6 +215,59 @@ final class PlayerCoreTests: XCTestCase {
         )
       ]
     )
+  }
+
+  func testVersionedStoreMigratesSchemaSixMetadataRepairDefaults() async throws {
+    let directory = FileManager.default.temporaryDirectory.appending(
+      path: "PlayerV6MetadataStoreTests-\(UUID().uuidString)",
+      directoryHint: .isDirectory
+    )
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let fileURL = directory.appending(path: "Library.json")
+    let store = CodableLibraryStore(fileURL: fileURL)
+    let legacyBook = Book(
+      id: UUID(uuidString: "71500000-0000-0000-0000-000000000001")!,
+      title: "Schema Six Book",
+      authors: ["Legacy Author"],
+      durationSeconds: 60,
+      artworkData: Data([1, 2, 3]),
+      assets: [],
+      dateAdded: Date(timeIntervalSince1970: 1_700_000_000),
+      narrators: ["Legacy Narrator"],
+      seriesName: "Legacy Series",
+      seriesPosition: "6",
+      artworkMediaType: "image/png"
+    )
+    try await store.save(LibrarySnapshot(
+      books: [legacyBook], importJobs: [], currentBookID: nil
+    ))
+    var envelope = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: Data(contentsOf: fileURL)) as? [String: Any]
+    )
+    envelope["schemaVersion"] = 6
+    var library = try XCTUnwrap(envelope["library"] as? [String: Any])
+    var books = try XCTUnwrap(library["books"] as? [[String: Any]])
+    books[0].removeValue(forKey: "metadata")
+    library["books"] = books
+    library.removeValue(forKey: "metadataTransactions")
+    envelope["library"] = library
+    try JSONSerialization.data(withJSONObject: envelope).write(to: fileURL)
+
+    let migrated = try await store.load()
+
+    let book = try XCTUnwrap(migrated.books.first)
+    XCTAssertEqual(book.metadata.title, "Schema Six Book")
+    XCTAssertEqual(book.metadata.authors.map(\.displayName), ["Legacy Author"])
+    XCTAssertEqual(book.metadata.narrators.map(\.displayName), ["Legacy Narrator"])
+    XCTAssertEqual(book.metadata.seriesMemberships.first?.position, "6")
+    XCTAssertEqual(book.metadata.cover?.originalData, Data([1, 2, 3]))
+    XCTAssertEqual(book.metadata.state(for: .title)?.provenance, .legacyLibrary)
+    XCTAssertTrue(migrated.metadataTransactions.isEmpty)
+    try await store.save(migrated)
+    let current = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: Data(contentsOf: fileURL)) as? [String: Any]
+    )
+    XCTAssertEqual(current["schemaVersion"] as? Int, 7)
   }
 
   func testAVFoundationInspectorBuildsFileChapterWithoutReadingPayload() async throws {
@@ -344,6 +397,218 @@ final class PlayerCoreTests: XCTestCase {
     XCTAssertEqual(book.seriesPosition, "2.5")
     XCTAssertEqual(book.artworkMediaType, "image/png")
     XCTAssertEqual(book.chapters.first?.title, "Opening")
+  }
+
+  func testMetadataRepairCoversEveryMVPFieldAndUndoRestoresOneAtomicSnapshot() async throws {
+    let bookID = UUID(uuidString: "81000000-0000-0000-0000-000000000001")!
+    let asset = AudioAsset(
+      id: UUID(uuidString: "81000000-0000-0000-0000-000000000002")!,
+      originalFilename: "immutable.m4b",
+      managedRelativePath: "Media/immutable.m4b",
+      checksumSHA256: "immutable-checksum",
+      byteCount: 123,
+      durationSeconds: 60,
+      container: "M4B"
+    )
+    let embeddedCover = Data([0x89, 0x50, 0x4E, 0x47, 0x01])
+    let originalMetadata = AudiobookMetadata.imported(
+      title: "The Brass Lantern",
+      authors: ["Mira Sol"],
+      narrators: ["Anika Reed"],
+      seriesName: "Night Signals",
+      seriesPosition: "4",
+      artworkData: embeddedCover,
+      artworkMediaType: "image/png"
+    )
+    let book = Book(
+      id: bookID,
+      title: originalMetadata.title,
+      authors: originalMetadata.authors.map(\.displayName),
+      durationSeconds: 60,
+      artworkData: embeddedCover,
+      assets: [asset],
+      dateAdded: Date(timeIntervalSince1970: 1_700_000_000),
+      narrators: originalMetadata.narrators.map(\.displayName),
+      seriesName: "Night Signals",
+      seriesPosition: "4",
+      artworkMediaType: "image/png",
+      metadata: originalMetadata
+    )
+    let store = InMemoryLibraryStore(snapshot: LibrarySnapshot(
+      books: [book], importJobs: [], currentBookID: nil
+    ))
+    let transactionID = UUID(uuidString: "81000000-0000-0000-0000-000000000003")!
+    let model = PlayerModel(environment: PlayerEnvironment(
+      persistence: store,
+      media: FileSystemMediaManager(rootURL: FileManager.default.temporaryDirectory),
+      inspector: AVFoundationAudioInspector(),
+      playback: DeterministicPlaybackController(),
+      clock: FixedPlayerClock(value: Date(timeIntervalSince1970: 1_700_000_100)),
+      ids: DeterministicPlayerIDGenerator(values: [transactionID])
+    ))
+    await model.restore()
+
+    let replacementCover = CoverArtwork(
+      originalData: Data([0x89, 0x50, 0x4E, 0x47, 0x02]),
+      mediaType: "image/png",
+      source: .file,
+      crop: CoverCrop(x: 0.1, y: 0.2, width: 0.8, height: 0.7, rotationDegrees: 90)
+    )
+    let repairedID = await model.repairBookMetadata(bookID: bookID, mutations: [
+      .set(.title, value: .text("The Amber Signal")),
+      .set(.sortTitle, value: .text("Amber Signal, The")),
+      .set(.subtitle, value: .text("A Night Signals Story")),
+      .set(.authors, value: .contributors([
+        Contributor(displayName: "Mira Sol", sortName: "Sol, Mira"),
+        Contributor(displayName: "Ivo Quill"),
+      ])),
+      .clear(.narrators),
+      .set(.seriesName, value: .seriesMemberships([
+        SeriesMembership(name: "Night Signals", position: "4.5")
+      ])),
+      .setLocked(.seriesName, locked: true),
+      .set(.description, value: .text("A repaired local description.")),
+      .set(.genres, value: .textList(["Mystery", "Science Fiction"])),
+      .set(.tags, value: .textList(["Favorite", "Night"])),
+      .set(.language, value: .text("en-CA")),
+      .set(.publicationYear, value: .publicationYear(2026)),
+      .set(.publisher, value: .text("Signal House")),
+      .set(.edition, value: .text("Anniversary")),
+      .set(.abridgement, value: .abridgement(.unabridged)),
+      .clear(.cover),
+      .set(.cover, value: .cover(replacementCover)),
+    ])
+
+    XCTAssertEqual(repairedID, transactionID)
+    let repaired = try XCTUnwrap(model.library.books.first)
+    XCTAssertEqual(repaired.title, "The Amber Signal")
+    XCTAssertEqual(repaired.authors, ["Mira Sol", "Ivo Quill"])
+    XCTAssertEqual(repaired.narrators, [])
+    XCTAssertEqual(repaired.seriesPosition, "4.5")
+    XCTAssertEqual(repaired.metadata.sortTitle, "Amber Signal, The")
+    XCTAssertEqual(repaired.metadata.subtitle, "A Night Signals Story")
+    XCTAssertEqual(repaired.metadata.description, "A repaired local description.")
+    XCTAssertEqual(repaired.metadata.genres, ["Mystery", "Science Fiction"])
+    XCTAssertEqual(repaired.metadata.tags, ["Favorite", "Night"])
+    XCTAssertEqual(repaired.metadata.language, "en-CA")
+    XCTAssertEqual(repaired.metadata.publicationYear, 2026)
+    XCTAssertEqual(repaired.metadata.publisher, "Signal House")
+    XCTAssertEqual(repaired.metadata.edition, "Anniversary")
+    XCTAssertEqual(repaired.metadata.abridgement, .unabridged)
+    XCTAssertEqual(repaired.metadata.cover, replacementCover)
+    XCTAssertEqual(repaired.metadata.state(for: .title)?.provenance, .user)
+    XCTAssertTrue(repaired.metadata.state(for: .title)?.isLocked == true)
+    XCTAssertTrue(repaired.metadata.state(for: .narrators)?.isExplicitlyCleared == true)
+    XCTAssertTrue(repaired.metadata.state(for: .seriesName)?.isLocked == true)
+    XCTAssertEqual(repaired.metadata.state(for: .cover)?.lastTransactionID, transactionID)
+    XCTAssertEqual(repaired.assets, [asset], "Metadata repair must not mutate managed-audio state")
+    XCTAssertEqual(model.library.metadataTransactions.count, 1)
+
+    let didUndo = await model.undoLastMetadataTransaction(for: .book(bookID))
+    XCTAssertTrue(didUndo)
+    let restored = try XCTUnwrap(model.library.books.first)
+    XCTAssertEqual(restored.metadata, originalMetadata)
+    XCTAssertEqual(restored.title, "The Brass Lantern")
+    XCTAssertEqual(restored.narrators, ["Anika Reed"])
+    XCTAssertEqual(restored.artworkData, embeddedCover)
+    XCTAssertEqual(restored.assets, [asset])
+    XCTAssertEqual(model.library.metadataTransactions.first?.status, .undone)
+    let didUndoTwice = await model.undoLastMetadataTransaction(for: .book(bookID))
+    XCTAssertFalse(didUndoTwice)
+  }
+
+  func testProposalMetadataTransactionRetargetsToCommittedBookAndUndoPreservesAudio() async throws {
+    let root = FileManager.default.temporaryDirectory.appending(
+      path: "PlayerMetadataCommitTests-\(UUID().uuidString)",
+      directoryHint: .isDirectory
+    )
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let source = root.appending(path: "proposal.m4a")
+    try FileManager.default.copyItem(at: try fixtureToneURL(), to: source)
+    let originalChecksum = try checksum(source)
+    let ids = (1...5).map {
+      UUID(uuidString: String(format: "82000000-0000-0000-0000-%012d", $0))!
+    }
+    let media = FileSystemMediaManager(rootURL: root.appending(path: "Storage"))
+    let model = PlayerModel(environment: PlayerEnvironment(
+      persistence: InMemoryLibraryStore(),
+      media: media,
+      inspector: DeterministicAudioInspector(result: .success(InspectedAudio(
+        title: "Original Proposal",
+        authors: ["Embedded Author"],
+        durationSeconds: 1.8,
+        artworkData: Data([1, 2, 3]),
+        container: "M4A",
+        narrators: ["Embedded Narrator"],
+        artworkMediaType: "image/png"
+      ))),
+      playback: DeterministicPlaybackController(),
+      ids: DeterministicPlayerIDGenerator(values: ids)
+    ))
+    await model.restore()
+    let importedJobID = await model.importAudio(from: source)
+    let jobID = try XCTUnwrap(importedJobID)
+    let originalProposal = try XCTUnwrap(model.library.importJobs.first?.proposal)
+    let repairedTransactionID = await model.repairProposalMetadata(
+      jobID: jobID,
+      proposalID: originalProposal.id,
+      mutations: [
+        .set(.title, value: .text("Repaired Proposal")),
+        .clear(.narrators),
+      ]
+    )
+    let transactionID = try XCTUnwrap(repairedTransactionID)
+    let committedBookID = await model.addImportToLibrary(jobID: jobID)
+    let bookID = try XCTUnwrap(committedBookID)
+
+    XCTAssertEqual(model.library.metadataTransactions.first?.id, transactionID)
+    XCTAssertEqual(model.library.metadataTransactions.first?.target, .book(bookID))
+    XCTAssertEqual(model.library.books.first?.title, "Repaired Proposal")
+    XCTAssertEqual(model.library.books.first?.narrators, [])
+    let managedPath = try XCTUnwrap(model.library.books.first?.assets.first?.managedRelativePath)
+    let managedURL = try await media.managedURL(for: managedPath)
+    XCTAssertEqual(try checksum(source), originalChecksum)
+    XCTAssertEqual(try checksum(managedURL), originalChecksum)
+
+    let didUndo = await model.undoLastMetadataTransaction(for: .book(bookID))
+    XCTAssertTrue(didUndo)
+    XCTAssertEqual(model.library.books.first?.metadata, originalProposal.metadata)
+    XCTAssertEqual(model.library.books.first?.title, "Original Proposal")
+    XCTAssertEqual(model.library.books.first?.narrators, ["Embedded Narrator"])
+    XCTAssertEqual(try checksum(source), originalChecksum)
+    XCTAssertEqual(try checksum(managedURL), originalChecksum)
+  }
+
+  func testLockedExplicitClearCannotBeRepopulatedByAutomatedMetadata() throws {
+    var metadata = AudiobookMetadata.imported(
+      title: "Locked Book",
+      authors: [],
+      narrators: ["Original Narrator"],
+      seriesName: nil,
+      seriesPosition: nil,
+      artworkData: nil,
+      artworkMediaType: nil
+    )
+    let clearTransaction = UUID(uuidString: "82500000-0000-0000-0000-000000000001")!
+    try metadata.apply(.clear(.narrators), transactionID: clearTransaction)
+
+    XCTAssertTrue(metadata.narrators.isEmpty)
+    XCTAssertTrue(metadata.state(for: .narrators)?.isExplicitlyCleared == true)
+    XCTAssertThrowsError(try metadata.apply(
+      .set(
+        .narrators,
+        value: .contributors([Contributor(displayName: "Rescan Narrator")]),
+        provenance: .embeddedTag,
+        confidence: .high,
+        lock: false
+      ),
+      transactionID: UUID(uuidString: "82500000-0000-0000-0000-000000000002")!
+    )) { error in
+      XCTAssertEqual(error as? MetadataRepairError, .fieldLocked(.narrators))
+    }
+    XCTAssertTrue(metadata.narrators.isEmpty)
+    XCTAssertEqual(metadata.state(for: .narrators)?.lastTransactionID, clearTransaction)
   }
 
   func testSeekPauseAndInjectedAcknowledgementsAppendDurableEvents() async throws {

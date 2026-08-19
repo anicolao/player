@@ -23,6 +23,8 @@ extension PlayerEnvironment {
           return try safeZipEnvironment(reset: arguments.contains("-e2e-reset"))
         case "synthetic-import-channels":
           return try importIngressEnvironment(reset: arguments.contains("-e2e-reset"))
+        case "synthetic-metadata-repair":
+          return try metadataRepairEnvironment()
         default:
           break
         }
@@ -283,6 +285,110 @@ extension PlayerEnvironment {
       )
     }
 
+    private static func metadataRepairEnvironment() throws -> PlayerEnvironment {
+      let environment = ProcessInfo.processInfo.environment
+      guard
+        let audioEncoded = environment["PLAYER_E2E_METADATA_AUDIO_BASE64"],
+        let audio = Data(base64Encoded: audioEncoded),
+        let coverEncoded = environment["PLAYER_E2E_METADATA_ORIGINAL_COVER_BASE64"],
+        let cover = Data(base64Encoded: coverEncoded)
+      else {
+        throw PlayerCoreError.fileOperation("The synthetic metadata-repair fixture is unavailable.")
+      }
+
+      let root = FileManager.default.temporaryDirectory.appending(
+        path: "PlayerE2EMetadataRepair",
+        directoryHint: .isDirectory
+      )
+      try? FileManager.default.removeItem(at: root)
+      let jobID = UUID(uuidString: "80000000-0000-0000-0000-000000000001")!
+      let proposalID = UUID(uuidString: "80000000-0000-0000-0000-000000000002")!
+      let assetID = UUID(uuidString: "80000000-0000-0000-0000-000000000003")!
+      let bookID = UUID(uuidString: "80000000-0000-0000-0000-000000000004")!
+      let sourceURL = root.appending(path: "Input/metadata-repair-source.m4b")
+      let stagedRelativePath = "Staging/\(jobID.uuidString.lowercased())/metadata-repair-source.m4b"
+      let stagedURL = root.appending(path: stagedRelativePath)
+      for url in [sourceURL, stagedURL] {
+        try FileManager.default.createDirectory(
+          at: url.deletingLastPathComponent(),
+          withIntermediateDirectories: true
+        )
+        try audio.write(to: url, options: .atomic)
+      }
+
+      let checksum = "6c5a700ee340ace483b4cd45188403ca9a77fd60d94ba248063ee2c7fc6366f7"
+      let asset = AudioAsset(
+        id: assetID,
+        originalFilename: "metadata-repair-source.m4b",
+        managedRelativePath: "",
+        checksumSHA256: checksum,
+        byteCount: Int64(audio.count),
+        durationSeconds: 2.4,
+        container: "M4B"
+      )
+      let metadata = AudiobookMetadata.imported(
+        title: "The Brass Lantern",
+        authors: ["Mira Sol"],
+        narrators: ["Anika Reed"],
+        seriesName: "Night Signals",
+        seriesPosition: "4",
+        artworkData: cover,
+        artworkMediaType: "image/png",
+        provenance: .embeddedTag,
+        confidence: .high
+      )
+      let proposal = BookProposal(
+        id: proposalID,
+        proposedBookID: bookID,
+        title: metadata.title,
+        authors: metadata.authors.map(\.displayName),
+        durationSeconds: asset.durationSeconds,
+        artworkData: cover,
+        asset: asset,
+        warnings: [],
+        narrators: metadata.narrators.map(\.displayName),
+        seriesName: metadata.seriesMemberships.first?.name,
+        seriesPosition: metadata.seriesMemberships.first?.position,
+        artworkMediaType: "image/png",
+        metadata: metadata
+      )
+      let date = Date(timeIntervalSince1970: 1_700_000_000)
+      let job = ImportJob(
+        id: jobID,
+        sourceFilename: asset.originalFilename,
+        phase: .ready,
+        progress: ImportProgress(completed: Int64(audio.count), total: Int64(audio.count)),
+        stagedRelativePath: stagedRelativePath,
+        proposal: proposal,
+        committedBookID: nil,
+        failure: nil,
+        createdAt: date,
+        updatedAt: date
+      )
+      let managedURL = root.appending(
+        path: "Media/\(bookID.uuidString.lowercased())/\(assetID.uuidString.lowercased()).m4b"
+      )
+      E2EMetadataRepairBridge.shared.configure(
+        sourceURL: sourceURL,
+        sourceBytes: audio,
+        managedURL: managedURL,
+        checksum: checksum
+      )
+      let ids = (10...30).compactMap {
+        UUID(uuidString: String(format: "80000000-0000-0000-0000-%012d", $0))
+      }
+      return PlayerEnvironment(
+        persistence: InMemoryLibraryStore(
+          snapshot: LibrarySnapshot(books: [], importJobs: [job], currentBookID: nil)
+        ),
+        media: FileSystemMediaManager(rootURL: root),
+        inspector: DeterministicAudioInspector(result: .failure(.unreadableAudio("unused"))),
+        playback: DeterministicPlaybackController(),
+        clock: FixedPlayerClock(value: date),
+        ids: DeterministicPlayerIDGenerator(values: ids)
+      )
+    }
+
     private static func messyMultifileEnvironment(reset: Bool) throws -> PlayerEnvironment {
       let root = FileManager.default.temporaryDirectory.appending(
         path: "PlayerE2EMessyMultifile",
@@ -448,6 +554,39 @@ extension PlayerEnvironment {
 }
 
 #if E2E
+  @MainActor
+  final class E2EMetadataRepairBridge {
+    static let shared = E2EMetadataRepairBridge()
+
+    private var sourceURL: URL?
+    private var sourceBytes: Data?
+    private var managedURL: URL?
+    private var checksum: String?
+
+    var isConfigured: Bool { sourceURL != nil && sourceBytes != nil && managedURL != nil }
+
+    func configure(sourceURL: URL, sourceBytes: Data, managedURL: URL, checksum: String) {
+      self.sourceURL = sourceURL
+      self.sourceBytes = sourceBytes
+      self.managedURL = managedURL
+      self.checksum = checksum
+    }
+
+    var integrityValue: String {
+      guard
+        let sourceURL, let sourceBytes, let managedURL, let checksum
+      else { return "audio:unconfigured" }
+      let sourceUnchanged = (try? Data(contentsOf: sourceURL)) == sourceBytes
+      let managed: String
+      if FileManager.default.fileExists(atPath: managedURL.path) {
+        managed = (try? Data(contentsOf: managedURL)) == sourceBytes ? checksum : "changed"
+      } else {
+        managed = "none"
+      }
+      return "audio:source=\(checksum):managed=\(managed):source-unchanged=\(sourceUnchanged)"
+    }
+  }
+
   @MainActor
   final class E2EMultifileAcquisition {
     static let shared = E2EMultifileAcquisition()

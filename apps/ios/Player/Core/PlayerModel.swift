@@ -115,6 +115,130 @@ final class PlayerModel {
     }
   }
 
+  func metadata(for target: MetadataTarget) -> AudiobookMetadata? {
+    switch target {
+    case .book(let bookID):
+      library.books.first(where: { $0.id == bookID })?.metadata
+    case .proposal(let jobID, let proposalID):
+      library.importJobs.first(where: { $0.id == jobID })?
+        .proposals.first(where: { $0.id == proposalID })?.metadata
+    }
+  }
+
+  @discardableResult
+  func repairBookMetadata(
+    bookID: UUID,
+    mutations: [MetadataMutation]
+  ) async -> UUID? {
+    await repairMetadata(target: .book(bookID), mutations: mutations)
+  }
+
+  @discardableResult
+  func repairProposalMetadata(
+    jobID: UUID,
+    proposalID: UUID,
+    mutations: [MetadataMutation]
+  ) async -> UUID? {
+    await repairMetadata(
+      target: .proposal(jobID: jobID, proposalID: proposalID),
+      mutations: mutations
+    )
+  }
+
+  @discardableResult
+  func repairMetadata(
+    target: MetadataTarget,
+    mutations: [MetadataMutation]
+  ) async -> UUID? {
+    guard !mutations.isEmpty else { return nil }
+    let transactionID = await environment.ids.next()
+    let previousLibrary = library
+    do {
+      guard var repaired = metadata(for: target) else {
+        throw missingTargetError(target)
+      }
+      let before = repaired
+      for mutation in mutations {
+        try repaired.apply(mutation, transactionID: transactionID)
+      }
+      try replaceMetadata(
+        repaired,
+        for: target,
+        proposalRevisionIncrement: mutations.count
+      )
+      library.metadataTransactions.append(MetadataTransaction(
+        id: transactionID,
+        target: target,
+        before: before,
+        after: repaired,
+        mutations: mutations,
+        createdAt: environment.clock.now(),
+        status: .applied,
+        undoneAt: nil
+      ))
+      // Persist the complete candidate before publishing it through the
+      // observable model; no half-repaired field set is visible across an await.
+      let committedLibrary = library
+      library = previousLibrary
+      try await environment.persistence.save(committedLibrary)
+      library = committedLibrary
+      lastErrorMessage = nil
+      publishNowPlaying()
+      return transactionID
+    } catch {
+      library = previousLibrary
+      lastErrorMessage = error.localizedDescription
+      return nil
+    }
+  }
+
+  @discardableResult
+  func undoLastMetadataTransaction(for target: MetadataTarget) async -> Bool {
+    guard let transaction = library.metadataTransactions.last(where: {
+      $0.target == target && $0.status == .applied
+    }) else {
+      lastErrorMessage = "There is no metadata edit to undo."
+      return false
+    }
+    return await undoMetadataTransaction(id: transaction.id)
+  }
+
+  @discardableResult
+  func undoMetadataTransaction(id: UUID) async -> Bool {
+    guard let transactionIndex = library.metadataTransactions.firstIndex(where: { $0.id == id })
+    else {
+      lastErrorMessage = MetadataRepairError.transactionNotApplied(id).localizedDescription
+      return false
+    }
+    let transaction = library.metadataTransactions[transactionIndex]
+    guard transaction.status == .applied,
+      !library.metadataTransactions[(transactionIndex + 1)...].contains(where: {
+        $0.target == transaction.target && $0.status == .applied
+      })
+    else {
+      lastErrorMessage = MetadataRepairError.transactionNotApplied(id).localizedDescription
+      return false
+    }
+
+    let previousLibrary = library
+    do {
+      try replaceMetadata(transaction.before, for: transaction.target)
+      library.metadataTransactions[transactionIndex].status = .undone
+      library.metadataTransactions[transactionIndex].undoneAt = environment.clock.now()
+      let committedLibrary = library
+      library = previousLibrary
+      try await environment.persistence.save(committedLibrary)
+      library = committedLibrary
+      lastErrorMessage = nil
+      publishNowPlaying()
+      return true
+    } catch {
+      library = previousLibrary
+      lastErrorMessage = error.localizedDescription
+      return false
+    }
+  }
+
   @discardableResult
   func importAudio(from sourceURL: URL) async -> UUID? {
     await enqueueImport(ImportRequest(entryPoint: .files, selectedURLs: [sourceURL]))
@@ -609,12 +733,21 @@ final class PlayerModel {
             seriesName: proposal.seriesName,
             seriesPosition: proposal.seriesPosition,
             artworkMediaType: proposal.artworkMediaType,
-            chapters: proposal.chapters
+            chapters: proposal.chapters,
+            metadata: proposal.metadata
           )
         )
       }
       // Publish only after every immutable asset move has succeeded.
       library.books.append(contentsOf: books)
+      for proposal in proposals {
+        let proposalTarget = MetadataTarget.proposal(jobID: jobID, proposalID: proposal.id)
+        let bookTarget = MetadataTarget.book(proposal.proposedBookID)
+        for index in library.metadataTransactions.indices
+        where library.metadataTransactions[index].target == proposalTarget {
+          library.metadataTransactions[index].target = bookTarget
+        }
+      }
       job.phase = .committed
       job.committedBookID = books.first?.id
       job.updatedAt = environment.clock.now()
@@ -1402,6 +1535,44 @@ final class PlayerModel {
     updated.updatedAt = environment.clock.now()
     replace(updated)
     try await persist()
+  }
+
+  private func missingTargetError(_ target: MetadataTarget) -> PlayerCoreError {
+    switch target {
+    case .book(let bookID): .missingBook(bookID)
+    case .proposal(let jobID, let proposalID):
+      library.importJobs.contains(where: { $0.id == jobID })
+        ? .missingProposal(proposalID) : .missingImport(jobID)
+    }
+  }
+
+  private func replaceMetadata(
+    _ metadata: AudiobookMetadata,
+    for target: MetadataTarget,
+    proposalRevisionIncrement: Int = 1
+  ) throws {
+    switch target {
+    case .book(let bookID):
+      guard let index = library.books.firstIndex(where: { $0.id == bookID }) else {
+        throw PlayerCoreError.missingBook(bookID)
+      }
+      library.books[index].replaceMetadata(with: metadata)
+    case .proposal(let jobID, let proposalID):
+      guard let jobIndex = library.importJobs.firstIndex(where: { $0.id == jobID }) else {
+        throw PlayerCoreError.missingImport(jobID)
+      }
+      guard library.importJobs[jobIndex].phase == .ready
+        || library.importJobs[jobIndex].phase == .needsReview
+      else { throw PlayerCoreError.importNotReady(jobID) }
+      var proposals = library.importJobs[jobIndex].proposals
+      guard let proposalIndex = proposals.firstIndex(where: { $0.id == proposalID }) else {
+        throw PlayerCoreError.missingProposal(proposalID)
+      }
+      proposals[proposalIndex].replaceMetadata(with: metadata)
+      library.importJobs[jobIndex].proposals = proposals
+      library.importJobs[jobIndex].reviewRevision += max(0, proposalRevisionIncrement)
+      library.importJobs[jobIndex].updatedAt = environment.clock.now()
+    }
   }
 
   private func reviseImport(
