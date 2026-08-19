@@ -15,6 +15,7 @@ struct Book: Codable, Equatable, Identifiable, Sendable {
   var artworkMediaType: String?
   var chapters: [Chapter]
   var metadata: AudiobookMetadata
+  var listeningState: BookListeningState
 
   init(
     id: UUID,
@@ -29,7 +30,8 @@ struct Book: Codable, Equatable, Identifiable, Sendable {
     seriesPosition: String? = nil,
     artworkMediaType: String? = nil,
     chapters: [Chapter] = [],
-    metadata: AudiobookMetadata? = nil
+    metadata: AudiobookMetadata? = nil,
+    listeningState: BookListeningState = .unplayed
   ) {
     self.id = id
     self.title = title
@@ -54,11 +56,13 @@ struct Book: Codable, Equatable, Identifiable, Sendable {
       provenance: .legacyLibrary,
       confidence: .medium
     )
+    self.listeningState = listeningState
   }
 
   private enum CodingKeys: String, CodingKey {
     case id, title, authors, durationSeconds, artworkData, assets, dateAdded
     case narrators, seriesName, seriesPosition, artworkMediaType, chapters, metadata
+    case listeningState
   }
 
   init(from decoder: any Decoder) throws {
@@ -86,6 +90,10 @@ struct Book: Codable, Equatable, Identifiable, Sendable {
       provenance: .legacyLibrary,
       confidence: .medium
     )
+    listeningState = try values.decodeIfPresent(
+      BookListeningState.self,
+      forKey: .listeningState
+    ) ?? .unplayed
   }
 }
 
@@ -554,6 +562,10 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
   var positionJournal: [PositionEvent]
   var shareImportReceipts: [ShareImportReceipt]
   var metadataTransactions: [MetadataTransaction]
+  var upNextBookIDs: [UUID]
+  var collections: [BookCollection]
+  var allBooksViewStyle: LibraryViewStyle
+  var trashTransactions: [LibraryTrashTransaction]
 
   init(
     books: [Book],
@@ -562,7 +574,11 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
     playbackPosition: PlaybackPosition? = nil,
     positionJournal: [PositionEvent] = [],
     shareImportReceipts: [ShareImportReceipt] = [],
-    metadataTransactions: [MetadataTransaction] = []
+    metadataTransactions: [MetadataTransaction] = [],
+    upNextBookIDs: [UUID] = [],
+    collections: [BookCollection] = [],
+    allBooksViewStyle: LibraryViewStyle = .grid,
+    trashTransactions: [LibraryTrashTransaction] = []
   ) {
     self.books = books
     self.importJobs = importJobs
@@ -571,12 +587,17 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
     self.positionJournal = positionJournal
     self.shareImportReceipts = shareImportReceipts
     self.metadataTransactions = metadataTransactions
+    self.upNextBookIDs = upNextBookIDs
+    self.collections = collections
+    self.allBooksViewStyle = allBooksViewStyle
+    self.trashTransactions = trashTransactions
   }
 
 
   private enum CodingKeys: String, CodingKey {
     case books, importJobs, currentBookID, playbackPosition, positionJournal, shareImportReceipts
     case metadataTransactions
+    case upNextBookIDs, collections, allBooksViewStyle, trashTransactions
   }
 
   init(from decoder: any Decoder) throws {
@@ -593,6 +614,16 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
     metadataTransactions = try values.decodeIfPresent(
       [MetadataTransaction].self,
       forKey: .metadataTransactions
+    ) ?? []
+    upNextBookIDs = try values.decodeIfPresent([UUID].self, forKey: .upNextBookIDs) ?? []
+    collections = try values.decodeIfPresent([BookCollection].self, forKey: .collections) ?? []
+    allBooksViewStyle = try values.decodeIfPresent(
+      LibraryViewStyle.self,
+      forKey: .allBooksViewStyle
+    ) ?? .grid
+    trashTransactions = try values.decodeIfPresent(
+      [LibraryTrashTransaction].self,
+      forKey: .trashTransactions
     ) ?? []
   }
 

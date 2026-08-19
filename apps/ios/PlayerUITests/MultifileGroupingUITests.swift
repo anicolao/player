@@ -40,6 +40,7 @@ final class MultifileGroupingUITests: XCTestCase {
     )
     let inbox = anyElement(app, "inbox-screen")
     try requireValue(inbox, "import:1-review:1-processing:0")
+    app.tabBars.buttons["Inbox"].tap()
     app.buttons["review-import-job-\(jobID)"].tap()
 
     let reviewImport = anyElement(app, "review-import-screen")
@@ -173,7 +174,7 @@ final class MultifileGroupingUITests: XCTestCase {
     app.buttons["add-import-to-library"].tap()
 
     let library = anyElement(app, "library-screen")
-    let committedBook = anyElement(app, "library-book-\(finalBookID)")
+    let committedBook = anyElement(app, "recent-book-\(finalBookID)")
     try tester.step(
       "atomic-commit",
       description: "The corrected selection appears atomically as one complete library book",
@@ -183,13 +184,12 @@ final class MultifileGroupingUITests: XCTestCase {
           "ready:library-1-books",
           "Exactly one book appears after the transaction commits"
         ),
-        .exists(committedBook, "The stable corrected book is visible"),
+        .exists(committedBook, "The populated Library exposes the stable corrected book"),
         .valueEquals(
           commitProbe,
           "transaction:committed:books=1:assets=8:staging=0:source-unchanged=true:rollback=available",
           "All eight assets committed together, staging cleared, and rollback remains available"
         ),
-        .exists(app.staticTexts["8 files"], "The committed book retains all eight source tracks"),
       ]
     )
 

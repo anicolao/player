@@ -1,7 +1,7 @@
 import Foundation
 
 actor CodableLibraryStore: LibraryPersisting {
-  static let currentSchemaVersion = 7
+  static let currentSchemaVersion = 8
 
   private let fileURL: URL
   private let fileManager: FileManager
@@ -78,7 +78,15 @@ actor CodableLibraryStore: LibraryPersisting {
       }
     case 7:
       do {
-        return try JSONDecoder.playerDecoder.decode(EnvelopeV7.self, from: data).library
+        return migrateLibraryOrganizationDefaults(
+          in: try JSONDecoder.playerDecoder.decode(EnvelopeV7.self, from: data).library
+        )
+      } catch {
+        throw PlayerCoreError.invalidStore
+      }
+    case 8:
+      do {
+        return try JSONDecoder.playerDecoder.decode(EnvelopeV8.self, from: data).library
       } catch {
         throw PlayerCoreError.invalidStore
       }
@@ -91,7 +99,7 @@ actor CodableLibraryStore: LibraryPersisting {
     let directory = fileURL.deletingLastPathComponent()
     try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
 
-    let envelope = EnvelopeV7(
+    let envelope = EnvelopeV8(
       schemaVersion: Self.currentSchemaVersion,
       library: snapshot
     )
@@ -168,6 +176,21 @@ actor CodableLibraryStore: LibraryPersisting {
     migrated.metadataTransactions = []
     return migrated
   }
+
+  private func migrateLibraryOrganizationDefaults(in snapshot: LibrarySnapshot) -> LibrarySnapshot {
+    var migrated = snapshot
+    if let position = migrated.playbackPosition,
+      let index = migrated.books.firstIndex(where: { $0.id == position.bookID })
+    {
+      migrated.books[index].listeningState = BookListeningState(
+        status: position.positionMilliseconds > 0 ? .inProgress : .unplayed,
+        positionMilliseconds: position.positionMilliseconds,
+        lastListenedAt: position.updatedAt,
+        finishedAt: nil
+      )
+    }
+    return migrated
+  }
 }
 
 actor InMemoryLibraryStore: LibraryPersisting {
@@ -225,6 +248,11 @@ private struct EnvelopeV6: Codable {
 }
 
 private struct EnvelopeV7: Codable {
+  let schemaVersion: Int
+  let library: LibrarySnapshot
+}
+
+private struct EnvelopeV8: Codable {
   let schemaVersion: Int
   let library: LibrarySnapshot
 }

@@ -8,12 +8,14 @@ actor FileSystemMediaManager: MediaManaging {
   private let rootURL: URL
   private let stagingURL: URL
   private let mediaURL: URL
+  private let trashURL: URL
   private let fileManager: FileManager
 
   init(rootURL: URL, fileManager: FileManager = .default) {
     self.rootURL = rootURL.standardizedFileURL
     self.stagingURL = rootURL.appending(path: "Staging", directoryHint: .isDirectory)
     self.mediaURL = rootURL.appending(path: "Media", directoryHint: .isDirectory)
+    self.trashURL = rootURL.appending(path: "Trash", directoryHint: .isDirectory)
     self.fileManager = fileManager
   }
 
@@ -254,6 +256,84 @@ actor FileSystemMediaManager: MediaManaging {
     return url
   }
 
+  func moveManagedMediaToTrash(
+    bookID: UUID,
+    transactionID: UUID
+  ) throws -> TrashedMediaManifest {
+    try prepareDirectories()
+    let bookComponent = bookID.uuidString.lowercased()
+    let transactionComponent = transactionID.uuidString.lowercased()
+    let source = mediaURL.appending(path: bookComponent, directoryHint: .isDirectory)
+    guard fileManager.fileExists(atPath: source.path) else {
+      throw PlayerCoreError.missingManagedFile("Media/\(bookComponent)")
+    }
+    let transactionDirectory = trashURL.appending(
+      path: transactionComponent,
+      directoryHint: .isDirectory
+    )
+    guard !fileManager.fileExists(atPath: transactionDirectory.path) else {
+      throw PlayerCoreError.fileOperation("A trash transaction already exists.")
+    }
+    let destination = transactionDirectory.appending(
+      path: "Media/\(bookComponent)",
+      directoryHint: .isDirectory
+    )
+    let manifest = TrashedMediaManifest(
+      transactionID: transactionID,
+      bookID: bookID,
+      originalDirectoryRelativePath: "Media/\(bookComponent)",
+      trashDirectoryRelativePath: "Trash/\(transactionComponent)/Media/\(bookComponent)",
+      byteCount: try directoryByteCount(source)
+    )
+    do {
+      try fileManager.createDirectory(
+        at: destination.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+      )
+      let encoder = JSONEncoder()
+      encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+      try encoder.encode(manifest).write(
+        to: transactionDirectory.appending(path: "manifest.json"),
+        options: [.atomic, .completeFileProtectionUnlessOpen]
+      )
+      try fileManager.moveItem(at: source, to: destination)
+      return manifest
+    } catch {
+      if fileManager.fileExists(atPath: source.path) {
+        try? fileManager.removeItem(at: transactionDirectory)
+      }
+      throw error
+    }
+  }
+
+  func restoreManagedMediaFromTrash(_ manifest: TrashedMediaManifest) throws {
+    try prepareDirectories()
+    let source = try confinedURL(
+      for: manifest.trashDirectoryRelativePath,
+      beneath: trashURL
+    )
+    let destination = try confinedURL(
+      for: manifest.originalDirectoryRelativePath,
+      beneath: mediaURL
+    )
+    guard fileManager.fileExists(atPath: source.path) else {
+      throw PlayerCoreError.missingManagedFile(manifest.trashDirectoryRelativePath)
+    }
+    guard !fileManager.fileExists(atPath: destination.path) else {
+      throw PlayerCoreError.fileOperation("Managed media already exists for this book.")
+    }
+    try fileManager.createDirectory(
+      at: destination.deletingLastPathComponent(),
+      withIntermediateDirectories: true
+    )
+    try fileManager.moveItem(at: source, to: destination)
+    let transactionDirectory = trashURL.appending(
+      path: manifest.transactionID.uuidString.lowercased(),
+      directoryHint: .isDirectory
+    )
+    try? fileManager.removeItem(at: transactionDirectory)
+  }
+
   func discardStaging(for jobID: UUID) {
     let directory = stagingURL.appending(
       path: jobID.uuidString.lowercased(),
@@ -266,6 +346,21 @@ actor FileSystemMediaManager: MediaManaging {
     try fileManager.createDirectory(at: rootURL, withIntermediateDirectories: true)
     try fileManager.createDirectory(at: stagingURL, withIntermediateDirectories: true)
     try fileManager.createDirectory(at: mediaURL, withIntermediateDirectories: true)
+    try fileManager.createDirectory(at: trashURL, withIntermediateDirectories: true)
+  }
+
+  private func directoryByteCount(_ directory: URL) throws -> Int64 {
+    guard let enumerator = fileManager.enumerator(
+      at: directory,
+      includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
+      options: [.skipsHiddenFiles]
+    ) else { return 0 }
+    var total: Int64 = 0
+    for case let file as URL in enumerator {
+      let values = try file.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+      if values.isRegularFile == true { total += Int64(values.fileSize ?? 0) }
+    }
+    return total
   }
 
   private func preflight(requiredBytes: Int64) throws {

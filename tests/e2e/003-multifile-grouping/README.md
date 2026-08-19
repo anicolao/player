@@ -57,6 +57,5 @@
 **Verifications:**
 
 - [x] Exactly one book appears after the transaction commits
-- [x] The stable corrected book is visible
+- [x] The populated Library exposes the stable corrected book
 - [x] All eight assets committed together, staging cleared, and rollback remains available
-- [x] The committed book retains all eight source tracks

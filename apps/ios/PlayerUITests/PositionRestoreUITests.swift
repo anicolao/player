@@ -74,6 +74,7 @@ final class PositionRestoreUITests: XCTestCase {
       ]
     )
     restoredApp.launch()
+    restoredApp.tabBars.buttons["Library"].tap()
 
     let libraryScreen = restoredApp.descendants(matching: .any)["library-screen"]
     let restoredMiniPlayer = restoredApp.otherElements["mini-player"]

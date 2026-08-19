@@ -68,6 +68,7 @@ jobs:
           apps/ios/scripts/fixtures/verify-zip-fixtures.sh
           apps/ios/scripts/fixtures/verify-import-channel-fixtures.sh
           apps/ios/scripts/fixtures/verify-metadata-repair-fixture.sh
+          apps/ios/scripts/fixtures/verify-populated-library-fixture.sh
 
       - name: Run import, storage, persistence, and playback tests
         run: |
@@ -113,6 +114,12 @@ jobs:
           006-safe-zip-import
           PlayerUITests/SafeZIPImportUITests/testRejectsHostileZIPsThenCancelsAndRetriesAValidArchive
 
+      - name: Run exact-pixel library organization story
+        run: >-
+          apps/ios/scripts/run-e2e.sh
+          008-library-search
+          PlayerUITests/LibraryOrganizationUITests/testOrganizesDailyLibraryAndRestoresATrashedBook
+
       - name: Run exact-pixel position restoration story
         run: >-
           apps/ios/scripts/run-e2e.sh
@@ -141,6 +148,9 @@ jobs:
             apps/ios/DerivedData/E2E/006-safe-zip-import/ActualWalkthrough/
             apps/ios/DerivedData/E2E/006-safe-zip-import/Attachments/
             apps/ios/DerivedData/E2E/006-safe-zip-import/Results/Story.xcresult/
+            apps/ios/DerivedData/E2E/008-library-search/ActualWalkthrough/
+            apps/ios/DerivedData/E2E/008-library-search/Attachments/
+            apps/ios/DerivedData/E2E/008-library-search/Results/Story.xcresult/
             apps/ios/DerivedData/E2E/005-play-and-restore/ActualWalkthrough/
             apps/ios/DerivedData/E2E/005-play-and-restore/Attachments/
             apps/ios/DerivedData/E2E/005-play-and-restore/Results/Story.xcresult/

@@ -22,11 +22,7 @@ struct ContentView: View {
         .tabItem { Label("Inbox", systemImage: "tray.full") }
         .badge(reviewCount)
 
-      PlaceholderView(
-        title: "Settings",
-        message: "Playback, storage, and import preferences will live here.",
-        systemImage: "gearshape"
-      )
+      LibraryOrganizationSettingsView(model: model)
       .tag(AppSection.settings)
       .tabItem { Label("Settings", systemImage: "gearshape") }
     }
@@ -192,6 +188,7 @@ private struct LibraryView: View {
   @Bindable var model: PlayerModel
   let startImport: () -> Void
   @State private var path = NavigationPath()
+  @State private var isRootVisible = true
   let presentPlayer: (Book) -> Void
 
   var body: some View {
@@ -201,14 +198,15 @@ private struct LibraryView: View {
         if model.library.books.isEmpty {
           emptyState
         } else {
-          ScrollView {
-            LazyVStack(spacing: 16) {
-              ForEach(model.library.books) { book in
-                NavigationLink(value: book.id) { BookRow(book: book) }
-                  .buttonStyle(.plain)
+          LibraryOrganizationHome(model: model) { book in
+            if model.library.currentBookID == book.id {
+              presentPlayer(book)
+            } else {
+              Task {
+                await model.play(bookID: book.id)
+                presentPlayer(book)
               }
             }
-            .padding(20)
           }
         }
       }
@@ -226,9 +224,11 @@ private struct LibraryView: View {
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("library-screen")
       .accessibilityValue(libraryState)
+      .onAppear { isRootVisible = true }
+      .onDisappear { isRootVisible = false }
     }
     .overlay(alignment: .topTrailing) {
-      if path.isEmpty && !model.library.books.isEmpty {
+      if path.isEmpty && isRootVisible && !model.library.books.isEmpty {
         Button { startImport() } label: {
           Image(systemName: "plus")
             .font(.title3.weight(.semibold))
@@ -982,7 +982,7 @@ private struct ReviewOrderView: View {
   ]
 }
 
-private struct BookRow: View {
+struct BookRow: View {
   let book: Book
   var body: some View {
     HStack(spacing: 14) {
@@ -1006,10 +1006,13 @@ private struct BookRow: View {
   }
 }
 
-private struct BookDetailView: View {
+struct BookDetailView: View {
+  @Environment(\.dismiss) private var dismiss
   @Bindable var model: PlayerModel
   let bookID: UUID
   let play: (Book, Double?) -> Void
+  @State private var isConfirmingRemoval = false
+  @State private var isConfirmingFinished = false
 
   var body: some View {
     ZStack {
@@ -1061,6 +1064,48 @@ private struct BookDetailView: View {
               }
             }
 
+            HStack(spacing: 12) {
+              Button {
+                Task {
+                  if model.library.upNextBookIDs.contains(book.id) {
+                    _ = await model.removeFromUpNext(bookID: book.id)
+                  } else {
+                    _ = await model.addToUpNext(bookID: book.id)
+                  }
+                }
+              } label: {
+                Label(
+                  model.library.upNextBookIDs.contains(book.id) ? "Remove from Up Next" : "Add to Up Next",
+                  systemImage: "text.badge.plus"
+                )
+                .frame(maxWidth: .infinity)
+              }
+              .buttonStyle(.bordered)
+              .accessibilityIdentifier("toggle-up-next-\(book.id.uuidString.lowercased())")
+
+              Button {
+                if book.listeningState.status == .finished {
+                  Task { _ = await model.setBookFinished(bookID: book.id, isFinished: false) }
+                } else {
+                  isConfirmingFinished = true
+                }
+              } label: {
+                Label(
+                  book.listeningState.status == .finished ? "Mark Unfinished" : "Mark Finished",
+                  systemImage: book.listeningState.status == .finished ? "arrow.counterclockwise" : "checkmark.circle"
+                )
+                .frame(maxWidth: .infinity)
+              }
+              .buttonStyle(.bordered)
+              .accessibilityIdentifier("mark-finished-\(book.id.uuidString.lowercased())")
+            }
+
+            Button(role: .destructive) { isConfirmingRemoval = true } label: {
+              Label("Remove Book", systemImage: "trash").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityIdentifier("remove-book")
+
             if !book.chapters.isEmpty {
               VStack(alignment: .leading, spacing: 10) {
                 Text("Chapters").font(.title3.bold())
@@ -1094,6 +1139,7 @@ private struct BookDetailView: View {
         }
         metadataProbe(id: "book-metadata-probe", value: bookMetadataValue(book))
         metadataProbe(id: "book-metadata-provenance-probe", value: bookProvenanceValue(book))
+        metadataProbe(id: "book-state-probe", value: bookStateValue(book))
       } else {
         ProgressView("Loading book…")
       }
@@ -1103,6 +1149,32 @@ private struct BookDetailView: View {
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("book-detail-screen")
     .accessibilityValue(bookDetailValue)
+    .confirmationDialog(
+      "Remove this book?",
+      isPresented: $isConfirmingRemoval,
+      titleVisibility: .visible
+    ) {
+      Button("Remove and Recover Space", role: .destructive) {
+        removeBook(mediaPolicy: .moveManagedMediaToTrash)
+      }
+      .accessibilityIdentifier("remove-book-to-trash")
+      Button("Remove Record Only", role: .destructive) {
+        removeBook(mediaPolicy: .retainManagedMedia)
+      }
+      .accessibilityIdentifier("remove-book-retain-audio")
+      Button("Cancel", role: .cancel) {}
+    } message: {
+      Text("The book stays recoverable in Trash. Source files are never changed.")
+    }
+    .alert("Mark as finished?", isPresented: $isConfirmingFinished) {
+      Button("Mark Finished") {
+        Task { _ = await model.setBookFinished(bookID: bookID, isFinished: true) }
+      }
+      .accessibilityIdentifier("confirm-mark-finished")
+      Button("Cancel", role: .cancel) {}
+    } message: {
+      Text("This moves the listening position to the end and removes the book from Continue Listening and Up Next.")
+    }
   }
 
   private var book: Book? {
@@ -1122,6 +1194,16 @@ private struct BookDetailView: View {
 
   private func hasUndoableMetadata(_ book: Book) -> Bool {
     MetadataField.allCases.contains { book.metadata.state(for: $0)?.lastTransactionID != nil }
+  }
+
+  private func removeBook(mediaPolicy: LibraryRemovalMediaPolicy) {
+    Task {
+      if await model.removeBook(bookID: bookID, mediaPolicy: mediaPolicy) != nil { dismiss() }
+    }
+  }
+
+  private func bookStateValue(_ book: Book) -> String {
+    "book:\(book.id.uuidString.lowercased()):finished=\(book.listeningState.status == .finished):position=\(book.listeningState.positionMilliseconds)"
   }
 
   private func metadataProbe(id: String, value: String) -> some View {

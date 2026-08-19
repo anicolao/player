@@ -1,0 +1,12 @@
+{
+  "id": "008-library-search",
+  "platform": "ios",
+  "test": "PlayerUITests/LibraryOrganizationUITests/testOrganizesDailyLibraryAndRestoresATrashedBook",
+  "fixture": "synthetic-populated-library",
+  "screenshots": [
+    "000-populated-library.png",
+    "001-curated-collection.png",
+    "002-recoverable-trash.png",
+    "003-restored-library-list.png"
+  ]
+}

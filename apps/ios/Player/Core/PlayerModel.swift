@@ -922,6 +922,339 @@ final class PlayerModel {
     )
   }
 
+  var continueListeningBooks: [Book] { library.continueListeningBooks }
+
+  var upNextBooks: [Book] { library.upNextBooks }
+
+  var recentlyAddedBooks: [Book] { library.recentlyAddedBooks }
+
+  func browseGroups(for facet: LibraryBrowseFacet) -> [LibraryBrowseGroup] {
+    library.browseGroups(for: facet)
+  }
+
+  @discardableResult
+  func setBookFinished(bookID: UUID, isFinished: Bool) async -> Bool {
+    await applyLibraryOrganizationMutation { candidate in
+      guard let index = candidate.books.firstIndex(where: { $0.id == bookID }) else {
+        throw PlayerCoreError.missingBook(bookID)
+      }
+      let now = environment.clock.now()
+      if isFinished {
+        let durationMilliseconds = Int64(
+          (max(0, candidate.books[index].durationSeconds) * 1_000).rounded(.down)
+        )
+        candidate.books[index].listeningState = BookListeningState(
+          status: .finished,
+          positionMilliseconds: durationMilliseconds,
+          lastListenedAt: now,
+          finishedAt: now
+        )
+        candidate.upNextBookIDs.removeAll { $0 == bookID }
+      } else {
+        candidate.books[index].listeningState.status =
+          candidate.books[index].listeningState.positionMilliseconds > 0
+          ? .inProgress : .unplayed
+        candidate.books[index].listeningState.finishedAt = nil
+      }
+    }
+  }
+
+  @discardableResult
+  func addToUpNext(bookID: UUID) async -> Bool {
+    await applyLibraryOrganizationMutation { candidate in
+      guard candidate.books.contains(where: { $0.id == bookID }) else {
+        throw PlayerCoreError.missingBook(bookID)
+      }
+      if !candidate.upNextBookIDs.contains(bookID) {
+        candidate.upNextBookIDs.append(bookID)
+      }
+    }
+  }
+
+  @discardableResult
+  func removeFromUpNext(bookID: UUID) async -> Bool {
+    await applyLibraryOrganizationMutation { candidate in
+      candidate.upNextBookIDs.removeAll { $0 == bookID }
+    }
+  }
+
+  @discardableResult
+  func reorderUpNext(bookIDs: [UUID]) async -> Bool {
+    await applyLibraryOrganizationMutation { candidate in
+      guard validReorder(bookIDs, replacing: candidate.upNextBookIDs) else {
+        throw LibraryOrganizationError.invalidBookOrder
+      }
+      candidate.upNextBookIDs = bookIDs
+    }
+  }
+
+  @discardableResult
+  func createCollection(name: String) async -> UUID? {
+    let collectionID = await environment.ids.next()
+    let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    let succeeded = await applyLibraryOrganizationMutation { candidate in
+      try validateCollectionName(normalizedName, excluding: nil, in: candidate)
+      let now = environment.clock.now()
+      candidate.collections.append(BookCollection(
+        id: collectionID,
+        name: normalizedName,
+        orderedBookIDs: [],
+        createdAt: now,
+        updatedAt: now
+      ))
+    }
+    return succeeded ? collectionID : nil
+  }
+
+  @discardableResult
+  func renameCollection(id: UUID, name: String) async -> Bool {
+    let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    return await applyLibraryOrganizationMutation { candidate in
+      guard let index = candidate.collections.firstIndex(where: { $0.id == id }) else {
+        throw LibraryOrganizationError.missingCollection(id)
+      }
+      try validateCollectionName(normalizedName, excluding: id, in: candidate)
+      candidate.collections[index].name = normalizedName
+      candidate.collections[index].updatedAt = environment.clock.now()
+    }
+  }
+
+  @discardableResult
+  func deleteCollection(id: UUID) async -> Bool {
+    await applyLibraryOrganizationMutation { candidate in
+      guard let index = candidate.collections.firstIndex(where: { $0.id == id }) else {
+        throw LibraryOrganizationError.missingCollection(id)
+      }
+      candidate.collections.remove(at: index)
+    }
+  }
+
+  @discardableResult
+  func addBook(_ bookID: UUID, toCollection collectionID: UUID) async -> Bool {
+    await applyLibraryOrganizationMutation { candidate in
+      guard candidate.books.contains(where: { $0.id == bookID }) else {
+        throw PlayerCoreError.missingBook(bookID)
+      }
+      guard let index = candidate.collections.firstIndex(where: { $0.id == collectionID }) else {
+        throw LibraryOrganizationError.missingCollection(collectionID)
+      }
+      if !candidate.collections[index].orderedBookIDs.contains(bookID) {
+        candidate.collections[index].orderedBookIDs.append(bookID)
+        candidate.collections[index].updatedAt = environment.clock.now()
+      }
+    }
+  }
+
+  @discardableResult
+  func removeBook(_ bookID: UUID, fromCollection collectionID: UUID) async -> Bool {
+    await applyLibraryOrganizationMutation { candidate in
+      guard let index = candidate.collections.firstIndex(where: { $0.id == collectionID }) else {
+        throw LibraryOrganizationError.missingCollection(collectionID)
+      }
+      candidate.collections[index].orderedBookIDs.removeAll { $0 == bookID }
+      candidate.collections[index].updatedAt = environment.clock.now()
+    }
+  }
+
+  @discardableResult
+  func reorderCollection(_ collectionID: UUID, bookIDs: [UUID]) async -> Bool {
+    await applyLibraryOrganizationMutation { candidate in
+      guard let index = candidate.collections.firstIndex(where: { $0.id == collectionID }) else {
+        throw LibraryOrganizationError.missingCollection(collectionID)
+      }
+      guard validReorder(bookIDs, replacing: candidate.collections[index].orderedBookIDs) else {
+        throw LibraryOrganizationError.invalidBookOrder
+      }
+      candidate.collections[index].orderedBookIDs = bookIDs
+      candidate.collections[index].updatedAt = environment.clock.now()
+    }
+  }
+
+  @discardableResult
+  func setAllBooksViewStyle(_ style: LibraryViewStyle) async -> Bool {
+    await applyLibraryOrganizationMutation { candidate in
+      candidate.allBooksViewStyle = style
+    }
+  }
+
+  @discardableResult
+  func removeBook(
+    bookID: UUID,
+    mediaPolicy: LibraryRemovalMediaPolicy
+  ) async -> UUID? {
+    guard let originalBookIndex = library.books.firstIndex(where: { $0.id == bookID }) else {
+      lastErrorMessage = PlayerCoreError.missingBook(bookID).localizedDescription
+      return nil
+    }
+    let transactionID = await environment.ids.next()
+    var mediaManifest: TrashedMediaManifest?
+    do {
+      if mediaPolicy == .moveManagedMediaToTrash {
+        mediaManifest = try await environment.media.moveManagedMediaToTrash(
+          bookID: bookID,
+          transactionID: transactionID
+        )
+      }
+
+      var candidate = library
+      let book = candidate.books.remove(at: originalBookIndex)
+      let upNextIndex = candidate.upNextBookIDs.firstIndex(of: bookID)
+      candidate.upNextBookIDs.removeAll { $0 == bookID }
+      var placements: [CollectionBookPlacement] = []
+      for index in candidate.collections.indices {
+        if let placement = candidate.collections[index].orderedBookIDs.firstIndex(of: bookID) {
+          placements.append(CollectionBookPlacement(
+            collectionID: candidate.collections[index].id,
+            index: placement
+          ))
+          candidate.collections[index].orderedBookIDs.removeAll { $0 == bookID }
+          candidate.collections[index].updatedAt = environment.clock.now()
+        }
+      }
+      let wasCurrentBook = candidate.currentBookID == bookID
+      let playbackPosition = candidate.playbackPosition?.bookID == bookID
+        ? candidate.playbackPosition : nil
+      if playbackPosition != nil { candidate.playbackPosition = nil }
+      let positionEvents = candidate.positionJournal.filter { $0.bookID == bookID }
+      candidate.positionJournal.removeAll { $0.bookID == bookID }
+      let metadataTransactions = candidate.metadataTransactions.filter {
+        $0.target == .book(bookID)
+      }
+      candidate.metadataTransactions.removeAll { $0.target == .book(bookID) }
+      if wasCurrentBook { candidate.currentBookID = nil }
+      candidate.trashTransactions.append(LibraryTrashTransaction(
+        id: transactionID,
+        book: book,
+        originalBookIndex: originalBookIndex,
+        mediaPolicy: mediaPolicy,
+        mediaManifest: mediaManifest,
+        upNextIndex: upNextIndex,
+        collectionPlacements: placements,
+        wasCurrentBook: wasCurrentBook,
+        playbackPosition: playbackPosition,
+        positionEvents: positionEvents,
+        metadataTransactions: metadataTransactions,
+        removedAt: environment.clock.now(),
+        status: .recoverable,
+        restoredAt: nil
+      ))
+      try await environment.persistence.save(candidate)
+      library = candidate
+      if wasCurrentBook {
+        environment.playback.pause()
+        playbackState = .unloaded
+      }
+      lastErrorMessage = nil
+      publishNowPlaying()
+      return transactionID
+    } catch {
+      if let mediaManifest {
+        try? await environment.media.restoreManagedMediaFromTrash(mediaManifest)
+      }
+      lastErrorMessage = error.localizedDescription
+      return nil
+    }
+  }
+
+  @discardableResult
+  func restoreTrashedBook(transactionID: UUID) async -> Bool {
+    guard let transactionIndex = library.trashTransactions.firstIndex(where: {
+      $0.id == transactionID
+    }) else {
+      lastErrorMessage = LibraryOrganizationError.missingTrashTransaction(transactionID)
+        .localizedDescription
+      return false
+    }
+    let transaction = library.trashTransactions[transactionIndex]
+    guard transaction.status == .recoverable else {
+      lastErrorMessage = LibraryOrganizationError.trashTransactionNotRecoverable(transactionID)
+        .localizedDescription
+      return false
+    }
+    guard !library.books.contains(where: { $0.id == transaction.book.id }) else {
+      lastErrorMessage = LibraryOrganizationError.bookAlreadyExists(transaction.book.id)
+        .localizedDescription
+      return false
+    }
+
+    var restoredMedia = false
+    do {
+      if let manifest = transaction.mediaManifest {
+        try await environment.media.restoreManagedMediaFromTrash(manifest)
+        restoredMedia = true
+      }
+      var candidate = library
+      candidate.books.insert(
+        transaction.book,
+        at: min(max(0, transaction.originalBookIndex), candidate.books.count)
+      )
+      if let upNextIndex = transaction.upNextIndex,
+        !candidate.upNextBookIDs.contains(transaction.book.id)
+      {
+        candidate.upNextBookIDs.insert(
+          transaction.book.id,
+          at: min(max(0, upNextIndex), candidate.upNextBookIDs.count)
+        )
+      }
+      for placement in transaction.collectionPlacements {
+        guard let collectionIndex = candidate.collections.firstIndex(where: {
+          $0.id == placement.collectionID
+        }) else { continue }
+        if !candidate.collections[collectionIndex].orderedBookIDs.contains(transaction.book.id) {
+          candidate.collections[collectionIndex].orderedBookIDs.insert(
+            transaction.book.id,
+            at: min(
+              max(0, placement.index),
+              candidate.collections[collectionIndex].orderedBookIDs.count
+            )
+          )
+          candidate.collections[collectionIndex].updatedAt = environment.clock.now()
+        }
+      }
+      let existingEventIDs = Set(candidate.positionJournal.map(\.id))
+      candidate.positionJournal.append(contentsOf: transaction.positionEvents.filter {
+        !existingEventIDs.contains($0.id)
+      })
+      candidate.positionJournal.sort { $0.sequence < $1.sequence }
+      let existingMetadataTransactionIDs = Set(candidate.metadataTransactions.map(\.id))
+      candidate.metadataTransactions.append(contentsOf: transaction.metadataTransactions.filter {
+        !existingMetadataTransactionIDs.contains($0.id)
+      })
+      if transaction.wasCurrentBook && candidate.currentBookID == nil {
+        candidate.currentBookID = transaction.book.id
+        candidate.playbackPosition = transaction.playbackPosition
+      }
+      candidate.trashTransactions[transactionIndex].status = .restored
+      candidate.trashTransactions[transactionIndex].restoredAt = environment.clock.now()
+      try await environment.persistence.save(candidate)
+      library = candidate
+      if candidate.currentBookID == transaction.book.id {
+        let seconds = candidate.playbackPosition?.seconds
+          ?? transaction.book.listeningState.positionSeconds
+        playbackState = PlaybackState(
+          status: .paused,
+          loadedBookID: transaction.book.id,
+          elapsedSeconds: seconds
+        )
+        // The durable restore is complete even if an audio adapter cannot load
+        // immediately (for example while protected files are unavailable).
+        try? await loadCurrentBookIntoPlayback()
+      }
+      lastErrorMessage = nil
+      publishNowPlaying()
+      return true
+    } catch {
+      if restoredMedia {
+        _ = try? await environment.media.moveManagedMediaToTrash(
+          bookID: transaction.book.id,
+          transactionID: transactionID
+        )
+      }
+      lastErrorMessage = error.localizedDescription
+      return false
+    }
+  }
+
   func loadCurrentBook() async {
     do {
       try await loadCurrentBookIntoPlayback()
@@ -945,7 +1278,7 @@ final class PlayerModel {
       let url = try await environment.media.managedURL(for: asset.managedRelativePath)
       let startSeconds = seconds
         ?? (library.playbackPosition?.bookID == bookID ? library.playbackPosition?.seconds : nil)
-        ?? 0
+        ?? (book.listeningState.status == .finished ? 0 : book.listeningState.positionSeconds)
       try await environment.playback.load(url: url, bookID: bookID, at: startSeconds)
       environment.playback.play()
       playbackState = environment.playback.state
@@ -1101,6 +1434,17 @@ final class PlayerModel {
     library.positionJournal.append(event)
     library.playbackPosition = position
     library.currentBookID = bookID
+    if let bookIndex = library.books.firstIndex(where: { $0.id == bookID }) {
+      if library.books[bookIndex].listeningState.status == .finished {
+        library.books[bookIndex].listeningState.positionMilliseconds = maximumMilliseconds
+      } else {
+        library.books[bookIndex].listeningState.status = safeMilliseconds > 0
+          ? .inProgress : .unplayed
+        library.books[bookIndex].listeningState.positionMilliseconds = safeMilliseconds
+        library.books[bookIndex].listeningState.finishedAt = nil
+      }
+      library.books[bookIndex].listeningState.lastListenedAt = event.acknowledgedAt
+    }
     playbackState.loadedBookID = bookID
     playbackState.elapsedSeconds = position.seconds
     do {
@@ -1612,6 +1956,41 @@ final class PlayerModel {
 
   private func persist() async throws {
     try await environment.persistence.save(library)
+  }
+
+  private func applyLibraryOrganizationMutation(
+    _ mutation: (inout LibrarySnapshot) throws -> Void
+  ) async -> Bool {
+    var candidate = library
+    do {
+      try mutation(&candidate)
+      try await environment.persistence.save(candidate)
+      library = candidate
+      lastErrorMessage = nil
+      return true
+    } catch {
+      lastErrorMessage = error.localizedDescription
+      return false
+    }
+  }
+}
+
+private func validReorder(_ proposed: [UUID], replacing existing: [UUID]) -> Bool {
+  proposed.count == Set(proposed).count
+    && proposed.count == existing.count
+    && Set(proposed) == Set(existing)
+}
+
+private func validateCollectionName(
+  _ name: String,
+  excluding collectionID: UUID?,
+  in library: LibrarySnapshot
+) throws {
+  guard !name.isEmpty else { throw LibraryOrganizationError.invalidCollectionName }
+  guard !library.collections.contains(where: {
+    $0.id != collectionID && $0.name.caseInsensitiveCompare(name) == .orderedSame
+  }) else {
+    throw LibraryOrganizationError.duplicateCollectionName(name)
   }
 }
 

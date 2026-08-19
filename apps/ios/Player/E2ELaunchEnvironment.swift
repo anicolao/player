@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import UIKit
 
@@ -25,6 +26,8 @@ extension PlayerEnvironment {
           return try importIngressEnvironment(reset: arguments.contains("-e2e-reset"))
         case "synthetic-metadata-repair":
           return try metadataRepairEnvironment()
+        case "synthetic-populated-library":
+          return try populatedLibraryEnvironment(reset: arguments.contains("-e2e-reset"))
         default:
           break
         }
@@ -389,6 +392,184 @@ extension PlayerEnvironment {
       )
     }
 
+    private static func populatedLibraryEnvironment(reset: Bool) throws -> PlayerEnvironment {
+      let launchEnvironment = ProcessInfo.processInfo.environment
+      guard
+        let descriptorEncoded = launchEnvironment["PLAYER_E2E_LIBRARY_DESCRIPTOR_BASE64"],
+        let descriptorData = Data(base64Encoded: descriptorEncoded),
+        let audioEncoded = launchEnvironment["PLAYER_E2E_LIBRARY_AUDIO_BASE64"],
+        let audio = Data(base64Encoded: audioEncoded)
+      else {
+        throw PlayerCoreError.fileOperation("The synthetic populated-library fixture is unavailable.")
+      }
+      let descriptor = try JSONDecoder().decode(E2EPopulatedLibraryDescriptor.self, from: descriptorData)
+      guard
+        descriptor.schemaVersion == 1,
+        descriptor.books.count == 5,
+        descriptor.audio.byteCount == audio.count,
+        descriptor.audio.sha256 == SHA256.hash(data: audio).map({ String(format: "%02x", $0) }).joined()
+      else {
+        throw PlayerCoreError.fileOperation("The synthetic populated-library fixture failed validation.")
+      }
+
+      let support = try FileManager.default.url(
+        for: .applicationSupportDirectory,
+        in: .userDomainMask,
+        appropriateFor: nil,
+        create: true
+      )
+      let root = support.appending(path: "PlayerE2EPopulatedLibrary", directoryHint: .isDirectory)
+      if reset { try? FileManager.default.removeItem(at: root) }
+      try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+
+      let clock = ISO8601DateFormatter().date(from: descriptor.clock)
+        ?? Date(timeIntervalSince1970: 1_776_000_000)
+      var books: [Book] = []
+      for (index, fixtureBook) in descriptor.books.enumerated() {
+        guard
+          let bookID = UUID(uuidString: fixtureBook.id),
+          let assetID = UUID(uuidString: fixtureBook.assetID),
+          let coverEncoded = launchEnvironment["PLAYER_E2E_LIBRARY_COVER_B\(index + 1)_BASE64"],
+          let cover = Data(base64Encoded: coverEncoded)
+        else {
+          throw PlayerCoreError.fileOperation("A synthetic populated-library record is invalid.")
+        }
+        let relativePath = "Media/\(bookID.uuidString.lowercased())/\(assetID.uuidString.lowercased()).m4b"
+        let managedURL = root.appending(path: relativePath)
+        if !FileManager.default.fileExists(atPath: managedURL.path) {
+          try FileManager.default.createDirectory(
+            at: managedURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+          )
+          try audio.write(to: managedURL, options: .atomic)
+        }
+        let asset = AudioAsset(
+          id: assetID,
+          originalFilename: "library-book-audio.m4b",
+          managedRelativePath: relativePath,
+          checksumSHA256: descriptor.audio.sha256,
+          byteCount: Int64(audio.count),
+          durationSeconds: Double(descriptor.audio.logicalBookDurationMilliseconds) / 1_000,
+          container: "M4B"
+        )
+        let author = Contributor(
+          id: fixtureBook.author.id,
+          displayName: fixtureBook.author.name
+        )
+        let narrator = Contributor(
+          id: fixtureBook.narrator.id,
+          displayName: fixtureBook.narrator.name
+        )
+        let memberships = fixtureBook.series.map {
+          [SeriesMembership(seriesID: $0.id, name: $0.name, position: $0.position)]
+        } ?? []
+        let metadata = AudiobookMetadata(
+          title: fixtureBook.title,
+          authors: [author],
+          narrators: [narrator],
+          seriesMemberships: memberships,
+          cover: CoverArtwork(originalData: cover, mediaType: "image/png", source: .embedded)
+        )
+        let position = fixtureBook.positionMilliseconds
+        let listeningState = BookListeningState(
+          status: fixtureBook.finished ? .finished : (position > 0 ? .inProgress : .unplayed),
+          positionMilliseconds: position,
+          lastListenedAt: position > 0 ? clock.addingTimeInterval(Double(-10 - index * 10)) : nil,
+          finishedAt: fixtureBook.finished ? clock.addingTimeInterval(-100) : nil
+        )
+        books.append(
+          Book(
+            id: bookID,
+            title: fixtureBook.title,
+            authors: [fixtureBook.author.name],
+            durationSeconds: asset.durationSeconds,
+            artworkData: cover,
+            assets: [asset],
+            dateAdded: clock.addingTimeInterval(Double(fixtureBook.addedOrder)),
+            narrators: [fixtureBook.narrator.name],
+            seriesName: fixtureBook.series?.name,
+            seriesPosition: fixtureBook.series?.position,
+            artworkMediaType: "image/png",
+            chapters: [
+              Chapter(
+                id: "file-\(assetID.uuidString.lowercased())",
+                title: "Full Book",
+                startSeconds: 0,
+                durationSeconds: asset.durationSeconds,
+                source: .file,
+                assetID: assetID
+              )
+            ],
+            metadata: metadata,
+            listeningState: listeningState
+          )
+        )
+      }
+
+      guard
+        let currentBookID = UUID(uuidString: descriptor.currentBookID),
+        let currentBook = books.first(where: { $0.id == currentBookID }),
+        let seedEventID = UUID(uuidString: "90000000-0000-0000-0000-000000000701"),
+        let collectionID = UUID(uuidString: descriptor.generatedIDs.collection),
+        let trashID = UUID(uuidString: descriptor.generatedIDs.trashTransaction)
+      else {
+        throw PlayerCoreError.fileOperation("The synthetic populated-library identity map is invalid.")
+      }
+      let seedEvent = PositionEvent.acknowledged(
+        id: seedEventID,
+        bookID: currentBookID,
+        positionMilliseconds: currentBook.listeningState.positionMilliseconds,
+        sequence: 1,
+        reason: .pause,
+        acknowledgedAt: clock,
+        previousEventID: nil
+      )
+      let seed = LibrarySnapshot(
+        books: books,
+        importJobs: [],
+        currentBookID: currentBookID,
+        playbackPosition: PlaybackPosition(
+          bookID: currentBookID,
+          positionMilliseconds: seedEvent.positionMilliseconds,
+          sequence: seedEvent.sequence,
+          sourceEventID: seedEvent.id,
+          updatedAt: clock
+        ),
+        positionJournal: [seedEvent],
+        upNextBookIDs: descriptor.upNext.compactMap(UUID.init(uuidString:)),
+        allBooksViewStyle: LibraryViewStyle(rawValue: descriptor.viewPreference) ?? .grid
+      )
+      E2ELibraryOrganizationBridge.shared.configure(
+        rootURL: root,
+        trackedBookID: descriptor.books[4].id,
+        expectedChecksum: descriptor.audio.sha256
+      )
+      let libraryFileURL = root.appending(path: "Library.json")
+      let generatedIDs: [UUID]
+      if
+        let persistedData = try? Data(contentsOf: libraryFileURL),
+        let envelope = try? JSONSerialization.jsonObject(with: persistedData) as? [String: Any],
+        let library = envelope["library"] as? [String: Any],
+        let collections = library["collections"] as? [[String: Any]],
+        collections.contains(where: { ($0["id"] as? String)?.lowercased() == collectionID.uuidString.lowercased() })
+      {
+        generatedIDs = [trashID]
+      } else {
+        generatedIDs = [collectionID, trashID]
+      }
+      return PlayerEnvironment(
+        persistence: E2ESeededLibraryStore(
+          base: CodableLibraryStore(fileURL: libraryFileURL),
+          seed: seed
+        ),
+        media: FileSystemMediaManager(rootURL: root),
+        inspector: DeterministicAudioInspector(result: .failure(.unreadableAudio("unused"))),
+        playback: DeterministicPlaybackController(),
+        clock: FixedPlayerClock(value: clock),
+        ids: DeterministicPlayerIDGenerator(values: generatedIDs)
+      )
+    }
+
     private static func messyMultifileEnvironment(reset: Bool) throws -> PlayerEnvironment {
       let root = FileManager.default.temporaryDirectory.appending(
         path: "PlayerE2EMessyMultifile",
@@ -554,6 +735,83 @@ extension PlayerEnvironment {
 }
 
 #if E2E
+  private struct E2EPopulatedLibraryDescriptor: Decodable {
+    struct Audio: Decodable {
+      var byteCount: Int
+      var sha256: String
+      var logicalBookDurationMilliseconds: Int64
+    }
+
+    struct Identity: Decodable {
+      var id: String
+      var name: String
+    }
+
+    struct Series: Decodable {
+      var id: String
+      var name: String
+      var position: String
+    }
+
+    struct FixtureBook: Decodable {
+      var id: String
+      var assetID: String
+      var title: String
+      var author: Identity
+      var narrator: Identity
+      var series: Series?
+      var positionMilliseconds: Int64
+      var finished: Bool
+      var addedOrder: Int
+    }
+
+    struct GeneratedIDs: Decodable {
+      var collection: String
+      var trashTransaction: String
+    }
+
+    var schemaVersion: Int
+    var clock: String
+    var audio: Audio
+    var books: [FixtureBook]
+    var currentBookID: String
+    var upNext: [String]
+    var viewPreference: String
+    var generatedIDs: GeneratedIDs
+  }
+
+  @MainActor
+  final class E2ELibraryOrganizationBridge {
+    static let shared = E2ELibraryOrganizationBridge()
+
+    private var rootURL: URL?
+    private var trackedBookID: String?
+    private var expectedChecksum: String?
+
+    func configure(rootURL: URL, trackedBookID: String, expectedChecksum: String) {
+      self.rootURL = rootURL
+      self.trackedBookID = trackedBookID.lowercased()
+      self.expectedChecksum = expectedChecksum
+    }
+
+    var managedChecksumPreserved: Bool {
+      guard let rootURL, let trackedBookID, let expectedChecksum else { return false }
+      let fileManager = FileManager.default
+      guard let enumerator = fileManager.enumerator(
+        at: rootURL,
+        includingPropertiesForKeys: [.isRegularFileKey],
+        options: [.skipsHiddenFiles]
+      ) else { return false }
+      let candidates = enumerator.compactMap { $0 as? URL }.filter { url in
+        url.pathExtension.lowercased() == "m4b"
+          && url.path.lowercased().contains(trackedBookID)
+      }
+      guard candidates.count == 1, let data = try? Data(contentsOf: candidates[0]) else { return false }
+      let checksum = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+      return checksum == expectedChecksum
+    }
+  }
+
   @MainActor
   final class E2EMetadataRepairBridge {
     static let shared = E2EMetadataRepairBridge()

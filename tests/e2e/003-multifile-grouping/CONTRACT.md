@@ -103,7 +103,7 @@ transaction:pending:books=0:assets=0:staging=8:source-unchanged=true
 
 `add-import-to-library` performs one recoverable transaction for the single
 proposal. No partial library book may be observable. Success exposes final book
-`library-book-30000000-0000-0000-0000-000000000100`, `8 files`, and:
+`recent-book-30000000-0000-0000-0000-000000000100` in the populated Library and:
 
 ```text
 transaction:committed:books=1:assets=8:staging=0:source-unchanged=true:rollback=available

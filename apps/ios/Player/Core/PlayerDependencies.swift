@@ -24,6 +24,11 @@ protocol MediaManaging: Sendable {
     in workspace: ZipImportWorkspace,
     jobID: UUID
   ) async throws -> [AcquiredAudioFile]
+  func moveManagedMediaToTrash(
+    bookID: UUID,
+    transactionID: UUID
+  ) async throws -> TrashedMediaManifest
+  func restoreManagedMediaFromTrash(_ manifest: TrashedMediaManifest) async throws
 }
 
 extension MediaManaging {
@@ -45,6 +50,17 @@ extension MediaManaging {
     jobID: UUID
   ) async throws -> [AcquiredAudioFile] {
     throw PlayerCoreError.fileOperation("This media source does not support extracted audio.")
+  }
+
+  func moveManagedMediaToTrash(
+    bookID: UUID,
+    transactionID: UUID
+  ) async throws -> TrashedMediaManifest {
+    throw PlayerCoreError.fileOperation("This media source does not support recoverable removal.")
+  }
+
+  func restoreManagedMediaFromTrash(_ manifest: TrashedMediaManifest) async throws {
+    throw PlayerCoreError.fileOperation("This media source does not support trash restoration.")
   }
 }
 

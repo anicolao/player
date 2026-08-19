@@ -1,0 +1,85 @@
+{
+  "fixture": "synthetic-populated-library",
+  "schemaVersion": 1,
+  "clock": "2026-08-18T13:41:00Z",
+  "audio": {
+    "file": "library-book-audio.m4b",
+    "byteCount": 8461,
+    "sha256": "6c5a700ee340ace483b4cd45188403ca9a77fd60d94ba248063ee2c7fc6366f7",
+    "encodedDurationMilliseconds": 2100,
+    "logicalBookDurationMilliseconds": 120000
+  },
+  "books": [
+    {
+      "id": "90000000-0000-0000-0000-000000000001",
+      "assetID": "90000000-0000-0000-0000-000000000101",
+      "title": "Ember at Daybreak",
+      "author": {"id": "90000000-0000-0000-0000-000000000201", "name": "Ari Rowan"},
+      "narrator": {"id": "90000000-0000-0000-0000-000000000301", "name": "Noor Bell"},
+      "series": {"id": "90000000-0000-0000-0000-000000000401", "name": "Wayfinder", "position": "1"},
+      "cover": "library-cover-b1.png",
+      "positionMilliseconds": 45000,
+      "finished": false,
+      "addedOrder": 1
+    },
+    {
+      "id": "90000000-0000-0000-0000-000000000002",
+      "assetID": "90000000-0000-0000-0000-000000000102",
+      "title": "Tides Between Stars",
+      "author": {"id": "90000000-0000-0000-0000-000000000201", "name": "Ari Rowan"},
+      "narrator": {"id": "90000000-0000-0000-0000-000000000302", "name": "Sage Lin"},
+      "series": {"id": "90000000-0000-0000-0000-000000000401", "name": "Wayfinder", "position": "2"},
+      "cover": "library-cover-b2.png",
+      "positionMilliseconds": 0,
+      "finished": false,
+      "addedOrder": 2
+    },
+    {
+      "id": "90000000-0000-0000-0000-000000000003",
+      "assetID": "90000000-0000-0000-0000-000000000103",
+      "title": "The Clockwork Orchard",
+      "author": {"id": "90000000-0000-0000-0000-000000000202", "name": "Mina Sol"},
+      "narrator": {"id": "90000000-0000-0000-0000-000000000301", "name": "Noor Bell"},
+      "series": {"id": "90000000-0000-0000-0000-000000000402", "name": "Orchard Hours", "position": "1"},
+      "cover": "library-cover-b3.png",
+      "positionMilliseconds": 30000,
+      "finished": false,
+      "addedOrder": 3
+    },
+    {
+      "id": "90000000-0000-0000-0000-000000000004",
+      "assetID": "90000000-0000-0000-0000-000000000104",
+      "title": "A Lantern for Winter",
+      "author": {"id": "90000000-0000-0000-0000-000000000203", "name": "Theo March"},
+      "narrator": {"id": "90000000-0000-0000-0000-000000000302", "name": "Sage Lin"},
+      "series": null,
+      "cover": "library-cover-b4.png",
+      "positionMilliseconds": 120000,
+      "finished": true,
+      "addedOrder": 4
+    },
+    {
+      "id": "90000000-0000-0000-0000-000000000005",
+      "assetID": "90000000-0000-0000-0000-000000000105",
+      "title": "Quiet Maps",
+      "author": {"id": "90000000-0000-0000-0000-000000000202", "name": "Mina Sol"},
+      "narrator": {"id": "90000000-0000-0000-0000-000000000303", "name": "Ivo Chen"},
+      "series": {"id": "90000000-0000-0000-0000-000000000402", "name": "Orchard Hours", "position": "2"},
+      "cover": "library-cover-b5.png",
+      "positionMilliseconds": 0,
+      "finished": false,
+      "addedOrder": 5
+    }
+  ],
+  "currentBookID": "90000000-0000-0000-0000-000000000001",
+  "upNext": [
+    "90000000-0000-0000-0000-000000000002",
+    "90000000-0000-0000-0000-000000000005",
+    "90000000-0000-0000-0000-000000000003"
+  ],
+  "viewPreference": "grid",
+  "generatedIDs": {
+    "collection": "90000000-0000-0000-0000-000000000501",
+    "trashTransaction": "90000000-0000-0000-0000-000000000601"
+  }
+}
