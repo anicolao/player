@@ -17,26 +17,36 @@
 		13E421A536E9F34BBD06FFFB /* path-traversal.zip in Resources */ = {isa = PBXBuildFile; fileRef = 829A14DDE4BEE056A4128257 /* path-traversal.zip */; };
 		14B6A676D022A8F65342160C /* PlayerModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 915702A76157FE07FD60F9BE /* PlayerModels.swift */; };
 		1961133D40EDA39206D7F911 /* LaunchUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B87A4BD2B55850215CBD69E /* LaunchUITests.swift */; };
+		2037E6AB5E61C0445C81E3A3 /* document-open-interrupted-acquire.m4a in Resources */ = {isa = PBXBuildFile; fileRef = BFE9832E31CE7EC3DD8972F2 /* document-open-interrupted-acquire.m4a */; };
 		23F910531BA6EF6BFB7DC6AF /* PlayerCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02E4BC6AC5288C37A9A7D249 /* PlayerCoreTests.swift */; };
 		271C99B30E4DFB7254487952 /* L’Écho — piste 4 – café.m4a in Resources */ = {isa = PBXBuildFile; fileRef = F1B32937E437299F72D7723B /* L’Écho — piste 4 – café.m4a */; };
+		3331BED25597AC39F67BCB0B /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C488BA918789006322F93C74 /* ShareViewController.swift */; };
 		3388761DBC0174A83D4E1DAD /* AudioServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4262848A190808C22C76330 /* AudioServices.swift */; };
 		424C509D4EF3137326AB6FD0 /* valid-multifile.zip in Resources */ = {isa = PBXBuildFile; fileRef = C236D733BA86B8E642C44A87 /* valid-multifile.zip */; };
 		435E30EB44CEA0DD8596A7B7 /* count-limit.zip in Resources */ = {isa = PBXBuildFile; fileRef = 78B0F1D8A657049863B01A9F /* count-limit.zip */; };
 		445D48F4141CD7F29DF63E19 /* Prélude – été.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 52D9C05DBF0780F97B3A42A9 /* Prélude – été.m4a */; };
 		472BABAEE67E6EFCCE12BAA8 /* 03-closing-tone.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 9C0151066C32921543E32B87 /* 03-closing-tone.m4a */; };
+		4FDAB3A5448AD3508E536DF0 /* E2EImportIngressBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFACB93CD2DE04CCD74F1F20 /* E2EImportIngressBridge.swift */; };
+		52E0E27EB2CE5B6FEA4A0DFD /* SyntheticImportChannels.sha256 in Resources */ = {isa = PBXBuildFile; fileRef = F5332747623CABA9F007960A /* SyntheticImportChannels.sha256 */; };
 		58D6186913437D41CABD8159 /* SafeZipExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = D71BD098722534730D10B660 /* SafeZipExtractor.swift */; };
 		59300DDEF8C83D2FF6C62302 /* synthetic-single-book.m4b in Resources */ = {isa = PBXBuildFile; fileRef = FDEBF33BF0AB6306251F1337 /* synthetic-single-book.m4b */; };
 		5B742CC4A9BCFA2A0702A3ED /* synthetic-single-book.m4b in Resources */ = {isa = PBXBuildFile; fileRef = FDEBF33BF0AB6306251F1337 /* synthetic-single-book.m4b */; };
 		5C9C8207E3AC8D8BC77C582E /* SyntheticZIPs.sha256 in Resources */ = {isa = PBXBuildFile; fileRef = D09A4E4E776E73279970B73B /* SyntheticZIPs.sha256 */; };
+		5EEBB8A42D155AB65A805D8E /* synthetic-import-channels-fixture.json in Resources */ = {isa = PBXBuildFile; fileRef = AB38C123633023881FB25FEF /* synthetic-import-channels-fixture.json */; };
 		630626C2757CAD8E866F2A60 /* SyntheticMessyMultifile.sha256 in Resources */ = {isa = PBXBuildFile; fileRef = 2AF7054F4F9B696438AC9503 /* SyntheticMessyMultifile.sha256 */; };
+		648E9E38B807DD6AE8D2605C /* share-extension-handoff.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 3D6D9B7BE2333E5BE9C66EF0 /* share-extension-handoff.m4a */; };
 		6C34314BB122522162DAC8B8 /* MultifileGroupingUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7D67B3F7F78E8750B6D9057 /* MultifileGroupingUITests.swift */; };
 		6CEE93827697EB66122F4C33 /* RemoteInterruptionUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A1648EF0EBB7BB5D91BF536 /* RemoteInterruptionUITests.swift */; };
+		6E5CC9A908A8DD83897022B7 /* ImportIngressResilienceUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6592BB65EEE9F11DFD6D0AA /* ImportIngressResilienceUITests.swift */; };
 		70E5B4E9152228E0D6098F9B /* fixture.json in Resources */ = {isa = PBXBuildFile; fileRef = 4F04D22279B366A95D7633C8 /* fixture.json */; };
 		7122F123D29A4ECFCACAA576 /* PlayerDependencies.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CF26C86A99FC33DAFA347D0 /* PlayerDependencies.swift */; };
 		712DB84557C8DEC4311BBA09 /* ratio-limit.zip in Resources */ = {isa = PBXBuildFile; fileRef = CB02A22ADE7392D8BA567EA0 /* ratio-limit.zip */; };
+		716DF31E44E904CABFEDF299 /* share-extension-envelope.json in Resources */ = {isa = PBXBuildFile; fileRef = D1AAF5F41D398DB0EF91A14E /* share-extension-envelope.json */; };
+		71FFA2892A02749AEA8B60FB /* AppGroupImportHandoffQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8079ECA57CC2CE480A0F1DF3 /* AppGroupImportHandoffQueue.swift */; };
 		777B3CE7E4B0C3EBF67B54AB /* CodableLibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 816C403A8096040072F39E1D /* CodableLibraryStore.swift */; };
 		7D18DF81E703DEEA12ECFF86 /* L’Écho — piste 3.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 9101B008DF263F7327189F17 /* L’Écho — piste 3.m4a */; };
 		7D3C2B0477FCE5FE4B1BD9F6 /* L’Écho — piste 6 – fin.m4a in Resources */ = {isa = PBXBuildFile; fileRef = D3085638600B5ABEC354A6AF /* L’Écho — piste 6 – fin.m4a */; };
+		82EC61DCD0C0FB4E6A47E974 /* ShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 7BB5B988D90DC7221F1FA3B8 /* ShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		86A944DB012268504A7BBF2A /* ImportPlaybackUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18027A604A804858361FFE92 /* ImportPlaybackUITests.swift */; };
 		9369496A7FD7812B3DF24AC1 /* 01-synthetic-chapter.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 525C3F0F3B27C35ADC41FFDA /* 01-synthetic-chapter.mp3 */; };
 		98A7A2C06929E942AC25193B /* E2ELaunchEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = A60A6AAB26EE258A0674DCB7 /* E2ELaunchEnvironment.swift */; };
@@ -46,6 +56,7 @@
 		B25F86357401216E43A6043B /* size-limit.zip in Resources */ = {isa = PBXBuildFile; fileRef = D6E87412E919CEEE2F341940 /* size-limit.zip */; };
 		B2D1A256B2CD4A6825EB1420 /* E2EPlaybackEventBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C81A2C7CC09A3571E0492F5 /* E2EPlaybackEventBridge.swift */; };
 		BC9F3F6DC202CA7A1EF4672A /* PlayerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCB7A34F5BA306FA413A7BD6 /* PlayerApp.swift */; };
+		BE5F0BA50B3D90321B57A84C /* AppGroupImportHandoffQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8079ECA57CC2CE480A0F1DF3 /* AppGroupImportHandoffQueue.swift */; };
 		C01B12F575AD0664E5F98D60 /* synthetic-zips-fixture.json in Resources */ = {isa = PBXBuildFile; fileRef = 6F200990258062971EA1DBE7 /* synthetic-zips-fixture.json */; };
 		C0E2134FC874112E541F827F /* symlink-escape.zip in Resources */ = {isa = PBXBuildFile; fileRef = 7814C439D622A5529DD5EE97 /* symlink-escape.zip */; };
 		C10F9216E9960ABEC5744947 /* PlayerModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35E0EE5748DB2BE2927824AC /* PlayerModel.swift */; };
@@ -62,6 +73,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		45DCB2F7986F2B15EB2AC212 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = F45B4C872F70AD371A0CAA31 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5881E8E59EEA854DF68330AE;
+			remoteInfo = ShareExtension;
+		};
 		72546F22F1A6F1E9A2F22779 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = F45B4C872F70AD371A0CAA31 /* Project object */;
@@ -78,6 +96,20 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		E66371B0621FAA5172440057 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				82EC61DCD0C0FB4E6A47E974 /* ShareExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		02E4BC6AC5288C37A9A7D249 /* PlayerCoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerCoreTests.swift; sourceTree = "<group>"; };
 		18027A604A804858361FFE92 /* ImportPlaybackUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportPlaybackUITests.swift; sourceTree = "<group>"; };
@@ -86,12 +118,15 @@
 		30D4592F003E4A81B4C6D336 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		35E0EE5748DB2BE2927824AC /* PlayerModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerModel.swift; sourceTree = "<group>"; };
 		3C81A2C7CC09A3571E0492F5 /* E2EPlaybackEventBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = E2EPlaybackEventBridge.swift; sourceTree = "<group>"; };
+		3D6D9B7BE2333E5BE9C66EF0 /* share-extension-handoff.m4a */ = {isa = PBXFileReference; path = "share-extension-handoff.m4a"; sourceTree = "<group>"; };
+		49F768E97AF59A1C99EA3B00 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		4F04D22279B366A95D7633C8 /* fixture.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = fixture.json; sourceTree = "<group>"; };
 		4F8162CA2CA9F8DB4C44D0D3 /* MetadataChapterUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetadataChapterUITests.swift; sourceTree = "<group>"; };
 		525C3F0F3B27C35ADC41FFDA /* 01-synthetic-chapter.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "01-synthetic-chapter.mp3"; sourceTree = "<group>"; };
 		52D9C05DBF0780F97B3A42A9 /* Prélude – été.m4a */ = {isa = PBXFileReference; path = "Prélude – été.m4a"; sourceTree = "<group>"; };
 		5484EB7A72813EE640DFF5C1 /* SafeZIPImportUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafeZIPImportUITests.swift; sourceTree = "<group>"; };
 		58804811EEE19119F8ADA010 /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
+		5A472F6239334DA5828702A9 /* ShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShareExtension.entitlements; sourceTree = "<group>"; };
 		5ABB8C6C8BEDE0621F262590 /* PlayerTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PlayerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		694E9691A6F9F321C335C7EC /* Signal Δ — Part 2.m4a */ = {isa = PBXFileReference; path = "Signal Δ — Part 2.m4a"; sourceTree = "<group>"; };
 		6A4A7588DE24E5408E6246E6 /* PositionRestoreUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PositionRestoreUITests.swift; sourceTree = "<group>"; };
@@ -105,6 +140,8 @@
 		78B0F1D8A657049863B01A9F /* count-limit.zip */ = {isa = PBXFileReference; lastKnownFileType = archive.zip; path = "count-limit.zip"; sourceTree = "<group>"; };
 		7A1648EF0EBB7BB5D91BF536 /* RemoteInterruptionUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteInterruptionUITests.swift; sourceTree = "<group>"; };
 		7A706BEA9DB8BE6E79919745 /* Player.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Player.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		7BB5B988D90DC7221F1FA3B8 /* ShareExtension.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = ShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		8079ECA57CC2CE480A0F1DF3 /* AppGroupImportHandoffQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGroupImportHandoffQueue.swift; sourceTree = "<group>"; };
 		816C403A8096040072F39E1D /* CodableLibraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodableLibraryStore.swift; sourceTree = "<group>"; };
 		829A14DDE4BEE056A4128257 /* path-traversal.zip */ = {isa = PBXFileReference; lastKnownFileType = archive.zip; path = "path-traversal.zip"; sourceTree = "<group>"; };
 		8939611BB5C58FDAB91F6786 /* E2E.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = E2E.xcconfig; sourceTree = "<group>"; };
@@ -115,22 +152,30 @@
 		9C0151066C32921543E32B87 /* 03-closing-tone.m4a */ = {isa = PBXFileReference; path = "03-closing-tone.m4a"; sourceTree = "<group>"; };
 		A391D84FB932E876CDF1D8CE /* SyntheticAudiobook.sha256 */ = {isa = PBXFileReference; path = SyntheticAudiobook.sha256; sourceTree = "<group>"; };
 		A60A6AAB26EE258A0674DCB7 /* E2ELaunchEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = E2ELaunchEnvironment.swift; sourceTree = "<group>"; };
+		AB38C123633023881FB25FEF /* synthetic-import-channels-fixture.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "synthetic-import-channels-fixture.json"; sourceTree = "<group>"; };
 		B03606507BD909AA576A4753 /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
 		BDA99FDA97715E73381B69C7 /* 02-middle-tone.m4a */ = {isa = PBXFileReference; path = "02-middle-tone.m4a"; sourceTree = "<group>"; };
+		BFE9832E31CE7EC3DD8972F2 /* document-open-interrupted-acquire.m4a */ = {isa = PBXFileReference; path = "document-open-interrupted-acquire.m4a"; sourceTree = "<group>"; };
 		C236D733BA86B8E642C44A87 /* valid-multifile.zip */ = {isa = PBXFileReference; lastKnownFileType = archive.zip; path = "valid-multifile.zip"; sourceTree = "<group>"; };
+		C488BA918789006322F93C74 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
+		C6592BB65EEE9F11DFD6D0AA /* ImportIngressResilienceUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportIngressResilienceUITests.swift; sourceTree = "<group>"; };
 		C8AD0E1BABB922E62EE878C8 /* FileSystemMediaManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileSystemMediaManager.swift; sourceTree = "<group>"; };
 		CB02A22ADE7392D8BA567EA0 /* ratio-limit.zip */ = {isa = PBXFileReference; lastKnownFileType = archive.zip; path = "ratio-limit.zip"; sourceTree = "<group>"; };
 		D09A4E4E776E73279970B73B /* SyntheticZIPs.sha256 */ = {isa = PBXFileReference; path = SyntheticZIPs.sha256; sourceTree = "<group>"; };
+		D1AAF5F41D398DB0EF91A14E /* share-extension-envelope.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "share-extension-envelope.json"; sourceTree = "<group>"; };
 		D3085638600B5ABEC354A6AF /* L’Écho — piste 6 – fin.m4a */ = {isa = PBXFileReference; path = "L’Écho — piste 6 – fin.m4a"; sourceTree = "<group>"; };
 		D535AC391536FC6E153C6B6C /* SyntheticFormats.sha256 */ = {isa = PBXFileReference; path = SyntheticFormats.sha256; sourceTree = "<group>"; };
 		D6E87412E919CEEE2F341940 /* size-limit.zip */ = {isa = PBXFileReference; lastKnownFileType = archive.zip; path = "size-limit.zip"; sourceTree = "<group>"; };
 		D71BD098722534730D10B660 /* SafeZipExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafeZipExtractor.swift; sourceTree = "<group>"; };
+		DEF16DEC5369E59833CA6257 /* Player.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Player.entitlements; sourceTree = "<group>"; };
+		DFACB93CD2DE04CCD74F1F20 /* E2EImportIngressBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = E2EImportIngressBridge.swift; sourceTree = "<group>"; };
 		E4262848A190808C22C76330 /* AudioServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioServices.swift; sourceTree = "<group>"; };
 		E5E309165D14A52D15632E94 /* Signal Δ — Part 1.m4a */ = {isa = PBXFileReference; path = "Signal Δ — Part 1.m4a"; sourceTree = "<group>"; };
 		E71DCF9F1BBC2621F00DEBD6 /* SafeZipExtractorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafeZipExtractorTests.swift; sourceTree = "<group>"; };
 		E7D67B3F7F78E8750B6D9057 /* MultifileGroupingUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultifileGroupingUITests.swift; sourceTree = "<group>"; };
 		ED6FC3F9749C35DEF0102533 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		F1B32937E437299F72D7723B /* L’Écho — piste 4 – café.m4a */ = {isa = PBXFileReference; path = "L’Écho — piste 4 – café.m4a"; sourceTree = "<group>"; };
+		F5332747623CABA9F007960A /* SyntheticImportChannels.sha256 */ = {isa = PBXFileReference; path = SyntheticImportChannels.sha256; sourceTree = "<group>"; };
 		FCB7A34F5BA306FA413A7BD6 /* PlayerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerApp.swift; sourceTree = "<group>"; };
 		FDEBF33BF0AB6306251F1337 /* synthetic-single-book.m4b */ = {isa = PBXFileReference; path = "synthetic-single-book.m4b"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -199,10 +244,12 @@
 				ED6FC3F9749C35DEF0102533 /* README.md */,
 				A391D84FB932E876CDF1D8CE /* SyntheticAudiobook.sha256 */,
 				D535AC391536FC6E153C6B6C /* SyntheticFormats.sha256 */,
+				F5332747623CABA9F007960A /* SyntheticImportChannels.sha256 */,
 				2AF7054F4F9B696438AC9503 /* SyntheticMessyMultifile.sha256 */,
 				D09A4E4E776E73279970B73B /* SyntheticZIPs.sha256 */,
 				46619CF9D3C6EE1A87DFA5FC /* SyntheticAudiobook */,
 				645CB5C582D304E2943BCE4E /* SyntheticFormats */,
+				AA86F5511E4405F9977BA104 /* SyntheticImportChannels */,
 				50A2D35BA939138DEC88AA59 /* SyntheticMessyMultifile */,
 				822299C0ABCA489C6CCF63B5 /* SyntheticZIPs */,
 			);
@@ -236,6 +283,7 @@
 				FC55EC03063F9A2D38351811 /* Player */,
 				03E4D8BF29362B9842F7FB8E /* PlayerTests */,
 				B7C5D0F3E2B4FB8E4DD853E6 /* PlayerUITests */,
+				F0155FAA4CF8E9FDC6D2BF2C /* ShareExtension */,
 				BE9B4BA96F99256D533EA8C1 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -274,6 +322,7 @@
 		A3835AF9CA81842E614FF1BA /* Core */ = {
 			isa = PBXGroup;
 			children = (
+				8079ECA57CC2CE480A0F1DF3 /* AppGroupImportHandoffQueue.swift */,
 				E4262848A190808C22C76330 /* AudioServices.swift */,
 				816C403A8096040072F39E1D /* CodableLibraryStore.swift */,
 				C8AD0E1BABB922E62EE878C8 /* FileSystemMediaManager.swift */,
@@ -285,9 +334,21 @@
 			path = Core;
 			sourceTree = "<group>";
 		};
+		AA86F5511E4405F9977BA104 /* SyntheticImportChannels */ = {
+			isa = PBXGroup;
+			children = (
+				BFE9832E31CE7EC3DD8972F2 /* document-open-interrupted-acquire.m4a */,
+				D1AAF5F41D398DB0EF91A14E /* share-extension-envelope.json */,
+				3D6D9B7BE2333E5BE9C66EF0 /* share-extension-handoff.m4a */,
+				AB38C123633023881FB25FEF /* synthetic-import-channels-fixture.json */,
+			);
+			path = SyntheticImportChannels;
+			sourceTree = "<group>";
+		};
 		B7C5D0F3E2B4FB8E4DD853E6 /* PlayerUITests */ = {
 			isa = PBXGroup;
 			children = (
+				C6592BB65EEE9F11DFD6D0AA /* ImportIngressResilienceUITests.swift */,
 				18027A604A804858361FFE92 /* ImportPlaybackUITests.swift */,
 				8B87A4BD2B55850215CBD69E /* LaunchUITests.swift */,
 				4F8162CA2CA9F8DB4C44D0D3 /* MetadataChapterUITests.swift */,
@@ -307,17 +368,30 @@
 				7A706BEA9DB8BE6E79919745 /* Player.app */,
 				5ABB8C6C8BEDE0621F262590 /* PlayerTests.xctest */,
 				7812E6BB57797C2BCCC61E0E /* PlayerUITests.xctest */,
+				7BB5B988D90DC7221F1FA3B8 /* ShareExtension.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		F0155FAA4CF8E9FDC6D2BF2C /* ShareExtension */ = {
+			isa = PBXGroup;
+			children = (
+				49F768E97AF59A1C99EA3B00 /* Info.plist */,
+				5A472F6239334DA5828702A9 /* ShareExtension.entitlements */,
+				C488BA918789006322F93C74 /* ShareViewController.swift */,
+			);
+			path = ShareExtension;
 			sourceTree = "<group>";
 		};
 		FC55EC03063F9A2D38351811 /* Player */ = {
 			isa = PBXGroup;
 			children = (
 				765AEA9C9C330982D6F10A18 /* ContentView.swift */,
+				DFACB93CD2DE04CCD74F1F20 /* E2EImportIngressBridge.swift */,
 				A60A6AAB26EE258A0674DCB7 /* E2ELaunchEnvironment.swift */,
 				3C81A2C7CC09A3571E0492F5 /* E2EPlaybackEventBridge.swift */,
 				30D4592F003E4A81B4C6D336 /* Info.plist */,
+				DEF16DEC5369E59833CA6257 /* Player.entitlements */,
 				FCB7A34F5BA306FA413A7BD6 /* PlayerApp.swift */,
 				A3835AF9CA81842E614FF1BA /* Core */,
 			);
@@ -327,6 +401,23 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		5881E8E59EEA854DF68330AE /* ShareExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9AE16D1014A9779A2D769E51 /* Build configuration list for PBXNativeTarget "ShareExtension" */;
+			buildPhases = (
+				567B971C19D175DB6FF65441 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ShareExtension;
+			packageProductDependencies = (
+			);
+			productName = ShareExtension;
+			productReference = 7BB5B988D90DC7221F1FA3B8 /* ShareExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		8DA48459DF19DCAFCEDD3018 /* PlayerUITests */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = E335B16FAD58706047499BE3 /* Build configuration list for PBXNativeTarget "PlayerUITests" */;
@@ -370,10 +461,12 @@
 			buildConfigurationList = 50C160A38544E8F0FBD75811 /* Build configuration list for PBXNativeTarget "Player" */;
 			buildPhases = (
 				939DDFE9798F39A3E015459B /* Sources */,
+				E66371B0621FAA5172440057 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				4ECB0BE5205A63DE2F72B063 /* PBXTargetDependency */,
 			);
 			name = Player;
 			packageProductDependencies = (
@@ -391,6 +484,9 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					5881E8E59EEA854DF68330AE = {
+						ProvisioningStyle = Automatic;
+					};
 					8DA48459DF19DCAFCEDD3018 = {
 						ProvisioningStyle = Automatic;
 						TestTargetID = C526B3C6F7440F582811B83B;
@@ -418,6 +514,7 @@
 			projectRoot = "";
 			targets = (
 				C526B3C6F7440F582811B83B /* Player */,
+				5881E8E59EEA854DF68330AE /* ShareExtension */,
 				8DA48459DF19DCAFCEDD3018 /* PlayerUITests */,
 				BD147BACC9FBDB21707188AE /* PlayerTests */,
 			);
@@ -444,14 +541,19 @@
 				B2045D618404860C495C930A /* Signal Δ — Part 2.m4a in Resources */,
 				AFBE7B0586A9282F1F84FAF5 /* SyntheticAudiobook.sha256 in Resources */,
 				E01C41BB600798ADCD33A1E3 /* SyntheticFormats.sha256 in Resources */,
+				52E0E27EB2CE5B6FEA4A0DFD /* SyntheticImportChannels.sha256 in Resources */,
 				630626C2757CAD8E866F2A60 /* SyntheticMessyMultifile.sha256 in Resources */,
 				5C9C8207E3AC8D8BC77C582E /* SyntheticZIPs.sha256 in Resources */,
 				435E30EB44CEA0DD8596A7B7 /* count-limit.zip in Resources */,
+				2037E6AB5E61C0445C81E3A3 /* document-open-interrupted-acquire.m4a in Resources */,
 				70E5B4E9152228E0D6098F9B /* fixture.json in Resources */,
 				13E421A536E9F34BBD06FFFB /* path-traversal.zip in Resources */,
 				712DB84557C8DEC4311BBA09 /* ratio-limit.zip in Resources */,
+				716DF31E44E904CABFEDF299 /* share-extension-envelope.json in Resources */,
+				648E9E38B807DD6AE8D2605C /* share-extension-handoff.m4a in Resources */,
 				B25F86357401216E43A6043B /* size-limit.zip in Resources */,
 				C0E2134FC874112E541F827F /* symlink-escape.zip in Resources */,
+				5EEBB8A42D155AB65A805D8E /* synthetic-import-channels-fixture.json in Resources */,
 				59300DDEF8C83D2FF6C62302 /* synthetic-single-book.m4b in Resources */,
 				C01B12F575AD0664E5F98D60 /* synthetic-zips-fixture.json in Resources */,
 				424C509D4EF3137326AB6FD0 /* valid-multifile.zip in Resources */,
@@ -482,10 +584,20 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		567B971C19D175DB6FF65441 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BE5F0BA50B3D90321B57A84C /* AppGroupImportHandoffQueue.swift in Sources */,
+				3331BED25597AC39F67BCB0B /* ShareViewController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		923B85429A68AA228FA85837 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				6E5CC9A908A8DD83897022B7 /* ImportIngressResilienceUITests.swift in Sources */,
 				86A944DB012268504A7BBF2A /* ImportPlaybackUITests.swift in Sources */,
 				1961133D40EDA39206D7F911 /* LaunchUITests.swift in Sources */,
 				C2DB8E1BD56856D21A3C1601 /* MetadataChapterUITests.swift in Sources */,
@@ -501,9 +613,11 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				71FFA2892A02749AEA8B60FB /* AppGroupImportHandoffQueue.swift in Sources */,
 				3388761DBC0174A83D4E1DAD /* AudioServices.swift in Sources */,
 				777B3CE7E4B0C3EBF67B54AB /* CodableLibraryStore.swift in Sources */,
 				09732349888DDBCDAEACF0B3 /* ContentView.swift in Sources */,
+				4FDAB3A5448AD3508E536DF0 /* E2EImportIngressBridge.swift in Sources */,
 				98A7A2C06929E942AC25193B /* E2ELaunchEnvironment.swift in Sources */,
 				B2D1A256B2CD4A6825EB1420 /* E2EPlaybackEventBridge.swift in Sources */,
 				E37300C6F84548751449EA2E /* FileSystemMediaManager.swift in Sources */,
@@ -523,6 +637,11 @@
 			target = C526B3C6F7440F582811B83B /* Player */;
 			targetProxy = 8DBDEC6D5E7C427FC823E73F /* PBXContainerItemProxy */;
 		};
+		4ECB0BE5205A63DE2F72B063 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5881E8E59EEA854DF68330AE /* ShareExtension */;
+			targetProxy = 45DCB2F7986F2B15EB2AC212 /* PBXContainerItemProxy */;
+		};
 		850876D917394780A002A94B /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = C526B3C6F7440F582811B83B /* Player */;
@@ -531,11 +650,33 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		31021ED14EAD10C1FE82209E /* E2E */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 8939611BB5C58FDAB91F6786 /* E2E.xcconfig */;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = ShareExtension/ShareExtension.entitlements;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ShareExtension/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = org.boardgamescafe.player.share;
+				PRODUCT_NAME = PlayerShare;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = E2E;
+		};
 		4E34F5BAE852A8BBF30451EA /* E2E */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 8939611BB5C58FDAB91F6786 /* E2E.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Player/Player.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Player/Info.plist;
@@ -572,6 +713,7 @@
 			baseConfigurationReference = B03606507BD909AA576A4753 /* Release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Player/Player.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Player/Info.plist;
@@ -602,6 +744,27 @@
 				TEST_TARGET_NAME = Player;
 			};
 			name = Debug;
+		};
+		7296E489781ABC3A68472535 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = B03606507BD909AA576A4753 /* Release.xcconfig */;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = ShareExtension/ShareExtension.entitlements;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ShareExtension/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = org.boardgamescafe.player.share;
+				PRODUCT_NAME = PlayerShare;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
 		};
 		8CCA757D0F2B2FB3F8175D67 /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -682,6 +845,7 @@
 			baseConfigurationReference = 58804811EEE19119F8ADA010 /* Debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Player/Player.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Player/Info.plist;
@@ -757,6 +921,27 @@
 				SWIFT_VERSION = 5.0;
 			};
 			name = E2E;
+		};
+		B7CFF5F752E10FD0488BB840 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 58804811EEE19119F8ADA010 /* Debug.xcconfig */;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = ShareExtension/ShareExtension.entitlements;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ShareExtension/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = org.boardgamescafe.player.share;
+				PRODUCT_NAME = PlayerShare;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
 		};
 		B8D08DB599D24235FFF2B0BD /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -904,6 +1089,16 @@
 				ED8E84F44D681AABAD4790FC /* Debug */,
 				A657173A0F5C32237C0AB210 /* E2E */,
 				8CF9D63DFE5862ECC230F811 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		9AE16D1014A9779A2D769E51 /* Build configuration list for PBXNativeTarget "ShareExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B7CFF5F752E10FD0488BB840 /* Debug */,
+				31021ED14EAD10C1FE82209E /* E2E */,
+				7296E489781ABC3A68472535 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

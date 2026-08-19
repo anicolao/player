@@ -12,7 +12,7 @@ final class PlayerModel {
   @ObservationIgnored private let environment: PlayerEnvironment
   @ObservationIgnored private var playbackIntegrationsConfigured = false
   @ObservationIgnored private var wasPlayingBeforeInterruption = false
-  @ObservationIgnored private var zipImportTasks: [UUID: Task<Void, Never>] = [:]
+  @ObservationIgnored private var importTasks: [UUID: Task<Void, Never>] = [:]
 
   init(environment: PlayerEnvironment) {
     self.environment = environment
@@ -22,7 +22,7 @@ final class PlayerModel {
   func restore() async {
     do {
       library = try await environment.persistence.load()
-      let recoveredInterruptedImports = recoverInterruptedZipImports()
+      let recoveredInterruptedImports = recoverInterruptedImports()
       let storedPosition = library.playbackPosition
       let recoveredPosition = PositionJournalRecovery.recover(from: library)
       library.playbackPosition = recoveredPosition
@@ -54,6 +54,15 @@ final class PlayerModel {
       isRestored = true
       lastErrorMessage = nil
       publishNowPlaying()
+      let resumableQueueJobIDs = library.importJobs.filter {
+        $0.phase == .failed
+          && $0.failure?.reasonCode == "import-interrupted"
+          && $0.queueCheckpoint != nil
+          && $0.zipStatus == nil
+      }.map(\.id)
+      for jobID in resumableQueueJobIDs {
+        await executeQueuedImport(jobID: jobID, initialURLs: nil)
+      }
     } catch {
       isRestored = false
       lastErrorMessage = error.localizedDescription
@@ -61,19 +70,22 @@ final class PlayerModel {
     }
   }
 
-  private func recoverInterruptedZipImports() -> Bool {
+  private func recoverInterruptedImports() -> Bool {
     var changed = false
     for index in library.importJobs.indices {
       guard
         [.acquiring, .extracting, .inspecting].contains(library.importJobs[index].phase),
-        var status = library.importJobs[index].zipStatus
+        library.importJobs[index].zipStatus != nil
+          || library.importJobs[index].queueCheckpoint != nil
       else { continue }
-      status.failureReasonCode = "import-interrupted"
-      status.retryAllowed = true
-      library.importJobs[index].zipStatus = status
+      if var status = library.importJobs[index].zipStatus {
+        status.failureReasonCode = "import-interrupted"
+        status.retryAllowed = true
+        library.importJobs[index].zipStatus = status
+      }
       library.importJobs[index].phase = .failed
       library.importJobs[index].failure = ImportFailure(
-        message: "The ZIP import was interrupted and can continue from its checkpoint.",
+        message: "The import was interrupted and can continue from its checkpoint.",
         affectedFilename: library.importJobs[index].sourceFilename,
         sourceIsUnchanged: true,
         isRecoverable: true,
@@ -105,6 +117,147 @@ final class PlayerModel {
 
   @discardableResult
   func importAudio(from sourceURL: URL) async -> UUID? {
+    await enqueueImport(ImportRequest(entryPoint: .files, selectedURLs: [sourceURL]))
+  }
+
+  @discardableResult
+  func importAudioSelection(from selectedURLs: [URL]) async -> UUID? {
+    await enqueueImport(ImportRequest(entryPoint: .files, selectedURLs: selectedURLs))
+  }
+
+  @discardableResult
+  func handleDocumentOpen(_ url: URL, receivedViaAirDrop: Bool = false) async -> UUID? {
+    await enqueueImport(ImportRequest(
+      entryPoint: receivedViaAirDrop ? .airDrop : .documentOpen,
+      selectedURLs: [url]
+    ))
+  }
+
+  @discardableResult
+  func importSharedHandoff(
+    _ claimed: ClaimedShareImport,
+    from queue: AppGroupImportHandoffQueue
+  ) async -> UUID? {
+    let fingerprint = claimed.handoff.payloadFingerprint
+    if let receipt = library.shareImportReceipts.first(where: {
+      $0.handoffID == claimed.handoff.id
+    }) {
+      guard receipt.payloadFingerprint == fingerprint else {
+        try? await queue.acknowledge(claimed.handoff.id)
+        lastErrorMessage = "A share request reused an identifier with different content."
+        return nil
+      }
+      try? await queue.acknowledge(claimed.handoff.id)
+      lastErrorMessage = nil
+      return receipt.jobID
+    }
+    let jobID = await enqueueImport(ImportRequest(
+      entryPoint: .shareExtension,
+      selectedURLs: claimed.fileURLs,
+      shareHandoffID: claimed.handoff.id,
+      sourceDisplayNames: claimed.handoff.items.map(\.originalFilename)
+    ))
+    guard let jobID,
+      let job = library.importJobs.first(where: { $0.id == jobID })
+    else {
+      try? await queue.returnForRetry(claimed.handoff.id)
+      return nil
+    }
+    let acquisitionIsDurable = job.queueCheckpoint?.acquisitionComplete == true
+      || job.zipStatus != nil
+    if acquisitionIsDurable {
+      let receipt = ShareImportReceipt(
+        handoffID: claimed.handoff.id,
+        payloadFingerprint: fingerprint,
+        jobID: jobID,
+        receivedAt: environment.clock.now()
+      )
+      library.shareImportReceipts.append(receipt)
+      do {
+        try await persist()
+      } catch {
+        library.shareImportReceipts.removeAll { $0.handoffID == claimed.handoff.id }
+        try? await queue.returnForRetry(claimed.handoff.id)
+        lastErrorMessage = error.localizedDescription
+        return nil
+      }
+      do {
+        try await queue.acknowledge(claimed.handoff.id)
+      } catch {
+        // The durable receipt is the exactly-once boundary. Retain it if queue
+        // cleanup fails so an immediate replay deduplicates instead of importing
+        // the same payload a second time.
+        try? await queue.returnForRetry(claimed.handoff.id)
+        lastErrorMessage = error.localizedDescription
+        return nil
+      }
+    } else {
+      try? await queue.returnForRetry(claimed.handoff.id)
+    }
+    return jobID
+  }
+
+  @discardableResult
+  func enqueueImport(_ request: ImportRequest) async -> UUID? {
+    guard !request.selectedURLs.isEmpty else {
+      lastErrorMessage = PlayerCoreError.invalidAssetSelection.localizedDescription
+      return nil
+    }
+    do {
+      let sources = try makeDurableSources(for: request)
+      if request.selectedURLs.count == 1,
+        request.selectedURLs[0].pathExtension.lowercased() == "zip"
+      {
+        return await importZipArchive(
+          from: request.selectedURLs[0],
+          checkpoint: ImportQueueCheckpoint(
+            entryPoint: request.entryPoint,
+            sources: sources,
+            shareHandoffID: request.shareHandoffID
+          )
+        )
+      }
+      guard !request.selectedURLs.contains(where: { $0.pathExtension.lowercased() == "zip" }) else {
+        throw PlayerCoreError.fileOperation("Import one ZIP archive at a time.")
+      }
+      let jobID = await environment.ids.next()
+      let now = environment.clock.now()
+      let displayNames = sources.map(\.displayName)
+      let job = ImportJob(
+        id: jobID,
+        sourceFilename: displayNames.count == 1
+          ? displayNames[0] : "\(displayNames.count) selected items",
+        phase: .queued,
+        progress: .none,
+        createdAt: now,
+        updatedAt: now,
+        queueCheckpoint: ImportQueueCheckpoint(
+          entryPoint: request.entryPoint,
+          sources: sources,
+          shareHandoffID: request.shareHandoffID
+        )
+      )
+      library.importJobs.append(job)
+      try await persist()
+      await executeQueuedImport(jobID: jobID, initialURLs: request.selectedURLs)
+      return jobID
+    } catch {
+      lastErrorMessage = error.localizedDescription
+      return nil
+    }
+  }
+
+  @discardableResult
+  func changeImportSelection(
+    jobID: UUID,
+    to request: ImportRequest
+  ) async -> UUID? {
+    await cancelImport(jobID: jobID)
+    return await enqueueImport(request)
+  }
+
+  @discardableResult
+  private func legacyImportAudio(from sourceURL: URL) async -> UUID? {
     let jobID = await environment.ids.next()
     let now = environment.clock.now()
     var job = ImportJob(
@@ -202,7 +355,7 @@ final class PlayerModel {
   /// the primary grouping signal; folder and embedded-title agreement are recorded
   /// as explainable supporting evidence rather than silently creating extra books.
   @discardableResult
-  func importAudioSelection(from selectedURLs: [URL]) async -> UUID? {
+  private func legacyImportAudioSelection(from selectedURLs: [URL]) async -> UUID? {
     guard !selectedURLs.isEmpty else {
       lastErrorMessage = PlayerCoreError.invalidAssetSelection.localizedDescription
       return nil
@@ -356,15 +509,18 @@ final class PlayerModel {
 
   @discardableResult
   func retryImport(jobID: UUID) async -> Bool {
-    guard
-      let job = library.importJobs.first(where: { $0.id == jobID }),
-      job.phase == .failed,
-      job.zipStatus?.retryAllowed == true
-    else {
+    guard let job = library.importJobs.first(where: { $0.id == jobID }), job.phase == .failed else {
       lastErrorMessage = PlayerCoreError.missingImport(jobID).localizedDescription
       return false
     }
-    await executeZipImport(jobID: jobID, sourceURL: nil)
+    if job.zipStatus?.retryAllowed == true {
+      await executeZipImport(jobID: jobID, sourceURL: nil)
+    } else if job.queueCheckpoint != nil, job.failure?.recoveryAction == .retry {
+      await executeQueuedImport(jobID: jobID, initialURLs: nil)
+    } else {
+      lastErrorMessage = PlayerCoreError.importNotReady(jobID).localizedDescription
+      return false
+    }
     return library.importJobs.first(where: { $0.id == jobID }).map {
       $0.phase == .ready || $0.phase == .needsReview
     } ?? false
@@ -372,7 +528,7 @@ final class PlayerModel {
 
   func cancelImport(jobID: UUID) async {
     guard var job = library.importJobs.first(where: { $0.id == jobID }) else { return }
-    zipImportTasks[jobID]?.cancel()
+    importTasks[jobID]?.cancel()
     if job.zipStatus != nil, let workspace = try? await environment.media.zipWorkspace(for: jobID) {
       try? await environment.zipExtractor.cancelAndClean(
         destinationRoot: workspace.destinationRoot,
@@ -852,7 +1008,150 @@ final class PlayerModel {
     )
   }
 
-  private func importZipArchive(from sourceURL: URL) async -> UUID {
+  private func makeDurableSources(for request: ImportRequest) throws -> [DurableImportSource] {
+    try request.selectedURLs.enumerated().map { index, url in
+      let values = try url.resourceValues(forKeys: [.isDirectoryKey])
+      let bookmark = try? url.bookmarkData(
+        options: [],
+        includingResourceValuesForKeys: nil,
+        relativeTo: nil
+      )
+      let requestedNames = request.sourceDisplayNames ?? []
+      return DurableImportSource(
+        displayName: index < requestedNames.count ? requestedNames[index] : url.lastPathComponent,
+        bookmarkData: bookmark,
+        fallbackURLString: url.absoluteString,
+        isDirectory: values.isDirectory == true
+      )
+    }
+  }
+
+  private func resolveSources(_ sources: [DurableImportSource]) throws -> [URL] {
+    try sources.map { source in
+      if let bookmark = source.bookmarkData {
+        var stale = false
+        if let resolved = try? URL(
+          resolvingBookmarkData: bookmark,
+          options: [],
+          relativeTo: nil,
+          bookmarkDataIsStale: &stale
+        ), !stale {
+          return resolved
+        }
+      }
+      guard let fallback = URL(string: source.fallbackURLString) else {
+        throw PlayerCoreError.fileOperation("The import source is no longer available.")
+      }
+      return fallback
+    }
+  }
+
+  private func executeQueuedImport(jobID: UUID, initialURLs: [URL]?) async {
+    let task = Task<Void, Never> { [weak self] in
+      guard let self else { return }
+      await self.runQueuedImport(jobID: jobID, initialURLs: initialURLs)
+    }
+    importTasks[jobID] = task
+    await task.value
+    importTasks.removeValue(forKey: jobID)
+  }
+
+  private func runQueuedImport(jobID: UUID, initialURLs: [URL]?) async {
+    guard var job = library.importJobs.first(where: { $0.id == jobID }),
+      var checkpoint = job.queueCheckpoint
+    else { return }
+    do {
+      if !checkpoint.acquisitionComplete {
+        // Acquisition is restartable. If a process stopped between filesystem
+        // copies and the durable completion checkpoint, remove only that job's
+        // staging and reacquire from its security-scoped source bookmarks.
+        if initialURLs == nil || !checkpoint.acquired.isEmpty {
+          await environment.media.discardStaging(for: jobID)
+          checkpoint.acquired = []
+          checkpoint.inspected = []
+        }
+        job.phase = .acquiring
+        job.failure = nil
+        job.queueCheckpoint = checkpoint
+        try await replaceAndPersist(job)
+        let urls = try initialURLs ?? resolveSources(checkpoint.sources)
+        let acquired = try await environment.media.acquireSelection(urls, jobID: jobID)
+        checkpoint.acquired = acquired
+        checkpoint.acquisitionComplete = true
+        job.queueCheckpoint = checkpoint
+        job.stagedRelativePath = acquired.first?.staged.relativePath
+        let acquiredBytes = acquired.reduce(Int64(0)) { $0 + $1.staged.byteCount }
+        job.progress = ImportProgress(completed: acquiredBytes, total: acquiredBytes)
+        job.phase = .inspecting
+        try await replaceAndPersist(job)
+      }
+
+      guard var current = library.importJobs.first(where: { $0.id == jobID }),
+        var currentCheckpoint = current.queueCheckpoint
+      else { return }
+      current.phase = .inspecting
+      current.failure = nil
+      try await replaceAndPersist(current)
+      while currentCheckpoint.inspected.count < currentCheckpoint.acquired.count {
+        try Task.checkCancellation()
+        let selectionIndex = currentCheckpoint.inspected.count
+        let item = currentCheckpoint.acquired[selectionIndex]
+        let stagedURL = try await environment.media.stagedURL(for: item.staged.relativePath)
+        let inspected = try await environment.inspector.inspect(url: stagedURL)
+        let assetID = await environment.ids.next()
+        let asset = AudioAsset(
+          id: assetID,
+          originalFilename: item.staged.originalFilename,
+          managedRelativePath: "",
+          checksumSHA256: item.staged.checksumSHA256,
+          byteCount: item.staged.byteCount,
+          durationSeconds: inspected.durationSeconds,
+          container: inspected.container,
+          discNumber: inspected.discNumber,
+          trackNumber: inspected.trackNumber,
+          importOrder: selectionIndex
+        )
+        currentCheckpoint.inspected.append(
+          InspectedImportAsset(asset: asset, inspected: inspected, acquired: item)
+        )
+        guard var progressed = library.importJobs.first(where: { $0.id == jobID }) else { return }
+        progressed.queueCheckpoint = currentCheckpoint
+        try await replaceAndPersist(progressed)
+      }
+
+      let review = try await buildImportReview(from: currentCheckpoint.inspected)
+      guard var completed = library.importJobs.first(where: { $0.id == jobID }) else { return }
+      completed.queueCheckpoint = currentCheckpoint
+      completed.stagedAssets = review.stagedAssets
+      completed.proposals = review.proposals
+      completed.phase = review.proposals.contains(where: { !$0.warnings.isEmpty })
+        ? .needsReview : .ready
+      completed.failure = nil
+      try await replaceAndPersist(completed)
+      lastErrorMessage = nil
+    } catch is CancellationError {
+      await cancelImport(jobID: jobID)
+    } catch {
+      guard var failed = library.importJobs.first(where: { $0.id == jobID }) else { return }
+      failed.phase = .failed
+      failed.failure = ImportFailure(
+        message: error.localizedDescription,
+        affectedFilename: failed.sourceFilename,
+        sourceIsUnchanged: true,
+        isRecoverable: true,
+        reasonCode: failed.queueCheckpoint?.acquisitionComplete == true
+          ? "inspection-transient" : "acquisition-transient",
+        recoveryAction: .retry
+      )
+      try? await replaceAndPersist(failed)
+      lastErrorMessage = error.localizedDescription
+    }
+  }
+
+  private func importZipArchive(
+    from sourceURL: URL,
+    checkpoint: ImportQueueCheckpoint? = nil
+  ) async -> UUID {
     let jobID = await environment.ids.next()
     let now = environment.clock.now()
     let job = ImportJob(
@@ -861,7 +1160,8 @@ final class PlayerModel {
       phase: .queued,
       progress: .none,
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
+      queueCheckpoint: checkpoint
     )
     library.importJobs.append(job)
     do { try await persist() }
@@ -875,9 +1175,9 @@ final class PlayerModel {
       guard let self else { return }
       await self.runZipImport(jobID: jobID, sourceURL: sourceURL)
     }
-    zipImportTasks[jobID] = task
+    importTasks[jobID] = task
     await task.value
-    zipImportTasks.removeValue(forKey: jobID)
+    importTasks.removeValue(forKey: jobID)
   }
 
   private func runZipImport(jobID: UUID, sourceURL: URL?) async {
@@ -1024,6 +1324,17 @@ final class PlayerModel {
         inspected: inspected,
         acquired: item
       ))
+    }
+    return try await buildImportReview(from: prepared.map {
+      InspectedImportAsset(asset: $0.asset, inspected: $0.inspected, acquired: $0.acquired)
+    })
+  }
+
+  private func buildImportReview(
+    from inspected: [InspectedImportAsset]
+  ) async throws -> (stagedAssets: [StagedImportAsset], proposals: [BookProposal]) {
+    let prepared = inspected.map {
+      PreparedImportAsset(asset: $0.asset, inspected: $0.inspected, acquired: $0.acquired)
     }
     var proposals: [BookProposal] = []
     let groups = groupedImportAssets(prepared)

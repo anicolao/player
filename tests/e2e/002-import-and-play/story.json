@@ -3,9 +3,15 @@
   "platform": "ios",
   "test": "PlayerUITests/ImportPlaybackUITests/testReviewsCommitsAndPlaysOneAudiobook",
   "additionalTests": [
-    "PlayerUITests/MetadataChapterUITests/testShowsEmbeddedMetadataAndStartsAChapter"
+    "PlayerUITests/MetadataChapterUITests/testShowsEmbeddedMetadataAndStartsAChapter",
+    "PlayerUITests/ImportIngressResilienceUITests/testDocumentOpenResumesOneImportAcrossAcquireAndInspectRestarts",
+    "PlayerUITests/ImportIngressResilienceUITests/testConsumesAndDeduplicatesShareExtensionAppGroupHandoff"
   ],
   "fixture": "single-audiobook-ready",
+  "additionalFixtures": [
+    "metadata-rich-book",
+    "synthetic-import-channels"
+  ],
   "screenshots": [
     "000-review-import.png",
     "001-committed-library.png",

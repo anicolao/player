@@ -66,6 +66,7 @@ jobs:
           apps/ios/scripts/fixtures/verify-generated-fixtures.sh
           apps/ios/scripts/fixtures/verify-messy-multifile-fixture.sh
           apps/ios/scripts/fixtures/verify-zip-fixtures.sh
+          apps/ios/scripts/fixtures/verify-import-channel-fixtures.sh
 
       - name: Run import, storage, persistence, and playback tests
         run: |
@@ -90,6 +91,8 @@ jobs:
           002-import-and-play
           PlayerUITests/ImportPlaybackUITests/testReviewsCommitsAndPlaysOneAudiobook
           PlayerUITests/MetadataChapterUITests/testShowsEmbeddedMetadataAndStartsAChapter
+          PlayerUITests/ImportIngressResilienceUITests/testDocumentOpenResumesOneImportAcrossAcquireAndInspectRestarts
+          PlayerUITests/ImportIngressResilienceUITests/testConsumesAndDeduplicatesShareExtensionAppGroupHandoff
 
       - name: Run exact-pixel multifile grouping story
         run: >-

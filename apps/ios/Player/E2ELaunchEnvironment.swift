@@ -21,6 +21,8 @@ extension PlayerEnvironment {
           return try messyMultifileEnvironment(reset: arguments.contains("-e2e-reset"))
         case "safe-zip-import":
           return try safeZipEnvironment(reset: arguments.contains("-e2e-reset"))
+        case "synthetic-import-channels":
+          return try importIngressEnvironment(reset: arguments.contains("-e2e-reset"))
         default:
           break
         }

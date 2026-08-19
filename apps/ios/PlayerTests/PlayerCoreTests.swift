@@ -95,7 +95,7 @@ final class PlayerCoreTests: XCTestCase {
     try await store.save(migrated)
     let data = try Data(contentsOf: fileURL)
     let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-    XCTAssertEqual(object["schemaVersion"] as? Int, 5)
+    XCTAssertEqual(object["schemaVersion"] as? Int, 6)
   }
 
   func testVersionedStoreMigratesSchemaTwoMetadataAndTimelineDefaults() async throws {
@@ -911,6 +911,142 @@ final class PlayerCoreTests: XCTestCase {
     let persisted = await store.load()
     XCTAssertTrue(persisted.books.isEmpty)
     XCTAssertEqual(persisted.importJobs.first?.phase, .ready)
+  }
+
+  func testRestoreAutomaticallyResumesInterruptedDocumentOpenAcquisition() async throws {
+    let root = FileManager.default.temporaryDirectory.appending(
+      path: "PlayerResumeTests-\(UUID().uuidString)",
+      directoryHint: .isDirectory
+    )
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let source = root.appending(path: "airdrop-book.m4a")
+    try FileManager.default.copyItem(at: try fixtureToneURL(), to: source)
+    let jobID = UUID(uuidString: "92000000-0000-0000-0000-000000000001")!
+    let now = Date(timeIntervalSince1970: 1_700_000_000)
+    let interrupted = ImportJob(
+      id: jobID,
+      sourceFilename: source.lastPathComponent,
+      phase: .acquiring,
+      progress: .none,
+      createdAt: now,
+      updatedAt: now,
+      queueCheckpoint: ImportQueueCheckpoint(
+        entryPoint: .documentOpen,
+        sources: [DurableImportSource(
+          displayName: source.lastPathComponent,
+          bookmarkData: nil,
+          fallbackURLString: source.absoluteString,
+          isDirectory: false
+        )]
+      )
+    )
+    let store = InMemoryLibraryStore(snapshot: LibrarySnapshot(
+      books: [], importJobs: [interrupted], currentBookID: nil
+    ))
+    let ids = (2...5).map {
+      UUID(uuidString: String(format: "92000000-0000-0000-0000-%012d", $0))!
+    }
+    let model = PlayerModel(environment: PlayerEnvironment(
+      persistence: store,
+      media: FileSystemMediaManager(rootURL: root.appending(path: "Storage")),
+      inspector: AVFoundationAudioInspector(),
+      playback: DeterministicPlaybackController(),
+      clock: FixedPlayerClock(value: now),
+      ids: DeterministicPlayerIDGenerator(values: ids)
+    ))
+
+    await model.restore()
+
+    let resumed = try XCTUnwrap(model.library.importJobs.first(where: { $0.id == jobID }))
+    XCTAssertEqual(resumed.phase, .ready)
+    XCTAssertEqual(resumed.queueCheckpoint?.entryPoint, .documentOpen)
+    XCTAssertTrue(resumed.queueCheckpoint?.acquisitionComplete == true)
+    XCTAssertEqual(resumed.queueCheckpoint?.inspected.count, 1)
+    XCTAssertEqual(resumed.proposals.first?.assets.count, 1)
+  }
+
+  func testShareHandoffValidatesContentAndDeduplicatesDurableReceipt() async throws {
+    let root = FileManager.default.temporaryDirectory.appending(
+      path: "PlayerShareQueueTests-\(UUID().uuidString)",
+      directoryHint: .isDirectory
+    )
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let source = root.appending(path: "temporary-provider-name.m4a")
+    try FileManager.default.copyItem(at: try fixtureToneURL(), to: source)
+    let handoffID = UUID(uuidString: "93000000-0000-0000-0000-000000000001")!
+    let queue = AppGroupImportHandoffQueue(containerURL: root.appending(path: "Group"))
+    try await queue.enqueueCopying(
+      [source],
+      id: handoffID,
+      originalFilenames: ["Suggested Book.m4a"]
+    )
+    let claimedFirst = try await queue.claimNext()
+    let firstClaim = try XCTUnwrap(claimedFirst)
+    XCTAssertEqual(firstClaim.handoff.items.first?.originalFilename, "Suggested Book.m4a")
+    XCTAssertEqual(firstClaim.handoff.items.first?.byteCount, Int64(try Data(contentsOf: source).count))
+    // Multiple scene/task drains can overlap while the first consumer imports.
+    // The same Processing request must not be leased twice in one process.
+    let concurrentClaim = try await queue.claimNext()
+    XCTAssertNil(concurrentClaim)
+
+    let store = InMemoryLibraryStore()
+    let ids = (2...5).map {
+      UUID(uuidString: String(format: "93000000-0000-0000-0000-%012d", $0))!
+    }
+    let model = PlayerModel(environment: PlayerEnvironment(
+      persistence: store,
+      media: FileSystemMediaManager(rootURL: root.appending(path: "Storage")),
+      inspector: AVFoundationAudioInspector(),
+      playback: DeterministicPlaybackController(),
+      clock: FixedPlayerClock(value: Date(timeIntervalSince1970: 1_700_000_000)),
+      ids: DeterministicPlayerIDGenerator(values: ids)
+    ))
+    let importedFirstJobID = await model.importSharedHandoff(firstClaim, from: queue)
+    let firstJobID = try XCTUnwrap(importedFirstJobID)
+    XCTAssertEqual(model.library.shareImportReceipts.count, 1)
+    XCTAssertEqual(model.library.shareImportReceipts.first?.jobID, firstJobID)
+
+    try await queue.enqueueCopying(
+      [source],
+      id: handoffID,
+      originalFilenames: ["Suggested Book.m4a"]
+    )
+    let claimedReplay = try await queue.claimNext()
+    let replay = try XCTUnwrap(claimedReplay)
+    let replayJobID = await model.importSharedHandoff(replay, from: queue)
+    XCTAssertEqual(replayJobID, firstJobID)
+    XCTAssertEqual(model.library.importJobs.count, 1)
+    XCTAssertEqual(model.library.shareImportReceipts.count, 1)
+    let emptyClaim = try await queue.claimNext()
+    XCTAssertNil(emptyClaim)
+  }
+
+  func testShareHandoffRejectsPayloadChangedAfterPublication() async throws {
+    let root = FileManager.default.temporaryDirectory.appending(
+      path: "PlayerShareTamperTests-\(UUID().uuidString)",
+      directoryHint: .isDirectory
+    )
+    defer { try? FileManager.default.removeItem(at: root) }
+    let source = root.appending(path: "source.m4a")
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    try Data("original".utf8).write(to: source)
+    let handoffID = UUID(uuidString: "94000000-0000-0000-0000-000000000001")!
+    let group = root.appending(path: "Group")
+    let queue = AppGroupImportHandoffQueue(containerURL: group)
+    try await queue.enqueueCopying([source], id: handoffID)
+    let item = group.appending(
+      path: "ImportHandoffs/Pending/\(handoffID.uuidString.lowercased())/Items/00000.m4a"
+    )
+    try Data("changed".utf8).write(to: item)
+
+    do {
+      _ = try await queue.claimNext()
+      XCTFail("A changed handoff payload must not be claimed")
+    } catch let error as ShareImportHandoffError {
+      XCTAssertEqual(error, .invalidPayload)
+    }
   }
 
   private func checksum(_ url: URL) throws -> String {

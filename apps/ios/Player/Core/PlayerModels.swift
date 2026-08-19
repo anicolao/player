@@ -214,6 +214,83 @@ struct ZipImportStatus: Codable, Equatable, Sendable {
   var retryAllowed: Bool
 }
 
+enum ImportEntryPoint: String, Codable, Equatable, Sendable {
+  case files
+  case folder
+  case documentOpen
+  case airDrop
+  case shareExtension
+}
+
+struct ImportRequest: Equatable, Sendable {
+  var entryPoint: ImportEntryPoint
+  var selectedURLs: [URL]
+  var shareHandoffID: UUID?
+  var sourceDisplayNames: [String]?
+
+  init(
+    entryPoint: ImportEntryPoint,
+    selectedURLs: [URL],
+    shareHandoffID: UUID? = nil,
+    sourceDisplayNames: [String]? = nil
+  ) {
+    self.entryPoint = entryPoint
+    self.selectedURLs = selectedURLs
+    self.shareHandoffID = shareHandoffID
+    self.sourceDisplayNames = sourceDisplayNames
+  }
+}
+
+struct DurableImportSource: Codable, Equatable, Sendable {
+  var displayName: String
+  var bookmarkData: Data?
+  var fallbackURLString: String
+  var isDirectory: Bool
+}
+
+struct InspectedImportAsset: Codable, Equatable, Sendable {
+  var asset: AudioAsset
+  var inspected: InspectedAudio
+  var acquired: AcquiredAudioFile
+}
+
+struct ImportQueueCheckpoint: Codable, Equatable, Sendable {
+  static let currentVersion = 1
+
+  var version: Int
+  var entryPoint: ImportEntryPoint
+  var sources: [DurableImportSource]
+  var acquired: [AcquiredAudioFile]
+  var inspected: [InspectedImportAsset]
+  var acquisitionComplete: Bool
+  var shareHandoffID: UUID?
+
+  init(
+    entryPoint: ImportEntryPoint,
+    sources: [DurableImportSource],
+    acquired: [AcquiredAudioFile] = [],
+    inspected: [InspectedImportAsset] = [],
+    acquisitionComplete: Bool = false,
+    shareHandoffID: UUID? = nil
+  ) {
+    version = Self.currentVersion
+    self.entryPoint = entryPoint
+    self.sources = sources
+    self.acquired = acquired
+    self.inspected = inspected
+    self.acquisitionComplete = acquisitionComplete
+    self.shareHandoffID = shareHandoffID
+  }
+}
+
+struct ShareImportReceipt: Codable, Equatable, Identifiable, Sendable {
+  var id: UUID { handoffID }
+  var handoffID: UUID
+  var payloadFingerprint: String
+  var jobID: UUID
+  var receivedAt: Date
+}
+
 enum GroupingEvidenceKind: String, Codable, Equatable, Sendable {
   case selectedTogether
   case commonFolder
@@ -353,6 +430,7 @@ struct ImportJob: Codable, Equatable, Identifiable, Sendable {
   var additionalProposals: [BookProposal]
   var reviewRevision: Int
   var zipStatus: ZipImportStatus?
+  var queueCheckpoint: ImportQueueCheckpoint?
 
   var proposals: [BookProposal] {
     get { proposal.map { [$0] + additionalProposals } ?? additionalProposals }
@@ -376,7 +454,8 @@ struct ImportJob: Codable, Equatable, Identifiable, Sendable {
     stagedAssets: [StagedImportAsset] = [],
     additionalProposals: [BookProposal] = [],
     reviewRevision: Int = 0,
-    zipStatus: ZipImportStatus? = nil
+    zipStatus: ZipImportStatus? = nil,
+    queueCheckpoint: ImportQueueCheckpoint? = nil
   ) {
     self.id = id
     self.sourceFilename = sourceFilename
@@ -392,12 +471,13 @@ struct ImportJob: Codable, Equatable, Identifiable, Sendable {
     self.additionalProposals = additionalProposals
     self.reviewRevision = reviewRevision
     self.zipStatus = zipStatus
+    self.queueCheckpoint = queueCheckpoint
   }
 
   private enum CodingKeys: String, CodingKey {
     case id, sourceFilename, phase, progress, stagedRelativePath, proposal
     case committedBookID, failure, createdAt, updatedAt, stagedAssets, additionalProposals
-    case reviewRevision, zipStatus
+    case reviewRevision, zipStatus, queueCheckpoint
   }
 
   init(from decoder: any Decoder) throws {
@@ -416,6 +496,7 @@ struct ImportJob: Codable, Equatable, Identifiable, Sendable {
     additionalProposals = try values.decodeIfPresent([BookProposal].self, forKey: .additionalProposals) ?? []
     reviewRevision = try values.decodeIfPresent(Int.self, forKey: .reviewRevision) ?? 0
     zipStatus = try values.decodeIfPresent(ZipImportStatus.self, forKey: .zipStatus)
+    queueCheckpoint = try values.decodeIfPresent(ImportQueueCheckpoint.self, forKey: .queueCheckpoint)
   }
 }
 
@@ -425,19 +506,40 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
   var currentBookID: UUID?
   var playbackPosition: PlaybackPosition?
   var positionJournal: [PositionEvent]
+  var shareImportReceipts: [ShareImportReceipt]
 
   init(
     books: [Book],
     importJobs: [ImportJob],
     currentBookID: UUID?,
     playbackPosition: PlaybackPosition? = nil,
-    positionJournal: [PositionEvent] = []
+    positionJournal: [PositionEvent] = [],
+    shareImportReceipts: [ShareImportReceipt] = []
   ) {
     self.books = books
     self.importJobs = importJobs
     self.currentBookID = currentBookID
     self.playbackPosition = playbackPosition
     self.positionJournal = positionJournal
+    self.shareImportReceipts = shareImportReceipts
+  }
+
+
+  private enum CodingKeys: String, CodingKey {
+    case books, importJobs, currentBookID, playbackPosition, positionJournal, shareImportReceipts
+  }
+
+  init(from decoder: any Decoder) throws {
+    let values = try decoder.container(keyedBy: CodingKeys.self)
+    books = try values.decode([Book].self, forKey: .books)
+    importJobs = try values.decode([ImportJob].self, forKey: .importJobs)
+    currentBookID = try values.decodeIfPresent(UUID.self, forKey: .currentBookID)
+    playbackPosition = try values.decodeIfPresent(PlaybackPosition.self, forKey: .playbackPosition)
+    positionJournal = try values.decodeIfPresent([PositionEvent].self, forKey: .positionJournal) ?? []
+    shareImportReceipts = try values.decodeIfPresent(
+      [ShareImportReceipt].self,
+      forKey: .shareImportReceipts
+    ) ?? []
   }
 
   static let empty = LibrarySnapshot(books: [], importJobs: [], currentBookID: nil)
@@ -591,7 +693,7 @@ enum PositionJournalRecovery {
   }
 }
 
-struct InspectedAudio: Equatable, Sendable {
+struct InspectedAudio: Codable, Equatable, Sendable {
   var title: String?
   var authors: [String]
   var durationSeconds: Double
@@ -634,13 +736,13 @@ struct InspectedAudio: Equatable, Sendable {
   }
 }
 
-struct AcquiredAudioFile: Equatable, Sendable {
+struct AcquiredAudioFile: Codable, Equatable, Sendable {
   var staged: StagedAudio
   var sourceRelativePath: String
   var commonFolderName: String?
 }
 
-struct StagedAudio: Equatable, Sendable {
+struct StagedAudio: Codable, Equatable, Sendable {
   var relativePath: String
   var originalFilename: String
   var checksumSHA256: String

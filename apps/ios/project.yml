@@ -23,9 +23,33 @@ targets:
       Release: Config/Release.xcconfig
     settings:
       base:
+        CODE_SIGN_ENTITLEMENTS: Player/Player.entitlements
         GENERATE_INFOPLIST_FILE: false
         INFOPLIST_FILE: Player/Info.plist
         PRODUCT_NAME: Player
+        TARGETED_DEVICE_FAMILY: "1"
+    dependencies:
+      - target: ShareExtension
+
+  ShareExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: ShareExtension
+      - path: Player/Core/AppGroupImportHandoffQueue.swift
+    configFiles:
+      Debug: Config/Debug.xcconfig
+      E2E: Config/E2E.xcconfig
+      Release: Config/Release.xcconfig
+    settings:
+      base:
+        APPLICATION_EXTENSION_API_ONLY: true
+        CODE_SIGN_ENTITLEMENTS: ShareExtension/ShareExtension.entitlements
+        GENERATE_INFOPLIST_FILE: false
+        INFOPLIST_FILE: ShareExtension/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: org.boardgamescafe.player.share
+        PRODUCT_NAME: PlayerShare
+        SKIP_INSTALL: true
         TARGETED_DEVICE_FAMILY: "1"
 
   PlayerUITests:

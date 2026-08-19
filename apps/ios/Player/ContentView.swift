@@ -6,6 +6,9 @@ struct ContentView: View {
   @Bindable var model: PlayerModel
   @State private var selection: AppSection = .library
   @State private var isImporting = false
+  @State private var isDrainingSharedImports = false
+  @State private var sharedImportQueueRevision = 0
+  @State private var pendingDocumentURLs: [URL] = []
   @State private var presentedPlayerBook: Book?
 
   var body: some View {
@@ -64,14 +67,30 @@ struct ContentView: View {
           E2EZipSafetyProbe(model: model)
         }
       }
+      .overlay(alignment: .topLeading) {
+        if E2EImportIngressBridge.shared.isConfigured {
+          E2EImportIngressProbes(model: model, queueRevision: sharedImportQueueRevision)
+        }
+      }
     #endif
     .task {
       await model.restore()
       model.configurePlaybackIntegrations()
+      await drainPendingDocumentURLs()
+      await drainSharedImports()
+    }
+    .onOpenURL { url in
+      acceptDocumentOpen(url)
     }
     .onChange(of: scenePhase) { _, phase in
-      guard phase == .background else { return }
-      Task { await model.checkpointForBackground() }
+      switch phase {
+      case .active:
+        Task { await drainSharedImports() }
+      case .background:
+        Task { await model.checkpointForBackground() }
+      default:
+        break
+      }
     }
   }
 
@@ -106,6 +125,53 @@ struct ContentView: View {
       }
     #endif
     isImporting = true
+  }
+
+  private func drainSharedImports() async {
+    guard !isDrainingSharedImports else { return }
+    isDrainingSharedImports = true
+    defer { isDrainingSharedImports = false }
+    guard let queue = sharedImportQueue() else { return }
+    do {
+      while let handoff = try await queue.claimNext() {
+        selection = .inbox
+        _ = await model.importSharedHandoff(handoff, from: queue)
+        sharedImportQueueRevision += 1
+      }
+    } catch {
+      // A malformed handoff remains quarantined in Processing for a future
+      // recovery UI; never discard shared source bytes on launch.
+    }
+  }
+
+  private func acceptDocumentOpen(_ url: URL) {
+    selection = .inbox
+    #if E2E
+      E2EImportIngressBridge.shared.recordDocumentSource(url)
+    #endif
+    guard model.isRestored else {
+      pendingDocumentURLs.append(url)
+      return
+    }
+    Task { await model.handleDocumentOpen(url) }
+  }
+
+  private func drainPendingDocumentURLs() async {
+    let urls = pendingDocumentURLs
+    pendingDocumentURLs.removeAll()
+    for url in urls {
+      _ = await model.handleDocumentOpen(url)
+    }
+  }
+
+  private func sharedImportQueue() -> AppGroupImportHandoffQueue? {
+    #if E2E
+      if let queue = E2EImportIngressBridge.shared.queue { return queue }
+    #endif
+    guard let container = FileManager.default.containerURL(
+      forSecurityApplicationGroupIdentifier: PlayerAppGroup.identifier
+    ) else { return nil }
+    return AppGroupImportHandoffQueue(containerURL: container)
   }
 }
 
@@ -1364,6 +1430,94 @@ private func timecode(_ seconds: Double) -> String {
       default:
         return "zip:\(zipCase):processing:entries=\(entries):extracted=\(extracted):\(integrity)"
       }
+    }
+  }
+
+  private struct E2EImportIngressProbes: View {
+    @Bindable var model: PlayerModel
+    let queueRevision: Int
+
+    var body: some View {
+      VStack {
+        if E2EImportIngressBridge.shared.channel == "document-open" {
+          probe(
+            identifier: "import-ingress-probe",
+            label: "Document import ingress state",
+            value: documentValue
+          )
+        }
+        if E2EImportIngressBridge.shared.channel == "share-extension" {
+          probe(
+            identifier: "share-handoff-probe",
+            label: "Share handoff state",
+            value: shareValue
+          )
+        }
+      }
+    }
+
+    private var expectedJob: ImportJob? {
+      guard let id = E2EImportIngressBridge.shared.expectedJobID else { return nil }
+      return model.library.importJobs.first(where: { $0.id == id })
+    }
+
+    private var documentValue: String {
+      guard let job = expectedJob else { return "ingress:document:idle" }
+      let checkpoint = job.queueCheckpoint
+      let state: String
+      switch job.phase {
+      case .acquiring: state = "acquiring"
+      case .inspecting: state = "inspecting"
+      case .ready, .needsReview: state = "ready"
+      default: state = job.phase.rawValue
+      }
+      var fields = [
+        "ingress:document:\(state)",
+        "job=\(job.id.uuidString.lowercased())",
+        "jobs=\(model.library.importJobs.count)",
+        "staged=\(checkpoint?.acquired.count ?? 0)",
+        "inspected=\(checkpoint?.inspected.count ?? 0)",
+      ]
+      if state == "ready" { fields.append("proposals=\(job.proposals.count)") }
+      fields += [
+        "duplicates=\(max(0, model.library.importJobs.count - 1))",
+        "source-unchanged=\(E2EImportIngressBridge.shared.sourceIsUnchanged)",
+      ]
+      return fields.joined(separator: ":")
+    }
+
+    private var shareValue: String {
+      _ = queueRevision
+      let bridge = E2EImportIngressBridge.shared
+      guard let handoffID = bridge.handoffID, let job = expectedJob else {
+        return "handoff:share-extension:idle"
+      }
+      let receipt = model.library.shareImportReceipts.first(where: {
+        $0.handoffID == handoffID
+      })
+      let outcome = bridge.isShareReplay ? "deduplicated" : "consumed"
+      let receiptState = bridge.isShareReplay ? "retained" : "recorded"
+      return [
+        "handoff:share-extension:\(outcome)",
+        "id=\(handoffID.uuidString.lowercased())",
+        "job=\(job.id.uuidString.lowercased())",
+        "jobs=\(model.library.importJobs.count)",
+        "staged=\(job.queueCheckpoint?.acquired.count ?? 0)",
+        "proposals=\(job.proposals.count)",
+        "receipt=\(receipt == nil ? "missing" : receiptState)",
+        "pending=\(bridge.pendingRequestCount)",
+        "processing=\(bridge.processingRequestCount)",
+        "source-unchanged=\(bridge.sourceIsUnchanged)",
+      ].joined(separator: ":")
+    }
+
+    private func probe(identifier: String, label: String, value: String) -> some View {
+      Color.clear
+        .frame(width: 1, height: 1)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+        .accessibilityIdentifier(identifier)
+        .accessibilityValue(value)
     }
   }
 #endif

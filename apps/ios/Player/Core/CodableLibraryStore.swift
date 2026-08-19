@@ -1,7 +1,7 @@
 import Foundation
 
 actor CodableLibraryStore: LibraryPersisting {
-  static let currentSchemaVersion = 5
+  static let currentSchemaVersion = 6
 
   private let fileURL: URL
   private let fileManager: FileManager
@@ -68,6 +68,12 @@ actor CodableLibraryStore: LibraryPersisting {
       } catch {
         throw PlayerCoreError.invalidStore
       }
+    case 6:
+      do {
+        return try JSONDecoder.playerDecoder.decode(EnvelopeV6.self, from: data).library
+      } catch {
+        throw PlayerCoreError.invalidStore
+      }
     default:
       throw PlayerCoreError.invalidStore
     }
@@ -77,7 +83,7 @@ actor CodableLibraryStore: LibraryPersisting {
     let directory = fileURL.deletingLastPathComponent()
     try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
 
-    let envelope = EnvelopeV5(
+    let envelope = EnvelopeV6(
       schemaVersion: Self.currentSchemaVersion,
       library: snapshot
     )
@@ -192,6 +198,11 @@ private struct EnvelopeV4: Codable {
 }
 
 private struct EnvelopeV5: Codable {
+  let schemaVersion: Int
+  let library: LibrarySnapshot
+}
+
+private struct EnvelopeV6: Codable {
   let schemaVersion: Int
   let library: LibrarySnapshot
 }

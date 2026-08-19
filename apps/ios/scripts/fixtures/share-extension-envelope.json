@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "70000000-0000-0000-0000-000000000101",
+  "createdAt": "2026-01-02T03:04:05Z",
+  "items": [
+    {
+      "relativePath": "Items/00000.m4a",
+      "originalFilename": "shared-synthetic-tone.m4a",
+      "contentTypeIdentifier": "public.mpeg-4-audio",
+      "byteCount": 9183,
+      "checksumSHA256": "ec875798951295f4b5fdd1e9349a58fd94fbb7cb78455595345fcb3ca51d3964"
+    }
+  ]
+}
