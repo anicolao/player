@@ -103,6 +103,14 @@ The roadmap is capability-based, not a release-date promise. Reliability gates a
 
 The iPhone scaffold lives in `apps/ios/` and is generated reproducibly with XcodeGen. The pinned local setup is Xcode 26.6, iOS 26.5, iPhone 17, and XcodeGen 2.46.0.
 
+With Nix installed, generate the project, build the app, boot a persistent development simulator, install Player, and launch it with one command:
+
+```bash
+nix develop
+```
+
+The development simulator and its app data are reused on later runs. To enter the same development shell without building or launching Simulator, run `PLAYER_SKIP_SIMULATOR_LAUNCH=1 nix develop`.
+
 Generate the Xcode project:
 
 ```bash

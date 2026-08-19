@@ -18,6 +18,16 @@ apps/ios/scripts/generate-project.sh
 
 The script downloads the pinned XcodeGen archive when needed and verifies its SHA-256 digest before executing it.
 
+## Launch without opening Xcode
+
+From the repository root, Nix can generate and build the project, create or reuse a persistent iPhone 17 simulator, install the app, and launch it:
+
+```bash
+nix develop
+```
+
+This uses the locally installed pinned Xcode toolchain; Nix supplies the command-line dependencies but does not package Xcode or the simulator runtime. Set `PLAYER_SKIP_SIMULATOR_LAUNCH=1` when you only want the development shell.
+
 ## Run an E2E story
 
 ```bash
