@@ -93,8 +93,14 @@ final class PlayerModel {
         checksumSHA256: staged.checksumSHA256,
         byteCount: staged.byteCount,
         durationSeconds: inspected.durationSeconds,
-        container: inspected.container
+        container: inspected.container,
+        timelineStartSeconds: 0
       )
+      let chapters = inspected.chapters.map { chapter in
+        var mapped = chapter
+        mapped.assetID = assetID
+        return mapped
+      }
       job.proposal = BookProposal(
         id: proposalID,
         proposedBookID: bookID,
@@ -103,7 +109,12 @@ final class PlayerModel {
         durationSeconds: inspected.durationSeconds,
         artworkData: inspected.artworkData,
         asset: asset,
-        warnings: []
+        warnings: [],
+        narrators: inspected.narrators,
+        seriesName: inspected.seriesName,
+        seriesPosition: inspected.seriesPosition,
+        artworkMediaType: inspected.artworkMediaType,
+        chapters: chapters
       )
       job.phase = .ready
       job.failure = nil
@@ -166,7 +177,12 @@ final class PlayerModel {
         durationSeconds: proposal.durationSeconds,
         artworkData: proposal.artworkData,
         assets: [asset],
-        dateAdded: environment.clock.now()
+        dateAdded: environment.clock.now(),
+        narrators: proposal.narrators,
+        seriesName: proposal.seriesName,
+        seriesPosition: proposal.seriesPosition,
+        artworkMediaType: proposal.artworkMediaType,
+        chapters: proposal.chapters
       )
       library.books.append(book)
       job.phase = .committed

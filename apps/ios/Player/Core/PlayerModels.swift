@@ -9,6 +9,60 @@ struct Book: Codable, Equatable, Identifiable, Sendable {
   var artworkData: Data?
   var assets: [AudioAsset]
   var dateAdded: Date
+  var narrators: [String]
+  var seriesName: String?
+  var seriesPosition: String?
+  var artworkMediaType: String?
+  var chapters: [Chapter]
+
+  init(
+    id: UUID,
+    title: String,
+    authors: [String],
+    durationSeconds: Double,
+    artworkData: Data?,
+    assets: [AudioAsset],
+    dateAdded: Date,
+    narrators: [String] = [],
+    seriesName: String? = nil,
+    seriesPosition: String? = nil,
+    artworkMediaType: String? = nil,
+    chapters: [Chapter] = []
+  ) {
+    self.id = id
+    self.title = title
+    self.authors = authors
+    self.durationSeconds = durationSeconds
+    self.artworkData = artworkData
+    self.assets = assets
+    self.dateAdded = dateAdded
+    self.narrators = narrators
+    self.seriesName = seriesName
+    self.seriesPosition = seriesPosition
+    self.artworkMediaType = artworkMediaType
+    self.chapters = chapters
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id, title, authors, durationSeconds, artworkData, assets, dateAdded
+    case narrators, seriesName, seriesPosition, artworkMediaType, chapters
+  }
+
+  init(from decoder: any Decoder) throws {
+    let values = try decoder.container(keyedBy: CodingKeys.self)
+    id = try values.decode(UUID.self, forKey: .id)
+    title = try values.decode(String.self, forKey: .title)
+    authors = try values.decode([String].self, forKey: .authors)
+    durationSeconds = try values.decode(Double.self, forKey: .durationSeconds)
+    artworkData = try values.decodeIfPresent(Data.self, forKey: .artworkData)
+    assets = try values.decode([AudioAsset].self, forKey: .assets)
+    dateAdded = try values.decode(Date.self, forKey: .dateAdded)
+    narrators = try values.decodeIfPresent([String].self, forKey: .narrators) ?? []
+    seriesName = try values.decodeIfPresent(String.self, forKey: .seriesName)
+    seriesPosition = try values.decodeIfPresent(String.self, forKey: .seriesPosition)
+    artworkMediaType = try values.decodeIfPresent(String.self, forKey: .artworkMediaType)
+    chapters = try values.decodeIfPresent([Chapter].self, forKey: .chapters) ?? []
+  }
 }
 
 struct AudioAsset: Codable, Equatable, Identifiable, Sendable {
@@ -19,6 +73,58 @@ struct AudioAsset: Codable, Equatable, Identifiable, Sendable {
   var byteCount: Int64
   var durationSeconds: Double
   var container: String
+  var timelineStartSeconds: Double
+
+  init(
+    id: UUID,
+    originalFilename: String,
+    managedRelativePath: String,
+    checksumSHA256: String,
+    byteCount: Int64,
+    durationSeconds: Double,
+    container: String,
+    timelineStartSeconds: Double = 0
+  ) {
+    self.id = id
+    self.originalFilename = originalFilename
+    self.managedRelativePath = managedRelativePath
+    self.checksumSHA256 = checksumSHA256
+    self.byteCount = byteCount
+    self.durationSeconds = durationSeconds
+    self.container = container
+    self.timelineStartSeconds = timelineStartSeconds
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id, originalFilename, managedRelativePath, checksumSHA256
+    case byteCount, durationSeconds, container, timelineStartSeconds
+  }
+
+  init(from decoder: any Decoder) throws {
+    let values = try decoder.container(keyedBy: CodingKeys.self)
+    id = try values.decode(UUID.self, forKey: .id)
+    originalFilename = try values.decode(String.self, forKey: .originalFilename)
+    managedRelativePath = try values.decode(String.self, forKey: .managedRelativePath)
+    checksumSHA256 = try values.decode(String.self, forKey: .checksumSHA256)
+    byteCount = try values.decode(Int64.self, forKey: .byteCount)
+    durationSeconds = try values.decode(Double.self, forKey: .durationSeconds)
+    container = try values.decode(String.self, forKey: .container)
+    timelineStartSeconds = try values.decodeIfPresent(Double.self, forKey: .timelineStartSeconds) ?? 0
+  }
+}
+
+enum ChapterSource: String, Codable, Equatable, Sendable {
+  case embedded
+  case file
+}
+
+struct Chapter: Codable, Equatable, Identifiable, Sendable {
+  let id: String
+  var title: String
+  var startSeconds: Double
+  var durationSeconds: Double
+  var source: ChapterSource
+  var assetID: UUID?
 }
 
 enum ImportPhase: String, Codable, Equatable, Sendable {
@@ -55,6 +161,63 @@ struct BookProposal: Codable, Equatable, Identifiable, Sendable {
   var artworkData: Data?
   var asset: AudioAsset
   var warnings: [String]
+  var narrators: [String]
+  var seriesName: String?
+  var seriesPosition: String?
+  var artworkMediaType: String?
+  var chapters: [Chapter]
+
+  init(
+    id: UUID,
+    proposedBookID: UUID,
+    title: String,
+    authors: [String],
+    durationSeconds: Double,
+    artworkData: Data?,
+    asset: AudioAsset,
+    warnings: [String],
+    narrators: [String] = [],
+    seriesName: String? = nil,
+    seriesPosition: String? = nil,
+    artworkMediaType: String? = nil,
+    chapters: [Chapter] = []
+  ) {
+    self.id = id
+    self.proposedBookID = proposedBookID
+    self.title = title
+    self.authors = authors
+    self.durationSeconds = durationSeconds
+    self.artworkData = artworkData
+    self.asset = asset
+    self.warnings = warnings
+    self.narrators = narrators
+    self.seriesName = seriesName
+    self.seriesPosition = seriesPosition
+    self.artworkMediaType = artworkMediaType
+    self.chapters = chapters
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id, proposedBookID, title, authors, durationSeconds, artworkData, asset, warnings
+    case narrators, seriesName, seriesPosition, artworkMediaType, chapters
+  }
+
+  init(from decoder: any Decoder) throws {
+    let values = try decoder.container(keyedBy: CodingKeys.self)
+    id = try values.decode(UUID.self, forKey: .id)
+    proposedBookID = try values.decode(UUID.self, forKey: .proposedBookID)
+    title = try values.decode(String.self, forKey: .title)
+    authors = try values.decode([String].self, forKey: .authors)
+    durationSeconds = try values.decode(Double.self, forKey: .durationSeconds)
+    artworkData = try values.decodeIfPresent(Data.self, forKey: .artworkData)
+    asset = try values.decode(AudioAsset.self, forKey: .asset)
+    warnings = try values.decode([String].self, forKey: .warnings)
+    narrators = try values.decodeIfPresent([String].self, forKey: .narrators) ?? []
+    seriesName = try values.decodeIfPresent(String.self, forKey: .seriesName)
+    seriesPosition = try values.decodeIfPresent(String.self, forKey: .seriesPosition)
+    artworkMediaType = try values.decodeIfPresent(String.self, forKey: .artworkMediaType)
+    chapters = try values.decodeIfPresent([Chapter].self, forKey: .chapters) ?? []
+  }
 }
 
 struct ImportJob: Codable, Equatable, Identifiable, Sendable {
@@ -219,6 +382,35 @@ struct InspectedAudio: Equatable, Sendable {
   var durationSeconds: Double
   var artworkData: Data?
   var container: String
+  var narrators: [String]
+  var seriesName: String?
+  var seriesPosition: String?
+  var artworkMediaType: String?
+  var chapters: [Chapter]
+
+  init(
+    title: String?,
+    authors: [String],
+    durationSeconds: Double,
+    artworkData: Data?,
+    container: String,
+    narrators: [String] = [],
+    seriesName: String? = nil,
+    seriesPosition: String? = nil,
+    artworkMediaType: String? = nil,
+    chapters: [Chapter] = []
+  ) {
+    self.title = title
+    self.authors = authors
+    self.durationSeconds = durationSeconds
+    self.artworkData = artworkData
+    self.container = container
+    self.narrators = narrators
+    self.seriesName = seriesName
+    self.seriesPosition = seriesPosition
+    self.artworkMediaType = artworkMediaType
+    self.chapters = chapters
+  }
 }
 
 struct StagedAudio: Equatable, Sendable {

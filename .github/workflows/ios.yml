@@ -61,6 +61,9 @@ jobs:
       - name: Require reproducible project generation
         run: git diff --exit-code -- apps/ios/Player.xcodeproj
 
+      - name: Verify committed synthetic audio fixtures
+        run: apps/ios/scripts/fixtures/verify-generated-fixtures.sh
+
       - name: Run import, storage, persistence, and playback tests
         run: |
           xcodebuild -quiet \
@@ -83,6 +86,7 @@ jobs:
           apps/ios/scripts/run-e2e.sh
           002-import-and-play
           PlayerUITests/ImportPlaybackUITests/testReviewsCommitsAndPlaysOneAudiobook
+          PlayerUITests/MetadataChapterUITests/testShowsEmbeddedMetadataAndStartsAChapter
 
       - name: Run exact-pixel position restoration story
         run: >-

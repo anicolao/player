@@ -46,12 +46,16 @@ final class PlayerCoreTests: XCTestCase {
     let readyJob = try XCTUnwrap(model.library.importJobs.first(where: { $0.id == jobID }))
     XCTAssertEqual(readyJob.phase, .ready)
     XCTAssertEqual(readyJob.proposal?.durationSeconds ?? 0, 1.8, accuracy: 0.02)
+    XCTAssertEqual(readyJob.proposal?.chapters.count, 1)
+    XCTAssertEqual(readyJob.proposal?.chapters.first?.source, .file)
     XCTAssertEqual(try checksum(source), sourceBefore, "The source must remain byte-identical")
 
     let committedBookID = await model.addImportToLibrary(jobID: jobID)
     let bookID = try XCTUnwrap(committedBookID)
     let book = try XCTUnwrap(model.library.books.first(where: { $0.id == bookID }))
     let asset = try XCTUnwrap(book.assets.first)
+    XCTAssertEqual(asset.timelineStartSeconds, 0)
+    XCTAssertEqual(book.chapters.first?.assetID, asset.id)
     let managedURL = try await media.managedURL(for: asset.managedRelativePath)
     XCTAssertTrue(FileManager.default.fileExists(atPath: managedURL.path))
     XCTAssertEqual(try checksum(managedURL), sourceBefore)
@@ -65,7 +69,7 @@ final class PlayerCoreTests: XCTestCase {
     XCTAssertEqual(model.library.positionJournal.map(\.reason), [.play, .pause])
   }
 
-  func testVersionedStoreMigratesSchemaOneAndWritesSchemaTwo() async throws {
+  func testVersionedStoreMigratesSchemaOneAndWritesCurrentSchema() async throws {
     let directory = FileManager.default.temporaryDirectory.appending(
       path: "PlayerStoreTests-\(UUID().uuidString)",
       directoryHint: .isDirectory
@@ -91,7 +95,186 @@ final class PlayerCoreTests: XCTestCase {
     try await store.save(migrated)
     let data = try Data(contentsOf: fileURL)
     let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-    XCTAssertEqual(object["schemaVersion"] as? Int, 2)
+    XCTAssertEqual(object["schemaVersion"] as? Int, 3)
+  }
+
+  func testVersionedStoreMigratesSchemaTwoMetadataAndTimelineDefaults() async throws {
+    let directory = FileManager.default.temporaryDirectory.appending(
+      path: "PlayerV2StoreTests-\(UUID().uuidString)",
+      directoryHint: .isDirectory
+    )
+    defer { try? FileManager.default.removeItem(at: directory) }
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let fileURL = directory.appending(path: "Library.json")
+    let store = CodableLibraryStore(fileURL: fileURL)
+    let versionTwo = """
+      {
+        "schemaVersion": 2,
+        "library": {
+          "books": [{
+            "id": "70000000-0000-0000-0000-000000000001",
+            "title": "Migrated Book",
+            "authors": ["Legacy Author"],
+            "durationSeconds": 60,
+            "assets": [{
+              "id": "70000000-0000-0000-0000-000000000002",
+              "originalFilename": "legacy.m4b",
+              "managedRelativePath": "Media/legacy.m4b",
+              "checksumSHA256": "legacy",
+              "byteCount": 100,
+              "durationSeconds": 60,
+              "container": "M4B"
+            }],
+            "dateAdded": "2023-11-14T22:13:20Z"
+          }],
+          "importJobs": [],
+          "currentBookID": null,
+          "playbackPosition": null,
+          "positionJournal": []
+        }
+      }
+      """
+    try Data(versionTwo.utf8).write(to: fileURL)
+
+    let migrated = try await store.load()
+
+    let book = try XCTUnwrap(migrated.books.first)
+    XCTAssertEqual(book.narrators, [])
+    XCTAssertNil(book.seriesName)
+    XCTAssertEqual(book.assets.first?.timelineStartSeconds, 0)
+    XCTAssertEqual(book.chapters.count, 1)
+    XCTAssertEqual(book.chapters.first?.title, "legacy")
+    XCTAssertEqual(book.chapters.first?.source, .file)
+    XCTAssertEqual(book.chapters.first?.assetID, book.assets.first?.id)
+  }
+
+  func testAVFoundationInspectorBuildsFileChapterWithoutReadingPayload() async throws {
+    let bundled = try XCTUnwrap(
+      Bundle(for: PlayerCoreTests.self).url(forResource: "01-opening-tone", withExtension: "m4a")
+    )
+
+    let inspected = try await AVFoundationAudioInspector().inspect(url: bundled)
+
+    XCTAssertEqual(inspected.container, "M4A")
+    XCTAssertEqual(inspected.durationSeconds, 1.8, accuracy: 0.02)
+    XCTAssertEqual(inspected.chapters.count, 1)
+    XCTAssertEqual(inspected.chapters.first?.source, .file)
+    XCTAssertEqual(inspected.chapters.first?.startSeconds, 0)
+    XCTAssertEqual(inspected.chapters.first?.durationSeconds ?? 0, 1.8, accuracy: 0.02)
+  }
+
+  func testAVFoundationInspectorSupportsSyntheticMP3AndM4B() async throws {
+    let fixtureBundle = Bundle(for: PlayerCoreTests.self)
+    let mp3 = try XCTUnwrap(
+      fixtureBundle.url(forResource: "01-synthetic-chapter", withExtension: "mp3")
+    )
+    let m4b = try XCTUnwrap(
+      fixtureBundle.url(forResource: "synthetic-single-book", withExtension: "m4b")
+    )
+
+    let inspectedMP3 = try await AVFoundationAudioInspector().inspect(url: mp3)
+    XCTAssertEqual(inspectedMP3.container, "MP3")
+    XCTAssertEqual(inspectedMP3.title, "Synthetic MP3 Chapter")
+    XCTAssertEqual(inspectedMP3.authors, ["Player Test Generator"])
+    XCTAssertEqual(inspectedMP3.durationSeconds, 1.8, accuracy: 0.02)
+    XCTAssertEqual(inspectedMP3.chapters.map(\.source), [.file])
+
+    let inspectedM4B = try await AVFoundationAudioInspector().inspect(url: m4b)
+    XCTAssertEqual(inspectedM4B.container, "M4B")
+    XCTAssertEqual(inspectedM4B.durationSeconds, 2.1, accuracy: 0.02)
+    XCTAssertEqual(inspectedM4B.chapters.map(\.source), [.file])
+  }
+
+  func testEmbeddedChapterTimelineIsStableOrderedAndClamped() throws {
+    let chapters = ChapterTimeline.embeddedChapters(
+      [
+        EmbeddedChapterCandidate(title: " Third ", startSeconds: 20, durationSeconds: 30),
+        EmbeddedChapterCandidate(title: "First", startSeconds: 0, durationSeconds: 25),
+        EmbeddedChapterCandidate(title: nil, startSeconds: 10, durationSeconds: 0),
+        EmbeddedChapterCandidate(title: "Invalid", startSeconds: 99, durationSeconds: 1),
+      ],
+      assetDurationSeconds: 30
+    )
+
+    XCTAssertEqual(chapters.map(\.id), ["embedded-0-0", "embedded-1-10000", "embedded-2-20000"])
+    XCTAssertEqual(chapters.map(\.title), ["First", "Chapter 2", "Third"])
+    XCTAssertEqual(chapters.map(\.startSeconds), [0, 10, 20])
+    XCTAssertEqual(chapters.map(\.durationSeconds), [10, 10, 10])
+    XCTAssertTrue(chapters.allSatisfy { $0.source == .embedded })
+  }
+
+  func testContributorParserPreservesCommaNamesAndSplitsExplicitSeparators() {
+    XCTAssertEqual(
+      ContributorParser.names(from: "Doe, Jane; Roe, Richard\nAlex Smith"),
+      ["Doe, Jane", "Roe, Richard", "Alex Smith"]
+    )
+  }
+
+  func testInspectedMetadataAndChaptersReachCommittedBook() async throws {
+    let temporaryRoot = FileManager.default.temporaryDirectory.appending(
+      path: "PlayerMetadataTests-\(UUID().uuidString)",
+      directoryHint: .isDirectory
+    )
+    try FileManager.default.createDirectory(at: temporaryRoot, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+    let bundled = try XCTUnwrap(
+      Bundle(for: PlayerCoreTests.self).url(forResource: "01-opening-tone", withExtension: "m4a")
+    )
+    let source = temporaryRoot.appending(path: "source.m4a")
+    try FileManager.default.copyItem(at: bundled, to: source)
+    let ids = (1...4).map {
+      UUID(uuidString: String(format: "80000000-0000-0000-0000-%012d", $0))!
+    }
+    let chapter = Chapter(
+      id: "embedded-0-0",
+      title: "Opening",
+      startSeconds: 0,
+      durationSeconds: 1.8,
+      source: .embedded,
+      assetID: nil
+    )
+    let model = PlayerModel(
+      environment: PlayerEnvironment(
+        persistence: InMemoryLibraryStore(),
+        media: FileSystemMediaManager(rootURL: temporaryRoot.appending(path: "Storage")),
+        inspector: DeterministicAudioInspector(
+          result: .success(
+            InspectedAudio(
+              title: "Synthetic Journey",
+              authors: ["Mara Vale"],
+              durationSeconds: 1.8,
+              artworkData: Data([0x89, 0x50, 0x4E, 0x47]),
+              container: "M4A",
+              narrators: ["Alex Reader"],
+              seriesName: "Signal Archives",
+              seriesPosition: "2.5",
+              artworkMediaType: "image/png",
+              chapters: [chapter]
+            )
+          )
+        ),
+        playback: DeterministicPlaybackController(),
+        ids: DeterministicPlayerIDGenerator(values: ids)
+      )
+    )
+
+    await model.restore()
+    let importedJobID = await model.importAudio(from: source)
+    let jobID = try XCTUnwrap(importedJobID)
+    let proposal = try XCTUnwrap(model.library.importJobs.first?.proposal)
+    XCTAssertEqual(proposal.narrators, ["Alex Reader"])
+    XCTAssertEqual(proposal.seriesName, "Signal Archives")
+    XCTAssertEqual(proposal.seriesPosition, "2.5")
+    XCTAssertEqual(proposal.chapters.first?.assetID, proposal.asset.id)
+
+    let committedBookID = await model.addImportToLibrary(jobID: jobID)
+    let bookID = try XCTUnwrap(committedBookID)
+    let book = try XCTUnwrap(model.library.books.first(where: { $0.id == bookID }))
+    XCTAssertEqual(book.narrators, ["Alex Reader"])
+    XCTAssertEqual(book.seriesName, "Signal Archives")
+    XCTAssertEqual(book.seriesPosition, "2.5")
+    XCTAssertEqual(book.artworkMediaType, "image/png")
+    XCTAssertEqual(book.chapters.first?.title, "Opening")
   }
 
   func testSeekPauseAndInjectedAcknowledgementsAppendDurableEvents() async throws {

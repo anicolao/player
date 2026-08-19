@@ -52,6 +52,8 @@ targets:
       - path: PlayerTests
       - path: PlayerUITests/Fixtures/SyntheticAudiobook
         buildPhase: resources
+      - path: PlayerUITests/Fixtures/SyntheticFormats
+        buildPhase: resources
     configFiles:
       Debug: Config/Debug.xcconfig
       E2E: Config/E2E.xcconfig

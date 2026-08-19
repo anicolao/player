@@ -24,6 +24,35 @@ The checked-in SHA-256 manifest detects accidental fixture changes. Exact
 encoded bytes are supported only on the repository's pinned macOS/Xcode toolchain;
 AAC encoder updates may intentionally require a reviewed manifest update.
 
+`SyntheticFormats/` adds one original generated MP3 chapter and one original
+generated M4B book. Their separate directories are direct production-inspector
+fixtures rather than one mixed-format book. Verify every checked-in fixture with:
+
+```sh
+apps/ios/scripts/fixtures/verify-generated-fixtures.sh
+```
+
+Exact reproduction of the MP3 requires an explicitly supplied LAME 3.100
+binary; the generator never downloads or installs tools:
+
+```sh
+export PLAYER_LAME_BINARY=/path/to/lame-3.100
+output_root="$(mktemp -d)"
+apps/ios/scripts/fixtures/generate-format-fixtures.sh "${output_root}"
+```
+
+With `PLAYER_LAME_BINARY` set, `verify-generated-fixtures.sh` generates two clean
+MP3/M4B format-fixture copies, compares them byte-for-byte, and compares a clean
+copy with the checked-in format fixtures. M4A/M4B MP4 timestamps are canonicalized
+before hashing.
+
+Stage either format into a new production-import input directory with:
+
+```sh
+apps/ios/scripts/fixtures/stage-format-fixture.sh mp3 /absolute/new/mp3-input
+apps/ios/scripts/fixtures/stage-format-fixture.sh m4b /absolute/new/m4b-input
+```
+
 ## Private local fixtures
 
 Large or copyrighted books must stay outside source control. To stage one into
@@ -47,3 +76,17 @@ cover art, filenames, metadata, or fixture paths in test names and failure
 messages. The system Files-picker journey should use the synthetic fixture;
 private staging should enter the same production import pipeline immediately
 after file selection.
+
+The known 30-part private sample also has a read-only, non-UI smoke contract:
+
+```sh
+export LOCAL_AUDIOBOOK_FIXTURE=/private/path/to/the/book-directory
+apps/ios/scripts/fixtures/smoke-private-audiobook.sh
+```
+
+This does not stage media. It scans all packets with Core Audio and asserts only
+neutral facts: 30 sequential track tags, one consistent grouping key, expected
+audio format, aggregate duration tolerance, aggregate storage size, and unchanged
+pre/post content hashes. It suppresses paths, filenames, metadata, artwork, and
+hashes. It never launches XCTest and therefore cannot record a screenshot or UI
+hierarchy attachment.

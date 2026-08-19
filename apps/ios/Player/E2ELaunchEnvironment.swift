@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 @MainActor
 extension PlayerEnvironment {
@@ -13,6 +14,8 @@ extension PlayerEnvironment {
           return try committedCurrentBookEnvironment(
             reset: arguments.contains("-e2e-reset")
           )
+        case "metadata-rich-book":
+          return try metadataRichBookEnvironment()
         default:
           break
         }
@@ -178,6 +181,111 @@ extension PlayerEnvironment {
         clock: FixedPlayerClock(value: date),
         ids: DeterministicPlayerIDGenerator(values: ids)
       )
+    }
+
+    private static func metadataRichBookEnvironment() throws -> PlayerEnvironment {
+      let root = FileManager.default.temporaryDirectory.appending(
+        path: "PlayerE2EMetadataRichBook",
+        directoryHint: .isDirectory
+      )
+      try? FileManager.default.removeItem(at: root)
+
+      let bookID = UUID(uuidString: "30000000-0000-0000-0000-000000000001")!
+      let assetID = UUID(uuidString: "30000000-0000-0000-0000-000000000002")!
+      let managedPath = "Media/\(bookID.uuidString.lowercased())/\(assetID.uuidString.lowercased()).m4b"
+      let managedURL = root.appending(path: managedPath)
+      try FileManager.default.createDirectory(
+        at: managedURL.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+      )
+      try Data("player deterministic metadata fixture".utf8).write(to: managedURL)
+
+      let chapters = [
+        Chapter(
+          id: "embedded-1",
+          title: "First Light",
+          startSeconds: 0,
+          durationSeconds: 30,
+          source: .embedded,
+          assetID: assetID
+        ),
+        Chapter(
+          id: "embedded-2",
+          title: "Crossing the Bar",
+          startSeconds: 30,
+          durationSeconds: 45,
+          source: .embedded,
+          assetID: assetID
+        ),
+        Chapter(
+          id: "embedded-3",
+          title: "Safe Harbor",
+          startSeconds: 75,
+          durationSeconds: 45,
+          source: .embedded,
+          assetID: assetID
+        ),
+      ]
+      let asset = AudioAsset(
+        id: assetID,
+        originalFilename: "harbor-at-dawn.m4b",
+        managedRelativePath: managedPath,
+        checksumSHA256: "e2e-metadata-fixture",
+        byteCount: 37,
+        durationSeconds: 120,
+        container: "M4B"
+      )
+      let book = Book(
+        id: bookID,
+        title: "Harbor at Dawn",
+        authors: ["Mara Vale"],
+        durationSeconds: 120,
+        artworkData: metadataRichArtwork(),
+        assets: [asset],
+        dateAdded: Date(timeIntervalSince1970: 1_700_000_000),
+        narrators: ["Imani Chen"],
+        seriesName: "Harbor Signals",
+        seriesPosition: "2",
+        artworkMediaType: "image/png",
+        chapters: chapters
+      )
+      let ids = (1...4).map {
+        UUID(uuidString: String(format: "31000000-0000-0000-0000-%012d", $0))!
+      }
+      return PlayerEnvironment(
+        persistence: InMemoryLibraryStore(
+          snapshot: LibrarySnapshot(books: [book], importJobs: [], currentBookID: nil)
+        ),
+        media: FileSystemMediaManager(rootURL: root),
+        inspector: DeterministicAudioInspector(result: .failure(.unreadableAudio("unused"))),
+        playback: DeterministicPlaybackController(),
+        clock: FixedPlayerClock(value: Date(timeIntervalSince1970: 1_700_000_000)),
+        ids: DeterministicPlayerIDGenerator(values: ids)
+      )
+    }
+
+    private static func metadataRichArtwork() -> Data {
+      let renderer = UIGraphicsImageRenderer(size: CGSize(width: 240, height: 240))
+      return renderer.pngData { context in
+        UIColor(red: 0.08, green: 0.16, blue: 0.21, alpha: 1).setFill()
+        context.fill(CGRect(x: 0, y: 0, width: 240, height: 240))
+
+        UIColor(red: 0.82, green: 0.34, blue: 0.20, alpha: 1).setFill()
+        context.cgContext.fillEllipse(in: CGRect(x: 78, y: 48, width: 84, height: 84))
+
+        context.cgContext.setStrokeColor(UIColor.white.withAlphaComponent(0.92).cgColor)
+        context.cgContext.setLineWidth(9)
+        context.cgContext.setLineCap(.round)
+        for offset in stride(from: 0, through: 54, by: 18) {
+          context.cgContext.move(to: CGPoint(x: 36, y: 158 + offset))
+          context.cgContext.addCurve(
+            to: CGPoint(x: 204, y: 158 + offset),
+            control1: CGPoint(x: 78, y: 134 + offset),
+            control2: CGPoint(x: 156, y: 182 + offset)
+          )
+        }
+        context.cgContext.strokePath()
+      }
     }
   #endif
 }

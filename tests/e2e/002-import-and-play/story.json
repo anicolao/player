@@ -2,11 +2,16 @@
   "id": "002-import-and-play",
   "platform": "ios",
   "test": "PlayerUITests/ImportPlaybackUITests/testReviewsCommitsAndPlaysOneAudiobook",
+  "additionalTests": [
+    "PlayerUITests/MetadataChapterUITests/testShowsEmbeddedMetadataAndStartsAChapter"
+  ],
   "fixture": "single-audiobook-ready",
   "screenshots": [
     "000-review-import.png",
     "001-committed-library.png",
     "002-book-detail.png",
-    "003-paused-now-playing.png"
+    "003-paused-now-playing.png",
+    "004-metadata-and-chapters.png",
+    "005-chapter-now-playing.png"
   ]
 }

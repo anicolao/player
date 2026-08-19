@@ -93,7 +93,13 @@ private struct LibraryView: View {
       .toolbar {
         if !model.library.books.isEmpty {
           ToolbarItem(placement: .topBarTrailing) {
-            Button { isImporting = true } label: { Image(systemName: "plus") }
+            Button { isImporting = true } label: {
+              Image(systemName: "plus")
+                .font(.title3.weight(.semibold))
+                .frame(width: 44, height: 44)
+                .background(PlayerColor.card, in: Circle())
+            }
+              .buttonStyle(.plain)
               .accessibilityLabel("Add Audiobook")
               .accessibilityIdentifier("add-audiobook-toolbar")
           }
@@ -101,9 +107,9 @@ private struct LibraryView: View {
       }
       .navigationDestination(for: UUID.self) { id in
         if let book = model.library.books.first(where: { $0.id == id }) {
-          BookDetailView(book: book) {
+          BookDetailView(book: book) { position in
             Task {
-              await model.play(bookID: book.id)
+              await model.play(bookID: book.id, at: position)
               presentPlayer(book)
             }
           }
@@ -305,28 +311,82 @@ private struct BookRow: View {
 
 private struct BookDetailView: View {
   let book: Book
-  let play: () -> Void
+  let play: (Double?) -> Void
   var body: some View {
     ZStack {
       PlayerColor.background.ignoresSafeArea()
-      VStack(spacing: 20) {
-        ArtworkView(data: book.artworkData, size: 210)
-        Text(book.title).font(.title.bold()).multilineTextAlignment(.center)
-        Text(book.authors.first ?? "Unknown Author").foregroundStyle(PlayerColor.secondary)
-        Text("\(book.assets.count) file · \(duration(book.durationSeconds))")
-          .font(.subheadline).foregroundStyle(PlayerColor.secondary)
-        Button(action: play) { Label("Play", systemImage: "play.fill").frame(maxWidth: .infinity) }
+      ScrollView {
+        VStack(spacing: 18) {
+          ArtworkView(data: book.artworkData, size: 210)
+          VStack(spacing: 6) {
+            Text(book.title).font(.title.bold()).multilineTextAlignment(.center)
+            Text(book.authors.first ?? "Unknown Author").foregroundStyle(PlayerColor.secondary)
+            if let narrator = book.narrators.first {
+              Text("Narrated by \(narrator)")
+                .font(.subheadline)
+                .foregroundStyle(PlayerColor.secondary)
+            }
+            if let seriesName = book.seriesName {
+              Text(seriesLabel(name: seriesName, position: book.seriesPosition))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(PlayerColor.accent)
+            }
+            Text("\(book.assets.count) file · \(duration(book.durationSeconds))")
+              .font(.subheadline).foregroundStyle(PlayerColor.secondary)
+          }
+          Button { play(nil) } label: {
+            Label("Play", systemImage: "play.fill").frame(maxWidth: .infinity)
+          }
           .buttonStyle(.borderedProminent).controlSize(.large).tint(PlayerColor.accent)
           .accessibilityIdentifier("play-book")
-        Spacer()
+
+          if !book.chapters.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+              Text("Chapters").font(.title3.bold())
+              ForEach(Array(book.chapters.enumerated()), id: \.element.id) { index, chapter in
+                Button { play(chapter.startSeconds) } label: {
+                  HStack(spacing: 12) {
+                    Text("\(index + 1)")
+                      .font(.caption.bold())
+                      .foregroundStyle(PlayerColor.accent)
+                      .frame(width: 28, height: 28)
+                      .background(PlayerColor.accent.opacity(0.12), in: Circle())
+                    VStack(alignment: .leading, spacing: 3) {
+                      Text(chapter.title).font(.headline).foregroundStyle(PlayerColor.ink)
+                      Text(timecode(chapter.durationSeconds))
+                        .font(.caption).foregroundStyle(PlayerColor.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: "play.fill").foregroundStyle(PlayerColor.accent)
+                  }
+                  .padding(12)
+                  .background(PlayerColor.card, in: RoundedRectangle(cornerRadius: 14))
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("chapter-\(index + 1)")
+              }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+          }
+        }
+        .padding(24)
       }
-      .padding(24)
     }
     .navigationTitle("Book Detail")
     .navigationBarTitleDisplayMode(.inline)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("book-detail-screen")
-    .accessibilityValue("book:ready")
+    .accessibilityValue(bookDetailValue)
+  }
+
+  private var bookDetailValue: String {
+    let container = book.assets.first?.container.lowercased() ?? "unknown"
+    return "book:ready:\(book.id.uuidString.lowercased()):\(book.chapters.count)-chapters:\(container)"
+  }
+
+  private func seriesLabel(name: String, position: String?) -> String {
+    guard let position, !position.isEmpty else { return name }
+    return "\(name) · Book \(position)"
   }
 }
 
@@ -345,6 +405,11 @@ private struct NowPlayingView: View {
           VStack(spacing: 7) {
             Text(book.title).font(.title2.bold()).multilineTextAlignment(.center)
             Text(book.authors.first ?? "Unknown Author").foregroundStyle(PlayerColor.secondary)
+            if let chapter = currentChapter {
+              Text(chapter.title).font(.subheadline.weight(.semibold))
+              Text("Chapter \(currentChapterIndex + 1) of \(book.chapters.count)")
+                .font(.caption).foregroundStyle(PlayerColor.secondary)
+            }
           }
           Slider(
             value: Binding(
@@ -389,7 +454,16 @@ private struct NowPlayingView: View {
 
   private var playerValue: String {
     let milliseconds = Int((model.playbackState.elapsedSeconds * 1_000).rounded())
-    return "player:\(model.playbackState.status.rawValue):\(book.id.uuidString.lowercased()):0:\(milliseconds)"
+    return "player:\(model.playbackState.status.rawValue):\(book.id.uuidString.lowercased()):\(currentChapterIndex):\(milliseconds)"
+  }
+
+  private var currentChapterIndex: Int {
+    book.chapters.lastIndex(where: { $0.startSeconds <= model.playbackState.elapsedSeconds }) ?? 0
+  }
+
+  private var currentChapter: Chapter? {
+    guard book.chapters.indices.contains(currentChapterIndex) else { return nil }
+    return book.chapters[currentChapterIndex]
   }
 }
 
@@ -464,6 +538,9 @@ private struct ArtworkView: View {
     .frame(width: size, height: size)
     .clipShape(RoundedRectangle(cornerRadius: max(12, size * 0.07)))
     .shadow(color: PlayerColor.ink.opacity(0.15), radius: 18, y: 10)
+    .accessibilityElement()
+    .accessibilityLabel(data == nil ? "Artwork placeholder" : "Embedded cover artwork")
+    .accessibilityIdentifier(data == nil ? "placeholder-artwork" : "embedded-cover-artwork")
   }
 }
 
@@ -493,4 +570,9 @@ enum PlayerColor {
 private func duration(_ seconds: Double) -> String {
   let minutes = max(1, Int(seconds.rounded()) / 60)
   return minutes >= 60 ? "\(minutes / 60)h \(minutes % 60)m" : "\(minutes)m"
+}
+
+private func timecode(_ seconds: Double) -> String {
+  let wholeSeconds = max(0, Int(seconds.rounded()))
+  return String(format: "%d:%02d", wholeSeconds / 60, wholeSeconds % 60)
 }

@@ -62,8 +62,9 @@ final class TestStepHelper {
   private var steps: [Step] = []
   private var nextScreenshotIndex = 0
 
-  init(testCase: XCTestCase) {
+  init(testCase: XCTestCase, startIndex: Int = 0) {
     self.testCase = testCase
+    self.nextScreenshotIndex = startIndex
   }
 
   func setMetadata(

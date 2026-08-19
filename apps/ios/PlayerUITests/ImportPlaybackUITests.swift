@@ -58,7 +58,10 @@ final class ImportPlaybackUITests: XCTestCase {
       "book-detail",
       description: "Book Detail exposes the playable managed audiobook",
       verifications: [
-        .exists(app.otherElements["book-detail-screen"], "The Book Detail screen is visible"),
+        .exists(
+          app.descendants(matching: .any)["book-detail-screen"],
+          "The Book Detail screen is visible"
+        ),
         .exists(app.buttons["play-book"], "The audiobook has a Play action"),
         .exists(app.staticTexts["1 file · 18m"], "The inspected asset count and duration are retained"),
       ]
