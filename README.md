@@ -4,7 +4,7 @@
 
 **Player** is a working title for an iOS app for people who bring their own DRM-free audiobooks. Its defining feature is not another play button: it is a forgiving path from “these files are somewhere on my phone or cloud drive” to “this is one correctly ordered, beautifully presented book.”
 
-The repository now contains an initial runnable SwiftUI scaffold and a deterministic launch-story test. [VISION.md](VISION.md) explains the product direction, [MVP_DESIGN.md](MVP_DESIGN.md) defines the first buildable target, and [UX_DESIGN.md](UX_DESIGN.md) turns it into an implementation-facing interaction and visual system with screen mockups.
+The repository now contains an initial runnable SwiftUI scaffold and a deterministic launch-story test. [VISION.md](VISION.md) explains the product direction, [MVP_DESIGN.md](MVP_DESIGN.md) defines the first buildable target, [UX_DESIGN.md](UX_DESIGN.md) turns it into an implementation-facing interaction and visual system, and [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) sequences the MVP as tested tracer-bullet commits.
 
 ## The product promise
 
