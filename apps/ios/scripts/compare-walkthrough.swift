@@ -79,17 +79,28 @@ func canonicalImage(at url: URL) throws -> CanonicalImage {
   return CanonicalImage(width: image.width, height: image.height, pixels: pixels)
 }
 
-func differingPixelCount(_ expected: Data, _ actual: Data) -> Int {
+struct PixelDifference {
+  let count: Int
+  let bounds: CGRect?
+  let maximumChannelDelta: UInt8
+}
+
+func pixelDifference(_ expected: Data, _ actual: Data, width: Int) -> PixelDifference {
   expected.withUnsafeBytes { expectedBytes in
     actual.withUnsafeBytes { actualBytes in
       guard
         let expectedBase = expectedBytes.bindMemory(to: UInt8.self).baseAddress,
         let actualBase = actualBytes.bindMemory(to: UInt8.self).baseAddress
       else {
-        return 0
+        return PixelDifference(count: 0, bounds: nil, maximumChannelDelta: 0)
       }
 
       var count = 0
+      var minimumX = width
+      var minimumY = expected.count / 4 / width
+      var maximumX = -1
+      var maximumY = -1
+      var maximumChannelDelta: UInt8 = 0
       for offset in stride(from: 0, to: expected.count, by: 4) {
         if expectedBase[offset] != actualBase[offset]
           || expectedBase[offset + 1] != actualBase[offset + 1]
@@ -97,9 +108,36 @@ func differingPixelCount(_ expected: Data, _ actual: Data) -> Int {
           || expectedBase[offset + 3] != actualBase[offset + 3]
         {
           count += 1
+          let pixel = offset / 4
+          let x = pixel % width
+          let y = pixel / width
+          minimumX = min(minimumX, x)
+          minimumY = min(minimumY, y)
+          maximumX = max(maximumX, x)
+          maximumY = max(maximumY, y)
+          for channel in 0..<4 {
+            let expectedValue = expectedBase[offset + channel]
+            let actualValue = actualBase[offset + channel]
+            let delta = expectedValue > actualValue
+              ? expectedValue - actualValue
+              : actualValue - expectedValue
+            maximumChannelDelta = max(maximumChannelDelta, delta)
+          }
         }
       }
-      return count
+      let bounds = count == 0
+        ? nil
+        : CGRect(
+          x: minimumX,
+          y: minimumY,
+          width: maximumX - minimumX + 1,
+          height: maximumY - minimumY + 1
+        )
+      return PixelDifference(
+        count: count,
+        bounds: bounds,
+        maximumChannelDelta: maximumChannelDelta
+      )
     }
   }
 }
@@ -132,9 +170,15 @@ for name in baselineNames {
     )
   }
 
-  let difference = differingPixelCount(expected.pixels, actual.pixels)
-  guard difference == 0 else {
-    throw ComparisonError.pixelDifference(name, pixelCount: difference)
+  let difference = pixelDifference(expected.pixels, actual.pixels, width: expected.width)
+  guard difference.count == 0 else {
+    if let bounds = difference.bounds {
+      let diagnostics =
+        "Difference diagnostics: \(name), bounds=\(bounds), "
+          + "maximumChannelDelta=\(difference.maximumChannelDelta)\n"
+      FileHandle.standardError.write(Data(diagnostics.utf8))
+    }
+    throw ComparisonError.pixelDifference(name, pixelCount: difference.count)
   }
   print("Exact pixel match: \(name)")
 }

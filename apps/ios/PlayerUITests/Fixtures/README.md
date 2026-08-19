@@ -53,6 +53,32 @@ apps/ios/scripts/fixtures/stage-format-fixture.sh mp3 /absolute/new/mp3-input
 apps/ios/scripts/fixtures/stage-format-fixture.sh m4b /absolute/new/m4b-input
 ```
 
+## Messy multifile and Unicode selection
+
+`SyntheticMessyMultifile/` derives eight unique M4As from the generated tones.
+It deliberately combines a selected folder, four loose selected files, accented
+and Greek characters, conflicting filename stems, and numeric parts `2` and
+`10`. A deterministic MP4 `free` box makes repeated tone sources checksum-unique
+without changing their playable audio or adding private metadata.
+
+Verify exact regeneration and Core Audio readability with:
+
+```sh
+apps/ios/scripts/fixtures/verify-messy-multifile-fixture.sh
+```
+
+Stage the preserved folder tree into a new import input directory with:
+
+```sh
+apps/ios/scripts/fixtures/stage-messy-multifile-fixture.sh \
+  /absolute/new/messy-multifile-input
+```
+
+The E2E acquisition source passes the `Signal Δ — Folder` directory plus each of
+the four files in `Loose Files` to the normal multi-selection importer. The
+fixture JSON contains only stable synthetic IDs and expected evidence categories;
+it is not an importer shortcut.
+
 ## Private local fixtures
 
 Large or copyrighted books must stay outside source control. To stage one into

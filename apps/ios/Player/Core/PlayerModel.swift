@@ -116,7 +116,9 @@ final class PlayerModel {
         byteCount: staged.byteCount,
         durationSeconds: inspected.durationSeconds,
         container: inspected.container,
-        timelineStartSeconds: 0
+        timelineStartSeconds: 0,
+        discNumber: inspected.discNumber,
+        trackNumber: inspected.trackNumber
       )
       let chapters = inspected.chapters.map { chapter in
         var mapped = chapter
@@ -136,8 +138,21 @@ final class PlayerModel {
         seriesName: inspected.seriesName,
         seriesPosition: inspected.seriesPosition,
         artworkMediaType: inspected.artworkMediaType,
-        chapters: chapters
+        chapters: chapters,
+        groupingEvidence: [
+          GroupingEvidence(
+            kind: .selectedTogether,
+            explanation: "Selected as one audiobook file."
+          )
+        ]
       )
+      job.stagedAssets = [
+        StagedImportAsset(
+          assetID: assetID,
+          stagedRelativePath: staged.relativePath,
+          sourceRelativePath: staged.originalFilename
+        )
+      ]
       job.phase = .ready
       job.failure = nil
       try await replaceAndPersist(job)
@@ -157,70 +172,389 @@ final class PlayerModel {
     }
   }
 
+  /// Acquires files and folders as one reviewable import. Selection membership is
+  /// the primary grouping signal; folder and embedded-title agreement are recorded
+  /// as explainable supporting evidence rather than silently creating extra books.
+  @discardableResult
+  func importAudioSelection(from selectedURLs: [URL]) async -> UUID? {
+    guard !selectedURLs.isEmpty else {
+      lastErrorMessage = PlayerCoreError.invalidAssetSelection.localizedDescription
+      return nil
+    }
+
+    let jobID = await environment.ids.next()
+    let now = environment.clock.now()
+    var job = ImportJob(
+      id: jobID,
+      sourceFilename: selectedURLs.count == 1
+        ? selectedURLs[0].lastPathComponent
+        : "\(selectedURLs.count) selected items",
+      phase: .queued,
+      progress: .none,
+      createdAt: now,
+      updatedAt: now
+    )
+    library.importJobs.append(job)
+
+    do {
+      try await persist()
+      job.phase = .acquiring
+      try await replaceAndPersist(job)
+
+      let acquired = try await environment.media.acquireSelection(selectedURLs, jobID: jobID)
+      job.progress = ImportProgress(
+        completed: acquired.reduce(0) { $0 + $1.staged.byteCount },
+        total: acquired.reduce(0) { $0 + $1.staged.byteCount }
+      )
+      job.phase = .inspecting
+      try await replaceAndPersist(job)
+
+      var prepared: [PreparedImportAsset] = []
+      for (selectionIndex, item) in acquired.enumerated() {
+        let stagedURL = try await environment.media.stagedURL(for: item.staged.relativePath)
+        let inspected = try await environment.inspector.inspect(url: stagedURL)
+        let assetID = await environment.ids.next()
+        let asset = AudioAsset(
+          id: assetID,
+          originalFilename: item.staged.originalFilename,
+          managedRelativePath: "",
+          checksumSHA256: item.staged.checksumSHA256,
+          byteCount: item.staged.byteCount,
+          durationSeconds: inspected.durationSeconds,
+          container: inspected.container,
+          discNumber: inspected.discNumber,
+          trackNumber: inspected.trackNumber,
+          importOrder: selectionIndex
+        )
+        prepared.append(
+          PreparedImportAsset(
+            asset: asset,
+            inspected: inspected,
+            acquired: item
+          )
+        )
+      }
+
+      let preparedGroups = groupedImportAssets(prepared)
+      var proposals: [BookProposal] = []
+      for group in preparedGroups {
+        let ordered = NaturalTrackOrdering.order(group.map(\.asset))
+        let preparedByID = Dictionary(uniqueKeysWithValues: group.map { ($0.asset.id, $0) })
+        var chapters: [Chapter] = []
+        var positionedAssets: [AudioAsset] = []
+        var timelineStart = 0.0
+        for var asset in ordered.assets {
+          guard let item = preparedByID[asset.id] else { continue }
+          asset.timelineStartSeconds = timelineStart
+          positionedAssets.append(asset)
+          chapters.append(contentsOf: item.inspected.chapters.map { chapter in
+            Chapter(
+              id: "\(asset.id.uuidString.lowercased())-\(chapter.id)",
+              title: chapter.title,
+              startSeconds: chapter.startSeconds + timelineStart,
+              durationSeconds: chapter.durationSeconds,
+              source: chapter.source,
+              assetID: asset.id
+            )
+          })
+          timelineStart += asset.durationSeconds
+        }
+        guard let primaryAsset = positionedAssets.first else {
+          throw PlayerCoreError.invalidAssetSelection
+        }
+        let proposalID = await environment.ids.next()
+        let bookID = await environment.ids.next()
+        let commonFolder = commonNonBlank(group.compactMap(\.acquired.commonFolderName))
+        let commonTitle = commonNonBlank(group.compactMap(\.inspected.title))
+        let filenameTitle = filenameStem(for: group[0].asset.originalFilename).display
+        let warnings = (preparedGroups.count > 1
+          ? ["Confirm that this selection is one audiobook."]
+          : []) + ordered.warnings
+        proposals.append(
+          BookProposal(
+            id: proposalID,
+            proposedBookID: bookID,
+            title: commonFolder ?? commonTitle ?? filenameTitle,
+            authors: uniqueContributors(group.flatMap(\.inspected.authors)),
+            durationSeconds: timelineStart,
+            artworkData: group.compactMap(\.inspected.artworkData).first,
+            asset: primaryAsset,
+            warnings: warnings,
+            narrators: uniqueContributors(group.flatMap(\.inspected.narrators)),
+            seriesName: group.compactMap(\.inspected.seriesName).first,
+            seriesPosition: group.compactMap(\.inspected.seriesPosition).first,
+            artworkMediaType: group.compactMap(\.inspected.artworkMediaType).first,
+            chapters: chapters.sorted { $0.startSeconds < $1.startSeconds },
+            additionalAssets: Array(positionedAssets.dropFirst()),
+            groupingEvidence: groupingEvidence(for: group),
+            orderingEvidence: ordered.evidence
+          )
+        )
+      }
+      job.stagedRelativePath = acquired.first?.staged.relativePath
+      job.stagedAssets = prepared.map {
+        StagedImportAsset(
+          assetID: $0.asset.id,
+          stagedRelativePath: $0.acquired.staged.relativePath,
+          sourceRelativePath: $0.acquired.sourceRelativePath
+        )
+      }
+      job.proposals = proposals
+      job.phase = proposals.contains(where: { !$0.warnings.isEmpty }) ? .needsReview : .ready
+      job.failure = nil
+      try await replaceAndPersist(job)
+      lastErrorMessage = nil
+      return jobID
+    } catch {
+      job.phase = .failed
+      job.failure = ImportFailure(
+        message: error.localizedDescription,
+        affectedFilename: nil,
+        sourceIsUnchanged: true,
+        isRecoverable: true
+      )
+      try? await replaceAndPersist(job)
+      lastErrorMessage = error.localizedDescription
+      return jobID
+    }
+  }
+
   @discardableResult
   func addImportToLibrary(jobID: UUID) async -> UUID? {
     guard var job = library.importJobs.first(where: { $0.id == jobID }) else {
       lastErrorMessage = PlayerCoreError.missingImport(jobID).localizedDescription
       return nil
     }
+    let proposals = job.proposals
     guard
       job.phase == .ready || job.phase == .needsReview,
-      let proposal = job.proposal,
-      let stagedPath = job.stagedRelativePath
+      !proposals.isEmpty
     else {
       lastErrorMessage = PlayerCoreError.importNotReady(jobID).localizedDescription
       return nil
     }
 
     let previousLibrary = library
-    var managed: ManagedAudio?
+    var managed: [ManagedAudio] = []
     do {
       job.phase = .committing
       try await replaceAndPersist(job)
-      let staged = StagedAudio(
-        relativePath: stagedPath,
-        originalFilename: proposal.asset.originalFilename,
-        checksumSHA256: proposal.asset.checksumSHA256,
-        byteCount: proposal.asset.byteCount
-      )
-      let committed = try await environment.media.commit(
-        staged,
-        bookID: proposal.proposedBookID,
-        assetID: proposal.asset.id
-      )
-      managed = committed
-
-      var asset = proposal.asset
-      asset.managedRelativePath = committed.relativePath
-      let book = Book(
-        id: proposal.proposedBookID,
-        title: proposal.title,
-        authors: proposal.authors,
-        durationSeconds: proposal.durationSeconds,
-        artworkData: proposal.artworkData,
-        assets: [asset],
-        dateAdded: environment.clock.now(),
-        narrators: proposal.narrators,
-        seriesName: proposal.seriesName,
-        seriesPosition: proposal.seriesPosition,
-        artworkMediaType: proposal.artworkMediaType,
-        chapters: proposal.chapters
-      )
-      library.books.append(book)
+      let stagedByAsset = Dictionary(uniqueKeysWithValues: job.stagedAssets.map { ($0.assetID, $0) })
+      var books: [Book] = []
+      for proposal in proposals {
+        var committedAssets: [AudioAsset] = []
+        for asset in proposal.assets {
+          let mapping = stagedByAsset[asset.id]
+          let stagedPath = mapping?.stagedRelativePath
+            ?? (asset.id == proposal.asset.id ? job.stagedRelativePath : nil)
+          guard let stagedPath else { throw PlayerCoreError.invalidAssetSelection }
+          let staged = StagedAudio(
+            relativePath: stagedPath,
+            originalFilename: asset.originalFilename,
+            checksumSHA256: asset.checksumSHA256,
+            byteCount: asset.byteCount
+          )
+          let committed = try await environment.media.commit(
+            staged,
+            bookID: proposal.proposedBookID,
+            assetID: asset.id
+          )
+          managed.append(committed)
+          var committedAsset = asset
+          committedAsset.managedRelativePath = committed.relativePath
+          committedAssets.append(committedAsset)
+        }
+        books.append(
+          Book(
+            id: proposal.proposedBookID,
+            title: proposal.title,
+            authors: proposal.authors,
+            durationSeconds: proposal.durationSeconds,
+            artworkData: proposal.artworkData,
+            assets: committedAssets,
+            dateAdded: environment.clock.now(),
+            narrators: proposal.narrators,
+            seriesName: proposal.seriesName,
+            seriesPosition: proposal.seriesPosition,
+            artworkMediaType: proposal.artworkMediaType,
+            chapters: proposal.chapters
+          )
+        )
+      }
+      // Publish only after every immutable asset move has succeeded.
+      library.books.append(contentsOf: books)
       job.phase = .committed
-      job.committedBookID = book.id
+      job.committedBookID = books.first?.id
       job.updatedAt = environment.clock.now()
       replace(job)
       try await persist()
       await environment.media.discardStaging(for: jobID)
       lastErrorMessage = nil
-      return book.id
+      return books.first?.id
     } catch {
-      if let managed { try? await environment.media.rollback(managed) }
+      for item in managed.reversed() { try? await environment.media.rollback(item) }
       library = previousLibrary
+      try? await environment.persistence.save(library)
       lastErrorMessage = error.localizedDescription
       return nil
     }
+  }
+
+  @discardableResult
+  func reorderAssets(jobID: UUID, proposalID: UUID, assetIDs: [UUID]) async -> Bool {
+    await reviseImport(jobID: jobID) { job in
+      guard let index = job.proposals.firstIndex(where: { $0.id == proposalID }) else {
+        throw PlayerCoreError.missingProposal(proposalID)
+      }
+      var proposals = job.proposals
+      let current = proposals[index]
+      guard Set(assetIDs).count == assetIDs.count,
+        Set(assetIDs) == Set(current.assets.map(\.id))
+      else { throw PlayerCoreError.invalidAssetSelection }
+      let byID = Dictionary(uniqueKeysWithValues: current.assets.map { ($0.id, $0) })
+      var revised = ProposalTimeline.rebuilding(current, orderedAssets: assetIDs.compactMap { byID[$0] })
+      revised.orderingEvidence = revised.assets.map {
+        TrackOrderingEvidence(assetID: $0.id, source: .manual, explanation: "Order confirmed in import review.")
+      }
+      revised.warnings = []
+      proposals[index] = revised
+      job.proposals = proposals
+    }
+  }
+
+  @discardableResult
+  func splitProposal(jobID: UUID, proposalID: UUID, assetIDs: [UUID]) async -> Bool {
+    let newProposalID = await environment.ids.next()
+    let newBookID = await environment.ids.next()
+    return await reviseImport(jobID: jobID) { job in
+      guard let index = job.proposals.firstIndex(where: { $0.id == proposalID }) else {
+        throw PlayerCoreError.missingProposal(proposalID)
+      }
+      var proposals = job.proposals
+      let original = proposals[index]
+      let selected = Set(assetIDs)
+      guard !selected.isEmpty, selected.count < original.assets.count else {
+        throw PlayerCoreError.invalidAssetSelection
+      }
+      let keptAssets = original.assets.filter { !selected.contains($0.id) }
+      let splitAssets = original.assets.filter { selected.contains($0.id) }
+      guard splitAssets.count == selected.count else { throw PlayerCoreError.invalidAssetSelection }
+      proposals[index] = ProposalTimeline.rebuilding(original, orderedAssets: keptAssets)
+      var split = BookProposal(
+        id: newProposalID,
+        proposedBookID: newBookID,
+        title: original.title,
+        authors: original.authors,
+        durationSeconds: splitAssets.reduce(0) { $0 + $1.durationSeconds },
+        artworkData: original.artworkData,
+        asset: splitAssets[0],
+        warnings: [],
+        narrators: original.narrators,
+        seriesName: original.seriesName,
+        seriesPosition: original.seriesPosition,
+        artworkMediaType: original.artworkMediaType,
+        chapters: original.chapters.filter { $0.assetID.map(selected.contains) ?? false },
+        additionalAssets: Array(splitAssets.dropFirst()),
+        groupingEvidence: [
+          GroupingEvidence(kind: .selectedTogether, explanation: "Created by splitting the import review.")
+        ],
+        orderingEvidence: splitAssets.map {
+          TrackOrderingEvidence(assetID: $0.id, source: .manual, explanation: "Membership confirmed in import review.")
+        }
+      )
+      split = ProposalTimeline.rebuilding(split, orderedAssets: splitAssets)
+      proposals.insert(split, at: index + 1)
+      job.proposals = proposals
+    }
+  }
+
+  @discardableResult
+  func moveAssets(
+    jobID: UUID,
+    assetIDs: [UUID],
+    from sourceProposalID: UUID,
+    to destinationProposalID: UUID
+  ) async -> Bool {
+    await reviseImport(jobID: jobID) { job in
+      var proposals = job.proposals
+      guard
+        let sourceIndex = proposals.firstIndex(where: { $0.id == sourceProposalID }),
+        let destinationIndex = proposals.firstIndex(where: { $0.id == destinationProposalID }),
+        sourceIndex != destinationIndex
+      else { throw PlayerCoreError.missingProposal(sourceProposalID) }
+      let selected = Set(assetIDs)
+      let source = proposals[sourceIndex]
+      let destination = proposals[destinationIndex]
+      let moving = source.assets.filter { selected.contains($0.id) }
+      guard !selected.isEmpty, moving.count == selected.count, moving.count < source.assets.count else {
+        throw PlayerCoreError.invalidAssetSelection
+      }
+      proposals[sourceIndex] = ProposalTimeline.rebuilding(
+        source,
+        orderedAssets: source.assets.filter { !selected.contains($0.id) }
+      )
+      var destinationBase = destination
+      destinationBase.chapters += source.chapters.filter { $0.assetID.map(selected.contains) ?? false }
+      let combinedAssets = destination.assets + moving
+      destinationBase.assets = combinedAssets
+      proposals[destinationIndex] = ProposalTimeline.rebuilding(
+        destinationBase,
+        orderedAssets: combinedAssets
+      )
+      job.proposals = proposals
+    }
+  }
+
+  @discardableResult
+  func moveAssets(
+    jobID: UUID,
+    assetIDs: [UUID],
+    fromProposalID: UUID,
+    toProposalID: UUID
+  ) async -> Bool {
+    await moveAssets(
+      jobID: jobID,
+      assetIDs: assetIDs,
+      from: fromProposalID,
+      to: toProposalID
+    )
+  }
+
+  @discardableResult
+  func mergeProposals(jobID: UUID, sourceProposalID: UUID, into destinationProposalID: UUID) async -> Bool {
+    await reviseImport(jobID: jobID) { job in
+      var proposals = job.proposals
+      guard
+        let sourceIndex = proposals.firstIndex(where: { $0.id == sourceProposalID }),
+        let destinationIndex = proposals.firstIndex(where: { $0.id == destinationProposalID }),
+        sourceIndex != destinationIndex
+      else { throw PlayerCoreError.missingProposal(sourceProposalID) }
+      let source = proposals[sourceIndex]
+      var destination = proposals[destinationIndex]
+      destination.chapters += source.chapters
+      let combinedAssets = destination.assets + source.assets
+      destination.assets = combinedAssets
+      destination = ProposalTimeline.rebuilding(
+        destination,
+        orderedAssets: combinedAssets
+      )
+      proposals[destinationIndex] = destination
+      proposals.remove(at: sourceIndex)
+      job.proposals = proposals
+    }
+  }
+
+  @discardableResult
+  func mergeProposals(
+    jobID: UUID,
+    sourceProposalID: UUID,
+    destinationProposalID: UUID
+  ) async -> Bool {
+    await mergeProposals(
+      jobID: jobID,
+      sourceProposalID: sourceProposalID,
+      into: destinationProposalID
+    )
   }
 
   func loadCurrentBook() async {
@@ -449,6 +783,33 @@ final class PlayerModel {
     try await persist()
   }
 
+  private func reviseImport(
+    jobID: UUID,
+    mutation: (inout ImportJob) throws -> Void
+  ) async -> Bool {
+    guard var job = library.importJobs.first(where: { $0.id == jobID }) else {
+      lastErrorMessage = PlayerCoreError.missingImport(jobID).localizedDescription
+      return false
+    }
+    guard job.phase == .ready || job.phase == .needsReview else {
+      lastErrorMessage = PlayerCoreError.importNotReady(jobID).localizedDescription
+      return false
+    }
+    let previousLibrary = library
+    do {
+      try mutation(&job)
+      job.reviewRevision += 1
+      job.phase = job.proposals.contains(where: { !$0.warnings.isEmpty }) ? .needsReview : .ready
+      try await replaceAndPersist(job)
+      lastErrorMessage = nil
+      return true
+    } catch {
+      library = previousLibrary
+      lastErrorMessage = error.localizedDescription
+      return false
+    }
+  }
+
   private func replace(_ job: ImportJob) {
     if let index = library.importJobs.firstIndex(where: { $0.id == job.id }) {
       library.importJobs[index] = job
@@ -460,6 +821,85 @@ final class PlayerModel {
   private func persist() async throws {
     try await environment.persistence.save(library)
   }
+}
+
+private struct PreparedImportAsset {
+  var asset: AudioAsset
+  var inspected: InspectedAudio
+  var acquired: AcquiredAudioFile
+}
+
+private enum ImportGroupingKey: Hashable {
+  case folder(String)
+  case filenameStem(String)
+}
+
+private func groupedImportAssets(_ prepared: [PreparedImportAsset]) -> [[PreparedImportAsset]] {
+  var keys: [ImportGroupingKey] = []
+  var groups: [ImportGroupingKey: [PreparedImportAsset]] = [:]
+  for item in prepared {
+    let key: ImportGroupingKey
+    if let folder = item.acquired.commonFolderName?.nilIfBlank {
+      key = .folder(folder.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil))
+    } else {
+      key = .filenameStem(filenameStem(for: item.asset.originalFilename).key)
+    }
+    if groups[key] == nil { keys.append(key) }
+    groups[key, default: []].append(item)
+  }
+  return keys.compactMap { groups[$0] }
+}
+
+private func filenameStem(for filename: String) -> (key: String, display: String) {
+  let base = URL(filePath: filename).deletingPathExtension().lastPathComponent
+  let prefix = base.prefix { !$0.isNumber }
+  let trimmed = String(prefix).trimmingCharacters(
+    in: CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters)
+  )
+  let display = trimmed.nilIfBlank ?? base
+  let key = display.folding(
+    options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
+    locale: Locale(identifier: "en_US_POSIX")
+  )
+  return (key, display)
+}
+
+private func uniqueContributors(_ values: [String]) -> [String] {
+  var seen: Set<String> = []
+  return values.filter { seen.insert($0.folding(options: [.caseInsensitive], locale: nil)).inserted }
+}
+
+private func commonNonBlank(_ values: [String]) -> String? {
+  guard let first = values.first?.nilIfBlank, values.count > 0 else { return nil }
+  return values.allSatisfy { $0.caseInsensitiveCompare(first) == .orderedSame } ? first : nil
+}
+
+private func groupingEvidence(for prepared: [PreparedImportAsset]) -> [GroupingEvidence] {
+  var evidence = [
+    GroupingEvidence(
+      kind: .selectedTogether,
+      explanation: "The user selected these \(prepared.count) audio files together."
+    )
+  ]
+  let folders = prepared.compactMap(\.acquired.commonFolderName)
+  if let folder = commonNonBlank(folders), folders.count == prepared.count {
+    evidence.append(
+      GroupingEvidence(kind: .commonFolder, explanation: "Every track came from the folder \(folder).")
+    )
+  }
+  if folders.isEmpty, let first = prepared.first {
+    let stem = filenameStem(for: first.asset.originalFilename).display
+    evidence.append(
+      GroupingEvidence(kind: .filenameStem, explanation: "Every loose file shares the filename stem \(stem).")
+    )
+  }
+  let titles = prepared.compactMap(\.inspected.title)
+  if let title = commonNonBlank(titles), titles.count == prepared.count {
+    evidence.append(
+      GroupingEvidence(kind: .commonEmbeddedTitle, explanation: "Every track declares the title \(title).")
+    )
+  }
+  return evidence
 }
 
 private extension String {

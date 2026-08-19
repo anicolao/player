@@ -40,6 +40,14 @@ struct AVFoundationAudioInspector: AudioInspecting {
       excludingIdentifierFragments: ["part", "position", "number"],
       in: metadata
     )
+    let discNumber = await integerValue(
+      matchingIdentifierFragments: ["discnumber", "disc-number", "disc_number", "/disk", "/disc"],
+      in: metadata
+    )
+    let trackNumber = await integerValue(
+      matchingIdentifierFragments: ["tracknumber", "track-number", "track_number", "/track"],
+      in: metadata
+    )
     let chapters = try await chapters(in: asset, durationSeconds: seconds, filename: url.lastPathComponent)
 
     return InspectedAudio(
@@ -52,7 +60,9 @@ struct AVFoundationAudioInspector: AudioInspecting {
       seriesName: series?.trimmedNilIfEmpty,
       seriesPosition: seriesPosition?.trimmedNilIfEmpty,
       artworkMediaType: artwork.flatMap(ArtworkType.mediaType),
-      chapters: chapters
+      chapters: chapters,
+      discNumber: discNumber,
+      trackNumber: trackNumber
     )
   }
 
@@ -97,6 +107,19 @@ struct AVFoundationAudioInspector: AudioInspecting {
       return value
     }
     return nil
+  }
+
+  private func integerValue(
+    matchingIdentifierFragments included: [String],
+    in metadata: [AVMetadataItem]
+  ) async -> Int? {
+    guard let value = await textValue(matchingIdentifierFragments: included, in: metadata) else {
+      return nil
+    }
+    let leadingComponent = value.split(separator: "/", maxSplits: 1).first
+    return leadingComponent.flatMap { component in
+      Int(component.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
   }
 
   private func chapters(

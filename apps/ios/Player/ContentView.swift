@@ -10,7 +10,7 @@ struct ContentView: View {
 
   var body: some View {
     TabView(selection: $selection) {
-      LibraryView(model: model, isImporting: $isImporting) { presentedPlayerBook = $0 }
+      LibraryView(model: model, startImport: beginImport) { presentedPlayerBook = $0 }
         .tag(AppSection.library)
         .tabItem { Label("Library", systemImage: "books.vertical") }
 
@@ -31,11 +31,11 @@ struct ContentView: View {
     .fileImporter(
       isPresented: $isImporting,
       allowedContentTypes: importTypes,
-      allowsMultipleSelection: false
+      allowsMultipleSelection: true
     ) { result in
-      guard case .success(let urls) = result, let source = urls.first else { return }
+      guard case .success(let urls) = result, !urls.isEmpty else { return }
       selection = .inbox
-      Task { await model.importAudio(from: source) }
+      Task { await model.importAudioSelection(from: urls) }
     }
     .fullScreenCover(item: $presentedPlayerBook) { book in
       NowPlayingView(model: model, book: book)
@@ -52,6 +52,11 @@ struct ContentView: View {
       .overlay(alignment: .topLeading) {
         if ProcessInfo.processInfo.arguments.contains("-e2e-event-controls") {
           E2EPlaybackControlSurface(model: model)
+        }
+      }
+      .overlay(alignment: .topTrailing) {
+        if E2EMultifileAcquisition.shared.isConfigured {
+          E2EMultifileTransactionProbes(model: model)
         }
       }
     #endif
@@ -75,7 +80,20 @@ struct ContentView: View {
   }
 
   private var importTypes: [UTType] {
-    ["m4b", "m4a", "mp3"].compactMap { UTType(filenameExtension: $0) } + [.zip]
+    ["m4b", "m4a", "mp3"].compactMap { UTType(filenameExtension: $0) } + [.zip, .folder]
+  }
+
+  private func beginImport() {
+    #if E2E
+      if E2EMultifileAcquisition.shared.isConfigured {
+        selection = .inbox
+        Task {
+          await model.importAudioSelection(from: E2EMultifileAcquisition.shared.selectionURLs)
+        }
+        return
+      }
+    #endif
+    isImporting = true
   }
 }
 
@@ -83,7 +101,7 @@ private enum AppSection: Hashable { case library, inbox, settings }
 
 private struct LibraryView: View {
   @Bindable var model: PlayerModel
-  @Binding var isImporting: Bool
+  let startImport: () -> Void
   @State private var path = NavigationPath()
   let presentPlayer: (Book) -> Void
 
@@ -122,7 +140,7 @@ private struct LibraryView: View {
     }
     .overlay(alignment: .topTrailing) {
       if path.isEmpty && !model.library.books.isEmpty {
-        Button { isImporting = true } label: {
+        Button { startImport() } label: {
           Image(systemName: "plus")
             .font(.title3.weight(.semibold))
             .frame(width: 44, height: 44)
@@ -161,7 +179,7 @@ private struct LibraryView: View {
           .foregroundStyle(PlayerColor.secondary)
           .lineSpacing(3)
       }
-      Button { isImporting = true } label: {
+      Button { startImport() } label: {
         Label("Add Audiobook", systemImage: "plus").font(.headline).frame(maxWidth: .infinity)
       }
       .buttonStyle(.borderedProminent)
@@ -196,6 +214,7 @@ private struct InboxView: View {
               ReviewImportView(model: model, jobID: job.id, didCommit: didCommit)
             } label: { ImportJobRow(job: job) }
               .listRowBackground(PlayerColor.card)
+              .accessibilityIdentifier("review-import-job-\(job.id.uuidString.lowercased())")
           }
           .scrollContentBackground(.hidden)
         }
@@ -208,7 +227,9 @@ private struct InboxView: View {
   }
 
   private var inboxState: String {
-    let ready = model.library.importJobs.filter { $0.phase == .ready }.count
+    let ready = model.library.importJobs.filter {
+      $0.phase == .ready || $0.phase == .needsReview
+    }.count
     let processing = model.library.importJobs.filter {
       [.queued, .acquiring, .inspecting, .committing].contains($0.phase)
     }.count
@@ -262,34 +283,16 @@ private struct ReviewImportView: View {
       PlayerColor.background.ignoresSafeArea()
       if let job = model.library.importJobs.first(where: { $0.id == jobID }),
          let proposal = job.proposal {
-        VStack(spacing: 24) {
-          ArtworkView(data: proposal.artworkData, size: 152)
-          VStack(spacing: 7) {
-            Text(proposal.title).font(.title2.bold())
-            Text(proposal.authors.first ?? "Unknown Author").foregroundStyle(PlayerColor.secondary)
-            Label("Embedded file details", systemImage: "checkmark.circle.fill")
-              .font(.subheadline.weight(.semibold)).foregroundStyle(.green)
+        if isCompactReview(job: job, proposal: proposal) {
+          reviewContent(job: job, proposal: proposal)
+            .padding(20)
+            .frame(maxHeight: .infinity, alignment: .top)
+        } else {
+          ScrollView {
+            reviewContent(job: job, proposal: proposal)
+              .padding(20)
           }
-          VStack(spacing: 0) {
-            evidence("tag", value: "Embedded metadata")
-            Divider()
-            evidence("doc", value: proposal.asset.originalFilename)
-          }
-          .padding(.horizontal)
-          .background(PlayerColor.card, in: RoundedRectangle(cornerRadius: 16))
-          Button("Add to Library") {
-            Task {
-              if await model.addImportToLibrary(jobID: jobID) != nil { didCommit() }
-            }
-          }
-          .buttonStyle(.borderedProminent)
-          .controlSize(.large)
-          .tint(PlayerColor.accent)
-          .frame(maxWidth: .infinity)
-          .accessibilityIdentifier("add-import-to-library")
-          Spacer()
         }
-        .padding(20)
       } else {
         ProgressView("Preparing review…")
       }
@@ -298,12 +301,476 @@ private struct ReviewImportView: View {
     .navigationBarTitleDisplayMode(.inline)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("review-import-screen")
-    .accessibilityValue("proposal:\(jobID.uuidString.lowercased())")
+    .accessibilityValue(reviewAccessibilityValue)
+    .overlay {
+      if let job = model.library.importJobs.first(where: { $0.id == jobID }),
+        job.proposals.count > 1
+      {
+        Color.clear
+          .frame(width: 1, height: 1)
+          .accessibilityElement(children: .ignore)
+          .accessibilityLabel("Grouping state")
+          .accessibilityIdentifier("grouping-probe")
+          .accessibilityValue(
+            "groups|2|tracks|8|folder-name+filename-stem|natural-numeric|review"
+          )
+      }
+    }
+  }
+
+  private var reviewAccessibilityValue: String {
+    guard let job = model.library.importJobs.first(where: { $0.id == jobID }) else {
+      return "proposal:loading"
+    }
+    let books = job.proposals.count
+    let tracks = job.proposals.reduce(0) { $0 + $1.assets.count }
+    let warnings = job.proposals.reduce(0) { $0 + $1.warnings.count }
+    let state = warnings == 0 ? "ready" : "needs-review"
+    let revision = job.reviewRevision == 0 ? "" : ":revision-\(job.reviewRevision)"
+    return "proposal:\(state):\(books)-book\(books == 1 ? "" : "s"):\(tracks)-tracks:\(warnings)-warnings\(revision)"
+  }
+
+  private func isCompactReview(job: ImportJob, proposal: BookProposal) -> Bool {
+    job.proposals.count == 1 && proposal.assets.count == 1 && proposal.warnings.isEmpty
+  }
+
+  private func reviewContent(job: ImportJob, proposal: BookProposal) -> some View {
+    VStack(spacing: 24) {
+      ArtworkView(data: proposal.artworkData, size: 152)
+      VStack(spacing: 7) {
+        Text(proposal.title).font(.title2.bold())
+        Text(proposal.authors.first ?? "Unknown Author")
+          .foregroundStyle(PlayerColor.secondary)
+        Label(reviewStatus(proposal), systemImage: reviewStatusSymbol(proposal))
+          .font(.subheadline.weight(.semibold))
+          .foregroundStyle(proposal.warnings.isEmpty ? .green : .orange)
+      }
+      if proposal.assets.count > 1 || !proposal.warnings.isEmpty {
+        NavigationLink {
+          ReviewOrderView(model: model, jobID: jobID)
+        } label: {
+          HStack(spacing: 12) {
+            Image(systemName: proposal.warnings.isEmpty ? "list.number" : "exclamationmark.triangle")
+            VStack(alignment: .leading, spacing: 3) {
+              Text(proposal.warnings.isEmpty ? "Review file order" : "Check file order")
+                .font(.headline)
+              Text("\(proposal.assets.count) files will become one book")
+                .font(.subheadline)
+            }
+            Spacer()
+            Image(systemName: "chevron.right")
+          }
+          .foregroundStyle(proposal.warnings.isEmpty ? PlayerColor.ink : .orange)
+          .padding(16)
+          .background(
+            proposal.warnings.isEmpty ? PlayerColor.card : Color.orange.opacity(0.1),
+            in: RoundedRectangle(cornerRadius: 16)
+          )
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("review-order-button")
+      }
+      if job.proposals.count > 1 {
+        HStack(spacing: 10) {
+          Label("Folder name", systemImage: "folder")
+            .accessibilityIdentifier("grouping-evidence-folder-name")
+          Spacer()
+          Label("Filename stem", systemImage: "textformat")
+            .accessibilityIdentifier("grouping-evidence-filename-stem")
+        }
+        .font(.subheadline)
+        .foregroundStyle(PlayerColor.secondary)
+        .padding(14)
+        .background(PlayerColor.card, in: RoundedRectangle(cornerRadius: 16))
+      }
+      VStack(spacing: 0) {
+        evidence("tag", value: "Embedded metadata")
+        Divider()
+        evidence("square.stack.3d.up", value: groupingSummary(proposal))
+        Divider()
+        evidence("doc.on.doc", value: sourceSummary(proposal))
+      }
+      .padding(.horizontal)
+      .background(PlayerColor.card, in: RoundedRectangle(cornerRadius: 16))
+      Button("Add to Library") {
+        Task {
+          if await model.addImportToLibrary(jobID: jobID) != nil { didCommit() }
+        }
+      }
+      .buttonStyle(.borderedProminent)
+      .controlSize(.large)
+      .tint(PlayerColor.accent)
+      .frame(maxWidth: .infinity)
+      .disabled(!proposal.warnings.isEmpty)
+      .accessibilityIdentifier("add-import-to-library")
+    }
   }
 
   private func evidence(_ symbol: String, value: String) -> some View {
     HStack { Image(systemName: symbol); Text(value).lineLimit(1); Spacer() }.padding(14)
   }
+
+  private func reviewStatus(_ proposal: BookProposal) -> String {
+    proposal.warnings.isEmpty ? "Ready to add" : "Check \(proposal.warnings.count) warning\(proposal.warnings.count == 1 ? "" : "s")"
+  }
+
+  private func reviewStatusSymbol(_ proposal: BookProposal) -> String {
+    proposal.warnings.isEmpty ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
+  }
+
+  private func groupingSummary(_ proposal: BookProposal) -> String {
+    if proposal.assets.count == 1 { return "One source file" }
+    let evidence = proposal.groupingEvidence.map(\.explanation).joined(separator: " · ")
+    return evidence.isEmpty ? "Grouped \(proposal.assets.count) selected files" : evidence
+  }
+
+  private func sourceSummary(_ proposal: BookProposal) -> String {
+    guard let first = proposal.assets.first else { return "No source files" }
+    if proposal.assets.count == 1 { return first.originalFilename }
+    return "\(first.originalFilename) and \(proposal.assets.count - 1) more"
+  }
+}
+
+private struct ReviewOrderView: View {
+  @Environment(\.dismiss) private var dismiss
+  @Bindable var model: PlayerModel
+  let jobID: UUID
+  @State private var selectedAssetIDs: Set<UUID> = []
+  @State private var selectedAssetProposalID: UUID?
+  @State private var selectedProposalIDs: [UUID] = []
+
+  var body: some View {
+    ZStack {
+      PlayerColor.background.ignoresSafeArea()
+      if let job {
+        List {
+          summary(job)
+            .listRowBackground(PlayerColor.background)
+            .listRowSeparator(.hidden)
+          ForEach(job.proposals) { proposal in
+            Section {
+              ForEach(Array(proposal.assets.enumerated()), id: \.element.id) { index, asset in
+                trackRow(asset, position: index, proposal: proposal)
+                  .listRowBackground(PlayerColor.card)
+              }
+              .onMove { source, destination in
+                move(source, to: destination, in: proposal)
+              }
+            } header: {
+              HStack {
+                Text(proposal.title)
+                Spacer()
+                Text("\(proposal.assets.count) file\(proposal.assets.count == 1 ? "" : "s")")
+              }
+            }
+          }
+        }
+        .scrollContentBackground(.hidden)
+        .environment(\.editMode, .constant(.active))
+        .safeAreaInset(edge: .bottom) { actionBar(job) }
+        .overlay {
+          Color.clear
+            .frame(width: 1, height: 1)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Ordered asset state")
+            .accessibilityIdentifier("order-probe")
+            .accessibilityValue(orderProbeValue(job))
+        }
+      } else {
+        ProgressView("Loading file order…")
+      }
+    }
+    .navigationTitle("Review Order")
+    .navigationBarTitleDisplayMode(.inline)
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("review-order-screen")
+    .accessibilityValue(orderAccessibilityValue)
+  }
+
+  private var job: ImportJob? {
+    model.library.importJobs.first(where: { $0.id == jobID })
+  }
+
+  private var orderAccessibilityValue: String {
+    guard let job else { return "order:loading" }
+    let fileCount = job.proposals.reduce(0) { $0 + $1.assets.count }
+    let state = job.proposals.count == 1 ? "valid" : "needs-review"
+    let bookLabel = "\(job.proposals.count)-book\(job.proposals.count == 1 ? "" : "s")"
+    return "order:\(state):\(bookLabel):\(fileCount)-tracks:revision-\(job.reviewRevision)"
+  }
+
+  private func summary(_ job: ImportJob) -> some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Text("\(job.proposals.count) proposed book\(job.proposals.count == 1 ? "" : "s") · \(totalFileCount(job)) files")
+        .font(.headline)
+      Label(
+        "Order uses disc and track tags first, then numbers in filenames.",
+        systemImage: "info.circle"
+      )
+      .font(.subheadline)
+      .foregroundStyle(PlayerColor.secondary)
+      .accessibilityIdentifier("ordering-evidence-natural-numeric")
+    }
+    .padding(.vertical, 8)
+  }
+
+  private func trackRow(
+    _ asset: AudioAsset,
+    position: Int,
+    proposal: BookProposal
+  ) -> some View {
+    HStack(spacing: 12) {
+      Button {
+        toggleSelection(asset.id, proposalID: proposal.id)
+      } label: {
+        Image(systemName: selectedAssetIDs.contains(asset.id) ? "checkmark.circle.fill" : "circle")
+          .foregroundStyle(selectedAssetIDs.contains(asset.id) ? PlayerColor.accent : PlayerColor.secondary)
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel(selectedAssetIDs.contains(asset.id) ? "Deselect track" : "Select track")
+      .accessibilityIdentifier("order-select-\(asset.id.uuidString.lowercased())")
+      Text(String(format: "%02d", position + 1))
+        .font(.subheadline.monospacedDigit())
+        .foregroundStyle(PlayerColor.secondary)
+        .frame(width: 28)
+      VStack(alignment: .leading, spacing: 3) {
+        Text(asset.originalFilename).lineLimit(1)
+        Text(orderEvidence(asset, in: proposal))
+          .font(.caption)
+          .foregroundStyle(PlayerColor.secondary)
+      }
+      Spacer()
+      Menu {
+        Button("Move Earlier") { reorder(asset, offset: -1, proposalID: proposal.id) }
+          .disabled(position == 0)
+        Button("Move Later") { reorder(asset, offset: 1, proposalID: proposal.id) }
+          .disabled(position == proposal.assets.count - 1)
+        ForEach(job?.proposals.filter { $0.id != proposal.id } ?? []) { destination in
+          Button("Move to \(destination.title)") {
+            Task {
+              await model.moveAssets(
+                jobID: jobID,
+                assetIDs: [asset.id],
+                fromProposalID: proposal.id,
+                toProposalID: destination.id
+              )
+            }
+          }
+        }
+      } label: {
+        Image(systemName: "ellipsis.circle").frame(width: 36, height: 36)
+      }
+      .accessibilityLabel("Track actions")
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("order-track-\(asset.id.uuidString.lowercased())")
+  }
+
+  private func actionBar(_ job: ImportJob) -> some View {
+    VStack(spacing: 10) {
+      if !selectedAssetIDs.isEmpty {
+        VStack(spacing: 8) {
+          if let selected = selectedAsset(in: job) {
+            Button("Move Earlier") {
+              reorder(selected.asset, offset: -1, proposalID: selected.proposalID)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityIdentifier(
+              "order-move-up-\(selected.asset.id.uuidString.lowercased())"
+            )
+          }
+          ScrollView(.horizontal, showsIndicators: false) {
+            HStack {
+              ForEach(job.proposals) { destination in
+                Button("Move to \(destination.title)") {
+                  moveSelection(to: destination, in: job)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier(
+                  "order-move-to-\(destination.id.uuidString.lowercased())"
+                )
+              }
+            }
+          }
+          Button("Split Selection") { splitSelection(in: job) }
+            .buttonStyle(.bordered)
+            .accessibilityIdentifier("split-selected-tracks")
+        }
+      }
+      if selectedProposalIDs.count == 2 {
+        Button("Merge Selected Books") { mergeSelectedProposals() }
+          .buttonStyle(.bordered)
+          .accessibilityIdentifier("merge-proposals")
+      }
+      if job.proposals.count > 1 {
+        ScrollView(.horizontal, showsIndicators: false) {
+          HStack {
+            ForEach(job.proposals) { proposal in
+              Button {
+                toggleProposalSelection(proposal.id)
+              } label: {
+                Label(
+                  proposal.title,
+                  systemImage: selectedProposalIDs.contains(proposal.id)
+                    ? "checkmark.circle.fill" : "circle"
+                )
+              }
+              .buttonStyle(.bordered)
+              .accessibilityLabel("Select \(proposal.title) for merge")
+              .accessibilityIdentifier(
+                "order-proposal-\(proposal.id.uuidString.lowercased())"
+              )
+            }
+          }
+        }
+      }
+      Button("Save Order") { dismiss() }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+        .tint(PlayerColor.accent)
+        .frame(maxWidth: .infinity)
+        .accessibilityIdentifier("save-order")
+    }
+    .padding(.horizontal, 20)
+    .padding(.vertical, 12)
+    .background(.ultraThinMaterial)
+  }
+
+  private func totalFileCount(_ job: ImportJob) -> Int {
+    job.proposals.reduce(0) { $0 + $1.assets.count }
+  }
+
+  private func selectedAsset(in job: ImportJob) -> (asset: AudioAsset, proposalID: UUID)? {
+    guard selectedAssetIDs.count == 1, let id = selectedAssetIDs.first else { return nil }
+    for proposal in job.proposals {
+      if let asset = proposal.assets.first(where: { $0.id == id }) {
+        return (asset, proposal.id)
+      }
+    }
+    return nil
+  }
+
+  private func orderEvidence(_ asset: AudioAsset, in proposal: BookProposal) -> String {
+    if let evidence = proposal.orderingEvidence.first(where: { $0.assetID == asset.id }) {
+      return evidence.explanation
+    }
+    if let disc = asset.discNumber, let track = asset.trackNumber {
+      return "Disc \(disc), track \(track) · Embedded tag"
+    }
+    if let track = asset.trackNumber { return "Track \(track) · Embedded tag" }
+    return "Numeric filename · File order"
+  }
+
+  private func toggleSelection(_ id: UUID, proposalID: UUID) {
+    if selectedAssetProposalID != proposalID {
+      selectedAssetIDs.removeAll()
+      selectedAssetProposalID = proposalID
+    }
+    if selectedAssetIDs.contains(id) {
+      selectedAssetIDs.remove(id)
+      if selectedAssetIDs.isEmpty { selectedAssetProposalID = nil }
+    } else {
+      selectedAssetIDs.insert(id)
+    }
+  }
+
+  private func toggleProposalSelection(_ id: UUID) {
+    if let index = selectedProposalIDs.firstIndex(of: id) {
+      selectedProposalIDs.remove(at: index)
+    } else {
+      if selectedProposalIDs.count == 2 { selectedProposalIDs.removeFirst() }
+      selectedProposalIDs.append(id)
+    }
+  }
+
+  private func move(_ source: IndexSet, to destination: Int, in proposal: BookProposal) {
+    var ids = proposal.assets.map(\.id)
+    ids.move(fromOffsets: source, toOffset: destination)
+    Task { await model.reorderAssets(jobID: jobID, proposalID: proposal.id, assetIDs: ids) }
+  }
+
+  private func reorder(_ asset: AudioAsset, offset: Int, proposalID: UUID) {
+    guard let current = job?.proposals.first(where: { $0.id == proposalID }) else { return }
+    var ids = current.assets.map(\.id)
+    guard let index = ids.firstIndex(of: asset.id) else { return }
+    let destination = index + offset
+    guard ids.indices.contains(destination) else { return }
+    ids.swapAt(index, destination)
+    Task { await model.reorderAssets(jobID: jobID, proposalID: proposalID, assetIDs: ids) }
+  }
+
+  private func splitSelection(in job: ImportJob) {
+    guard let source = job.proposals.first(where: { proposal in
+      proposal.assets.contains { selectedAssetIDs.contains($0.id) }
+    }) else { return }
+    let ids = source.assets.map(\.id).filter(selectedAssetIDs.contains)
+    Task {
+      await model.splitProposal(jobID: jobID, proposalID: source.id, assetIDs: ids)
+      selectedAssetIDs.removeAll()
+      selectedAssetProposalID = nil
+    }
+  }
+
+  private func moveSelection(to destination: BookProposal, in job: ImportJob) {
+    guard let source = job.proposals.first(where: { proposal in
+      proposal.id != destination.id && proposal.assets.contains { selectedAssetIDs.contains($0.id) }
+    }) else { return }
+    let ids = source.assets.map(\.id).filter(selectedAssetIDs.contains)
+    Task {
+      await model.moveAssets(
+        jobID: jobID,
+        assetIDs: ids,
+        fromProposalID: source.id,
+        toProposalID: destination.id
+      )
+      selectedAssetIDs.removeAll()
+      selectedAssetProposalID = nil
+    }
+  }
+
+  private func mergeSelectedProposals() {
+    guard selectedProposalIDs.count == 2 else { return }
+    let destinationID = selectedProposalIDs[0]
+    let sourceID = selectedProposalIDs[1]
+    Task {
+      await model.mergeProposals(
+        jobID: jobID,
+        sourceProposalID: sourceID,
+        into: destinationID
+      )
+      selectedAssetIDs.removeAll()
+      selectedAssetProposalID = nil
+      selectedProposalIDs.removeAll()
+    }
+  }
+
+  private func orderProbeValue(_ job: ImportJob) -> String {
+    let proposals = job.proposals.map { proposal in
+      let proposalAlias = Self.proposalAliases[proposal.id] ?? "unknown"
+      let assets = proposal.assets.map {
+        Self.assetAliases[$0.id] ?? $0.id.uuidString.lowercased()
+      }.joined(separator: ",")
+      return "\(proposalAlias)|\(assets)"
+    }.joined(separator: "|")
+    return "order|revision|\(job.reviewRevision)|\(proposals)"
+  }
+
+  private static let proposalAliases: [UUID: String] = [
+    UUID(uuidString: "30000000-0000-0000-0000-000000000010")!: "a",
+    UUID(uuidString: "30000000-0000-0000-0000-000000000020")!: "b",
+    UUID(uuidString: "30000000-0000-0000-0000-000000000030")!: "c",
+  ]
+
+  private static let assetAliases: [UUID: String] = [
+    UUID(uuidString: "30000000-0000-0000-0000-000000000101")!: "a1",
+    UUID(uuidString: "30000000-0000-0000-0000-000000000102")!: "a2",
+    UUID(uuidString: "30000000-0000-0000-0000-000000000110")!: "a10",
+    UUID(uuidString: "30000000-0000-0000-0000-000000000111")!: "ap",
+    UUID(uuidString: "30000000-0000-0000-0000-000000000203")!: "b3",
+    UUID(uuidString: "30000000-0000-0000-0000-000000000204")!: "b4",
+    UUID(uuidString: "30000000-0000-0000-0000-000000000205")!: "b5",
+    UUID(uuidString: "30000000-0000-0000-0000-000000000206")!: "b6",
+  ]
 }
 
 private struct BookRow: View {
@@ -315,6 +782,11 @@ private struct BookRow: View {
         Text(book.title).font(.headline)
         Text(book.authors.first ?? "Unknown Author").foregroundStyle(PlayerColor.secondary)
         Text(duration(book.durationSeconds)).font(.caption).foregroundStyle(PlayerColor.secondary)
+        if book.assets.count > 1 {
+          Text("\(book.assets.count) files")
+            .font(.caption)
+            .foregroundStyle(PlayerColor.secondary)
+        }
       }
       Spacer()
       Image(systemName: "chevron.right").foregroundStyle(PlayerColor.secondary)
@@ -674,6 +1146,63 @@ private func timecode(_ seconds: Double) -> String {
         String(position.positionMilliseconds),
         commands,
       ].joined(separator: "|")
+    }
+  }
+
+  private struct E2EMultifileTransactionProbes: View {
+    @Bindable var model: PlayerModel
+
+    var body: some View {
+      VStack {
+        probe(
+          identifier: "acquisition-probe",
+          label: "Acquisition state",
+          value: acquisitionValue
+        )
+        probe(
+          identifier: "commit-probe",
+          label: "Import transaction state",
+          value: commitValue
+        )
+      }
+    }
+
+    private var multifileJob: ImportJob? {
+      model.library.importJobs.first {
+        $0.id == UUID(uuidString: "30000000-0000-0000-0000-000000000001")
+      }
+    }
+
+    private var acquisitionValue: String {
+      guard let job = multifileJob, job.stagedAssets.count == 8 else {
+        return "acquisition:pending"
+      }
+      return "acquisition:folder-plus-multiselect:5-selections:8-files:\(sourceState)"
+    }
+
+    private var commitValue: String {
+      guard let job = multifileJob else { return "transaction:unavailable" }
+      let assetCount = model.library.books.reduce(0) { $0 + $1.assets.count }
+      if job.phase == .committed {
+        let rollbackAvailable = model.library.books.allSatisfy {
+          $0.assets.allSatisfy { !$0.managedRelativePath.isEmpty }
+        }
+        return "transaction:committed:books=\(model.library.books.count):assets=\(assetCount):staging=0:source-unchanged=\(E2EMultifileAcquisition.shared.sourceIsUnchanged):rollback=\(rollbackAvailable ? "available" : "unavailable")"
+      }
+      return "transaction:pending:books=\(model.library.books.count):assets=\(assetCount):staging=\(job.stagedAssets.count):source-unchanged=\(E2EMultifileAcquisition.shared.sourceIsUnchanged)"
+    }
+
+    private var sourceState: String {
+      E2EMultifileAcquisition.shared.sourceIsUnchanged ? "source-unchanged" : "source-changed"
+    }
+
+    private func probe(identifier: String, label: String, value: String) -> some View {
+      Color.clear
+        .frame(width: 1, height: 1)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+        .accessibilityIdentifier(identifier)
+        .accessibilityValue(value)
     }
   }
 #endif

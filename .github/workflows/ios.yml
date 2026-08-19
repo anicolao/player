@@ -62,7 +62,9 @@ jobs:
         run: git diff --exit-code -- apps/ios/Player.xcodeproj
 
       - name: Verify committed synthetic audio fixtures
-        run: apps/ios/scripts/fixtures/verify-generated-fixtures.sh
+        run: |
+          apps/ios/scripts/fixtures/verify-generated-fixtures.sh
+          apps/ios/scripts/fixtures/verify-messy-multifile-fixture.sh
 
       - name: Run import, storage, persistence, and playback tests
         run: |
@@ -88,6 +90,12 @@ jobs:
           PlayerUITests/ImportPlaybackUITests/testReviewsCommitsAndPlaysOneAudiobook
           PlayerUITests/MetadataChapterUITests/testShowsEmbeddedMetadataAndStartsAChapter
 
+      - name: Run exact-pixel multifile grouping story
+        run: >-
+          apps/ios/scripts/run-e2e.sh
+          003-multifile-grouping
+          PlayerUITests/MultifileGroupingUITests/testRepairsMessyMultifileGroupingAndCommitsOneBookAtomically
+
       - name: Run exact-pixel position restoration story
         run: >-
           apps/ios/scripts/run-e2e.sh
@@ -107,6 +115,9 @@ jobs:
             apps/ios/DerivedData/E2E/002-import-and-play/ActualWalkthrough/
             apps/ios/DerivedData/E2E/002-import-and-play/Attachments/
             apps/ios/DerivedData/E2E/002-import-and-play/Results/Story.xcresult/
+            apps/ios/DerivedData/E2E/003-multifile-grouping/ActualWalkthrough/
+            apps/ios/DerivedData/E2E/003-multifile-grouping/Attachments/
+            apps/ios/DerivedData/E2E/003-multifile-grouping/Results/Story.xcresult/
             apps/ios/DerivedData/E2E/005-play-and-restore/ActualWalkthrough/
             apps/ios/DerivedData/E2E/005-play-and-restore/Attachments/
             apps/ios/DerivedData/E2E/005-play-and-restore/Results/Story.xcresult/

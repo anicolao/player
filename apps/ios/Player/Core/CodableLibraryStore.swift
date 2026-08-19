@@ -1,7 +1,7 @@
 import Foundation
 
 actor CodableLibraryStore: LibraryPersisting {
-  static let currentSchemaVersion = 3
+  static let currentSchemaVersion = 4
 
   private let fileURL: URL
   private let fileManager: FileManager
@@ -32,24 +32,33 @@ actor CodableLibraryStore: LibraryPersisting {
     case 1:
       do {
         let legacy = try JSONDecoder.playerDecoder.decode(EnvelopeV1.self, from: data).library
-        return migrateMetadataDefaults(in: LibrarySnapshot(
-          books: legacy.books,
-          importJobs: legacy.importJobs,
-          currentBookID: legacy.currentBookID
-        ))
+        return migrateImportGroupingDefaults(
+          in: migrateMetadataDefaults(in: LibrarySnapshot(
+            books: legacy.books,
+            importJobs: legacy.importJobs,
+            currentBookID: legacy.currentBookID
+          ))
+        )
       } catch {
         throw PlayerCoreError.invalidStore
       }
     case 2:
       do {
         let legacy = try JSONDecoder.playerDecoder.decode(EnvelopeV2.self, from: data).library
-        return migrateMetadataDefaults(in: legacy)
+        return migrateImportGroupingDefaults(in: migrateMetadataDefaults(in: legacy))
       } catch {
         throw PlayerCoreError.invalidStore
       }
     case 3:
       do {
-        return try JSONDecoder.playerDecoder.decode(EnvelopeV3.self, from: data).library
+        let legacy = try JSONDecoder.playerDecoder.decode(EnvelopeV3.self, from: data).library
+        return migrateImportGroupingDefaults(in: legacy)
+      } catch {
+        throw PlayerCoreError.invalidStore
+      }
+    case 4:
+      do {
+        return try JSONDecoder.playerDecoder.decode(EnvelopeV4.self, from: data).library
       } catch {
         throw PlayerCoreError.invalidStore
       }
@@ -62,12 +71,31 @@ actor CodableLibraryStore: LibraryPersisting {
     let directory = fileURL.deletingLastPathComponent()
     try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
 
-    let envelope = EnvelopeV3(
+    let envelope = EnvelopeV4(
       schemaVersion: Self.currentSchemaVersion,
       library: snapshot
     )
     let data = try JSONEncoder.playerEncoder.encode(envelope)
     try data.write(to: fileURL, options: [.atomic, .completeFileProtectionUnlessOpen])
+  }
+
+  private func migrateImportGroupingDefaults(in snapshot: LibrarySnapshot) -> LibrarySnapshot {
+    var migrated = snapshot
+    for jobIndex in migrated.importJobs.indices {
+      guard
+        migrated.importJobs[jobIndex].stagedAssets.isEmpty,
+        let proposal = migrated.importJobs[jobIndex].proposal,
+        let stagedPath = migrated.importJobs[jobIndex].stagedRelativePath
+      else { continue }
+      migrated.importJobs[jobIndex].stagedAssets = [
+        StagedImportAsset(
+          assetID: proposal.asset.id,
+          stagedRelativePath: stagedPath,
+          sourceRelativePath: proposal.asset.originalFilename
+        )
+      ]
+    }
+    return migrated
   }
 
   private func migrateMetadataDefaults(in snapshot: LibrarySnapshot) -> LibrarySnapshot {
@@ -148,6 +176,11 @@ private struct EnvelopeV2: Codable {
 }
 
 private struct EnvelopeV3: Codable {
+  let schemaVersion: Int
+  let library: LibrarySnapshot
+}
+
+private struct EnvelopeV4: Codable {
   let schemaVersion: Int
   let library: LibrarySnapshot
 }

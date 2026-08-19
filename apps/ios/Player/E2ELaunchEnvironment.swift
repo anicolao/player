@@ -17,6 +17,8 @@ extension PlayerEnvironment {
           )
         case "metadata-rich-book":
           return try metadataRichBookEnvironment()
+        case "messy-multifile-unicode":
+          return try messyMultifileEnvironment(reset: arguments.contains("-e2e-reset"))
         default:
           break
         }
@@ -277,6 +279,85 @@ extension PlayerEnvironment {
       )
     }
 
+    private static func messyMultifileEnvironment(reset: Bool) throws -> PlayerEnvironment {
+      let root = FileManager.default.temporaryDirectory.appending(
+        path: "PlayerE2EMessyMultifile",
+        directoryHint: .isDirectory
+      )
+      if reset { try? FileManager.default.removeItem(at: root) }
+      let inputRoot = root.appending(path: "Input", directoryHint: .isDirectory)
+      let folder = inputRoot.appending(
+        path: "Signal Δ — Folder",
+        directoryHint: .isDirectory
+      )
+      let loose = inputRoot.appending(path: "Loose Files", directoryHint: .isDirectory)
+      try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+      try FileManager.default.createDirectory(at: loose, withIntermediateDirectories: true)
+
+      let folderFiles = [
+        "Signal Δ — Part 1.m4a",
+        "Signal Δ — Part 2.m4a",
+        "Signal Δ — Part 10.m4a",
+        "Prélude – été.m4a",
+      ]
+      let looseFiles = [
+        "L’Écho — piste 3.m4a",
+        "L’Écho — piste 4 – café.m4a",
+        "L’Écho — piste 5.m4a",
+        "L’Écho — piste 6 – fin.m4a",
+      ]
+      for (index, name) in folderFiles.enumerated() {
+        let url = folder.appending(path: name)
+        if !FileManager.default.fileExists(atPath: url.path) {
+          try Data("player synthetic folder audio \(index)".utf8).write(to: url)
+        }
+      }
+      for (index, name) in looseFiles.enumerated() {
+        let url = loose.appending(path: name)
+        if !FileManager.default.fileExists(atPath: url.path) {
+          try Data("player synthetic loose audio \(index)".utf8).write(to: url)
+        }
+      }
+
+      let selection = [folder] + looseFiles.map { loose.appending(path: $0) }
+      E2EMultifileAcquisition.shared.configure(selectionURLs: selection)
+      let ids = [
+        "30000000-0000-0000-0000-000000000001",
+        "30000000-0000-0000-0000-000000000101",
+        "30000000-0000-0000-0000-000000000102",
+        "30000000-0000-0000-0000-000000000110",
+        "30000000-0000-0000-0000-000000000111",
+        "30000000-0000-0000-0000-000000000203",
+        "30000000-0000-0000-0000-000000000204",
+        "30000000-0000-0000-0000-000000000205",
+        "30000000-0000-0000-0000-000000000206",
+        "30000000-0000-0000-0000-000000000010",
+        "30000000-0000-0000-0000-000000000100",
+        "30000000-0000-0000-0000-000000000020",
+        "30000000-0000-0000-0000-000000000200",
+        "30000000-0000-0000-0000-000000000030",
+        "30000000-0000-0000-0000-000000000300",
+      ].compactMap(UUID.init(uuidString:))
+      return PlayerEnvironment(
+        persistence: CodableLibraryStore(fileURL: root.appending(path: "Library.json")),
+        media: FileSystemMediaManager(rootURL: root.appending(path: "PlayerData")),
+        inspector: DeterministicAudioInspector(
+          result: .success(
+            InspectedAudio(
+              title: nil,
+              authors: [],
+              durationSeconds: 60,
+              artworkData: nil,
+              container: "M4A"
+            )
+          )
+        ),
+        playback: DeterministicPlaybackController(),
+        clock: FixedPlayerClock(value: Date(timeIntervalSince1970: 1_700_000_000)),
+        ids: DeterministicPlayerIDGenerator(values: ids)
+      )
+    }
+
     private static func metadataRichArtwork() -> Data {
       let renderer = UIGraphicsImageRenderer(size: CGSize(width: 240, height: 240))
       return renderer.pngData { context in
@@ -304,6 +385,53 @@ extension PlayerEnvironment {
 }
 
 #if E2E
+  @MainActor
+  final class E2EMultifileAcquisition {
+    static let shared = E2EMultifileAcquisition()
+
+    private(set) var selectionURLs: [URL] = []
+    private var sourceBytes: [String: Data] = [:]
+
+    var isConfigured: Bool { !selectionURLs.isEmpty }
+
+    func configure(selectionURLs: [URL]) {
+      self.selectionURLs = selectionURLs
+      sourceBytes = sourceFiles(in: selectionURLs).reduce(into: [:]) { result, url in
+        result[url.path] = try? Data(contentsOf: url)
+      }
+    }
+
+    var sourceIsUnchanged: Bool {
+      let current = sourceFiles(in: selectionURLs)
+      guard current.count == sourceBytes.count else { return false }
+      return current.allSatisfy { url in
+        guard let expected = sourceBytes[url.path] else { return false }
+        return (try? Data(contentsOf: url)) == expected
+      }
+    }
+
+    private func sourceFiles(in selectionURLs: [URL]) -> [URL] {
+      var files: [URL] = []
+      for url in selectionURLs {
+        let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+        if isDirectory,
+          let enumerator = FileManager.default.enumerator(
+            at: url,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+          )
+        {
+          for case let child as URL in enumerator where child.pathExtension.lowercased() == "m4a" {
+            files.append(child)
+          }
+        } else {
+          files.append(url)
+        }
+      }
+      return files.sorted { $0.path < $1.path }
+    }
+  }
+
   private actor E2ESeededLibraryStore: LibraryPersisting {
     let base: CodableLibraryStore
     let seed: LibrarySnapshot

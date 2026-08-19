@@ -28,7 +28,10 @@ final class ImportPlaybackUITests: XCTestCase {
       "review-import",
       description: "The inspected audiobook is ready for review",
       verifications: [
-        .exists(app.otherElements["review-import-screen"], "The Review Import screen is visible"),
+        .exists(
+          app.descendants(matching: .any)["review-import-screen"],
+          "The Review Import screen is visible"
+        ),
         .exists(app.staticTexts["The Lighthouse Signal"], "The inspected title is presented"),
         .exists(app.staticTexts["Mara Vale"], "The inspected author is presented"),
         .exists(app.buttons["add-import-to-library"], "The import can be committed"),

@@ -131,6 +131,10 @@ final class RemoteInterruptionUITests: XCTestCase {
     XCUIDevice.shared.press(.home)
     RunLoop.current.run(until: Date().addingTimeInterval(0.25))
     app.activate()
+    XCTAssertTrue(
+      app.wait(for: .runningForeground, timeout: 2),
+      "The app must be foreground-interactive before injecting the final remote command"
+    )
     let backgrounded = try requireProbe(
       probe,
       status: "playing",
@@ -140,7 +144,13 @@ final class RemoteInterruptionUITests: XCTestCase {
     )
     assertIdentityAndPersistence(backgrounded, expectedPositionMilliseconds: 27_000)
 
-    app.buttons["e2e-remote-pause"].tap()
+    let finalPauseButton = app.buttons["e2e-remote-pause"]
+    let hittable = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "hittable == true"),
+      object: finalPauseButton
+    )
+    XCTAssertEqual(XCTWaiter.wait(for: [hittable], timeout: 2), .completed)
+    finalPauseButton.tap()
     let finalPause = try requireProbe(
       probe,
       status: "paused",

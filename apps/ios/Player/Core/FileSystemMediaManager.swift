@@ -18,6 +18,78 @@ actor FileSystemMediaManager: MediaManaging {
   }
 
   func stage(sourceURL: URL, jobID: UUID) throws -> StagedAudio {
+    try stageFile(sourceURL: sourceURL, jobID: jobID, storageName: "source")
+  }
+
+  func acquireSelection(_ selectedURLs: [URL], jobID: UUID) throws -> [AcquiredAudioFile] {
+    var acquired: [AcquiredAudioFile] = []
+    for selectedURL in selectedURLs {
+      let accessed = selectedURL.startAccessingSecurityScopedResource()
+      defer {
+        if accessed { selectedURL.stopAccessingSecurityScopedResource() }
+      }
+      let values = try selectedURL.resourceValues(forKeys: [.isDirectoryKey, .isRegularFileKey])
+      if values.isDirectory == true {
+        let keys: Set<URLResourceKey> = [.isRegularFileKey, .isDirectoryKey]
+        guard let enumerator = fileManager.enumerator(
+          at: selectedURL,
+          includingPropertiesForKeys: Array(keys),
+          options: [.skipsHiddenFiles, .skipsPackageDescendants]
+        ) else { continue }
+        var children: [(url: URL, relativePath: String)] = []
+        for case let child as URL in enumerator {
+          let childValues = try child.resourceValues(forKeys: keys)
+          guard
+            childValues.isRegularFile == true,
+            Self.supportedExtensions.contains(child.pathExtension.lowercased())
+          else { continue }
+          let relative = String(child.path.dropFirst(selectedURL.path.count + 1))
+          children.append((child, relative))
+        }
+        children.sort {
+          let lhsHasNumber = URL(filePath: $0.relativePath)
+            .deletingPathExtension().lastPathComponent.contains { $0.isNumber }
+          let rhsHasNumber = URL(filePath: $1.relativePath)
+            .deletingPathExtension().lastPathComponent.contains { $0.isNumber }
+          if lhsHasNumber != rhsHasNumber { return lhsHasNumber }
+          return $0.relativePath.localizedStandardCompare($1.relativePath) == .orderedAscending
+        }
+        for child in children {
+          acquired.append(
+            AcquiredAudioFile(
+              staged: try stageFile(
+                sourceURL: child.url,
+                jobID: jobID,
+                storageName: String(format: "item-%05d", acquired.count)
+              ),
+              sourceRelativePath: child.relativePath,
+              commonFolderName: selectedURL.lastPathComponent
+            )
+          )
+        }
+      } else if values.isRegularFile == true,
+        Self.supportedExtensions.contains(selectedURL.pathExtension.lowercased())
+      {
+        acquired.append(
+          AcquiredAudioFile(
+            staged: try stageFile(
+              sourceURL: selectedURL,
+              jobID: jobID,
+              storageName: String(format: "item-%05d", acquired.count)
+            ),
+            sourceRelativePath: selectedURL.lastPathComponent,
+            commonFolderName: nil
+          )
+        )
+      }
+    }
+    guard !acquired.isEmpty else {
+      throw PlayerCoreError.fileOperation("The selection contains no supported audiobook files.")
+    }
+    return acquired
+  }
+
+  private func stageFile(sourceURL: URL, jobID: UUID, storageName: String) throws -> StagedAudio {
     let filename = sourceURL.lastPathComponent
     let fileExtension = sourceURL.pathExtension.lowercased()
     guard Self.supportedExtensions.contains(fileExtension) else {
@@ -43,7 +115,7 @@ actor FileSystemMediaManager: MediaManaging {
       directoryHint: .isDirectory
     )
     try fileManager.createDirectory(at: jobDirectory, withIntermediateDirectories: true)
-    let stagedURL = jobDirectory.appending(path: "source.\(fileExtension)")
+    let stagedURL = jobDirectory.appending(path: "\(storageName).\(fileExtension)")
     guard !fileManager.fileExists(atPath: stagedURL.path) else {
       throw PlayerCoreError.fileOperation("A staged copy already exists for \(filename).")
     }

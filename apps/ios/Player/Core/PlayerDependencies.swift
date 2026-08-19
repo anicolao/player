@@ -16,6 +16,13 @@ protocol MediaManaging: Sendable {
   func rollback(_ managed: ManagedAudio) async throws
   func managedURL(for relativePath: String) async throws -> URL
   func discardStaging(for jobID: UUID) async
+  func acquireSelection(_ selectedURLs: [URL], jobID: UUID) async throws -> [AcquiredAudioFile]
+}
+
+extension MediaManaging {
+  func acquireSelection(_ selectedURLs: [URL], jobID: UUID) async throws -> [AcquiredAudioFile] {
+    throw PlayerCoreError.fileOperation("This media source does not support multi-item acquisition.")
+  }
 }
 
 protocol AudioInspecting: Sendable {

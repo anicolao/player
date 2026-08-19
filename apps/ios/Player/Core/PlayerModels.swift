@@ -74,6 +74,9 @@ struct AudioAsset: Codable, Equatable, Identifiable, Sendable {
   var durationSeconds: Double
   var container: String
   var timelineStartSeconds: Double
+  var discNumber: Int?
+  var trackNumber: Int?
+  var importOrder: Int
 
   init(
     id: UUID,
@@ -83,7 +86,10 @@ struct AudioAsset: Codable, Equatable, Identifiable, Sendable {
     byteCount: Int64,
     durationSeconds: Double,
     container: String,
-    timelineStartSeconds: Double = 0
+    timelineStartSeconds: Double = 0,
+    discNumber: Int? = nil,
+    trackNumber: Int? = nil,
+    importOrder: Int = 0
   ) {
     self.id = id
     self.originalFilename = originalFilename
@@ -93,11 +99,15 @@ struct AudioAsset: Codable, Equatable, Identifiable, Sendable {
     self.durationSeconds = durationSeconds
     self.container = container
     self.timelineStartSeconds = timelineStartSeconds
+    self.discNumber = discNumber
+    self.trackNumber = trackNumber
+    self.importOrder = importOrder
   }
 
   private enum CodingKeys: String, CodingKey {
     case id, originalFilename, managedRelativePath, checksumSHA256
     case byteCount, durationSeconds, container, timelineStartSeconds
+    case discNumber, trackNumber, importOrder
   }
 
   init(from decoder: any Decoder) throws {
@@ -110,6 +120,9 @@ struct AudioAsset: Codable, Equatable, Identifiable, Sendable {
     durationSeconds = try values.decode(Double.self, forKey: .durationSeconds)
     container = try values.decode(String.self, forKey: .container)
     timelineStartSeconds = try values.decodeIfPresent(Double.self, forKey: .timelineStartSeconds) ?? 0
+    discNumber = try values.decodeIfPresent(Int.self, forKey: .discNumber)
+    trackNumber = try values.decodeIfPresent(Int.self, forKey: .trackNumber)
+    importOrder = try values.decodeIfPresent(Int.self, forKey: .importOrder) ?? 0
   }
 }
 
@@ -152,6 +165,40 @@ struct ImportFailure: Codable, Equatable, Sendable {
   var isRecoverable: Bool
 }
 
+enum GroupingEvidenceKind: String, Codable, Equatable, Sendable {
+  case selectedTogether
+  case commonFolder
+  case commonEmbeddedTitle
+  case filenameStem
+}
+
+struct GroupingEvidence: Codable, Equatable, Sendable {
+  var kind: GroupingEvidenceKind
+  var explanation: String
+}
+
+enum OrderingEvidenceSource: String, Codable, Equatable, Sendable {
+  case embeddedDiscTrack
+  case filenameNumbers
+  case filenameText
+  case selectionOrder
+  case manual
+}
+
+struct TrackOrderingEvidence: Codable, Equatable, Identifiable, Sendable {
+  var id: UUID { assetID }
+  var assetID: UUID
+  var source: OrderingEvidenceSource
+  var explanation: String
+}
+
+struct StagedImportAsset: Codable, Equatable, Identifiable, Sendable {
+  var id: UUID { assetID }
+  var assetID: UUID
+  var stagedRelativePath: String
+  var sourceRelativePath: String
+}
+
 struct BookProposal: Codable, Equatable, Identifiable, Sendable {
   let id: UUID
   let proposedBookID: UUID
@@ -166,6 +213,18 @@ struct BookProposal: Codable, Equatable, Identifiable, Sendable {
   var seriesPosition: String?
   var artworkMediaType: String?
   var chapters: [Chapter]
+  var additionalAssets: [AudioAsset]
+  var groupingEvidence: [GroupingEvidence]
+  var orderingEvidence: [TrackOrderingEvidence]
+
+  var assets: [AudioAsset] {
+    get { [asset] + additionalAssets }
+    set {
+      guard let first = newValue.first else { return }
+      asset = first
+      additionalAssets = Array(newValue.dropFirst())
+    }
+  }
 
   init(
     id: UUID,
@@ -180,7 +239,10 @@ struct BookProposal: Codable, Equatable, Identifiable, Sendable {
     seriesName: String? = nil,
     seriesPosition: String? = nil,
     artworkMediaType: String? = nil,
-    chapters: [Chapter] = []
+    chapters: [Chapter] = [],
+    additionalAssets: [AudioAsset] = [],
+    groupingEvidence: [GroupingEvidence] = [],
+    orderingEvidence: [TrackOrderingEvidence] = []
   ) {
     self.id = id
     self.proposedBookID = proposedBookID
@@ -195,11 +257,15 @@ struct BookProposal: Codable, Equatable, Identifiable, Sendable {
     self.seriesPosition = seriesPosition
     self.artworkMediaType = artworkMediaType
     self.chapters = chapters
+    self.additionalAssets = additionalAssets
+    self.groupingEvidence = groupingEvidence
+    self.orderingEvidence = orderingEvidence
   }
 
   private enum CodingKeys: String, CodingKey {
     case id, proposedBookID, title, authors, durationSeconds, artworkData, asset, warnings
     case narrators, seriesName, seriesPosition, artworkMediaType, chapters
+    case additionalAssets, groupingEvidence, orderingEvidence
   }
 
   init(from decoder: any Decoder) throws {
@@ -217,6 +283,9 @@ struct BookProposal: Codable, Equatable, Identifiable, Sendable {
     seriesPosition = try values.decodeIfPresent(String.self, forKey: .seriesPosition)
     artworkMediaType = try values.decodeIfPresent(String.self, forKey: .artworkMediaType)
     chapters = try values.decodeIfPresent([Chapter].self, forKey: .chapters) ?? []
+    additionalAssets = try values.decodeIfPresent([AudioAsset].self, forKey: .additionalAssets) ?? []
+    groupingEvidence = try values.decodeIfPresent([GroupingEvidence].self, forKey: .groupingEvidence) ?? []
+    orderingEvidence = try values.decodeIfPresent([TrackOrderingEvidence].self, forKey: .orderingEvidence) ?? []
   }
 }
 
@@ -231,6 +300,70 @@ struct ImportJob: Codable, Equatable, Identifiable, Sendable {
   var failure: ImportFailure?
   var createdAt: Date
   var updatedAt: Date
+  var stagedAssets: [StagedImportAsset]
+  var additionalProposals: [BookProposal]
+  var reviewRevision: Int
+
+  var proposals: [BookProposal] {
+    get { proposal.map { [$0] + additionalProposals } ?? additionalProposals }
+    set {
+      proposal = newValue.first
+      additionalProposals = Array(newValue.dropFirst())
+    }
+  }
+
+  init(
+    id: UUID,
+    sourceFilename: String,
+    phase: ImportPhase,
+    progress: ImportProgress,
+    stagedRelativePath: String? = nil,
+    proposal: BookProposal? = nil,
+    committedBookID: UUID? = nil,
+    failure: ImportFailure? = nil,
+    createdAt: Date,
+    updatedAt: Date,
+    stagedAssets: [StagedImportAsset] = [],
+    additionalProposals: [BookProposal] = [],
+    reviewRevision: Int = 0
+  ) {
+    self.id = id
+    self.sourceFilename = sourceFilename
+    self.phase = phase
+    self.progress = progress
+    self.stagedRelativePath = stagedRelativePath
+    self.proposal = proposal
+    self.committedBookID = committedBookID
+    self.failure = failure
+    self.createdAt = createdAt
+    self.updatedAt = updatedAt
+    self.stagedAssets = stagedAssets
+    self.additionalProposals = additionalProposals
+    self.reviewRevision = reviewRevision
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id, sourceFilename, phase, progress, stagedRelativePath, proposal
+    case committedBookID, failure, createdAt, updatedAt, stagedAssets, additionalProposals
+    case reviewRevision
+  }
+
+  init(from decoder: any Decoder) throws {
+    let values = try decoder.container(keyedBy: CodingKeys.self)
+    id = try values.decode(UUID.self, forKey: .id)
+    sourceFilename = try values.decode(String.self, forKey: .sourceFilename)
+    phase = try values.decode(ImportPhase.self, forKey: .phase)
+    progress = try values.decode(ImportProgress.self, forKey: .progress)
+    stagedRelativePath = try values.decodeIfPresent(String.self, forKey: .stagedRelativePath)
+    proposal = try values.decodeIfPresent(BookProposal.self, forKey: .proposal)
+    committedBookID = try values.decodeIfPresent(UUID.self, forKey: .committedBookID)
+    failure = try values.decodeIfPresent(ImportFailure.self, forKey: .failure)
+    createdAt = try values.decode(Date.self, forKey: .createdAt)
+    updatedAt = try values.decode(Date.self, forKey: .updatedAt)
+    stagedAssets = try values.decodeIfPresent([StagedImportAsset].self, forKey: .stagedAssets) ?? []
+    additionalProposals = try values.decodeIfPresent([BookProposal].self, forKey: .additionalProposals) ?? []
+    reviewRevision = try values.decodeIfPresent(Int.self, forKey: .reviewRevision) ?? 0
+  }
 }
 
 struct LibrarySnapshot: Codable, Equatable, Sendable {
@@ -416,6 +549,8 @@ struct InspectedAudio: Equatable, Sendable {
   var seriesPosition: String?
   var artworkMediaType: String?
   var chapters: [Chapter]
+  var discNumber: Int?
+  var trackNumber: Int?
 
   init(
     title: String?,
@@ -427,7 +562,9 @@ struct InspectedAudio: Equatable, Sendable {
     seriesName: String? = nil,
     seriesPosition: String? = nil,
     artworkMediaType: String? = nil,
-    chapters: [Chapter] = []
+    chapters: [Chapter] = [],
+    discNumber: Int? = nil,
+    trackNumber: Int? = nil
   ) {
     self.title = title
     self.authors = authors
@@ -439,7 +576,15 @@ struct InspectedAudio: Equatable, Sendable {
     self.seriesPosition = seriesPosition
     self.artworkMediaType = artworkMediaType
     self.chapters = chapters
+    self.discNumber = discNumber
+    self.trackNumber = trackNumber
   }
+}
+
+struct AcquiredAudioFile: Equatable, Sendable {
+  var staged: StagedAudio
+  var sourceRelativePath: String
+  var commonFolderName: String?
 }
 
 struct StagedAudio: Equatable, Sendable {
@@ -484,6 +629,8 @@ enum PlayerCoreError: LocalizedError, Equatable, Sendable {
   case newerStoreVersion(Int)
   case invalidStore
   case fileOperation(String)
+  case missingProposal(UUID)
+  case invalidAssetSelection
 
   var errorDescription: String? {
     switch self {
@@ -509,6 +656,144 @@ enum PlayerCoreError: LocalizedError, Equatable, Sendable {
       "The local library could not be decoded."
     case .fileOperation(let description):
       description
+    case .missingProposal(let id):
+      "Import proposal \(id.uuidString) no longer exists."
+    case .invalidAssetSelection:
+      "The selected tracks do not form a valid book order."
     }
+  }
+}
+
+enum NaturalTrackOrdering {
+  static func order(
+    _ assets: [AudioAsset]
+  ) -> (assets: [AudioAsset], evidence: [TrackOrderingEvidence], warnings: [String]) {
+    let indexed = assets.enumerated().map { (offset: $0.offset, asset: $0.element) }
+    let ordered = indexed.sorted { lhs, rhs in
+      let lhsExplicit = lhs.asset.trackNumber != nil || lhs.asset.discNumber != nil
+      let rhsExplicit = rhs.asset.trackNumber != nil || rhs.asset.discNumber != nil
+      if lhsExplicit != rhsExplicit { return lhsExplicit }
+      if lhsExplicit && rhsExplicit {
+        let lhsPair = (lhs.asset.discNumber ?? 1, lhs.asset.trackNumber ?? Int.max)
+        let rhsPair = (rhs.asset.discNumber ?? 1, rhs.asset.trackNumber ?? Int.max)
+        if lhsPair != rhsPair {
+          return lhsPair.0 == rhsPair.0 ? lhsPair.1 < rhsPair.1 : lhsPair.0 < rhsPair.0
+        }
+      }
+      let lhsHasNumber = filenameHasNumber(lhs.asset.originalFilename)
+      let rhsHasNumber = filenameHasNumber(rhs.asset.originalFilename)
+      if lhsHasNumber != rhsHasNumber { return lhsHasNumber }
+      let comparison = compareFilenames(lhs.asset.originalFilename, rhs.asset.originalFilename)
+      return comparison == .orderedSame ? lhs.offset < rhs.offset : comparison == .orderedAscending
+    }
+    var positioned = ordered.map(\.asset)
+    for index in positioned.indices { positioned[index].importOrder = index }
+
+    let evidence = positioned.map { asset in
+      if asset.trackNumber != nil || asset.discNumber != nil {
+        return TrackOrderingEvidence(
+          assetID: asset.id,
+          source: .embeddedDiscTrack,
+          explanation: "Embedded disc \(asset.discNumber ?? 1), track \(asset.trackNumber ?? 0)"
+        )
+      }
+      if filenameHasNumber(asset.originalFilename) {
+        return TrackOrderingEvidence(
+          assetID: asset.id,
+          source: .filenameNumbers,
+          explanation: "Numeric components in \(asset.originalFilename)"
+        )
+      }
+      return TrackOrderingEvidence(
+        assetID: asset.id,
+        source: .filenameText,
+        explanation: "Natural filename order for \(asset.originalFilename)"
+      )
+    }
+    let duplicatePairs = Dictionary(grouping: positioned.compactMap { asset -> String? in
+      guard let track = asset.trackNumber else { return nil }
+      return "\(asset.discNumber ?? 1)-\(track)"
+    }, by: { $0 }).filter { $0.value.count > 1 }
+    let warnings = duplicatePairs.keys.sorted().map { "Conflicting embedded disc/track \($0)." }
+    return (positioned, evidence, warnings)
+  }
+
+  private static func compareFilenames(_ lhs: String, _ rhs: String) -> ComparisonResult {
+    let left = tokens(in: lhs)
+    let right = tokens(in: rhs)
+    for (a, b) in zip(left, right) where a != b {
+      switch (a, b) {
+      case (.number(let x), .number(let y)):
+        return x < y ? .orderedAscending : .orderedDescending
+      case (.text(let x), .text(let y)):
+        return x < y ? .orderedAscending : .orderedDescending
+      case (.number, .text):
+        return .orderedAscending
+      case (.text, .number):
+        return .orderedDescending
+      }
+    }
+    if left.count == right.count { return .orderedSame }
+    return left.count < right.count ? .orderedAscending : .orderedDescending
+  }
+
+  private static func filenameHasNumber(_ filename: String) -> Bool {
+    URL(filePath: filename).deletingPathExtension().lastPathComponent.contains { $0.isNumber }
+  }
+
+  private static func tokens(in value: String) -> [NaturalToken] {
+    var result: [NaturalToken] = []
+    var buffer = ""
+    var readingNumber: Bool?
+    func flush() {
+      guard !buffer.isEmpty else { return }
+      if readingNumber == true {
+        result.append(.number(Int(buffer) ?? Int.max))
+      } else {
+        result.append(.text(buffer.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))))
+      }
+      buffer = ""
+    }
+    for character in value {
+      let isNumber = character.isNumber
+      if let readingNumber, readingNumber != isNumber { flush() }
+      readingNumber = isNumber
+      buffer.append(character)
+    }
+    flush()
+    return result
+  }
+}
+
+private enum NaturalToken: Equatable {
+  case number(Int)
+  case text(String)
+}
+
+enum ProposalTimeline {
+  static func rebuilding(_ proposal: BookProposal, orderedAssets: [AudioAsset]) -> BookProposal {
+    var rebuilt = proposal
+    let oldStarts = Dictionary(uniqueKeysWithValues: proposal.assets.map { ($0.id, $0.timelineStartSeconds) })
+    var positioned = orderedAssets
+    var nextStart = 0.0
+    for index in positioned.indices {
+      positioned[index].timelineStartSeconds = nextStart
+      positioned[index].importOrder = index
+      nextStart += positioned[index].durationSeconds
+    }
+    let newStarts = Dictionary(uniqueKeysWithValues: positioned.map { ($0.id, $0.timelineStartSeconds) })
+    rebuilt.chapters = proposal.chapters.compactMap { chapter in
+      guard
+        let assetID = chapter.assetID,
+        let oldStart = oldStarts[assetID],
+        let newStart = newStarts[assetID]
+      else { return nil }
+      var moved = chapter
+      moved.startSeconds = max(0, chapter.startSeconds - oldStart) + newStart
+      return moved
+    }.sorted { $0.startSeconds < $1.startSeconds }
+    rebuilt.assets = positioned
+    rebuilt.durationSeconds = nextStart
+    return rebuilt
   }
 }

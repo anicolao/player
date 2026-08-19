@@ -95,7 +95,7 @@ final class PlayerCoreTests: XCTestCase {
     try await store.save(migrated)
     let data = try Data(contentsOf: fileURL)
     let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-    XCTAssertEqual(object["schemaVersion"] as? Int, 3)
+    XCTAssertEqual(object["schemaVersion"] as? Int, 4)
   }
 
   func testVersionedStoreMigratesSchemaTwoMetadataAndTimelineDefaults() async throws {
@@ -146,6 +146,75 @@ final class PlayerCoreTests: XCTestCase {
     XCTAssertEqual(book.chapters.first?.title, "legacy")
     XCTAssertEqual(book.chapters.first?.source, .file)
     XCTAssertEqual(book.chapters.first?.assetID, book.assets.first?.id)
+  }
+
+  func testVersionedStoreMigratesSchemaThreeImportGroupingDefaults() async throws {
+    let directory = FileManager.default.temporaryDirectory.appending(
+      path: "PlayerV3StoreTests-\(UUID().uuidString)",
+      directoryHint: .isDirectory
+    )
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let fileURL = directory.appending(path: "Library.json")
+    let store = CodableLibraryStore(fileURL: fileURL)
+    let assetID = UUID(uuidString: "71000000-0000-0000-0000-000000000002")!
+    let asset = AudioAsset(
+      id: assetID,
+      originalFilename: "legacy.m4b",
+      managedRelativePath: "",
+      checksumSHA256: "legacy",
+      byteCount: 100,
+      durationSeconds: 60,
+      container: "M4B"
+    )
+    let proposal = BookProposal(
+      id: UUID(uuidString: "71000000-0000-0000-0000-000000000003")!,
+      proposedBookID: UUID(uuidString: "71000000-0000-0000-0000-000000000004")!,
+      title: "Legacy Import",
+      authors: [],
+      durationSeconds: 60,
+      artworkData: nil,
+      asset: asset,
+      warnings: []
+    )
+    let job = ImportJob(
+      id: UUID(uuidString: "71000000-0000-0000-0000-000000000001")!,
+      sourceFilename: "legacy.m4b",
+      phase: .ready,
+      progress: ImportProgress(completed: 100, total: 100),
+      stagedRelativePath: "Staging/legacy/source.m4b",
+      proposal: proposal,
+      createdAt: Date(timeIntervalSince1970: 1_700_000_000),
+      updatedAt: Date(timeIntervalSince1970: 1_700_000_000)
+    )
+    try await store.save(
+      LibrarySnapshot(books: [], importJobs: [job], currentBookID: nil)
+    )
+    let data = try Data(contentsOf: fileURL)
+    var envelope = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    envelope["schemaVersion"] = 3
+    var library = try XCTUnwrap(envelope["library"] as? [String: Any])
+    var jobs = try XCTUnwrap(library["importJobs"] as? [[String: Any]])
+    jobs[0].removeValue(forKey: "stagedAssets")
+    jobs[0].removeValue(forKey: "additionalProposals")
+    jobs[0].removeValue(forKey: "reviewRevision")
+    library["importJobs"] = jobs
+    envelope["library"] = library
+    try JSONSerialization.data(withJSONObject: envelope).write(to: fileURL)
+
+    let migrated = try await store.load()
+    let migratedJob = try XCTUnwrap(migrated.importJobs.first)
+    XCTAssertEqual(migratedJob.reviewRevision, 0)
+    XCTAssertEqual(migratedJob.proposals.count, 1)
+    XCTAssertEqual(
+      migratedJob.stagedAssets,
+      [
+        StagedImportAsset(
+          assetID: assetID,
+          stagedRelativePath: "Staging/legacy/source.m4b",
+          sourceRelativePath: "legacy.m4b"
+        )
+      ]
+    )
   }
 
   func testAVFoundationInspectorBuildsFileChapterWithoutReadingPayload() async throws {
@@ -618,9 +687,267 @@ final class PlayerCoreTests: XCTestCase {
     XCTAssertEqual(harness.model.library.playbackPosition?.positionMilliseconds, 50_250)
   }
 
+  func testNaturalTrackOrderingUsesEmbeddedNumbersThenStableFilenameOrder() {
+    func asset(_ suffix: Int, _ name: String, disc: Int? = nil, track: Int? = nil) -> AudioAsset {
+      AudioAsset(
+        id: UUID(uuidString: String(format: "a0000000-0000-0000-0000-%012d", suffix))!,
+        originalFilename: name,
+        managedRelativePath: "",
+        checksumSHA256: "\(suffix)",
+        byteCount: 1,
+        durationSeconds: 10,
+        container: "M4A",
+        discNumber: disc,
+        trackNumber: track
+      )
+    }
+    let explicitSecond = asset(1, "z.m4a", disc: 1, track: 2)
+    let explicitFirst = asset(2, "y.m4a", disc: 1, track: 1)
+    let ten = asset(3, "Signal Part 10.m4a")
+    let prelude = asset(4, "Prélude.m4a")
+    let two = asset(5, "Signal Part 2.m4a")
+    let stableA = asset(6, "same.m4a")
+    let stableB = asset(7, "same.m4a")
+
+    let result = NaturalTrackOrdering.order([
+      ten, explicitSecond, prelude, stableA, explicitFirst, two, stableB,
+    ])
+
+    XCTAssertEqual(
+      result.assets.map(\.id),
+      [explicitFirst.id, explicitSecond.id, two.id, ten.id, prelude.id, stableA.id, stableB.id]
+    )
+    XCTAssertEqual(result.assets.map(\.importOrder), Array(0..<7))
+    XCTAssertEqual(result.evidence.prefix(2).map(\.source), [.embeddedDiscTrack, .embeddedDiscTrack])
+    XCTAssertEqual(result.evidence[2].source, .filenameNumbers)
+  }
+
+  func testFolderAndLooseSelectionProducesExplainableGroupsAndDurableRepairs() async throws {
+    let root = FileManager.default.temporaryDirectory.appending(
+      path: "PlayerMultifileTests-\(UUID().uuidString)",
+      directoryHint: .isDirectory
+    )
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let fixture = try makeMessySelection(at: root)
+    let media = FileSystemMediaManager(rootURL: root.appending(path: "Storage"))
+    let store = InMemoryLibraryStore()
+    let ids = (1...40).map {
+      UUID(uuidString: String(format: "b0000000-0000-0000-0000-%012d", $0))!
+    }
+    let inspected = InspectedAudio(
+      title: nil,
+      authors: ["Fixture Author"],
+      durationSeconds: 10,
+      artworkData: nil,
+      container: "M4A",
+      chapters: [
+        Chapter(
+          id: "file-0",
+          title: "Track",
+          startSeconds: 0,
+          durationSeconds: 10,
+          source: .file,
+          assetID: nil
+        )
+      ]
+    )
+    let model = PlayerModel(
+      environment: PlayerEnvironment(
+        persistence: store,
+        media: media,
+        inspector: DeterministicAudioInspector(result: .success(inspected)),
+        playback: DeterministicPlaybackController(),
+        ids: DeterministicPlayerIDGenerator(values: ids)
+      )
+    )
+
+    await model.restore()
+    let importedJobID = await model.importAudioSelection(from: [fixture.folder] + fixture.looseFiles)
+    let jobID = try XCTUnwrap(importedJobID)
+    var job = try XCTUnwrap(model.library.importJobs.first(where: { $0.id == jobID }))
+    XCTAssertEqual(job.phase, .needsReview)
+    XCTAssertEqual(job.reviewRevision, 0)
+    XCTAssertEqual(job.stagedAssets.count, 8)
+    XCTAssertEqual(job.proposals.count, 2)
+    XCTAssertEqual(job.proposals.flatMap(\.warnings).count, 2)
+    XCTAssertEqual(
+      job.proposals[0].assets.map(\.originalFilename),
+      ["Signal Part 1.m4a", "Signal Part 2.m4a", "Signal Part 10.m4a", "Prélude.m4a"]
+    )
+    XCTAssertEqual(
+      job.proposals[1].assets.map(\.originalFilename),
+      ["L’Écho piste 3.m4a", "L’Écho piste 4 café.m4a", "L’Écho piste 5.m4a", "L’Écho piste 6 fin.m4a"]
+    )
+    XCTAssertTrue(job.proposals[0].groupingEvidence.contains { $0.kind == .commonFolder })
+    XCTAssertTrue(job.proposals[1].groupingEvidence.contains { $0.kind == .filenameStem })
+    XCTAssertEqual(job.proposals.flatMap(\.assets).map(\.timelineStartSeconds), [0, 10, 20, 30, 0, 10, 20, 30])
+    XCTAssertTrue(job.proposals.flatMap(\.chapters).allSatisfy { $0.assetID != nil })
+
+    let proposalA = job.proposals[0]
+    let proposalB = job.proposals[1]
+    let b4 = proposalB.assets[1]
+    let moved = await model.moveAssets(
+      jobID: jobID,
+      assetIDs: [b4.id],
+      from: proposalB.id,
+      to: proposalA.id
+    )
+    XCTAssertTrue(moved)
+    job = try XCTUnwrap(model.library.importJobs.first(where: { $0.id == jobID }))
+    XCTAssertEqual(job.reviewRevision, 1)
+
+    let reorderedA = try XCTUnwrap(job.proposals.first(where: { $0.id == proposalA.id }))
+    let manualOrder = [reorderedA.assets[3].id] + reorderedA.assets.enumerated()
+      .filter { $0.offset != 3 }.map(\.element.id)
+    let reordered = await model.reorderAssets(
+      jobID: jobID,
+      proposalID: proposalA.id,
+      assetIDs: manualOrder
+    )
+    XCTAssertTrue(reordered)
+    job = try XCTUnwrap(model.library.importJobs.first(where: { $0.id == jobID }))
+    XCTAssertEqual(job.reviewRevision, 2)
+
+    let currentB = try XCTUnwrap(job.proposals.first(where: { $0.id == proposalB.id }))
+    let didSplit = await model.splitProposal(
+      jobID: jobID,
+      proposalID: proposalB.id,
+      assetIDs: [currentB.assets[0].id]
+    )
+    XCTAssertTrue(didSplit)
+    job = try XCTUnwrap(model.library.importJobs.first(where: { $0.id == jobID }))
+    XCTAssertEqual(job.reviewRevision, 3)
+    XCTAssertEqual(job.proposals.count, 3)
+    let splitID = job.proposals[2].id
+    let mergedSplit = await model.mergeProposals(
+      jobID: jobID,
+      sourceProposalID: splitID,
+      into: proposalB.id
+    )
+    XCTAssertTrue(mergedSplit)
+    let mergedAll = await model.mergeProposals(
+      jobID: jobID,
+      sourceProposalID: proposalB.id,
+      into: proposalA.id
+    )
+    XCTAssertTrue(mergedAll)
+
+    job = try XCTUnwrap(model.library.importJobs.first(where: { $0.id == jobID }))
+    XCTAssertEqual(job.reviewRevision, 5)
+    XCTAssertEqual(job.phase, .ready)
+    XCTAssertEqual(job.proposals.count, 1)
+    XCTAssertEqual(job.proposals[0].assets.count, 8)
+    XCTAssertTrue(job.proposals[0].warnings.isEmpty)
+    XCTAssertEqual(job.proposals[0].assets.map(\.timelineStartSeconds), stride(from: 0.0, to: 80, by: 10).map { $0 })
+    XCTAssertEqual(job.proposals[0].chapters.map(\.startSeconds), stride(from: 0.0, to: 80, by: 10).map { $0 })
+    let persisted = await store.load()
+    XCTAssertEqual(persisted.importJobs.first?.reviewRevision, 5)
+
+    let sourceChecksums = try fixture.allFiles.map(checksum)
+    let committedBookID = await model.addImportToLibrary(jobID: jobID)
+    let bookID = try XCTUnwrap(committedBookID)
+    let book = try XCTUnwrap(model.library.books.first(where: { $0.id == bookID }))
+    XCTAssertEqual(book.assets.count, 8)
+    XCTAssertEqual(book.chapters.count, 8)
+    XCTAssertEqual(try fixture.allFiles.map(checksum), sourceChecksums)
+    for asset in book.assets {
+      _ = try await media.managedURL(for: asset.managedRelativePath)
+    }
+  }
+
+  func testMultifileCommitRollsBackEveryMovedAssetBeforePublishingBook() async throws {
+    let root = FileManager.default.temporaryDirectory.appending(
+      path: "PlayerAtomicImportTests-\(UUID().uuidString)",
+      directoryHint: .isDirectory
+    )
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let tone = try fixtureToneURL()
+    let first = root.appending(path: "Book Part 1.m4a")
+    let second = root.appending(path: "Book Part 2.m4a")
+    try FileManager.default.copyItem(at: tone, to: first)
+    try FileManager.default.copyItem(at: tone, to: second)
+    let media = FileSystemMediaManager(rootURL: root.appending(path: "Storage"))
+    let store = InMemoryLibraryStore()
+    let ids = (1...8).map {
+      UUID(uuidString: String(format: "c0000000-0000-0000-0000-%012d", $0))!
+    }
+    let model = PlayerModel(
+      environment: PlayerEnvironment(
+        persistence: store,
+        media: media,
+        inspector: DeterministicAudioInspector(
+          result: .success(
+            InspectedAudio(
+              title: "Book",
+              authors: [],
+              durationSeconds: 10,
+              artworkData: nil,
+              container: "M4A"
+            )
+          )
+        ),
+        playback: DeterministicPlaybackController(),
+        ids: DeterministicPlayerIDGenerator(values: ids)
+      )
+    )
+    await model.restore()
+    let importedJobID = await model.importAudioSelection(from: [first, second])
+    let jobID = try XCTUnwrap(importedJobID)
+    let ready = try XCTUnwrap(model.library.importJobs.first)
+    XCTAssertEqual(ready.phase, .ready)
+    let firstStaged = try XCTUnwrap(ready.stagedAssets.first)
+    let secondStaged = ready.stagedAssets[1]
+    let missingURL = try await media.stagedURL(for: secondStaged.stagedRelativePath)
+    try FileManager.default.removeItem(at: missingURL)
+
+    let committedBookID = await model.addImportToLibrary(jobID: jobID)
+    XCTAssertNil(committedBookID)
+    XCTAssertTrue(model.library.books.isEmpty)
+    XCTAssertEqual(model.library.importJobs.first?.phase, .ready)
+    let rolledBackURL = try await media.stagedURL(for: firstStaged.stagedRelativePath)
+    XCTAssertTrue(FileManager.default.fileExists(atPath: rolledBackURL.path))
+    let persisted = await store.load()
+    XCTAssertTrue(persisted.books.isEmpty)
+    XCTAssertEqual(persisted.importJobs.first?.phase, .ready)
+  }
+
   private func checksum(_ url: URL) throws -> String {
     let digest = SHA256.hash(data: try Data(contentsOf: url))
     return digest.map { String(format: "%02x", $0) }.joined()
+  }
+
+  private func fixtureToneURL() throws -> URL {
+    try XCTUnwrap(
+      Bundle(for: PlayerCoreTests.self).url(forResource: "01-opening-tone", withExtension: "m4a")
+    )
+  }
+
+  private func makeMessySelection(
+    at root: URL
+  ) throws -> (folder: URL, looseFiles: [URL], allFiles: [URL]) {
+    let tone = try fixtureToneURL()
+    let folder = root.appending(path: "Signal Folder", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    let folderNames = [
+      "Signal Part 10.m4a", "Prélude.m4a", "Signal Part 2.m4a", "Signal Part 1.m4a",
+    ]
+    let looseNames = [
+      "L’Écho piste 3.m4a", "L’Écho piste 4 café.m4a",
+      "L’Écho piste 5.m4a", "L’Écho piste 6 fin.m4a",
+    ]
+    let folderFiles = try folderNames.map { name in
+      let destination = folder.appending(path: name)
+      try FileManager.default.copyItem(at: tone, to: destination)
+      return destination
+    }
+    let looseFiles = try looseNames.map { name in
+      let destination = root.appending(path: name)
+      try FileManager.default.copyItem(at: tone, to: destination)
+      return destination
+    }
+    return (folder, looseFiles, folderFiles + looseFiles)
   }
 
   private func makeBook(duration: Double) -> Book {
