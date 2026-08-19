@@ -264,6 +264,35 @@ enum PositionEventReason: String, Codable, Equatable, Sendable {
   case seek
   case background
   case interruption
+  case routeChange
+}
+
+enum AudioSessionEvent: Equatable, Sendable {
+  case interruptionBegan
+  case interruptionEnded(shouldResume: Bool)
+  case oldDeviceUnavailable
+}
+
+enum RemotePlaybackCommand: Equatable, Sendable {
+  case play
+  case pause
+  case togglePlayPause
+  case skipForward(seconds: Double)
+  case skipBackward(seconds: Double)
+  case changePosition(seconds: Double)
+}
+
+struct NowPlayingSnapshot: Equatable, Sendable {
+  var bookID: UUID
+  var title: String
+  var authors: [String]
+  var narrators: [String]
+  var seriesName: String?
+  var chapterTitle: String?
+  var durationSeconds: Double
+  var elapsedSeconds: Double
+  var playbackRate: Double
+  var artworkData: Data?
 }
 
 struct PlaybackPosition: Codable, Equatable, Sendable {

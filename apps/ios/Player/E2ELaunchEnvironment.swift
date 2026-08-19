@@ -12,7 +12,8 @@ extension PlayerEnvironment {
           return try singleAudiobookReadyEnvironment()
         case "committed-current-book":
           return try committedCurrentBookEnvironment(
-            reset: arguments.contains("-e2e-reset")
+            reset: arguments.contains("-e2e-reset"),
+            eventControls: arguments.contains("-e2e-event-controls")
           )
         case "metadata-rich-book":
           return try metadataRichBookEnvironment()
@@ -102,7 +103,10 @@ extension PlayerEnvironment {
       )
     }
 
-    private static func committedCurrentBookEnvironment(reset: Bool) throws -> PlayerEnvironment {
+    private static func committedCurrentBookEnvironment(
+      reset: Bool,
+      eventControls: Bool
+    ) throws -> PlayerEnvironment {
       let support = try FileManager.default.url(
         for: .applicationSupportDirectory,
         in: .userDomainMask,
@@ -173,11 +177,20 @@ extension PlayerEnvironment {
       let ids = (1...12).map {
         UUID(uuidString: String(format: "21000000-0000-0000-0000-%012d", $0))!
       }
+      if eventControls {
+        E2EPlaybackEventBridge.shared.reset()
+      }
       return PlayerEnvironment(
         persistence: E2ESeededLibraryStore(base: persisted, seed: seed),
         media: FileSystemMediaManager(rootURL: root),
         inspector: DeterministicAudioInspector(result: .failure(.unreadableAudio("unused"))),
         playback: DeterministicPlaybackController(),
+        audioSession: eventControls
+          ? E2EAudioSessionController()
+          : DisabledAudioSessionController(),
+        remoteCommands: eventControls
+          ? E2ERemoteCommandController()
+          : DisabledRemoteCommandController(),
         clock: FixedPlayerClock(value: date),
         ids: DeterministicPlayerIDGenerator(values: ids)
       )

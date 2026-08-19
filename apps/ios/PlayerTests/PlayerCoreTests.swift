@@ -443,6 +443,181 @@ final class PlayerCoreTests: XCTestCase {
     XCTAssertEqual(PositionJournalRecovery.recover(from: loaded)?.positionMilliseconds, 12_345)
   }
 
+  func testRemoteCommandsUseTheSameDurablePlaybackPaths() async throws {
+    let harness = makeBackgroundPlaybackHarness()
+    await harness.model.restore()
+    harness.model.configurePlaybackIntegrations()
+    harness.model.configurePlaybackIntegrations()
+
+    XCTAssertEqual(harness.audioSession.configureCount, 1)
+    XCTAssertEqual(harness.remoteCommands.installationCount, 1)
+
+    await harness.remoteCommands.send(.play)
+    XCTAssertEqual(harness.model.playbackState.status, .playing)
+    await harness.remoteCommands.send(.pause)
+    XCTAssertEqual(harness.model.playbackState.status, .paused)
+    await harness.remoteCommands.send(.togglePlayPause)
+    XCTAssertEqual(harness.model.playbackState.status, .playing)
+    await harness.remoteCommands.send(.skipForward(seconds: 30))
+    XCTAssertEqual(harness.model.playbackState.elapsedSeconds, 30)
+    await harness.remoteCommands.send(.skipBackward(seconds: 15))
+    XCTAssertEqual(harness.model.playbackState.elapsedSeconds, 15)
+    await harness.remoteCommands.send(.changePosition(seconds: 42))
+    XCTAssertEqual(harness.model.playbackState.elapsedSeconds, 42)
+    await harness.remoteCommands.send(.togglePlayPause)
+    XCTAssertEqual(harness.model.playbackState.status, .paused)
+
+    XCTAssertEqual(harness.audioSession.activateCount, 2)
+    XCTAssertEqual(
+      harness.model.library.positionJournal.map(\.reason),
+      [.play, .pause, .play, .seek, .seek, .seek, .pause]
+    )
+    let persisted = await harness.store.load()
+    XCTAssertEqual(persisted.playbackPosition?.positionMilliseconds, 42_000)
+  }
+
+  func testBackgroundCheckpointPersistsAcknowledgedEnginePosition() async throws {
+    let harness = makeBackgroundPlaybackHarness()
+    await harness.model.restore()
+    harness.model.configurePlaybackIntegrations()
+    await harness.model.play(bookID: harness.book.id)
+    await harness.playback.seek(to: 63.4567)
+
+    await harness.model.checkpointForBackground()
+
+    XCTAssertEqual(harness.model.library.positionJournal.last?.reason, .background)
+    XCTAssertEqual(harness.model.library.playbackPosition?.positionMilliseconds, 63_456)
+    let persisted = await harness.store.load()
+    XCTAssertEqual(persisted.playbackPosition?.positionMilliseconds, 63_456)
+    XCTAssertEqual(
+      try XCTUnwrap(harness.nowPlaying.latest?.elapsedSeconds),
+      63.456,
+      accuracy: 0.000_1
+    )
+    XCTAssertEqual(harness.nowPlaying.latest?.playbackRate, 1)
+  }
+
+  func testBackgroundTransitionDoesNotDuplicateAnAlreadyDurablePause() async throws {
+    let harness = makeBackgroundPlaybackHarness()
+    await harness.model.restore()
+    harness.model.configurePlaybackIntegrations()
+    await harness.model.play(bookID: harness.book.id)
+    await harness.model.pause()
+    let eventsBeforeBackground = harness.model.library.positionJournal
+
+    await harness.model.checkpointForBackground()
+
+    XCTAssertEqual(harness.model.library.positionJournal, eventsBeforeBackground)
+    XCTAssertEqual(harness.model.library.positionJournal.last?.reason, .pause)
+  }
+
+  func testInterruptionAndOldDeviceLossPauseAndCheckpoint() async throws {
+    let harness = makeBackgroundPlaybackHarness()
+    await harness.model.restore()
+    harness.model.configurePlaybackIntegrations()
+    await harness.model.play(bookID: harness.book.id)
+
+    await harness.audioSession.send(.interruptionBegan)
+    XCTAssertEqual(harness.model.playbackState.status, .paused)
+    XCTAssertEqual(harness.model.library.positionJournal.last?.reason, .interruption)
+    XCTAssertEqual(harness.nowPlaying.latest?.playbackRate, 0)
+
+    await harness.audioSession.send(.interruptionEnded(shouldResume: true))
+    XCTAssertEqual(harness.model.playbackState.status, .playing)
+    XCTAssertEqual(harness.model.library.positionJournal.last?.reason, .play)
+
+    await harness.audioSession.send(.oldDeviceUnavailable)
+    XCTAssertEqual(harness.model.playbackState.status, .paused)
+    XCTAssertEqual(harness.model.library.positionJournal.last?.reason, .routeChange)
+    XCTAssertEqual(harness.nowPlaying.latest?.playbackRate, 0)
+    XCTAssertEqual(harness.audioSession.activateCount, 2)
+  }
+
+  func testNowPlayingPublishesBookChapterElapsedAndRate() async throws {
+    let harness = makeBackgroundPlaybackHarness()
+    await harness.model.restore()
+    harness.model.configurePlaybackIntegrations()
+    await harness.model.play(bookID: harness.book.id)
+    await harness.model.seek(to: 42.25)
+
+    let playing = try XCTUnwrap(harness.nowPlaying.latest)
+    XCTAssertEqual(playing.bookID, harness.book.id)
+    XCTAssertEqual(playing.title, "Background Journey")
+    XCTAssertEqual(playing.authors, ["Mara Vale"])
+    XCTAssertEqual(playing.narrators, ["Alex Reader"])
+    XCTAssertEqual(playing.seriesName, "Signal Archives")
+    XCTAssertEqual(playing.chapterTitle, "Middle")
+    XCTAssertEqual(playing.durationSeconds, 120)
+    XCTAssertEqual(playing.elapsedSeconds, 42.25)
+    XCTAssertEqual(playing.playbackRate, 1)
+
+    await harness.model.pause()
+    let paused = try XCTUnwrap(harness.nowPlaying.latest)
+    XCTAssertEqual(paused.elapsedSeconds, 42.25)
+    XCTAssertEqual(paused.playbackRate, 0)
+  }
+
+  func testAudioSessionConfigurationAndActivationFailuresAreObservable() async throws {
+    let configurationHarness = makeBackgroundPlaybackHarness()
+    await configurationHarness.model.restore()
+    configurationHarness.audioSession.configureError = PlayerCoreError.fileOperation(
+      "Audio session configuration failed."
+    )
+
+    configurationHarness.model.configurePlaybackIntegrations()
+
+    XCTAssertEqual(configurationHarness.audioSession.configureCount, 1)
+    XCTAssertEqual(configurationHarness.remoteCommands.installationCount, 0)
+    XCTAssertEqual(
+      configurationHarness.model.lastErrorMessage,
+      "Audio session configuration failed."
+    )
+
+    let activationHarness = makeBackgroundPlaybackHarness()
+    await activationHarness.model.restore()
+    activationHarness.model.configurePlaybackIntegrations()
+    activationHarness.audioSession.activationError = PlayerCoreError.fileOperation(
+      "Audio session activation failed."
+    )
+
+    await activationHarness.remoteCommands.send(.play)
+
+    XCTAssertEqual(activationHarness.model.playbackState.status, .paused)
+    XCTAssertTrue(activationHarness.model.library.positionJournal.isEmpty)
+    XCTAssertEqual(activationHarness.model.lastErrorMessage, "Audio session activation failed.")
+  }
+
+  func testInterruptionWithoutResumePermissionRemainsPaused() async throws {
+    let harness = makeBackgroundPlaybackHarness()
+    await harness.model.restore()
+    harness.model.configurePlaybackIntegrations()
+    await harness.model.play(bookID: harness.book.id)
+
+    await harness.audioSession.send(.interruptionBegan)
+    await harness.audioSession.send(.interruptionEnded(shouldResume: false))
+
+    XCTAssertEqual(harness.model.playbackState.status, .paused)
+    XCTAssertEqual(harness.audioSession.activateCount, 1)
+    XCTAssertEqual(harness.model.library.positionJournal.map(\.reason), [.play, .interruption])
+  }
+
+  func testRemoteSkipAndPositionCommandsClampToBookBounds() async throws {
+    let harness = makeBackgroundPlaybackHarness()
+    await harness.model.restore()
+    harness.model.configurePlaybackIntegrations()
+    await harness.remoteCommands.send(.play)
+
+    await harness.remoteCommands.send(.skipBackward(seconds: 15))
+    XCTAssertEqual(harness.model.playbackState.elapsedSeconds, 0)
+    await harness.remoteCommands.send(.skipForward(seconds: 1_000))
+    XCTAssertEqual(harness.model.playbackState.elapsedSeconds, 120)
+    await harness.remoteCommands.send(.changePosition(seconds: -20))
+    XCTAssertEqual(harness.model.playbackState.elapsedSeconds, 0)
+    await harness.remoteCommands.send(.changePosition(seconds: 50.25))
+    XCTAssertEqual(harness.model.playbackState.elapsedSeconds, 50.25)
+    XCTAssertEqual(harness.model.library.playbackPosition?.positionMilliseconds, 50_250)
+  }
+
   private func checksum(_ url: URL) throws -> String {
     let digest = SHA256.hash(data: try Data(contentsOf: url))
     return digest.map { String(format: "%02x", $0) }.joined()
@@ -470,6 +645,94 @@ final class PlayerCoreTests: XCTestCase {
       dateAdded: Date(timeIntervalSince1970: 1_700_000_000)
     )
   }
+
+  private func makeBackgroundPlaybackHarness() -> BackgroundPlaybackHarness {
+    let bookID = UUID(uuidString: "90000000-0000-0000-0000-000000000001")!
+    let assetID = UUID(uuidString: "90000000-0000-0000-0000-000000000002")!
+    let book = Book(
+      id: bookID,
+      title: "Background Journey",
+      authors: ["Mara Vale"],
+      durationSeconds: 120,
+      artworkData: nil,
+      assets: [
+        AudioAsset(
+          id: assetID,
+          originalFilename: "background.m4b",
+          managedRelativePath: "Media/background.m4b",
+          checksumSHA256: "fixture",
+          byteCount: 1,
+          durationSeconds: 120,
+          container: "M4B"
+        )
+      ],
+      dateAdded: Date(timeIntervalSince1970: 1_700_000_000),
+      narrators: ["Alex Reader"],
+      seriesName: "Signal Archives",
+      seriesPosition: "1",
+      chapters: [
+        Chapter(
+          id: "opening",
+          title: "Opening",
+          startSeconds: 0,
+          durationSeconds: 40,
+          source: .embedded,
+          assetID: assetID
+        ),
+        Chapter(
+          id: "middle",
+          title: "Middle",
+          startSeconds: 40,
+          durationSeconds: 80,
+          source: .embedded,
+          assetID: assetID
+        ),
+      ]
+    )
+    let store = InMemoryLibraryStore(
+      snapshot: LibrarySnapshot(books: [book], importJobs: [], currentBookID: book.id)
+    )
+    let playback = DeterministicPlaybackController()
+    let audioSession = DeterministicAudioSessionController()
+    let remoteCommands = DeterministicRemoteCommandController()
+    let nowPlaying = DeterministicNowPlayingPublisher()
+    let identifiers = (1...20).map {
+      UUID(uuidString: String(format: "91000000-0000-0000-0000-%012d", $0))!
+    }
+    let model = PlayerModel(
+      environment: PlayerEnvironment(
+        persistence: store,
+        media: StubMediaManager(),
+        inspector: DeterministicAudioInspector(result: .failure(.unreadableAudio("unused"))),
+        playback: playback,
+        audioSession: audioSession,
+        remoteCommands: remoteCommands,
+        nowPlaying: nowPlaying,
+        clock: FixedPlayerClock(value: Date(timeIntervalSince1970: 1_700_000_000)),
+        ids: DeterministicPlayerIDGenerator(values: identifiers)
+      )
+    )
+    return BackgroundPlaybackHarness(
+      book: book,
+      model: model,
+      store: store,
+      playback: playback,
+      audioSession: audioSession,
+      remoteCommands: remoteCommands,
+      nowPlaying: nowPlaying
+    )
+  }
+}
+
+@MainActor
+private struct BackgroundPlaybackHarness {
+  let book: Book
+  let model: PlayerModel
+  let store: InMemoryLibraryStore
+  let playback: DeterministicPlaybackController
+  let audioSession: DeterministicAudioSessionController
+  let remoteCommands: DeterministicRemoteCommandController
+  let nowPlaying: DeterministicNowPlayingPublisher
 }
 
 private actor StubMediaManager: MediaManaging {

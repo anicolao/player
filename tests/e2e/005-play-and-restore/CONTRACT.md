@@ -50,3 +50,55 @@ acknowledged_ms - 500 <= restored_ms <= acknowledged_ms
 Only the restored paused Library and Now Playing states are captured. The
 seek/play/pause setup is assertion-only so a moving progress affordance can never
 enter a zero-tolerance visual baseline.
+
+## Remote commands and lifecycle events
+
+`RemoteInterruptionUITests` adds `-e2e-event-controls`. In an E2E build only,
+this exposes a test control surface with these tappable identifiers:
+
+| Identifier | Production-boundary event |
+| --- | --- |
+| `e2e-remote-play` | Registered remote play handler |
+| `e2e-remote-pause` | Registered remote pause handler |
+| `e2e-remote-toggle` | Registered remote toggle handler |
+| `e2e-remote-skip-forward` | Registered configured 30-second forward handler |
+| `e2e-remote-skip-backward` | Registered configured 15-second backward handler |
+| `e2e-interruption-began` | Audio-session interruption-began event |
+| `e2e-interruption-ended-no-resume` | Interruption-ended event without resume permission |
+
+The buttons must publish through injected event sources consumed by the same
+handlers as `MPRemoteCommandCenter` and `AVAudioSession`. They must not call
+`PlayerModel` directly. Production adapters and E2E event sources differ only at
+the outer event-source boundary.
+
+The app exposes a read-only `e2e-playback-probe` accessibility element whose
+value is:
+
+```text
+probe|<paused|playing>|<book-uuid>|<chapter-index>|<position-ms>|<journal-sequence>|<last-reason>|<persisted-position-ms>|<registered-command-csv>
+```
+
+The registered command CSV contains exactly `change-position`, `pause`, `play`,
+`skip-backward`, `skip-forward`, and `toggle`; ordering is immaterial. The probe
+reads the real observable playback state, recovered snapshot, latest
+integrity-valid journal event, and production remote-registration state. Reading
+it has no side effects. Absolute-position behavior is covered by the same
+injected production boundary in the core integration suite.
+
+The fixture starts with journal sequence 1, reason `pause`, at 12,000 ms. Every
+remote play/pause/seek completes its production-model operation before the E2E
+control action returns. Forward skip reaches 42,000 ms and backward skip reaches
+27,000 ms. Each produces one event using the existing `play`, `pause`, or `seek`
+reason and advances the journal sequence exactly once.
+
+Interruption-began pauses and appends one `interruption` event. Ending without
+resume permission stays paused and appends nothing. The test then resumes and
+uses the real Home button; entering background appends one `background` event
+without stopping permitted background audio. Reactivating the app appends no
+synthetic position event. The final remote pause is recovered unchanged after
+termination and relaunch without reset.
+
+This extension is intentionally nonvisual. Remote registration, event routing,
+and journal durability have no meaningful pixels beyond the paused player already
+covered by this story's two baselines. The test must not create screenshot or UI
+hierarchy attachments.

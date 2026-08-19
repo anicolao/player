@@ -10,6 +10,8 @@ final class PlayerModel {
   private(set) var lastErrorMessage: String?
 
   @ObservationIgnored private let environment: PlayerEnvironment
+  @ObservationIgnored private var playbackIntegrationsConfigured = false
+  @ObservationIgnored private var wasPlayingBeforeInterruption = false
 
   init(environment: PlayerEnvironment) {
     self.environment = environment
@@ -49,8 +51,28 @@ final class PlayerModel {
       }
       isRestored = true
       lastErrorMessage = nil
+      publishNowPlaying()
     } catch {
       isRestored = false
+      lastErrorMessage = error.localizedDescription
+      environment.nowPlaying.clear()
+    }
+  }
+
+  func configurePlaybackIntegrations() {
+    guard !playbackIntegrationsConfigured else { return }
+    do {
+      try environment.audioSession.configure()
+      environment.audioSession.installEventHandler { [weak self] event in
+        await self?.handleAudioSessionEvent(event)
+      }
+      environment.remoteCommands.installCommandHandler { [weak self] command in
+        await self?.handleRemoteCommand(command)
+      }
+      playbackIntegrationsConfigured = true
+      lastErrorMessage = nil
+      publishNowPlaying()
+    } catch {
       lastErrorMessage = error.localizedDescription
     }
   }
@@ -220,6 +242,7 @@ final class PlayerModel {
     }
 
     do {
+      try environment.audioSession.activate()
       let url = try await environment.media.managedURL(for: asset.managedRelativePath)
       let startSeconds = seconds
         ?? (library.playbackPosition?.bookID == bookID ? library.playbackPosition?.seconds : nil)
@@ -248,14 +271,80 @@ final class PlayerModel {
   }
 
   func pause() async {
-    let seconds = pausePlayback()
-    await acknowledgePlaybackPosition(seconds, reason: .pause)
+    await pause(reason: .pause)
+  }
+
+  func checkpointForBackground() async {
+    guard playbackState.loadedBookID != nil, playbackState.status == .playing else { return }
+    await acknowledgePlaybackPosition(
+      environment.playback.currentPositionSeconds,
+      reason: .background
+    )
   }
 
   private func pausePlayback() -> Double {
     environment.playback.pause()
     playbackState = environment.playback.state
     return environment.playback.currentPositionSeconds
+  }
+
+  private func pause(reason: PositionEventReason) async {
+    let seconds = pausePlayback()
+    await acknowledgePlaybackPosition(seconds, reason: reason)
+  }
+
+  private func resumeCurrentBook() async {
+    guard let bookID = library.currentBookID else { return }
+    if environment.playback.state.loadedBookID == bookID {
+      do {
+        try environment.audioSession.activate()
+        environment.playback.play()
+        playbackState = environment.playback.state
+        await acknowledgePlaybackPosition(
+          environment.playback.currentPositionSeconds,
+          reason: .play
+        )
+      } catch {
+        lastErrorMessage = error.localizedDescription
+      }
+    } else {
+      await play(bookID: bookID)
+    }
+  }
+
+  private func handleRemoteCommand(_ command: RemotePlaybackCommand) async {
+    switch command {
+    case .play:
+      await resumeCurrentBook()
+    case .pause:
+      if playbackState.status == .playing { await pause() }
+    case .togglePlayPause:
+      if playbackState.status == .playing {
+        await pause()
+      } else {
+        await resumeCurrentBook()
+      }
+    case .skipForward(let seconds):
+      await seek(to: environment.playback.currentPositionSeconds + max(0, seconds))
+    case .skipBackward(let seconds):
+      await seek(to: max(0, environment.playback.currentPositionSeconds - max(0, seconds)))
+    case .changePosition(let seconds):
+      await seek(to: seconds)
+    }
+  }
+
+  private func handleAudioSessionEvent(_ event: AudioSessionEvent) async {
+    switch event {
+    case .interruptionBegan:
+      wasPlayingBeforeInterruption = playbackState.status == .playing
+      if wasPlayingBeforeInterruption { await pause(reason: .interruption) }
+    case .interruptionEnded(let shouldResume):
+      let resume = shouldResume && wasPlayingBeforeInterruption
+      wasPlayingBeforeInterruption = false
+      if resume { await resumeCurrentBook() }
+    case .oldDeviceUnavailable:
+      if playbackState.status == .playing { await pause(reason: .routeChange) }
+    }
   }
 
   private func loadCurrentBookIntoPlayback() async throws {
@@ -318,10 +407,39 @@ final class PlayerModel {
     do {
       try await persist()
       lastErrorMessage = nil
+      publishNowPlaying()
     } catch {
       library = previousLibrary
       lastErrorMessage = error.localizedDescription
     }
+  }
+
+  private func publishNowPlaying() {
+    guard
+      let bookID = playbackState.loadedBookID ?? library.currentBookID,
+      let book = library.books.first(where: { $0.id == bookID })
+    else {
+      environment.nowPlaying.clear()
+      return
+    }
+    let elapsed = min(max(0, playbackState.elapsedSeconds), book.durationSeconds)
+    let chapter = book.chapters
+      .filter { $0.startSeconds <= elapsed }
+      .max(by: { $0.startSeconds < $1.startSeconds })
+    environment.nowPlaying.publish(
+      NowPlayingSnapshot(
+        bookID: book.id,
+        title: book.title,
+        authors: book.authors,
+        narrators: book.narrators,
+        seriesName: book.seriesName,
+        chapterTitle: chapter?.title,
+        durationSeconds: book.durationSeconds,
+        elapsedSeconds: elapsed,
+        playbackRate: playbackState.status == .playing ? 1 : 0,
+        artworkData: book.artworkData
+      )
+    )
   }
 
   private func replaceAndPersist(_ job: ImportJob) async throws {

@@ -38,3 +38,15 @@
 - [x] Now Playing is paused at most 500 ms behind and never ahead of the acknowledged position
 - [x] The restored Play control is available
 - [x] The restored position remains adjustable
+
+## Nonvisual system-control journey
+
+`RemoteInterruptionUITests` exercises behavior that has no additional useful
+pixels beyond the stable paused screens above. It programmatically verifies:
+
+- [x] Lock Screen and accessory play, pause, toggle, skip, and position commands are registered
+- [x] Remote commands use the same durable play, pause, and seek paths as the app UI
+- [x] Interruption and disconnected-output policies pause and journal acknowledged audio
+- [x] Entering the background checkpoints without stopping permitted background playback
+- [x] Every event advances the integrity-checked journal exactly once
+- [x] The final remotely paused position restores exactly after termination and relaunch

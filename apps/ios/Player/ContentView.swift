@@ -2,6 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct ContentView: View {
+  @Environment(\.scenePhase) private var scenePhase
   @Bindable var model: PlayerModel
   @State private var selection: AppSection = .library
   @State private var isImporting = false
@@ -47,7 +48,21 @@ struct ContentView: View {
         .padding(.bottom, 83)
       }
     }
-    .task { await model.restore() }
+    #if E2E
+      .overlay(alignment: .topLeading) {
+        if ProcessInfo.processInfo.arguments.contains("-e2e-event-controls") {
+          E2EPlaybackControlSurface(model: model)
+        }
+      }
+    #endif
+    .task {
+      await model.restore()
+      model.configurePlaybackIntegrations()
+    }
+    .onChange(of: scenePhase) { _, phase in
+      guard phase == .background else { return }
+      Task { await model.checkpointForBackground() }
+    }
   }
 
   private var currentBook: Book? {
@@ -69,10 +84,11 @@ private enum AppSection: Hashable { case library, inbox, settings }
 private struct LibraryView: View {
   @Bindable var model: PlayerModel
   @Binding var isImporting: Bool
+  @State private var path = NavigationPath()
   let presentPlayer: (Book) -> Void
 
   var body: some View {
-    NavigationStack {
+    NavigationStack(path: $path) {
       ZStack {
         PlayerColor.background.ignoresSafeArea()
         if model.library.books.isEmpty {
@@ -90,21 +106,6 @@ private struct LibraryView: View {
         }
       }
       .navigationTitle("Library")
-      .toolbar {
-        if !model.library.books.isEmpty {
-          ToolbarItem(placement: .topBarTrailing) {
-            Button { isImporting = true } label: {
-              Image(systemName: "plus")
-                .font(.title3.weight(.semibold))
-                .frame(width: 44, height: 44)
-                .background(PlayerColor.card, in: Circle())
-            }
-              .buttonStyle(.plain)
-              .accessibilityLabel("Add Audiobook")
-              .accessibilityIdentifier("add-audiobook-toolbar")
-          }
-        }
-      }
       .navigationDestination(for: UUID.self) { id in
         if let book = model.library.books.first(where: { $0.id == id }) {
           BookDetailView(book: book) { position in
@@ -118,6 +119,21 @@ private struct LibraryView: View {
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("library-screen")
       .accessibilityValue(libraryState)
+    }
+    .overlay(alignment: .topTrailing) {
+      if path.isEmpty && !model.library.books.isEmpty {
+        Button { isImporting = true } label: {
+          Image(systemName: "plus")
+            .font(.title3.weight(.semibold))
+            .frame(width: 44, height: 44)
+            .background(PlayerColor.card, in: Circle())
+        }
+        .buttonStyle(.plain)
+        .padding(.top, 44)
+        .padding(.trailing, 20)
+        .accessibilityLabel("Add Audiobook")
+        .accessibilityIdentifier("add-audiobook-toolbar")
+      }
     }
   }
 
@@ -576,3 +592,88 @@ private func timecode(_ seconds: Double) -> String {
   let wholeSeconds = max(0, Int(seconds.rounded()))
   return String(format: "%d:%02d", wholeSeconds / 60, wholeSeconds % 60)
 }
+
+#if E2E
+  private struct E2EPlaybackControlSurface: View {
+    @Bindable var model: PlayerModel
+
+    var body: some View {
+      VStack(alignment: .leading, spacing: 4) {
+        probe
+        control("Play", identifier: "e2e-remote-play") {
+          await E2EPlaybackEventBridge.shared.sendRemote(.play)
+        }
+        control("Pause", identifier: "e2e-remote-pause") {
+          await E2EPlaybackEventBridge.shared.sendRemote(.pause)
+        }
+        control("Toggle", identifier: "e2e-remote-toggle") {
+          await E2EPlaybackEventBridge.shared.sendRemote(.togglePlayPause)
+        }
+        control("Forward", identifier: "e2e-remote-skip-forward") {
+          await E2EPlaybackEventBridge.shared.sendRemote(.skipForward(seconds: 30))
+        }
+        control("Backward", identifier: "e2e-remote-skip-backward") {
+          await E2EPlaybackEventBridge.shared.sendRemote(.skipBackward(seconds: 15))
+        }
+        control("Interrupt", identifier: "e2e-interruption-began") {
+          await E2EPlaybackEventBridge.shared.sendAudioSession(.interruptionBegan)
+        }
+        control("End", identifier: "e2e-interruption-ended-no-resume") {
+          await E2EPlaybackEventBridge.shared.sendAudioSession(
+            .interruptionEnded(shouldResume: false)
+          )
+        }
+      }
+      .padding(8)
+      .background(PlayerColor.background.opacity(0.98), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private var probe: some View {
+      Color.clear
+        .frame(width: 1, height: 1)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Playback event probe")
+        .accessibilityIdentifier("e2e-playback-probe")
+        .accessibilityValue(probeValue)
+    }
+
+    private func control(
+      _ label: String,
+      identifier: String,
+      action: @escaping @MainActor @Sendable () async -> Void
+    ) -> some View {
+      Button(label) { Task { await action() } }
+        .frame(minWidth: 86, minHeight: 40)
+        .buttonStyle(.bordered)
+        .accessibilityIdentifier(identifier)
+    }
+
+    private var probeValue: String {
+      guard
+        let bookID = model.playbackState.loadedBookID ?? model.library.currentBookID,
+        let position = model.library.playbackPosition,
+        let event = model.library.positionJournal.first(where: { $0.id == position.sourceEventID })
+      else { return "probe|unavailable|||||||" }
+
+      let book = model.library.books.first(where: { $0.id == bookID })
+      let chapterIndex = book?.chapters.lastIndex(where: {
+        $0.startSeconds <= model.playbackState.elapsedSeconds
+      }) ?? 0
+      let reportedMilliseconds = Int(
+        (max(0, model.playbackState.elapsedSeconds) * 1_000).rounded(.down)
+      )
+      let commands = E2EPlaybackEventBridge.shared.registeredCommands.sorted().joined(separator: ",")
+      return [
+        "probe",
+        model.playbackState.status.rawValue,
+        bookID.uuidString.lowercased(),
+        String(chapterIndex),
+        String(reportedMilliseconds),
+        String(event.sequence),
+        event.reason.rawValue,
+        String(position.positionMilliseconds),
+        commands,
+      ].joined(separator: "|")
+    }
+  }
+#endif

@@ -32,6 +32,28 @@ protocol AudioPlaybackControlling: AnyObject {
   func pause()
 }
 
+@MainActor
+protocol AudioSessionControlling: AnyObject {
+  func configure() throws
+  func activate() throws
+  func installEventHandler(
+    _ handler: @escaping @MainActor @Sendable (AudioSessionEvent) async -> Void
+  )
+}
+
+@MainActor
+protocol RemoteCommandControlling: AnyObject {
+  func installCommandHandler(
+    _ handler: @escaping @MainActor @Sendable (RemotePlaybackCommand) async -> Void
+  )
+}
+
+@MainActor
+protocol NowPlayingPublishing: AnyObject {
+  func publish(_ snapshot: NowPlayingSnapshot)
+  func clear()
+}
+
 protocol PlayerClock: Sendable {
   func now() -> Date
 }
@@ -72,6 +94,9 @@ struct PlayerEnvironment {
   let media: any MediaManaging
   let inspector: any AudioInspecting
   let playback: any AudioPlaybackControlling
+  let audioSession: any AudioSessionControlling
+  let remoteCommands: any RemoteCommandControlling
+  let nowPlaying: any NowPlayingPublishing
   let clock: any PlayerClock
   let ids: any PlayerIDGenerating
 
@@ -80,6 +105,9 @@ struct PlayerEnvironment {
     media: any MediaManaging,
     inspector: any AudioInspecting,
     playback: any AudioPlaybackControlling,
+    audioSession: any AudioSessionControlling = DisabledAudioSessionController(),
+    remoteCommands: any RemoteCommandControlling = DisabledRemoteCommandController(),
+    nowPlaying: any NowPlayingPublishing = DisabledNowPlayingPublisher(),
     clock: any PlayerClock = SystemPlayerClock(),
     ids: any PlayerIDGenerating = SystemPlayerIDGenerator()
   ) {
@@ -87,6 +115,9 @@ struct PlayerEnvironment {
     self.media = media
     self.inspector = inspector
     self.playback = playback
+    self.audioSession = audioSession
+    self.remoteCommands = remoteCommands
+    self.nowPlaying = nowPlaying
     self.clock = clock
     self.ids = ids
   }
@@ -97,7 +128,10 @@ struct PlayerEnvironment {
       persistence: CodableLibraryStore(fileURL: root.appending(path: "Library.json")),
       media: FileSystemMediaManager(rootURL: root),
       inspector: AVFoundationAudioInspector(),
-      playback: AVPlayerPlaybackController()
+      playback: AVPlayerPlaybackController(),
+      audioSession: AVAudioSessionController(),
+      remoteCommands: MPRemoteCommandController(),
+      nowPlaying: MPNowPlayingPublisher()
     )
   }
 
@@ -110,4 +144,26 @@ struct PlayerEnvironment {
     )
     return support.appending(path: "Player", directoryHint: .isDirectory)
   }
+}
+
+@MainActor
+final class DisabledAudioSessionController: AudioSessionControlling {
+  func configure() throws {}
+  func activate() throws {}
+  func installEventHandler(
+    _ handler: @escaping @MainActor @Sendable (AudioSessionEvent) async -> Void
+  ) {}
+}
+
+@MainActor
+final class DisabledRemoteCommandController: RemoteCommandControlling {
+  func installCommandHandler(
+    _ handler: @escaping @MainActor @Sendable (RemotePlaybackCommand) async -> Void
+  ) {}
+}
+
+@MainActor
+final class DisabledNowPlayingPublisher: NowPlayingPublishing {
+  func publish(_ snapshot: NowPlayingSnapshot) {}
+  func clear() {}
 }

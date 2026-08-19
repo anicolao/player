@@ -1,5 +1,7 @@
 import AVFoundation
 import Foundation
+import MediaPlayer
+import UIKit
 
 struct AVFoundationAudioInspector: AudioInspecting {
   private static let maximumArtworkBytes = 20 * 1_024 * 1_024
@@ -303,5 +305,245 @@ final class DeterministicPlaybackController: AudioPlaybackControlling {
   func pause() {
     guard state.loadedBookID != nil else { return }
     state.status = .paused
+  }
+}
+
+@MainActor
+final class AVAudioSessionController: NSObject, AudioSessionControlling {
+  private let session: AVAudioSession
+  private var eventHandler: (@MainActor @Sendable (AudioSessionEvent) async -> Void)?
+
+  init(session: AVAudioSession = .sharedInstance()) {
+    self.session = session
+    super.init()
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(handleInterruptionNotification(_:)),
+      name: AVAudioSession.interruptionNotification,
+      object: session
+    )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(handleRouteChangeNotification(_:)),
+      name: AVAudioSession.routeChangeNotification,
+      object: session
+    )
+  }
+
+  deinit {
+    NotificationCenter.default.removeObserver(self)
+  }
+
+  func configure() throws {
+    try session.setCategory(
+      .playback,
+      mode: .spokenAudio,
+      options: [.allowAirPlay, .allowBluetoothA2DP]
+    )
+  }
+
+  func activate() throws {
+    try session.setActive(true)
+  }
+
+  func installEventHandler(
+    _ handler: @escaping @MainActor @Sendable (AudioSessionEvent) async -> Void
+  ) {
+    eventHandler = handler
+  }
+
+  @objc private nonisolated func handleInterruptionNotification(_ notification: Notification) {
+    guard
+      let rawType = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+      let type = AVAudioSession.InterruptionType(rawValue: rawType)
+    else { return }
+
+    let event: AudioSessionEvent
+    switch type {
+    case .began:
+      event = .interruptionBegan
+    case .ended:
+      let rawOptions = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
+      event = .interruptionEnded(
+        shouldResume: AVAudioSession.InterruptionOptions(rawValue: rawOptions).contains(.shouldResume)
+      )
+    @unknown default:
+      return
+    }
+    Task { @MainActor [weak self] in
+      guard let handler = self?.eventHandler else { return }
+      await handler(event)
+    }
+  }
+
+  @objc private nonisolated func handleRouteChangeNotification(_ notification: Notification) {
+    guard
+      let rawReason = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
+      AVAudioSession.RouteChangeReason(rawValue: rawReason) == .oldDeviceUnavailable
+    else { return }
+    Task { @MainActor [weak self] in
+      guard let handler = self?.eventHandler else { return }
+      await handler(.oldDeviceUnavailable)
+    }
+  }
+}
+
+@MainActor
+final class MPRemoteCommandController: RemoteCommandControlling {
+  private let center: MPRemoteCommandCenter
+  private var installedTargets: [(MPRemoteCommand, Any)] = []
+
+  init(center: MPRemoteCommandCenter = .shared()) {
+    self.center = center
+  }
+
+  func installCommandHandler(
+    _ handler: @escaping @MainActor @Sendable (RemotePlaybackCommand) async -> Void
+  ) {
+    removeInstalledTargets()
+    install(center.playCommand, event: .play, handler: handler)
+    install(center.pauseCommand, event: .pause, handler: handler)
+    install(center.togglePlayPauseCommand, event: .togglePlayPause, handler: handler)
+
+    center.skipForwardCommand.preferredIntervals = [30]
+    center.skipBackwardCommand.preferredIntervals = [15]
+    let forwardTarget = center.skipForwardCommand.addTarget { event in
+      let seconds = (event as? MPSkipIntervalCommandEvent)?.interval ?? 30
+      Task { @MainActor in await handler(.skipForward(seconds: seconds)) }
+      return .success
+    }
+    installedTargets.append((center.skipForwardCommand, forwardTarget))
+    let backwardTarget = center.skipBackwardCommand.addTarget { event in
+      let seconds = (event as? MPSkipIntervalCommandEvent)?.interval ?? 15
+      Task { @MainActor in await handler(.skipBackward(seconds: seconds)) }
+      return .success
+    }
+    installedTargets.append((center.skipBackwardCommand, backwardTarget))
+    let positionTarget = center.changePlaybackPositionCommand.addTarget { event in
+      guard let seconds = (event as? MPChangePlaybackPositionCommandEvent)?.positionTime else {
+        return .commandFailed
+      }
+      Task { @MainActor in await handler(.changePosition(seconds: seconds)) }
+      return .success
+    }
+    installedTargets.append((center.changePlaybackPositionCommand, positionTarget))
+  }
+
+  private func install(
+    _ command: MPRemoteCommand,
+    event: RemotePlaybackCommand,
+    handler: @escaping @MainActor @Sendable (RemotePlaybackCommand) async -> Void
+  ) {
+    let target = command.addTarget { _ in
+      Task { @MainActor in await handler(event) }
+      return .success
+    }
+    installedTargets.append((command, target))
+  }
+
+  private func removeInstalledTargets() {
+    for (command, target) in installedTargets {
+      command.removeTarget(target)
+    }
+    installedTargets.removeAll()
+  }
+}
+
+@MainActor
+final class MPNowPlayingPublisher: NowPlayingPublishing {
+  private let center: MPNowPlayingInfoCenter
+
+  init(center: MPNowPlayingInfoCenter = .default()) {
+    self.center = center
+  }
+
+  func publish(_ snapshot: NowPlayingSnapshot) {
+    var information: [String: Any] = [
+      MPMediaItemPropertyTitle: snapshot.title,
+      MPMediaItemPropertyArtist: snapshot.authors.joined(separator: ", "),
+      MPMediaItemPropertyPlaybackDuration: snapshot.durationSeconds,
+      MPNowPlayingInfoPropertyElapsedPlaybackTime: snapshot.elapsedSeconds,
+      MPNowPlayingInfoPropertyPlaybackRate: snapshot.playbackRate,
+      MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
+    ]
+    if !snapshot.narrators.isEmpty {
+      information[MPMediaItemPropertyComposer] = snapshot.narrators.joined(separator: ", ")
+    }
+    if let seriesName = snapshot.seriesName {
+      information[MPMediaItemPropertyAlbumTitle] = seriesName
+    }
+    if let data = snapshot.artworkData, let image = UIImage(data: data) {
+      information[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(
+        boundsSize: image.size,
+        requestHandler: { _ in image }
+      )
+    }
+    center.nowPlayingInfo = information
+  }
+
+  func clear() {
+    center.nowPlayingInfo = nil
+  }
+}
+
+@MainActor
+final class DeterministicAudioSessionController: AudioSessionControlling {
+  private var eventHandler: (@MainActor @Sendable (AudioSessionEvent) async -> Void)?
+  private(set) var configureCount = 0
+  private(set) var activateCount = 0
+  var configureError: Error?
+  var activationError: Error?
+
+  func configure() throws {
+    configureCount += 1
+    if let configureError { throw configureError }
+  }
+
+  func activate() throws {
+    activateCount += 1
+    if let activationError { throw activationError }
+  }
+
+  func installEventHandler(
+    _ handler: @escaping @MainActor @Sendable (AudioSessionEvent) async -> Void
+  ) {
+    eventHandler = handler
+  }
+
+  func send(_ event: AudioSessionEvent) async {
+    await eventHandler?(event)
+  }
+}
+
+@MainActor
+final class DeterministicRemoteCommandController: RemoteCommandControlling {
+  private var commandHandler: (@MainActor @Sendable (RemotePlaybackCommand) async -> Void)?
+  private(set) var installationCount = 0
+
+  func installCommandHandler(
+    _ handler: @escaping @MainActor @Sendable (RemotePlaybackCommand) async -> Void
+  ) {
+    installationCount += 1
+    commandHandler = handler
+  }
+
+  func send(_ command: RemotePlaybackCommand) async {
+    await commandHandler?(command)
+  }
+}
+
+@MainActor
+final class DeterministicNowPlayingPublisher: NowPlayingPublishing {
+  private(set) var snapshots: [NowPlayingSnapshot] = []
+  private(set) var clearCount = 0
+
+  var latest: NowPlayingSnapshot? { snapshots.last }
+
+  func publish(_ snapshot: NowPlayingSnapshot) {
+    snapshots.append(snapshot)
+  }
+
+  func clear() {
+    clearCount += 1
   }
 }

@@ -93,6 +93,7 @@ jobs:
           apps/ios/scripts/run-e2e.sh
           005-play-and-restore
           PlayerUITests/PositionRestoreUITests/testRestoresAnAcknowledgedPausedPositionAfterTermination
+          PlayerUITests/RemoteInterruptionUITests/testRemoteInterruptionAndBackgroundEventsJournalAcknowledgedPositions
 
       - name: Upload reviewable diagnostics
         if: always()
