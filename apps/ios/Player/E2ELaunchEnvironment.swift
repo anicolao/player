@@ -17,7 +17,7 @@ extension PlayerEnvironment {
             eventControls: arguments.contains("-e2e-event-controls")
           )
         case "metadata-rich-book":
-          return try metadataRichBookEnvironment()
+          return try metadataRichBookEnvironment(reset: arguments.contains("-e2e-reset"))
         case "messy-multifile-unicode":
           return try messyMultifileEnvironment(reset: arguments.contains("-e2e-reset"))
         case "safe-zip-import":
@@ -207,22 +207,30 @@ extension PlayerEnvironment {
       )
     }
 
-    private static func metadataRichBookEnvironment() throws -> PlayerEnvironment {
-      let root = FileManager.default.temporaryDirectory.appending(
+    private static func metadataRichBookEnvironment(reset: Bool) throws -> PlayerEnvironment {
+      let support = try FileManager.default.url(
+        for: .applicationSupportDirectory,
+        in: .userDomainMask,
+        appropriateFor: nil,
+        create: true
+      )
+      let root = support.appending(
         path: "PlayerE2EMetadataRichBook",
         directoryHint: .isDirectory
       )
-      try? FileManager.default.removeItem(at: root)
+      if reset { try? FileManager.default.removeItem(at: root) }
 
       let bookID = UUID(uuidString: "30000000-0000-0000-0000-000000000001")!
       let assetID = UUID(uuidString: "30000000-0000-0000-0000-000000000002")!
       let managedPath = "Media/\(bookID.uuidString.lowercased())/\(assetID.uuidString.lowercased()).m4b"
       let managedURL = root.appending(path: managedPath)
-      try FileManager.default.createDirectory(
-        at: managedURL.deletingLastPathComponent(),
-        withIntermediateDirectories: true
-      )
-      try Data("player deterministic metadata fixture".utf8).write(to: managedURL)
+      if !FileManager.default.fileExists(atPath: managedURL.path) {
+        try FileManager.default.createDirectory(
+          at: managedURL.deletingLastPathComponent(),
+          withIntermediateDirectories: true
+        )
+        try Data("player deterministic metadata fixture".utf8).write(to: managedURL)
+      }
 
       let chapters = [
         Chapter(
@@ -273,12 +281,14 @@ extension PlayerEnvironment {
         artworkMediaType: "image/png",
         chapters: chapters
       )
-      let ids = (1...4).map {
+      let ids = (1...40).map {
         UUID(uuidString: String(format: "31000000-0000-0000-0000-%012d", $0))!
       }
+      let seed = LibrarySnapshot(books: [book], importJobs: [], currentBookID: nil)
       return PlayerEnvironment(
-        persistence: InMemoryLibraryStore(
-          snapshot: LibrarySnapshot(books: [book], importJobs: [], currentBookID: nil)
+        persistence: E2ESeededLibraryStore(
+          base: CodableLibraryStore(fileURL: root.appending(path: "Library.json")),
+          seed: seed
         ),
         media: FileSystemMediaManager(rootURL: root),
         inspector: DeterministicAudioInspector(result: .failure(.unreadableAudio("unused"))),

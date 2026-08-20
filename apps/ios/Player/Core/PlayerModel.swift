@@ -13,6 +13,8 @@ final class PlayerModel {
   @ObservationIgnored private var playbackIntegrationsConfigured = false
   @ObservationIgnored private var wasPlayingBeforeInterruption = false
   @ObservationIgnored private var importTasks: [UUID: Task<Void, Never>] = [:]
+  @ObservationIgnored private var loadedAssetID: UUID?
+  @ObservationIgnored private var loadedAssetTimelineStartSeconds = 0.0
 
   init(environment: PlayerEnvironment) {
     self.environment = environment
@@ -44,6 +46,8 @@ final class PlayerModel {
       } else {
         library.currentBookID = nil
         playbackState = .unloaded
+        loadedAssetID = nil
+        loadedAssetTimelineStartSeconds = 0
       }
       if library.currentBookID != nil {
         try await loadCurrentBookIntoPlayback()
@@ -53,6 +57,7 @@ final class PlayerModel {
       }
       isRestored = true
       lastErrorMessage = nil
+      applyCurrentTransportConfiguration()
       publishNowPlaying()
       let resumableQueueJobIDs = library.importJobs.filter {
         $0.phase == .failed
@@ -109,6 +114,7 @@ final class PlayerModel {
       }
       playbackIntegrationsConfigured = true
       lastErrorMessage = nil
+      applyCurrentTransportConfiguration()
       publishNowPlaying()
     } catch {
       lastErrorMessage = error.localizedDescription
@@ -1155,6 +1161,8 @@ final class PlayerModel {
       if wasCurrentBook {
         environment.playback.pause()
         playbackState = .unloaded
+        loadedAssetID = nil
+        loadedAssetTimelineStartSeconds = 0
       }
       lastErrorMessage = nil
       publishNowPlaying()
@@ -1267,6 +1275,94 @@ final class PlayerModel {
     }
   }
 
+  var currentTransportPreferences: TransportPreferences {
+    guard let bookID = library.currentBookID else {
+      return library.globalTransportPreferences
+    }
+    return transportPreferences(for: bookID)
+  }
+
+  func transportPreferences(for bookID: UUID) -> TransportPreferences {
+    library.books.first(where: { $0.id == bookID })?
+      .transportPreferenceOverride?.resolved(over: library.globalTransportPreferences)
+      ?? library.globalTransportPreferences
+  }
+
+  @discardableResult
+  func setGlobalTransportPreferences(_ preferences: TransportPreferences) async -> Bool {
+    guard preferences.isValid else {
+      lastErrorMessage = TransportPreferencesError.invalidPreferences.localizedDescription
+      return false
+    }
+    let changed = await applyLibraryOrganizationMutation { candidate in
+      candidate.globalTransportPreferences = preferences
+    }
+    if changed { applyCurrentTransportConfiguration() }
+    return changed
+  }
+
+  @discardableResult
+  func setTransportPreferenceOverride(
+    _ preferenceOverride: TransportPreferenceOverride,
+    for bookID: UUID
+  ) async -> Bool {
+    guard preferenceOverride.isValid else {
+      lastErrorMessage = TransportPreferencesError.invalidPreferences.localizedDescription
+      return false
+    }
+    let changed = await applyLibraryOrganizationMutation { candidate in
+      guard let index = candidate.books.firstIndex(where: { $0.id == bookID }) else {
+        throw PlayerCoreError.missingBook(bookID)
+      }
+      candidate.books[index].transportPreferenceOverride = preferenceOverride.isEmpty
+        ? nil : preferenceOverride
+    }
+    if changed, library.currentBookID == bookID { applyCurrentTransportConfiguration() }
+    return changed
+  }
+
+  @discardableResult
+  func clearTransportPreferenceOverride(for bookID: UUID) async -> Bool {
+    await setTransportPreferenceOverride(.empty, for: bookID)
+  }
+
+  @discardableResult
+  func setPlaybackRate(_ rate: Double, for bookID: UUID) async -> Bool {
+    guard TransportPreferences.isValidPlaybackRate(rate) else {
+      lastErrorMessage = TransportPreferencesError.invalidPreferences.localizedDescription
+      return false
+    }
+    var preferenceOverride = library.books.first(where: { $0.id == bookID })?
+      .transportPreferenceOverride ?? .empty
+    preferenceOverride.playbackRate = rate
+    return await setTransportPreferenceOverride(preferenceOverride, for: bookID)
+  }
+
+  @discardableResult
+  func setSkipIntervals(
+    backward: Double,
+    forward: Double,
+    for bookID: UUID
+  ) async -> Bool {
+    guard backward.isFinite, backward > 0, forward.isFinite, forward > 0 else {
+      lastErrorMessage = TransportPreferencesError.invalidPreferences.localizedDescription
+      return false
+    }
+    var preferenceOverride = library.books.first(where: { $0.id == bookID })?
+      .transportPreferenceOverride ?? .empty
+    preferenceOverride.backwardSkipSeconds = backward
+    preferenceOverride.forwardSkipSeconds = forward
+    return await setTransportPreferenceOverride(preferenceOverride, for: bookID)
+  }
+
+  @discardableResult
+  func setSeekContext(_ context: PlaybackSeekContext, for bookID: UUID) async -> Bool {
+    var preferenceOverride = library.books.first(where: { $0.id == bookID })?
+      .transportPreferenceOverride ?? .empty
+    preferenceOverride.seekContext = context
+    return await setTransportPreferenceOverride(preferenceOverride, for: bookID)
+  }
+
   func loadCurrentBook() async {
     do {
       try await loadCurrentBookIntoPlayback()
@@ -1277,26 +1373,24 @@ final class PlayerModel {
   }
 
   func play(bookID: UUID, at seconds: Double? = nil) async {
-    guard
-      let book = library.books.first(where: { $0.id == bookID }),
-      let asset = book.assets.first
-    else {
+    guard let book = library.books.first(where: { $0.id == bookID }) else {
       lastErrorMessage = PlayerCoreError.missingBook(bookID).localizedDescription
       return
     }
 
     do {
       try environment.audioSession.activate()
-      let url = try await environment.media.managedURL(for: asset.managedRelativePath)
       let startSeconds = seconds
         ?? (library.playbackPosition?.bookID == bookID ? library.playbackPosition?.seconds : nil)
         ?? (book.listeningState.status == .finished ? 0 : book.listeningState.positionSeconds)
-      try await environment.playback.load(url: url, bookID: bookID, at: startSeconds)
+      try await load(book: book, at: startSeconds)
+      applyCurrentTransportConfiguration(for: bookID)
       environment.playback.play()
       playbackState = environment.playback.state
+      playbackState.elapsedSeconds = currentBookPositionSeconds
       library.currentBookID = bookID
       await acknowledgePlaybackPosition(
-        environment.playback.currentPositionSeconds,
+        currentBookPositionSeconds,
         reason: .play
       )
     } catch {
@@ -1305,12 +1399,49 @@ final class PlayerModel {
   }
 
   func seek(to seconds: Double) async {
-    guard playbackState.loadedBookID != nil else { return }
-    await environment.playback.seek(to: seconds)
-    playbackState = environment.playback.state
-    await acknowledgePlaybackPosition(
-      environment.playback.currentPositionSeconds,
-      reason: .seek
+    await seekToBookPosition(seconds)
+  }
+
+  func seek(to seconds: Double, context: PlaybackSeekContext) async {
+    guard let book = currentBook else { return }
+    let position = PlaybackTimeline.seekPosition(
+      seconds,
+      context: context,
+      in: book,
+      from: currentBookPositionSeconds
+    )
+    await seekToBookPosition(position)
+  }
+
+  func previousChapter() async {
+    guard let book = currentBook,
+      let position = PlaybackTimeline.previousChapterPosition(
+        in: book,
+        at: currentBookPositionSeconds
+      )
+    else { return }
+    await seekToBookPosition(position)
+  }
+
+  func nextChapter() async {
+    guard let book = currentBook,
+      let position = PlaybackTimeline.nextChapterPosition(
+        in: book,
+        at: currentBookPositionSeconds
+      )
+    else { return }
+    await seekToBookPosition(position)
+  }
+
+  func skipBackward() async {
+    await seekToBookPosition(
+      currentBookPositionSeconds - currentTransportPreferences.backwardSkipSeconds
+    )
+  }
+
+  func skipForward() async {
+    await seekToBookPosition(
+      currentBookPositionSeconds + currentTransportPreferences.forwardSkipSeconds
     )
   }
 
@@ -1321,7 +1452,7 @@ final class PlayerModel {
   func checkpointForBackground() async {
     guard playbackState.loadedBookID != nil, playbackState.status == .playing else { return }
     await acknowledgePlaybackPosition(
-      environment.playback.currentPositionSeconds,
+      currentBookPositionSeconds,
       reason: .background
     )
   }
@@ -1329,7 +1460,8 @@ final class PlayerModel {
   private func pausePlayback() -> Double {
     environment.playback.pause()
     playbackState = environment.playback.state
-    return environment.playback.currentPositionSeconds
+    playbackState.elapsedSeconds = currentBookPositionSeconds
+    return playbackState.elapsedSeconds
   }
 
   private func pause(reason: PositionEventReason) async {
@@ -1342,10 +1474,12 @@ final class PlayerModel {
     if environment.playback.state.loadedBookID == bookID {
       do {
         try environment.audioSession.activate()
+        applyCurrentTransportConfiguration(for: bookID)
         environment.playback.play()
         playbackState = environment.playback.state
+        playbackState.elapsedSeconds = currentBookPositionSeconds
         await acknowledgePlaybackPosition(
-          environment.playback.currentPositionSeconds,
+          currentBookPositionSeconds,
           reason: .play
         )
       } catch {
@@ -1368,12 +1502,20 @@ final class PlayerModel {
       } else {
         await resumeCurrentBook()
       }
+    case .previousChapter:
+      await previousChapter()
+    case .nextChapter:
+      await nextChapter()
     case .skipForward(let seconds):
-      await seek(to: environment.playback.currentPositionSeconds + max(0, seconds))
+      await seekToBookPosition(currentBookPositionSeconds + max(0, seconds))
     case .skipBackward(let seconds):
-      await seek(to: max(0, environment.playback.currentPositionSeconds - max(0, seconds)))
+      await seekToBookPosition(currentBookPositionSeconds - max(0, seconds))
     case .changePosition(let seconds):
       await seek(to: seconds)
+    case .changePlaybackRate(let rate):
+      if let bookID = library.currentBookID {
+        _ = await setPlaybackRate(rate, for: bookID)
+      }
     }
   }
 
@@ -1393,18 +1535,76 @@ final class PlayerModel {
 
   private func loadCurrentBookIntoPlayback() async throws {
     guard let bookID = library.currentBookID else { return }
-    guard
-      let book = library.books.first(where: { $0.id == bookID }),
-      let asset = book.assets.first
-    else {
+    guard let book = library.books.first(where: { $0.id == bookID }) else {
       throw PlayerCoreError.missingBook(bookID)
     }
-    let url = try await environment.media.managedURL(for: asset.managedRelativePath)
     let seconds = library.playbackPosition?.bookID == bookID
       ? library.playbackPosition?.seconds ?? 0
-      : 0
-    try await environment.playback.load(url: url, bookID: bookID, at: seconds)
+      : (book.listeningState.status == .finished ? 0 : book.listeningState.positionSeconds)
+    try await load(book: book, at: seconds)
+    applyCurrentTransportConfiguration(for: bookID)
+  }
+
+  private var currentBook: Book? {
+    guard let bookID = playbackState.loadedBookID ?? library.currentBookID else { return nil }
+    return library.books.first(where: { $0.id == bookID })
+  }
+
+  private var currentBookPositionSeconds: Double {
+    guard let book = currentBook else { return 0 }
+    return min(
+      max(0, loadedAssetTimelineStartSeconds + environment.playback.currentPositionSeconds),
+      book.durationSeconds
+    )
+  }
+
+  private func load(book: Book, at bookSeconds: Double) async throws {
+    guard let location = PlaybackTimeline.location(in: book, at: bookSeconds) else {
+      throw TransportPreferencesError.missingPlaybackTimeline(book.id)
+    }
+    let url = try await environment.media.managedURL(for: location.asset.managedRelativePath)
+    try await environment.playback.load(
+      url: url,
+      bookID: book.id,
+      at: location.assetSeconds
+    )
+    loadedAssetID = location.asset.id
+    loadedAssetTimelineStartSeconds = location.asset.timelineStartSeconds
     playbackState = environment.playback.state
+    playbackState.elapsedSeconds = location.bookSeconds
+  }
+
+  private func seekToBookPosition(_ requestedSeconds: Double) async {
+    guard let book = currentBook,
+      let location = PlaybackTimeline.location(in: book, at: requestedSeconds)
+    else { return }
+    let wasPlaying = playbackState.status == .playing
+    do {
+      if loadedAssetID == location.asset.id,
+        environment.playback.state.loadedBookID == book.id
+      {
+        await environment.playback.seek(to: location.assetSeconds)
+        playbackState = environment.playback.state
+        playbackState.elapsedSeconds = location.bookSeconds
+      } else {
+        try await load(book: book, at: location.bookSeconds)
+        applyCurrentTransportConfiguration(for: book.id)
+        if wasPlaying { environment.playback.play() }
+        playbackState = environment.playback.state
+        playbackState.elapsedSeconds = location.bookSeconds
+      }
+      await acknowledgePlaybackPosition(location.bookSeconds, reason: .seek)
+    } catch {
+      lastErrorMessage = error.localizedDescription
+    }
+  }
+
+  private func applyCurrentTransportConfiguration(for explicitBookID: UUID? = nil) {
+    let preferences = explicitBookID.map(transportPreferences(for:))
+      ?? currentTransportPreferences
+    environment.playback.setPlaybackRate(preferences.playbackRate)
+    environment.remoteCommands.updateTransportConfiguration(preferences)
+    publishNowPlaying()
   }
 
   /// Records a position only after the playback boundary acknowledges that the
@@ -1491,7 +1691,8 @@ final class PlayerModel {
         chapterTitle: chapter?.title,
         durationSeconds: book.durationSeconds,
         elapsedSeconds: elapsed,
-        playbackRate: playbackState.status == .playing ? 1 : 0,
+        playbackRate: playbackState.status == .playing
+          ? transportPreferences(for: book.id).playbackRate : 0,
         artworkData: book.artworkData
       )
     )

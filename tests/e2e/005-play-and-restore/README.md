@@ -39,14 +39,36 @@
 - [x] The restored Play control is available
 - [x] The restored position remains adjustable
 
-## Nonvisual system-control journey
+---
 
-`RemoteInterruptionUITests` exercises behavior that has no additional useful
-pixels beyond the stable paused screens above. It programmatically verifies:
+# Test: Listening controls follow durable global and per-book preferences
 
-- [x] Lock Screen and accessory play, pause, toggle, skip, and position commands are registered
-- [x] Remote commands use the same durable play, pause, and seek paths as the app UI
-- [x] Interruption and disconnected-output policies pause and journal acknowledged audio
-- [x] Entering the background checkpoints without stopping permitted background playback
-- [x] Every event advances the integrity-checked journal exactly once
-- [x] The final remotely paused position restores exactly after termination and relaunch
+> As a listener, I want chapter navigation, configurable skips, speed, and scrubber context to stay tailored to each audiobook.
+
+## Deterministic preconditions
+
+- Fixture: `metadata-rich-book`
+- Xcode: 26.6
+- Device: iPhone 17 on iOS 26.5, portrait, light appearance, standard Dynamic Type
+- Locale and time zone: `en_CA`, `America/Toronto`
+- Status bar: fixed at 9:41 AM, full battery, and full network indicators
+- Animations: disabled by the E2E build configuration
+- Network and clock data: unused by this story
+- The fixture contains one deterministic 120-second book with three chapters
+- The deterministic playback engine acknowledges every transport seek without advancing wall-clock time
+- The first launch writes library defaults and a complete per-book override through production persistence
+- The second launch reuses the same durable store and managed media
+
+## Now Playing restores the custom speed, skips, chapter scrubber, and position
+
+![Now Playing restores the custom speed, skips, chapter scrubber, and position](./screenshots/ios/002-transport-controls.png)
+
+**Verifications:**
+
+- [x] The complete per-book override survived termination
+- [x] The configured skip result restored at the acknowledged book position
+- [x] Previous chapter is available
+- [x] Next chapter is available
+- [x] The custom backward skip is available
+- [x] The custom forward skip is available
+- [x] The chapter scrubber is available

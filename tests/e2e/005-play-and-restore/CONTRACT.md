@@ -78,8 +78,9 @@ value is:
 probe|<paused|playing>|<book-uuid>|<chapter-index>|<position-ms>|<journal-sequence>|<last-reason>|<persisted-position-ms>|<registered-command-csv>
 ```
 
-The registered command CSV contains exactly `change-position`, `pause`, `play`,
-`skip-backward`, `skip-forward`, and `toggle`; ordering is immaterial. The probe
+The registered command CSV contains exactly `change-position`, `change-rate`,
+`next-chapter`, `pause`, `play`, `previous-chapter`, `skip-backward`,
+`skip-forward`, and `toggle`; ordering is immaterial. The probe
 reads the real observable playback state, recovered snapshot, latest
 integrity-valid journal event, and production remote-registration state. Reading
 it has no side effects. Absolute-position behavior is covered by the same
@@ -102,3 +103,24 @@ This extension is intentionally nonvisual. Remote registration, event routing,
 and journal durability have no meaningful pixels beyond the paused player already
 covered by this story's two baselines. The test must not create screenshot or UI
 hierarchy attachments.
+
+## Configurable listening controls
+
+`TransportControlsUITests` launches the durable `metadata-rich-book` fixture,
+which contains a 120-second book with three chapter boundaries. Through visible
+production UI it changes library defaults, starts chapter 2, verifies previous
+and next chapter navigation, and verifies the configured skip intervals. It then
+saves a complete per-book override of 1.25× speed, 10-second backward skip,
+30-second forward skip, and chapter-relative scrubbing.
+
+The test terminates and relaunches without reset. The restored transport action
+must expose exactly:
+
+```text
+rate=1.25:back=10:forward=30:seek=chapter:source=book
+```
+
+The final configured skip must be durably acknowledged as book position
+`55000` milliseconds, with the visible scrubber in chapter-relative mode. Only
+the final stable paused state is captured as
+`002-transport-controls.png`; all setup and moving states are assertion-only.

@@ -16,6 +16,7 @@ struct Book: Codable, Equatable, Identifiable, Sendable {
   var chapters: [Chapter]
   var metadata: AudiobookMetadata
   var listeningState: BookListeningState
+  var transportPreferenceOverride: TransportPreferenceOverride?
 
   init(
     id: UUID,
@@ -31,7 +32,8 @@ struct Book: Codable, Equatable, Identifiable, Sendable {
     artworkMediaType: String? = nil,
     chapters: [Chapter] = [],
     metadata: AudiobookMetadata? = nil,
-    listeningState: BookListeningState = .unplayed
+    listeningState: BookListeningState = .unplayed,
+    transportPreferenceOverride: TransportPreferenceOverride? = nil
   ) {
     self.id = id
     self.title = title
@@ -57,12 +59,13 @@ struct Book: Codable, Equatable, Identifiable, Sendable {
       confidence: .medium
     )
     self.listeningState = listeningState
+    self.transportPreferenceOverride = transportPreferenceOverride
   }
 
   private enum CodingKeys: String, CodingKey {
     case id, title, authors, durationSeconds, artworkData, assets, dateAdded
     case narrators, seriesName, seriesPosition, artworkMediaType, chapters, metadata
-    case listeningState
+    case listeningState, transportPreferenceOverride
   }
 
   init(from decoder: any Decoder) throws {
@@ -94,6 +97,10 @@ struct Book: Codable, Equatable, Identifiable, Sendable {
       BookListeningState.self,
       forKey: .listeningState
     ) ?? .unplayed
+    transportPreferenceOverride = try values.decodeIfPresent(
+      TransportPreferenceOverride.self,
+      forKey: .transportPreferenceOverride
+    )
   }
 }
 
@@ -567,6 +574,7 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
   var allBooksViewStyle: LibraryViewStyle
   var trashTransactions: [LibraryTrashTransaction]
   var searchPreferences: LibrarySearchPreferences
+  var globalTransportPreferences: TransportPreferences
 
   init(
     books: [Book],
@@ -580,7 +588,8 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
     collections: [BookCollection] = [],
     allBooksViewStyle: LibraryViewStyle = .grid,
     trashTransactions: [LibraryTrashTransaction] = [],
-    searchPreferences: LibrarySearchPreferences = .default
+    searchPreferences: LibrarySearchPreferences = .default,
+    globalTransportPreferences: TransportPreferences = .default
   ) {
     self.books = books
     self.importJobs = importJobs
@@ -594,6 +603,7 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
     self.allBooksViewStyle = allBooksViewStyle
     self.trashTransactions = trashTransactions
     self.searchPreferences = searchPreferences
+    self.globalTransportPreferences = globalTransportPreferences
   }
 
 
@@ -601,6 +611,7 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
     case books, importJobs, currentBookID, playbackPosition, positionJournal, shareImportReceipts
     case metadataTransactions
     case upNextBookIDs, collections, allBooksViewStyle, trashTransactions, searchPreferences
+    case globalTransportPreferences
   }
 
   init(from decoder: any Decoder) throws {
@@ -632,6 +643,10 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
       LibrarySearchPreferences.self,
       forKey: .searchPreferences
     ) ?? .default
+    globalTransportPreferences = try values.decodeIfPresent(
+      TransportPreferences.self,
+      forKey: .globalTransportPreferences
+    ) ?? .default
   }
 
   static let empty = LibrarySnapshot(books: [], importJobs: [], currentBookID: nil)
@@ -657,9 +672,12 @@ enum RemotePlaybackCommand: Equatable, Sendable {
   case play
   case pause
   case togglePlayPause
+  case previousChapter
+  case nextChapter
   case skipForward(seconds: Double)
   case skipBackward(seconds: Double)
   case changePosition(seconds: Double)
+  case changePlaybackRate(Double)
 }
 
 struct NowPlayingSnapshot: Equatable, Sendable {

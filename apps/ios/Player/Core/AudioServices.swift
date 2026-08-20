@@ -253,6 +253,7 @@ actor DeterministicAudioInspector: AudioInspecting {
 final class AVPlayerPlaybackController: AudioPlaybackControlling {
   private var player: AVPlayer?
   private(set) var state: PlaybackState = .unloaded
+  private(set) var playbackRate = 1.0
 
   var currentPositionSeconds: Double {
     guard let seconds = player?.currentTime().seconds, seconds.isFinite else {
@@ -277,9 +278,17 @@ final class AVPlayerPlaybackController: AudioPlaybackControlling {
   }
 
   func play() {
-    player?.play()
+    player?.playImmediately(atRate: Float(playbackRate))
     guard state.loadedBookID != nil else { return }
     state.status = .playing
+  }
+
+  func setPlaybackRate(_ rate: Double) {
+    guard TransportPreferences.isValidPlaybackRate(rate) else { return }
+    playbackRate = rate
+    if state.status == .playing {
+      player?.rate = Float(rate)
+    }
   }
 
   func seek(to seconds: Double) async {
@@ -303,6 +312,7 @@ final class AVPlayerPlaybackController: AudioPlaybackControlling {
 final class DeterministicPlaybackController: AudioPlaybackControlling {
   private(set) var state: PlaybackState
   private(set) var loadedURL: URL?
+  private(set) var playbackRate = 1.0
 
   init(state: PlaybackState = .unloaded) {
     self.state = state
@@ -318,6 +328,11 @@ final class DeterministicPlaybackController: AudioPlaybackControlling {
   func play() {
     guard state.loadedBookID != nil else { return }
     state.status = .playing
+  }
+
+  func setPlaybackRate(_ rate: Double) {
+    guard TransportPreferences.isValidPlaybackRate(rate) else { return }
+    playbackRate = rate
   }
 
   func seek(to seconds: Double) async {
@@ -415,6 +430,7 @@ final class AVAudioSessionController: NSObject, AudioSessionControlling {
 final class MPRemoteCommandController: RemoteCommandControlling {
   private let center: MPRemoteCommandCenter
   private var installedTargets: [(MPRemoteCommand, Any)] = []
+  private var transportPreferences: TransportPreferences = .default
 
   init(center: MPRemoteCommandCenter = .shared()) {
     self.center = center
@@ -427,17 +443,20 @@ final class MPRemoteCommandController: RemoteCommandControlling {
     install(center.playCommand, event: .play, handler: handler)
     install(center.pauseCommand, event: .pause, handler: handler)
     install(center.togglePlayPauseCommand, event: .togglePlayPause, handler: handler)
+    install(center.previousTrackCommand, event: .previousChapter, handler: handler)
+    install(center.nextTrackCommand, event: .nextChapter, handler: handler)
 
-    center.skipForwardCommand.preferredIntervals = [30]
-    center.skipBackwardCommand.preferredIntervals = [15]
+    updateTransportConfiguration(transportPreferences)
     let forwardTarget = center.skipForwardCommand.addTarget { event in
-      let seconds = (event as? MPSkipIntervalCommandEvent)?.interval ?? 30
+      let seconds = (event as? MPSkipIntervalCommandEvent)?.interval
+        ?? self.transportPreferences.forwardSkipSeconds
       Task { @MainActor in await handler(.skipForward(seconds: seconds)) }
       return .success
     }
     installedTargets.append((center.skipForwardCommand, forwardTarget))
     let backwardTarget = center.skipBackwardCommand.addTarget { event in
-      let seconds = (event as? MPSkipIntervalCommandEvent)?.interval ?? 15
+      let seconds = (event as? MPSkipIntervalCommandEvent)?.interval
+        ?? self.transportPreferences.backwardSkipSeconds
       Task { @MainActor in await handler(.skipBackward(seconds: seconds)) }
       return .success
     }
@@ -450,6 +469,26 @@ final class MPRemoteCommandController: RemoteCommandControlling {
       return .success
     }
     installedTargets.append((center.changePlaybackPositionCommand, positionTarget))
+    let rateTarget = center.changePlaybackRateCommand.addTarget { event in
+      guard let rate = (event as? MPChangePlaybackRateCommandEvent)?.playbackRate else {
+        return .commandFailed
+      }
+      Task { @MainActor in await handler(.changePlaybackRate(Double(rate))) }
+      return .success
+    }
+    installedTargets.append((center.changePlaybackRateCommand, rateTarget))
+  }
+
+  func updateTransportConfiguration(_ preferences: TransportPreferences) {
+    guard preferences.isValid else { return }
+    transportPreferences = preferences
+    center.skipForwardCommand.preferredIntervals = [NSNumber(value: preferences.forwardSkipSeconds)]
+    center.skipBackwardCommand.preferredIntervals = [NSNumber(value: preferences.backwardSkipSeconds)]
+    center.changePlaybackRateCommand.supportedPlaybackRates = stride(
+      from: 0.5,
+      through: 3.0,
+      by: 0.05
+    ).map { NSNumber(value: $0) }
   }
 
   private func install(
@@ -542,6 +581,7 @@ final class DeterministicAudioSessionController: AudioSessionControlling {
 final class DeterministicRemoteCommandController: RemoteCommandControlling {
   private var commandHandler: (@MainActor @Sendable (RemotePlaybackCommand) async -> Void)?
   private(set) var installationCount = 0
+  private(set) var transportPreferences: TransportPreferences = .default
 
   func installCommandHandler(
     _ handler: @escaping @MainActor @Sendable (RemotePlaybackCommand) async -> Void
@@ -552,6 +592,10 @@ final class DeterministicRemoteCommandController: RemoteCommandControlling {
 
   func send(_ command: RemotePlaybackCommand) async {
     await commandHandler?(command)
+  }
+
+  func updateTransportConfiguration(_ preferences: TransportPreferences) {
+    transportPreferences = preferences
   }
 }
 

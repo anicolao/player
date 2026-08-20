@@ -620,6 +620,14 @@ struct LibraryOrganizationSettingsView: View {
             Label("Trash", systemImage: "trash")
           }
         }
+        Section("Playback") {
+          NavigationLink {
+            TransportPreferencesEditor(model: model)
+          } label: {
+            Label("Playback defaults", systemImage: "gauge.with.dots.needle.50percent")
+          }
+          .accessibilityIdentifier("playback-defaults")
+        }
       }
       .scrollContentBackground(.hidden)
       .background(PlayerColor.background)

@@ -72,10 +72,18 @@ protocol AudioInspecting: Sendable {
 protocol AudioPlaybackControlling: AnyObject {
   var state: PlaybackState { get }
   var currentPositionSeconds: Double { get }
+  var playbackRate: Double { get }
   func load(url: URL, bookID: UUID, at seconds: Double) async throws
   func seek(to seconds: Double) async
+  func setPlaybackRate(_ rate: Double)
   func play()
   func pause()
+}
+
+@MainActor
+extension AudioPlaybackControlling {
+  var playbackRate: Double { 1 }
+  func setPlaybackRate(_ rate: Double) {}
 }
 
 @MainActor
@@ -92,6 +100,12 @@ protocol RemoteCommandControlling: AnyObject {
   func installCommandHandler(
     _ handler: @escaping @MainActor @Sendable (RemotePlaybackCommand) async -> Void
   )
+  func updateTransportConfiguration(_ preferences: TransportPreferences)
+}
+
+@MainActor
+extension RemoteCommandControlling {
+  func updateTransportConfiguration(_ preferences: TransportPreferences) {}
 }
 
 @MainActor

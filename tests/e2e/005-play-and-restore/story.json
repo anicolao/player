@@ -8,6 +8,7 @@
   "fixture": "committed-current-book",
   "screenshots": [
     "000-restored-library.png",
-    "001-restored-now-playing.png"
+    "001-restored-now-playing.png",
+    "002-transport-controls.png"
   ]
 }

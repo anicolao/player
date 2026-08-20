@@ -4,7 +4,8 @@ import XCTest
 final class RemoteInterruptionUITests: XCTestCase {
   private let fixtureBookID = "20000000-0000-0000-0000-000000000001"
   private let registeredCommands: Set<String> = [
-    "change-position", "pause", "play", "skip-backward", "skip-forward", "toggle",
+    "change-position", "change-rate", "next-chapter", "pause", "play",
+    "previous-chapter", "skip-backward", "skip-forward", "toggle",
   ]
 
   func testRemoteInterruptionAndBackgroundEventsJournalAcknowledgedPositions() throws {

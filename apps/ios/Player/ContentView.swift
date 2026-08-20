@@ -1339,6 +1339,7 @@ private struct NowPlayingView: View {
   @Bindable var model: PlayerModel
   let book: Book
   @State private var requestedPosition: Double?
+  @State private var showsTransportPreferences = false
   var body: some View {
     NavigationStack {
       ZStack {
@@ -1357,15 +1358,15 @@ private struct NowPlayingView: View {
           }
           Slider(
             value: Binding(
-              get: { requestedPosition ?? model.playbackState.elapsedSeconds },
+              get: { requestedPosition ?? displayedPosition },
               set: { requestedPosition = $0 }
             ),
-            in: 0...max(1, book.durationSeconds),
+            in: 0...max(1, displayedDuration),
             step: 30,
             onEditingChanged: { isEditing in
               guard !isEditing, let position = requestedPosition else { return }
               Task {
-                await model.seek(to: position)
+                await model.seek(to: position, context: preferences.seekContext)
                 requestedPosition = nil
               }
             }
@@ -1373,18 +1374,58 @@ private struct NowPlayingView: View {
           .tint(PlayerColor.accent)
           .accessibilityLabel("Listening position")
           .accessibilityIdentifier("player-position-slider")
-          Button {
-            Task {
-              if model.playbackState.status == .playing { await model.pause() }
-              else { await model.play(bookID: book.id) }
+          HStack(spacing: 13) {
+            transportButton(
+              "Previous chapter",
+              systemImage: "backward.end.fill",
+              identifier: "player-previous-chapter",
+              disabled: currentChapterIndex == 0
+            ) { await model.previousChapter() }
+            transportButton(
+              "Skip back \(Int(preferences.backwardSkipSeconds)) seconds",
+              systemImage: "gobackward.\(skipSymbol(preferences.backwardSkipSeconds))",
+              identifier: "player-skip-backward"
+            ) { await model.skipBackward() }
+            Button {
+              Task {
+                if model.playbackState.status == .playing { await model.pause() }
+                else { await model.play(bookID: book.id) }
+              }
+            } label: {
+              Image(systemName: model.playbackState.status == .playing ? "pause.fill" : "play.fill")
+                .font(.system(size: 28, weight: .semibold)).frame(width: 66, height: 66)
             }
-          } label: {
-            Image(systemName: model.playbackState.status == .playing ? "pause.fill" : "play.fill")
-              .font(.system(size: 30, weight: .semibold)).frame(width: 72, height: 72)
+            .buttonStyle(.borderedProminent).buttonBorderShape(.circle).tint(PlayerColor.accent)
+            .accessibilityLabel(model.playbackState.status == .playing ? "Pause" : "Play")
+            .accessibilityIdentifier("player-play-pause")
+            transportButton(
+              "Skip forward \(Int(preferences.forwardSkipSeconds)) seconds",
+              systemImage: "goforward.\(skipSymbol(preferences.forwardSkipSeconds))",
+              identifier: "player-skip-forward"
+            ) { await model.skipForward() }
+            transportButton(
+              "Next chapter",
+              systemImage: "forward.end.fill",
+              identifier: "player-next-chapter",
+              disabled: currentChapterIndex >= book.chapters.count - 1
+            ) { await model.nextChapter() }
           }
-          .buttonStyle(.borderedProminent).buttonBorderShape(.circle).tint(PlayerColor.accent)
-          .accessibilityLabel(model.playbackState.status == .playing ? "Pause" : "Play")
-          .accessibilityIdentifier("player-play-pause")
+          Button {
+            showsTransportPreferences = true
+          } label: {
+            HStack {
+              Text(TransportPreferencesEditor.rateLabel(preferences.playbackRate))
+                .font(.headline.monospacedDigit())
+              Text("Playback settings")
+              Spacer()
+              Image(systemName: "slider.horizontal.3")
+            }
+            .frame(maxWidth: .infinity)
+          }
+          .buttonStyle(.bordered)
+          .controlSize(.large)
+          .accessibilityIdentifier("open-transport-preferences")
+          .accessibilityValue(transportValue)
           Spacer()
         }
         .padding(24)
@@ -1393,7 +1434,59 @@ private struct NowPlayingView: View {
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("now-playing-screen")
       .accessibilityValue(playerValue)
+      .sheet(isPresented: $showsTransportPreferences) {
+        TransportPreferencesEditor(model: model, book: currentBookFromModel ?? book)
+      }
     }
+  }
+
+  private var preferences: TransportPreferences {
+    model.transportPreferences(for: book.id)
+  }
+
+  private var currentBookFromModel: Book? {
+    model.library.books.first(where: { $0.id == book.id })
+  }
+
+  private var displayedPosition: Double {
+    guard preferences.seekContext == .chapter, let chapter = currentChapter else {
+      return model.playbackState.elapsedSeconds
+    }
+    return max(0, model.playbackState.elapsedSeconds - chapter.startSeconds)
+  }
+
+  private var displayedDuration: Double {
+    preferences.seekContext == .chapter ? (currentChapter?.durationSeconds ?? book.durationSeconds) : book.durationSeconds
+  }
+
+  private var transportValue: String {
+    let source = currentBookFromModel?.transportPreferenceOverride == nil ? "global" : "book"
+    let seek = preferences.seekContext == .chapter ? "chapter" : "whole-book"
+    return "rate=\(TransportPreferencesEditor.rateToken(preferences.playbackRate)):back=\(Int(preferences.backwardSkipSeconds)):forward=\(Int(preferences.forwardSkipSeconds)):seek=\(seek):source=\(source)"
+  }
+
+  private func skipSymbol(_ seconds: Double) -> String {
+    let supported = [10, 15, 30, 45, 60]
+    let value = Int(seconds.rounded())
+    return supported.contains(value) ? "\(value)" : "30"
+  }
+
+  private func transportButton(
+    _ label: String,
+    systemImage: String,
+    identifier: String,
+    disabled: Bool = false,
+    action: @escaping @MainActor () async -> Void
+  ) -> some View {
+    Button { Task { await action() } } label: {
+      Image(systemName: systemImage)
+        .font(.system(size: 20, weight: .semibold))
+        .frame(width: 38, height: 44)
+    }
+    .buttonStyle(.plain)
+    .disabled(disabled)
+    .accessibilityLabel(label)
+    .accessibilityIdentifier(identifier)
   }
 
   private var playerValue: String {

@@ -25,7 +25,8 @@
     ) {
       remoteHandler = handler
       registeredCommands = [
-        "change-position", "pause", "play", "skip-backward", "skip-forward", "toggle",
+        "change-position", "change-rate", "next-chapter", "pause", "play",
+        "previous-chapter", "skip-backward", "skip-forward", "toggle",
       ]
     }
 
