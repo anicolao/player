@@ -27,6 +27,7 @@
 		3331BED25597AC39F67BCB0B /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = C488BA918789006322F93C74 /* ShareViewController.swift */; };
 		3388761DBC0174A83D4E1DAD /* AudioServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4262848A190808C22C76330 /* AudioServices.swift */; };
 		35E7E2572E8546EAE6811724 /* metadata-repair-original-cover.png in Resources */ = {isa = PBXBuildFile; fileRef = 7839D7906DB31CF9E9AC920D /* metadata-repair-original-cover.png */; };
+		360F45745395AFF7EBE7BEF5 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8405DC5B7983A5F611B4F788 /* Assets.xcassets */; };
 		396C2A29BF7905699E4DCCDE /* SyntheticMetadataRepair.sha256 in Resources */ = {isa = PBXBuildFile; fileRef = BB1F32A2AD18F7AC1E3E699D /* SyntheticMetadataRepair.sha256 */; };
 		424C509D4EF3137326AB6FD0 /* valid-multifile.zip in Resources */ = {isa = PBXBuildFile; fileRef = C236D733BA86B8E642C44A87 /* valid-multifile.zip */; };
 		435E30EB44CEA0DD8596A7B7 /* count-limit.zip in Resources */ = {isa = PBXBuildFile; fileRef = 78B0F1D8A657049863B01A9F /* count-limit.zip */; };
@@ -182,6 +183,7 @@
 		8079ECA57CC2CE480A0F1DF3 /* AppGroupImportHandoffQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGroupImportHandoffQueue.swift; sourceTree = "<group>"; };
 		816C403A8096040072F39E1D /* CodableLibraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodableLibraryStore.swift; sourceTree = "<group>"; };
 		829A14DDE4BEE056A4128257 /* path-traversal.zip */ = {isa = PBXFileReference; lastKnownFileType = archive.zip; path = "path-traversal.zip"; sourceTree = "<group>"; };
+		8405DC5B7983A5F611B4F788 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		852A0D09FD6EAA508B29FDC5 /* SyntheticLibrary.sha256 */ = {isa = PBXFileReference; path = SyntheticLibrary.sha256; sourceTree = "<group>"; };
 		8939611BB5C58FDAB91F6786 /* E2E.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = E2E.xcconfig; sourceTree = "<group>"; };
 		8B87A4BD2B55850215CBD69E /* LaunchUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchUITests.swift; sourceTree = "<group>"; };
@@ -468,6 +470,7 @@
 		FC55EC03063F9A2D38351811 /* Player */ = {
 			isa = PBXGroup;
 			children = (
+				8405DC5B7983A5F611B4F788 /* Assets.xcassets */,
 				765AEA9C9C330982D6F10A18 /* ContentView.swift */,
 				DFACB93CD2DE04CCD74F1F20 /* E2EImportIngressBridge.swift */,
 				A60A6AAB26EE258A0674DCB7 /* E2ELaunchEnvironment.swift */,
@@ -546,6 +549,7 @@
 			buildConfigurationList = 50C160A38544E8F0FBD75811 /* Build configuration list for PBXNativeTarget "Player" */;
 			buildPhases = (
 				939DDFE9798F39A3E015459B /* Sources */,
+				A80A2123CD06F54848E6F963 /* Resources */,
 				E66371B0621FAA5172440057 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
@@ -655,6 +659,14 @@
 				59300DDEF8C83D2FF6C62302 /* synthetic-single-book.m4b in Resources */,
 				C01B12F575AD0664E5F98D60 /* synthetic-zips-fixture.json in Resources */,
 				424C509D4EF3137326AB6FD0 /* valid-multifile.zip in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A80A2123CD06F54848E6F963 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				360F45745395AFF7EBE7BEF5 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
