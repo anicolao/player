@@ -2,6 +2,8 @@ import XCTest
 
 @MainActor
 final class ImportPlaybackUITests: XCTestCase {
+  private let jobID = "10000000-0000-0000-0000-000000000001"
+
   func testReviewsCommitsAndPlaysOneAudiobook() throws {
     continueAfterFailure = false
     XCUIDevice.shared.orientation = .portrait
@@ -21,8 +23,16 @@ final class ImportPlaybackUITests: XCTestCase {
 
     app.launch()
     app.tabBars.buttons["Inbox"].tap()
-    XCTAssertTrue(app.staticTexts["The Lighthouse Signal"].waitForExistence(timeout: 2))
-    app.staticTexts["The Lighthouse Signal"].tap()
+    let readyRow = app.descendants(matching: .any)["import-job-\(jobID)"]
+    XCTAssertTrue(readyRow.waitForExistence(timeout: 2))
+    XCTAssertEqual(readyRow.value as? String, "ready:action=review-and-add")
+    XCTAssertTrue(
+      app.descendants(matching: .any)["ready-import-action-\(jobID)"].exists,
+      "A ready Inbox row must name its Review & Add action"
+    )
+    app.buttons["review-import-job-\(jobID)"].tap()
+
+    let addToLibrary = app.buttons["add-import-to-library"]
 
     try tester.step(
       "review-import",
@@ -34,11 +44,18 @@ final class ImportPlaybackUITests: XCTestCase {
         ),
         .exists(app.staticTexts["The Lighthouse Signal"], "The inspected title is presented"),
         .exists(app.staticTexts["Mara Vale"], "The inspected author is presented"),
-        .exists(app.buttons["add-import-to-library"], "The import can be committed"),
+        .valueEquals(
+          addToLibrary,
+          "ready:enabled",
+          "The pinned Add to Library action reports that it is ready"
+        ),
+        StepVerification(specification: "The primary action is visible, enabled, and directly tappable") {
+          addToLibrary.exists && addToLibrary.isEnabled && addToLibrary.isHittable
+        },
       ]
     )
 
-    app.buttons["add-import-to-library"].tap()
+    addToLibrary.tap()
     let libraryScreen = app.descendants(matching: .any)["library-screen"]
     XCTAssertTrue(libraryScreen.waitForExistence(timeout: 2))
 

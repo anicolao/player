@@ -351,15 +351,58 @@ private struct ImportJobRow: View {
       VStack(alignment: .leading, spacing: 6) {
         Text(job.proposal?.title ?? job.sourceFilename).font(.headline).foregroundStyle(PlayerColor.ink)
         Text(stageLabel).font(.subheadline)
-          .foregroundStyle(job.phase == .failed ? .red : PlayerColor.secondary)
+          .foregroundStyle(stageColor)
         if [.acquiring, .extracting, .inspecting, .committing].contains(job.phase) {
           ProgressView().tint(PlayerColor.accent)
         }
+        actionLabel
       }
+      Spacer(minLength: 8)
     }
     .padding(.vertical, 6)
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("import-job-\(job.id.uuidString.lowercased())")
-    .accessibilityValue(job.phase.rawValue)
+    .accessibilityValue("\(job.phase.rawValue):action=\(actionToken)")
+  }
+
+  @ViewBuilder
+  private var actionLabel: some View {
+    switch job.phase {
+    case .ready:
+      Label("Review & Add", systemImage: "arrow.right.circle.fill")
+        .font(.subheadline.weight(.semibold))
+        .foregroundStyle(PlayerColor.accent)
+        .accessibilityIdentifier("ready-import-action-\(job.id.uuidString.lowercased())")
+    case .needsReview:
+      Label("Review required", systemImage: "exclamationmark.circle.fill")
+        .font(.subheadline.weight(.semibold))
+        .foregroundStyle(.orange)
+        .accessibilityIdentifier("review-required-action-\(job.id.uuidString.lowercased())")
+    case .failed:
+      Label("View issue", systemImage: "arrow.right.circle.fill")
+        .font(.subheadline.weight(.semibold))
+        .foregroundStyle(.red)
+    default:
+      EmptyView()
+    }
+  }
+
+  private var actionToken: String {
+    switch job.phase {
+    case .ready: "review-and-add"
+    case .needsReview: "review-required"
+    case .failed: "view-issue"
+    default: "none"
+    }
+  }
+
+  private var stageColor: Color {
+    switch job.phase {
+    case .ready, .committed: .green
+    case .needsReview: .orange
+    case .failed: .red
+    default: PlayerColor.secondary
+    }
   }
 
   private var stageLabel: String {
@@ -501,6 +544,12 @@ private struct ReviewImportView: View {
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("review-import-screen")
     .accessibilityValue(reviewAccessibilityValue)
+    .safeAreaInset(edge: .bottom, spacing: 0) {
+      if let job = model.library.importJobs.first(where: { $0.id == jobID }),
+         job.proposal != nil {
+        primaryAction(job: job)
+      }
+    }
     .overlay {
       if let job = model.library.importJobs.first(where: { $0.id == jobID }),
         job.proposals.count > 1
@@ -601,18 +650,51 @@ private struct ReviewImportView: View {
       .controlSize(.large)
       .tint(PlayerColor.accent)
       .accessibilityIdentifier("edit-metadata")
-      Button("Add to Library") {
+    }
+  }
+
+  private func primaryAction(job: ImportJob) -> some View {
+    let warnings = job.proposals.reduce(0) { $0 + $1.warnings.count }
+    let isCommitting = job.phase == .committing
+    let canAdd = warnings == 0 && !isCommitting
+    return VStack(spacing: 7) {
+      Button {
         Task {
           if await model.addImportToLibrary(jobID: jobID) != nil { didCommit() }
         }
+      } label: {
+        Label("Add to Library", systemImage: "plus.circle.fill")
+          .frame(maxWidth: .infinity)
       }
       .buttonStyle(.borderedProminent)
       .controlSize(.large)
       .tint(PlayerColor.accent)
-      .frame(maxWidth: .infinity)
-      .disabled(!proposal.warnings.isEmpty)
+      .disabled(!canAdd)
       .accessibilityIdentifier("add-import-to-library")
+      .accessibilityValue(
+        isCommitting
+          ? "committing:disabled"
+          : warnings == 0 ? "ready:enabled" : "blocked:\(warnings)-warnings:disabled"
+      )
+      if warnings > 0 {
+        Text("Resolve \(warnings) warning\(warnings == 1 ? "" : "s") to add this book.")
+          .font(.caption)
+          .foregroundStyle(PlayerColor.secondary)
+          .multilineTextAlignment(.center)
+      }
     }
+    .padding(.horizontal, 20)
+    .padding(.top, 12)
+    .padding(.bottom, 8)
+    .background(.regularMaterial)
+    .overlay(alignment: .top) { Divider() }
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("review-import-primary-action")
+    .accessibilityValue(
+      isCommitting
+        ? "committing:disabled"
+        : warnings == 0 ? "ready:enabled" : "blocked:\(warnings)-warnings:disabled"
+    )
   }
 
   private func evidence(_ symbol: String, value: String) -> some View {

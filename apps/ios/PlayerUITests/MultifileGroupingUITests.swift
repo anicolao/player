@@ -45,6 +45,7 @@ final class MultifileGroupingUITests: XCTestCase {
 
     let reviewImport = anyElement(app, "review-import-screen")
     let groupingProbe = anyElement(app, "grouping-probe")
+    let addToLibrary = app.buttons["add-import-to-library"]
     try tester.step(
       "explainable-grouping",
       description: "Review Import explains why the selection became two candidate books",
@@ -71,6 +72,16 @@ final class MultifileGroupingUITests: XCTestCase {
           app.buttons["review-order-button"],
           "The ordering problem links directly to Review Order"
         ),
+        .valueEquals(
+          addToLibrary,
+          "blocked:2-warnings:disabled",
+          "The pinned Add to Library action explains why it is blocked"
+        ),
+        StepVerification(specification: "The blocked primary action remains visibly pinned") {
+          addToLibrary.exists
+            && !addToLibrary.isEnabled
+            && app.frame.intersects(addToLibrary.frame)
+        },
       ]
     )
 
@@ -166,12 +177,14 @@ final class MultifileGroupingUITests: XCTestCase {
       reviewImport,
       "proposal:ready:1-book:8-tracks:0-warnings:revision-7"
     )
+    try requireValue(addToLibrary, "ready:enabled")
+    XCTAssertTrue(addToLibrary.isEnabled)
     let commitProbe = anyElement(app, "commit-probe")
     try requireValue(
       commitProbe,
       "transaction:pending:books=0:assets=0:staging=8:source-unchanged=true"
     )
-    app.buttons["add-import-to-library"].tap()
+    addToLibrary.tap()
 
     let library = anyElement(app, "library-screen")
     let committedBook = anyElement(app, "recent-book-\(finalBookID)")

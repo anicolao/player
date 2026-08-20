@@ -27,6 +27,8 @@
 - [x] Folder-name grouping evidence is visible
 - [x] Unicode filename-stem grouping evidence is visible
 - [x] The ordering problem links directly to Review Order
+- [x] The pinned Add to Library action explains why it is blocked
+- [x] The blocked primary action remains visibly pinned
 
 ## Review Order preserves natural numeric order and every original file
 

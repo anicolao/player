@@ -23,7 +23,8 @@
 - [x] The Review Import screen is visible
 - [x] The inspected title is presented
 - [x] The inspected author is presented
-- [x] The import can be committed
+- [x] The pinned Add to Library action reports that it is ready
+- [x] The primary action is visible, enabled, and directly tappable
 
 ## The committed audiobook appears in the local library
 
