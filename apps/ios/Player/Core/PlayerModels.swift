@@ -577,6 +577,8 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
   var globalTransportPreferences: TransportPreferences
   var smartRewindPreferences: SmartRewindPreferences
   var resumeRewindTransactions: [ResumeRewindTransaction]
+  var activeSleepTimer: ActiveSleepTimer?
+  var sleepTimerHistory: [SleepTimerHistoryEntry]
 
   init(
     books: [Book],
@@ -593,7 +595,9 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
     searchPreferences: LibrarySearchPreferences = .default,
     globalTransportPreferences: TransportPreferences = .default,
     smartRewindPreferences: SmartRewindPreferences = .default,
-    resumeRewindTransactions: [ResumeRewindTransaction] = []
+    resumeRewindTransactions: [ResumeRewindTransaction] = [],
+    activeSleepTimer: ActiveSleepTimer? = nil,
+    sleepTimerHistory: [SleepTimerHistoryEntry] = []
   ) {
     self.books = books
     self.importJobs = importJobs
@@ -610,6 +614,8 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
     self.globalTransportPreferences = globalTransportPreferences
     self.smartRewindPreferences = smartRewindPreferences
     self.resumeRewindTransactions = resumeRewindTransactions
+    self.activeSleepTimer = activeSleepTimer
+    self.sleepTimerHistory = sleepTimerHistory
   }
 
 
@@ -619,6 +625,7 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
     case upNextBookIDs, collections, allBooksViewStyle, trashTransactions, searchPreferences
     case globalTransportPreferences
     case smartRewindPreferences, resumeRewindTransactions
+    case activeSleepTimer, sleepTimerHistory
   }
 
   init(from decoder: any Decoder) throws {
@@ -662,6 +669,14 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
       [ResumeRewindTransaction].self,
       forKey: .resumeRewindTransactions
     ) ?? []
+    activeSleepTimer = try values.decodeIfPresent(
+      ActiveSleepTimer.self,
+      forKey: .activeSleepTimer
+    )
+    sleepTimerHistory = try values.decodeIfPresent(
+      [SleepTimerHistoryEntry].self,
+      forKey: .sleepTimerHistory
+    ) ?? []
   }
 
   static let empty = LibrarySnapshot(books: [], importJobs: [], currentBookID: nil)
@@ -678,6 +693,7 @@ enum PositionEventReason: String, Codable, Equatable, Sendable {
   case preResumeRewind
   case resumeRewind
   case undoResumeRewind
+  case sleepTimer
 }
 
 enum AudioSessionEvent: Equatable, Sendable {

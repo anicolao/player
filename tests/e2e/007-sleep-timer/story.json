@@ -1,0 +1,10 @@
+{
+  "id": "007-sleep-timer",
+  "platform": "ios",
+  "test": "PlayerUITests/SleepTimerUITests/testSleepTimerPersistsFadesStopsAndResumesWithContextExactly",
+  "fixture": "sleep-timer",
+  "screenshots": [
+    "000-persisted-active-sleep-timer.png",
+    "001-sleep-stop-resume-context.png"
+  ]
+}

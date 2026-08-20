@@ -78,12 +78,18 @@ protocol AudioPlaybackControlling: AnyObject {
   func setPlaybackRate(_ rate: Double)
   func play()
   func pause()
+  func beginSleepFade(durationSeconds: TimeInterval)
+  func completeSleepFadeAndPause()
+  func cancelSleepFade()
 }
 
 @MainActor
 extension AudioPlaybackControlling {
   var playbackRate: Double { 1 }
   func setPlaybackRate(_ rate: Double) {}
+  func beginSleepFade(durationSeconds: TimeInterval) {}
+  func completeSleepFadeAndPause() { pause() }
+  func cancelSleepFade() {}
 }
 
 @MainActor

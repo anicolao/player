@@ -254,6 +254,8 @@ final class AVPlayerPlaybackController: AudioPlaybackControlling {
   private var player: AVPlayer?
   private(set) var state: PlaybackState = .unloaded
   private(set) var playbackRate = 1.0
+  private var sleepFadeTask: Task<Void, Never>?
+  private var sleepFadeOriginalVolume: Float?
 
   var currentPositionSeconds: Double {
     guard let seconds = player?.currentTime().seconds, seconds.isFinite else {
@@ -263,6 +265,7 @@ final class AVPlayerPlaybackController: AudioPlaybackControlling {
   }
 
   func load(url: URL, bookID: UUID, at seconds: Double = 0) async throws {
+    cancelSleepFade()
     let asset = AVURLAsset(url: url)
     guard try await asset.load(.isPlayable) else {
       throw PlayerCoreError.unreadableAudio(url.lastPathComponent)
@@ -305,6 +308,46 @@ final class AVPlayerPlaybackController: AudioPlaybackControlling {
       state.elapsedSeconds = seconds
     }
     state.status = .paused
+  }
+
+  func beginSleepFade(durationSeconds: TimeInterval) {
+    guard let player else { return }
+    cancelSleepFade()
+    let duration = max(0, durationSeconds.isFinite ? durationSeconds : 0)
+    let originalVolume = player.volume
+    sleepFadeOriginalVolume = originalVolume
+    guard duration > 0 else {
+      player.volume = 0
+      return
+    }
+    sleepFadeTask = Task { @MainActor [weak self, weak player] in
+      let steps = 20
+      let stepDuration = duration / Double(steps)
+      for step in 1...steps {
+        guard !Task.isCancelled, let self, let player, self.player === player else { return }
+        player.volume = originalVolume * Float(steps - step) / Float(steps)
+        try? await Task.sleep(for: .seconds(stepDuration))
+      }
+    }
+  }
+
+  func completeSleepFadeAndPause() {
+    sleepFadeTask?.cancel()
+    sleepFadeTask = nil
+    pause()
+    if let sleepFadeOriginalVolume {
+      player?.volume = sleepFadeOriginalVolume
+    }
+    sleepFadeOriginalVolume = nil
+  }
+
+  func cancelSleepFade() {
+    sleepFadeTask?.cancel()
+    sleepFadeTask = nil
+    if let sleepFadeOriginalVolume {
+      player?.volume = sleepFadeOriginalVolume
+    }
+    sleepFadeOriginalVolume = nil
   }
 }
 

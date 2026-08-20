@@ -129,6 +129,12 @@ jobs:
           PlayerUITests/TransportControlsUITests/testCustomizesAndRestoresListeningControls
           PlayerUITests/SmartRewindUITests/testSmartRewindAdaptsClampsPersistsAndUndoesExactly
 
+      - name: Run exact-pixel sleep timer story
+        run: >-
+          apps/ios/scripts/run-e2e.sh
+          007-sleep-timer
+          PlayerUITests/SleepTimerUITests/testSleepTimerPersistsFadesStopsAndResumesWithContextExactly
+
       - name: Upload reviewable diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -156,5 +162,8 @@ jobs:
             apps/ios/DerivedData/E2E/005-play-and-restore/ActualWalkthrough/
             apps/ios/DerivedData/E2E/005-play-and-restore/Attachments/
             apps/ios/DerivedData/E2E/005-play-and-restore/Results/Story.xcresult/
+            apps/ios/DerivedData/E2E/007-sleep-timer/ActualWalkthrough/
+            apps/ios/DerivedData/E2E/007-sleep-timer/Attachments/
+            apps/ios/DerivedData/E2E/007-sleep-timer/Results/Story.xcresult/
           if-no-files-found: warn
           retention-days: 7

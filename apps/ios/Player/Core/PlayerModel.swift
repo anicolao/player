@@ -13,6 +13,8 @@ final class PlayerModel {
   @ObservationIgnored private var playbackIntegrationsConfigured = false
   @ObservationIgnored private var wasPlayingBeforeInterruption = false
   @ObservationIgnored private var importTasks: [UUID: Task<Void, Never>] = [:]
+  @ObservationIgnored private var sleepTimerMonitorTask: Task<Void, Never>?
+  @ObservationIgnored private var sleepTimerEvaluationInProgress = false
   @ObservationIgnored private var loadedAssetID: UUID?
   @ObservationIgnored private var loadedAssetTimelineStartSeconds = 0.0
 
@@ -25,6 +27,7 @@ final class PlayerModel {
     do {
       library = try await environment.persistence.load()
       let recoveredInterruptedImports = recoverInterruptedImports()
+      let recoveredSleepTimer = recoverInterruptedSleepTimer()
       let storedPosition = library.playbackPosition
       let recoveredPosition = PositionJournalRecovery.recover(from: library)
       library.playbackPosition = recoveredPosition
@@ -52,13 +55,14 @@ final class PlayerModel {
       if library.currentBookID != nil {
         try await loadCurrentBookIntoPlayback()
       }
-      if storedPosition != recoveredPosition || recoveredInterruptedImports {
+      if storedPosition != recoveredPosition || recoveredInterruptedImports || recoveredSleepTimer {
         try await persist()
       }
       isRestored = true
       lastErrorMessage = nil
       applyCurrentTransportConfiguration()
       publishNowPlaying()
+      scheduleSleepTimerMonitor()
       let resumableQueueJobIDs = library.importJobs.filter {
         $0.phase == .failed
           && $0.failure?.reasonCode == "import-interrupted"
@@ -73,6 +77,18 @@ final class PlayerModel {
       lastErrorMessage = error.localizedDescription
       environment.nowPlaying.clear()
     }
+  }
+
+  private func recoverInterruptedSleepTimer() -> Bool {
+    guard var timer = library.activeSleepTimer else { return false }
+    guard library.books.contains(where: { $0.id == timer.bookID }) else {
+      library.activeSleepTimer = nil
+      return true
+    }
+    guard timer.phase == .fading else { return false }
+    timer.phase = .active
+    library.activeSleepTimer = timer
+    return true
   }
 
   private func recoverInterruptedImports() -> Bool {
@@ -1370,6 +1386,214 @@ final class PlayerModel {
     })
   }
 
+  var activeSleepTimer: ActiveSleepTimer? { library.activeSleepTimer }
+
+  var activeSleepTimerProjection: SleepTimerProjection? {
+    guard let timer = library.activeSleepTimer else { return nil }
+    return SleepTimerPlanner.projection(
+      for: timer,
+      now: environment.clock.now(),
+      currentPositionSeconds: sleepTimerPosition(for: timer.bookID),
+      playbackRate: environment.playback.playbackRate
+    )
+  }
+
+  var recentSleepHistory: [SleepTimerHistoryEntry] {
+    library.sleepTimerHistory.sorted { $0.completedAt > $1.completedAt }
+  }
+
+  var sleepResumeContext: SleepResumeContext? {
+    let now = environment.clock.now()
+    guard let history = recentSleepHistory.first(where: { history in
+      history.status == .completed
+        && history.resumeContextUsedAt == nil
+        && history.completedAt <= now
+        && history.resumeContextExpiresAt >= now
+        && library.books.contains(where: { book in book.id == history.bookID })
+    }) else { return nil }
+    return SleepResumeContext(
+      historyID: history.id,
+      bookID: history.bookID,
+      stoppedPositionMilliseconds: history.actualStopPositionMilliseconds,
+      availableUntil: history.resumeContextExpiresAt
+    )
+  }
+
+  @discardableResult
+  func startSleepTimer(
+    selection: SleepTimerSelection,
+    fadeEnabled: Bool = true
+  ) async -> UUID? {
+    guard let book = currentBook else {
+      lastErrorMessage = SleepTimerError.noCurrentBook.localizedDescription
+      return nil
+    }
+    let previousLibrary = library
+    do {
+      let timerID = await environment.ids.next()
+      let now = environment.clock.now()
+      let position = sleepTimerPosition(for: book.id)
+      let timer = try SleepTimerPlanner.makeTimer(
+        id: timerID,
+        book: book,
+        selection: selection,
+        fadeEnabled: fadeEnabled,
+        currentPositionSeconds: position,
+        now: now
+      )
+      if let replaced = library.activeSleepTimer {
+        let historyID = await environment.ids.next()
+        appendSleepHistory(SleepTimerHistoryEntry(
+          id: historyID,
+          timerID: replaced.id,
+          bookID: replaced.bookID,
+          selection: replaced.selection,
+          fadeEnabled: replaced.fadeEnabled,
+          startedAt: replaced.startedAt,
+          expectedDeadline: replaced.deadline,
+          expectedBoundaryPositionMilliseconds: replaced.boundaryPositionMilliseconds,
+          actualStopPositionMilliseconds: sleepTimerPositionMilliseconds(for: replaced.bookID),
+          completedAt: now,
+          status: .replaced,
+          positionEventID: nil,
+          resumeContextUsedAt: nil
+        ))
+      }
+      library.activeSleepTimer = timer
+      try await persist()
+      environment.playback.cancelSleepFade()
+      lastErrorMessage = nil
+      scheduleSleepTimerMonitor()
+      return timerID
+    } catch {
+      library = previousLibrary
+      lastErrorMessage = error.localizedDescription
+      return nil
+    }
+  }
+
+  @discardableResult
+  func cancelSleepTimer() async -> Bool {
+    guard let timer = library.activeSleepTimer else {
+      lastErrorMessage = SleepTimerError.noActiveTimer.localizedDescription
+      return false
+    }
+    let previousLibrary = library
+    do {
+      let historyID = await environment.ids.next()
+      appendSleepHistory(SleepTimerHistoryEntry(
+        id: historyID,
+        timerID: timer.id,
+        bookID: timer.bookID,
+        selection: timer.selection,
+        fadeEnabled: timer.fadeEnabled,
+        startedAt: timer.startedAt,
+        expectedDeadline: timer.deadline,
+        expectedBoundaryPositionMilliseconds: timer.boundaryPositionMilliseconds,
+        actualStopPositionMilliseconds: sleepTimerPositionMilliseconds(for: timer.bookID),
+        completedAt: environment.clock.now(),
+        status: .cancelled,
+        positionEventID: nil,
+        resumeContextUsedAt: nil
+      ))
+      library.activeSleepTimer = nil
+      try await persist()
+      environment.playback.cancelSleepFade()
+      sleepTimerMonitorTask?.cancel()
+      sleepTimerMonitorTask = nil
+      lastErrorMessage = nil
+      return true
+    } catch {
+      library = previousLibrary
+      lastErrorMessage = error.localizedDescription
+      return false
+    }
+  }
+
+  func evaluateSleepTimer() async {
+    guard !sleepTimerEvaluationInProgress, var timer = library.activeSleepTimer else { return }
+    let position = sleepTimerPosition(for: timer.bookID)
+    guard timer.phase == .fading || SleepTimerPlanner.shouldBeginFade(
+      timer,
+      now: environment.clock.now(),
+      currentPositionSeconds: position,
+      playbackRate: environment.playback.playbackRate
+    ) else { return }
+
+    sleepTimerEvaluationInProgress = true
+    defer { sleepTimerEvaluationInProgress = false }
+    if timer.phase == .active {
+      let previousLibrary = library
+      timer.phase = .fading
+      library.activeSleepTimer = timer
+      do {
+        try await persist()
+      } catch {
+        library = previousLibrary
+        lastErrorMessage = error.localizedDescription
+        return
+      }
+      environment.playback.beginSleepFade(durationSeconds: timer.fadeDurationSeconds)
+    }
+
+    guard SleepTimerPlanner.hasReachedStopBoundary(
+      timer,
+      now: environment.clock.now(),
+      currentPositionSeconds: sleepTimerPosition(for: timer.bookID)
+    ) else { return }
+    environment.playback.completeSleepFadeAndPause()
+    playbackState = environment.playback.state
+    playbackState.elapsedSeconds = currentBookPositionSeconds
+    guard library.activeSleepTimer?.id == timer.id else { return }
+    _ = await recordSleepTimerStop(
+      currentBookPositionSeconds,
+      timer: timer
+    )
+  }
+
+  @discardableResult
+  func resumeFromSleepWithContext() async -> Bool {
+    guard let context = sleepResumeContext,
+      let history = library.sleepTimerHistory.first(where: { $0.id == context.historyID }),
+      let book = library.books.first(where: { $0.id == context.bookID })
+    else {
+      lastErrorMessage = SleepTimerError.noResumeContext.localizedDescription
+      return false
+    }
+    do {
+      try environment.audioSession.activate()
+      let stoppedSeconds = history.actualStopSeconds
+      try await load(book: book, at: stoppedSeconds)
+      applyCurrentTransportConfiguration(for: book.id)
+      let now = environment.clock.now()
+      if let plan = SleepTimerPlanner.resumePlan(
+        from: history,
+        book: book,
+        resumedAt: now,
+        preferences: library.smartRewindPreferences
+      ), !(await applySmartRewind(plan)) {
+        return false
+      }
+      environment.playback.play()
+      playbackState = environment.playback.state
+      playbackState.elapsedSeconds = currentBookPositionSeconds
+      guard await recordAcknowledgedPlaybackPosition(
+        currentBookPositionSeconds,
+        reason: .play,
+        consumedSleepHistoryID: history.id
+      ) != nil else {
+        environment.playback.pause()
+        playbackState = environment.playback.state
+        playbackState.elapsedSeconds = currentBookPositionSeconds
+        return false
+      }
+      return true
+    } catch {
+      lastErrorMessage = error.localizedDescription
+      return false
+    }
+  }
+
   func smartRewindPlan(for bookID: UUID) -> SmartRewindPlan? {
     guard
       let book = library.books.first(where: { $0.id == bookID }),
@@ -1644,6 +1868,42 @@ final class PlayerModel {
     )
   }
 
+  private func sleepTimerPosition(for bookID: UUID) -> Double {
+    if (playbackState.loadedBookID ?? library.currentBookID) == bookID,
+      environment.playback.state.loadedBookID == bookID
+    {
+      return currentBookPositionSeconds
+    }
+    if library.playbackPosition?.bookID == bookID {
+      return library.playbackPosition?.seconds ?? 0
+    }
+    return library.books.first(where: { $0.id == bookID })?.listeningState.positionSeconds ?? 0
+  }
+
+  private func sleepTimerPositionMilliseconds(for bookID: UUID) -> Int64 {
+    Int64((max(0, sleepTimerPosition(for: bookID)) * 1_000).rounded(.down))
+  }
+
+  private func appendSleepHistory(_ entry: SleepTimerHistoryEntry) {
+    library.sleepTimerHistory.append(entry)
+    if library.sleepTimerHistory.count > 100 {
+      library.sleepTimerHistory.removeFirst(library.sleepTimerHistory.count - 100)
+    }
+  }
+
+  private func scheduleSleepTimerMonitor() {
+    sleepTimerMonitorTask?.cancel()
+    sleepTimerMonitorTask = nil
+    guard library.activeSleepTimer != nil else { return }
+    sleepTimerMonitorTask = Task { @MainActor [weak self] in
+      while !Task.isCancelled {
+        try? await Task.sleep(for: .milliseconds(250))
+        guard !Task.isCancelled, let self, self.library.activeSleepTimer != nil else { break }
+        await self.evaluateSleepTimer()
+      }
+    }
+  }
+
   private func load(book: Book, at bookSeconds: Double) async throws {
     guard let location = PlaybackTimeline.location(in: book, at: bookSeconds) else {
       throw TransportPreferencesError.missingPlaybackTimeline(book.id)
@@ -1741,7 +2001,8 @@ final class PlayerModel {
     _ seconds: Double,
     reason: PositionEventReason,
     resumeRewindPlan: SmartRewindPlan? = nil,
-    preRewindEventID: UUID? = nil
+    preRewindEventID: UUID? = nil,
+    consumedSleepHistoryID: UUID? = nil
   ) async -> PositionEvent? {
     guard
       seconds.isFinite,
@@ -1806,6 +2067,92 @@ final class PlayerModel {
         undoEventID: nil
       ))
     }
+    if let consumedSleepHistoryID,
+      let historyIndex = library.sleepTimerHistory.firstIndex(where: {
+        $0.id == consumedSleepHistoryID
+          && $0.status == .completed
+          && $0.resumeContextUsedAt == nil
+      })
+    {
+      library.sleepTimerHistory[historyIndex].resumeContextUsedAt = event.acknowledgedAt
+    }
+    do {
+      try await persist()
+      lastErrorMessage = nil
+      publishNowPlaying()
+      return event
+    } catch {
+      library = previousLibrary
+      lastErrorMessage = error.localizedDescription
+      return nil
+    }
+  }
+
+  private func recordSleepTimerStop(
+    _ seconds: Double,
+    timer: ActiveSleepTimer
+  ) async -> PositionEvent? {
+    guard seconds.isFinite,
+      let book = library.books.first(where: { $0.id == timer.bookID })
+    else { return nil }
+
+    let previousLibrary = library
+    let maximumMilliseconds = Int64((book.durationSeconds * 1_000).rounded(.down))
+    let acknowledgedMilliseconds = Int64((max(0, seconds) * 1_000).rounded(.down))
+    let safeMilliseconds = min(acknowledgedMilliseconds, maximumMilliseconds)
+    let eventID = await environment.ids.next()
+    let historyID = await environment.ids.next()
+    let nextSequence = (library.positionJournal.map(\.sequence).max() ?? 0) + 1
+    let acknowledgedAt = environment.clock.now()
+    let event = PositionEvent.acknowledged(
+      id: eventID,
+      bookID: book.id,
+      positionMilliseconds: safeMilliseconds,
+      sequence: nextSequence,
+      reason: .sleepTimer,
+      acknowledgedAt: acknowledgedAt,
+      previousEventID: library.playbackPosition?.sourceEventID
+    )
+    let position = PlaybackPosition(
+      bookID: book.id,
+      positionMilliseconds: safeMilliseconds,
+      sequence: nextSequence,
+      sourceEventID: event.id,
+      updatedAt: acknowledgedAt
+    )
+
+    library.positionJournal.append(event)
+    library.playbackPosition = position
+    library.currentBookID = book.id
+    if let bookIndex = library.books.firstIndex(where: { $0.id == book.id }) {
+      if library.books[bookIndex].listeningState.status == .finished {
+        library.books[bookIndex].listeningState.positionMilliseconds = maximumMilliseconds
+      } else {
+        library.books[bookIndex].listeningState.status = safeMilliseconds > 0
+          ? .inProgress : .unplayed
+        library.books[bookIndex].listeningState.positionMilliseconds = safeMilliseconds
+        library.books[bookIndex].listeningState.finishedAt = nil
+      }
+      library.books[bookIndex].listeningState.lastListenedAt = acknowledgedAt
+    }
+    appendSleepHistory(SleepTimerHistoryEntry(
+      id: historyID,
+      timerID: timer.id,
+      bookID: timer.bookID,
+      selection: timer.selection,
+      fadeEnabled: timer.fadeEnabled,
+      startedAt: timer.startedAt,
+      expectedDeadline: timer.deadline,
+      expectedBoundaryPositionMilliseconds: timer.boundaryPositionMilliseconds,
+      actualStopPositionMilliseconds: safeMilliseconds,
+      completedAt: acknowledgedAt,
+      status: .completed,
+      positionEventID: event.id,
+      resumeContextUsedAt: nil
+    ))
+    library.activeSleepTimer = nil
+    playbackState.loadedBookID = book.id
+    playbackState.elapsedSeconds = position.seconds
     do {
       try await persist()
       lastErrorMessage = nil

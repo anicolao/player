@@ -1,7 +1,7 @@
 import Foundation
 
 actor CodableLibraryStore: LibraryPersisting {
-  static let currentSchemaVersion = 11
+  static let currentSchemaVersion = 12
 
   private let fileURL: URL
   private let fileManager: FileManager
@@ -110,7 +110,15 @@ actor CodableLibraryStore: LibraryPersisting {
       }
     case 11:
       do {
-        return try JSONDecoder.playerDecoder.decode(EnvelopeV11.self, from: data).library
+        return migrateSleepTimerDefaults(
+          in: try JSONDecoder.playerDecoder.decode(EnvelopeV11.self, from: data).library
+        )
+      } catch {
+        throw PlayerCoreError.invalidStore
+      }
+    case 12:
+      do {
+        return try JSONDecoder.playerDecoder.decode(EnvelopeV12.self, from: data).library
       } catch {
         throw PlayerCoreError.invalidStore
       }
@@ -123,7 +131,7 @@ actor CodableLibraryStore: LibraryPersisting {
     let directory = fileURL.deletingLastPathComponent()
     try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
 
-    let envelope = EnvelopeV11(
+    let envelope = EnvelopeV12(
       schemaVersion: Self.currentSchemaVersion,
       library: snapshot
     )
@@ -239,6 +247,13 @@ actor CodableLibraryStore: LibraryPersisting {
     migrated.resumeRewindTransactions = []
     return migrated
   }
+
+  private func migrateSleepTimerDefaults(in snapshot: LibrarySnapshot) -> LibrarySnapshot {
+    var migrated = snapshot
+    migrated.activeSleepTimer = nil
+    migrated.sleepTimerHistory = []
+    return migrated
+  }
 }
 
 actor InMemoryLibraryStore: LibraryPersisting {
@@ -316,6 +331,11 @@ private struct EnvelopeV10: Codable {
 }
 
 private struct EnvelopeV11: Codable {
+  let schemaVersion: Int
+  let library: LibrarySnapshot
+}
+
+private struct EnvelopeV12: Codable {
   let schemaVersion: Int
   let library: LibrarySnapshot
 }

@@ -1340,6 +1340,7 @@ private struct NowPlayingView: View {
   let book: Book
   @State private var requestedPosition: Double?
   @State private var showsTransportPreferences = false
+  @State private var showsSleepTimer = false
   @State private var smartRewindUndoPositionMilliseconds: Int64?
   var body: some View {
     NavigationStack {
@@ -1357,7 +1358,9 @@ private struct NowPlayingView: View {
                 .font(.caption).foregroundStyle(PlayerColor.secondary)
             }
           }
-          if let transaction = model.pendingResumeRewind {
+          if let context = model.sleepResumeContext, context.bookID == book.id {
+            sleepResumeBanner(context)
+          } else if let transaction = model.pendingResumeRewind {
             smartRewindBanner(transaction)
           } else if let restored = smartRewindUndoPositionMilliseconds {
             Label(
@@ -1445,15 +1448,33 @@ private struct NowPlayingView: View {
         }
         .padding(24)
       }
-      .toolbar { ToolbarItem(placement: .topBarLeading) { Button("Done") { dismiss() } } }
+      .toolbar {
+        ToolbarItem(placement: .topBarLeading) { Button("Done") { dismiss() } }
+        ToolbarItem(placement: .topBarTrailing) {
+          Button { showsSleepTimer = true } label: {
+            Image(systemName: model.activeSleepTimer == nil ? "moon.zzz" : "timer")
+          }
+          .accessibilityLabel("Sleep Timer")
+          .accessibilityIdentifier("open-sleep-timer")
+          .accessibilityValue(sleepTimerButtonValue)
+        }
+      }
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("now-playing-screen")
       .accessibilityValue(playerValue)
       #if E2E
         .overlay { smartRewindStateProbe }
+        .overlay(alignment: .topTrailing) {
+          if E2ESleepTimerBridge.shared.isConfigured {
+            E2ESleepTimerControlSurface(model: model)
+          }
+        }
       #endif
       .sheet(isPresented: $showsTransportPreferences) {
         TransportPreferencesEditor(model: model, book: currentBookFromModel ?? book)
+      }
+      .sheet(isPresented: $showsSleepTimer) {
+        SleepTimerView(model: model)
       }
     }
   }
@@ -1464,6 +1485,42 @@ private struct NowPlayingView: View {
 
   private var currentBookFromModel: Book? {
     model.library.books.first(where: { $0.id == book.id })
+  }
+
+  private var sleepTimerButtonValue: String {
+    guard let projection = model.activeSleepTimerProjection else { return "inactive" }
+    let remaining = projection.remainingSeconds.map { Int(max(0, $0).rounded(.down)) }
+    return "active:\(projection.timerID.uuidString.lowercased()):remaining=\(remaining.map(String.init) ?? "none"):phase=\(projection.phase.rawValue)"
+  }
+
+  private func sleepResumeBanner(_ context: SleepResumeContext) -> some View {
+    HStack(spacing: 10) {
+      Image(systemName: "moon.zzz.fill").foregroundStyle(PlayerColor.accent)
+      VStack(alignment: .leading, spacing: 2) {
+        Text("Sleep timer ended").font(.headline)
+        Text("Pick up the thread before the stop.")
+          .font(.caption)
+          .foregroundStyle(PlayerColor.secondary)
+      }
+      Spacer(minLength: 8)
+      Button("Resume") {
+        Task { _ = await model.resumeFromSleepWithContext() }
+      }
+      .buttonStyle(.borderedProminent)
+      .accessibilityIdentifier("resume-sleep-context")
+    }
+    .padding(14)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(PlayerColor.card, in: RoundedRectangle(cornerRadius: 16))
+    .overlay {
+      RoundedRectangle(cornerRadius: 16)
+        .stroke(PlayerColor.accent.opacity(0.25), lineWidth: 1)
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("sleep-resume-context")
+    .accessibilityValue(
+      Text(verbatim: "history=\(context.historyID.uuidString.lowercased()):book=\(context.bookID.uuidString.lowercased()):stop=\(context.stoppedPositionMilliseconds):until=\(Int(context.availableUntil.timeIntervalSince1970))")
+    )
   }
 
   private func smartRewindBanner(_ transaction: ResumeRewindTransaction) -> some View {
@@ -1636,7 +1693,16 @@ private struct MiniPlayerView: View {
           ArtworkView(data: book.artworkData, size: 44)
           VStack(alignment: .leading, spacing: 2) {
             Text(book.title).font(.subheadline.weight(.semibold)).lineLimit(1)
-            Text(positionLabel).font(.caption).foregroundStyle(PlayerColor.secondary)
+            HStack(spacing: 6) {
+              Text(positionLabel)
+              if let projection = model.activeSleepTimerProjection {
+                Text("·")
+                Label(sleepTimerLabel(projection), systemImage: "moon.zzz.fill")
+                  .accessibilityIdentifier("mini-player-sleep-timer")
+              }
+            }
+            .font(.caption)
+            .foregroundStyle(PlayerColor.secondary)
           }
         }
       }
@@ -1669,7 +1735,28 @@ private struct MiniPlayerView: View {
 
   private var miniPlayerValue: String {
     let milliseconds = Int((model.playbackState.elapsedSeconds * 1_000).rounded())
-    return "player:\(model.playbackState.status.rawValue):\(book.id.uuidString.lowercased()):0:\(milliseconds)"
+    var value = "player:\(model.playbackState.status.rawValue):\(book.id.uuidString.lowercased()):0:\(milliseconds)"
+    if let projection = model.activeSleepTimerProjection {
+      let remaining = projection.remainingSeconds.map { Int(max(0, $0).rounded(.down)) }
+      let selection = model.activeSleepTimer.map { sleepSelectionToken($0.selection) } ?? "none"
+      value += "|sleep=\(projection.timerID.uuidString.lowercased()),selection=\(selection),remaining=\(remaining.map(String.init) ?? "none"),fade=\(projection.fadeEnabled),phase=\(projection.phase.rawValue)"
+    }
+    return value
+  }
+
+  private func sleepTimerLabel(_ projection: SleepTimerProjection) -> String {
+    guard let seconds = projection.remainingSeconds else { return projection.selectionLabel }
+    let value = max(0, Int(seconds.rounded(.down)))
+    return String(format: "%d:%02d", value / 60, value % 60)
+  }
+
+  private func sleepSelectionToken(_ selection: SleepTimerSelection) -> String {
+    switch selection {
+    case .preset(let preset): "preset-\(preset.rawValue)"
+    case .custom(let seconds): "custom-\(Int(seconds.rounded(.down)))"
+    case .endOfChapter: "end-chapter"
+    case .endOfTrack: "end-track"
+    }
   }
 
   private var positionLabel: String {

@@ -33,6 +33,11 @@ extension PlayerEnvironment {
             reset: arguments.contains("-e2e-reset"),
             scenario: smartRewindScenario(in: arguments)
           )
+        case "sleep-timer":
+          return try sleepTimerEnvironment(
+            reset: arguments.contains("-e2e-reset"),
+            namespace: sleepTimerNamespace(in: arguments)
+          )
         default:
           break
         }
@@ -218,6 +223,161 @@ extension PlayerEnvironment {
         arguments.indices.contains(marker + 1)
       else { return "chapter-clamp" }
       return arguments[marker + 1]
+    }
+
+    private static func sleepTimerNamespace(in arguments: [String]) -> String {
+      guard
+        let marker = arguments.firstIndex(of: "-e2e-sleep-timer-namespace"),
+        arguments.indices.contains(marker + 1)
+      else { return "persistent" }
+      return arguments[marker + 1]
+    }
+
+    private static func sleepTimerEnvironment(
+      reset: Bool,
+      namespace: String
+    ) throws -> PlayerEnvironment {
+      guard namespace.range(of: "^[a-z0-9-]+$", options: .regularExpression) != nil else {
+        throw PlayerCoreError.fileOperation("Invalid Sleep Timer E2E namespace.")
+      }
+      let support = try FileManager.default.url(
+        for: .applicationSupportDirectory,
+        in: .userDomainMask,
+        appropriateFor: nil,
+        create: true
+      )
+      let root = support.appending(
+        path: "PlayerE2ESleepTimer-\(namespace)",
+        directoryHint: .isDirectory
+      )
+      if reset { try? FileManager.default.removeItem(at: root) }
+
+      let bookID = UUID(uuidString: "52000000-0000-0000-0000-000000000001")!
+      let firstAssetID = UUID(uuidString: "52000000-0000-0000-0000-000000000002")!
+      let secondAssetID = UUID(uuidString: "52000000-0000-0000-0000-000000000003")!
+      let pauseEventID = UUID(uuidString: "52000000-0000-0000-0000-000000000004")!
+      let managedAssets = [
+        (
+          firstAssetID,
+          "quiet-hours-part-01.m4b",
+          "Media/\(bookID.uuidString.lowercased())/\(firstAssetID.uuidString.lowercased()).m4b",
+          0.0
+        ),
+        (
+          secondAssetID,
+          "quiet-hours-part-02.m4b",
+          "Media/\(bookID.uuidString.lowercased())/\(secondAssetID.uuidString.lowercased()).m4b",
+          90.0
+        ),
+      ]
+      for (_, filename, path, _) in managedAssets {
+        let url = root.appending(path: path)
+        if !FileManager.default.fileExists(atPath: url.path) {
+          try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+          )
+          try Data("player deterministic sleep timer fixture \(filename)".utf8)
+            .write(to: url)
+        }
+      }
+
+      let date = Date(timeIntervalSince1970: 1_700_020_000)
+      let assets = managedAssets.enumerated().map { index, item in
+        AudioAsset(
+          id: item.0,
+          originalFilename: item.1,
+          managedRelativePath: item.2,
+          checksumSHA256: "e2e-sleep-timer-part-\(index + 1)",
+          byteCount: 50,
+          durationSeconds: 90,
+          container: "M4B",
+          timelineStartSeconds: item.3,
+          discNumber: 1,
+          trackNumber: index + 1,
+          importOrder: index
+        )
+      }
+      let book = Book(
+        id: bookID,
+        title: "The Quiet Hours",
+        authors: ["Mara Vale"],
+        durationSeconds: 180,
+        artworkData: nil,
+        assets: assets,
+        dateAdded: Date(timeIntervalSince1970: 1_700_000_000),
+        chapters: [
+          Chapter(
+            id: "sleep-1", title: "Settling In", startSeconds: 0,
+            durationSeconds: 60, source: .embedded, assetID: firstAssetID
+          ),
+          Chapter(
+            id: "sleep-2", title: "Drifting", startSeconds: 60,
+            durationSeconds: 60, source: .embedded, assetID: firstAssetID
+          ),
+          Chapter(
+            id: "sleep-3", title: "Morning Light", startSeconds: 120,
+            durationSeconds: 60, source: .embedded, assetID: secondAssetID
+          ),
+        ]
+      )
+      let pause = PositionEvent.acknowledged(
+        id: pauseEventID,
+        bookID: bookID,
+        positionMilliseconds: 70_000,
+        sequence: 1,
+        reason: .pause,
+        acknowledgedAt: date,
+        previousEventID: nil
+      )
+      let seed = LibrarySnapshot(
+        books: [book],
+        importJobs: [],
+        currentBookID: bookID,
+        playbackPosition: PlaybackPosition(
+          bookID: bookID,
+          positionMilliseconds: 70_000,
+          sequence: 1,
+          sourceEventID: pause.id,
+          updatedAt: date
+        ),
+        positionJournal: [pause]
+      )
+      let libraryURL = root.appending(path: "Library.json")
+      let firstAvailableSuffix = nextSleepTimerIDSuffix(in: libraryURL)
+      let ids = (firstAvailableSuffix...(firstAvailableSuffix + 79)).map {
+        UUID(uuidString: String(format: "52000000-0000-0000-0000-%012d", $0))!
+      }
+      let clock = E2EMutablePlayerClock(value: date)
+      E2ESleepTimerBridge.shared.configure(clock: clock)
+      return PlayerEnvironment(
+        persistence: E2ESeededLibraryStore(
+          base: CodableLibraryStore(fileURL: libraryURL),
+          seed: seed
+        ),
+        media: FileSystemMediaManager(rootURL: root),
+        inspector: DeterministicAudioInspector(result: .failure(.unreadableAudio("unused"))),
+        playback: DeterministicPlaybackController(),
+        clock: clock,
+        ids: DeterministicPlayerIDGenerator(values: ids)
+      )
+    }
+
+    private static func nextSleepTimerIDSuffix(in libraryURL: URL) -> Int {
+      guard
+        let data = try? Data(contentsOf: libraryURL),
+        let encoded = String(data: data, encoding: .utf8),
+        let expression = try? NSRegularExpression(
+          pattern: "52000000-0000-0000-0000-([0-9]{12})",
+          options: [.caseInsensitive]
+        )
+      else { return 101 }
+      let range = NSRange(encoded.startIndex..<encoded.endIndex, in: encoded)
+      let suffixes = expression.matches(in: encoded, range: range).compactMap { match -> Int? in
+        guard let suffixRange = Range(match.range(at: 1), in: encoded) else { return nil }
+        return Int(encoded[suffixRange])
+      }
+      return max(101, (suffixes.max() ?? 100) + 1)
     }
 
     private static func smartRewindEnvironment(
