@@ -39,7 +39,7 @@ xcrun simctl boot "${simulator_id}"
 xcrun simctl bootstatus "${simulator_id}" -b
 xcrun simctl ui "${simulator_id}" appearance light
 xcrun simctl status_bar "${simulator_id}" override \
-  --time '2026-08-18T09:41:00.000-04:00' \
+  --time '9:41' \
   --batteryState charged \
   --batteryLevel 100 \
   --wifiMode active \
