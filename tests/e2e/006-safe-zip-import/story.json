@@ -2,9 +2,16 @@
   "id": "006-safe-zip-import",
   "platform": "ios",
   "test": "PlayerUITests/SafeZIPImportUITests/testRejectsHostileZIPsThenCancelsAndRetriesAValidArchive",
+  "additionalTests": [
+    "PlayerUITests/ImportRecoveryStorageUITests/testRecoversMixedImportsAndExplainsStorageWithoutTouchingSources"
+  ],
   "fixture": "safe-zip-import",
+  "additionalFixtures": [
+    "import-recovery-storage"
+  ],
   "screenshots": [
     "000-traversal-rejected.png",
-    "001-retry-ready.png"
+    "001-retry-ready.png",
+    "002-storage-recovery.png"
   ]
 }

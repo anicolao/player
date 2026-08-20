@@ -619,6 +619,12 @@ struct LibraryOrganizationSettingsView: View {
           } label: {
             Label("Trash", systemImage: "trash")
           }
+          NavigationLink {
+            StorageSettingsView(model: model)
+          } label: {
+            Label("Storage", systemImage: "internaldrive")
+          }
+          .accessibilityIdentifier("settings-storage")
         }
         Section("Playback") {
           NavigationLink {

@@ -22,6 +22,11 @@ extension PlayerEnvironment {
           return try messyMultifileEnvironment(reset: arguments.contains("-e2e-reset"))
         case "safe-zip-import":
           return try safeZipEnvironment(reset: arguments.contains("-e2e-reset"))
+        case "import-recovery-storage":
+          return try E2EImportRecoveryEnvironment.make(
+            reset: arguments.contains("-e2e-reset"),
+            scenario: argumentValue(after: "-e2e-recovery-scenario", in: arguments) ?? "mixed"
+          )
         case "synthetic-import-channels":
           return try importIngressEnvironment(reset: arguments.contains("-e2e-reset"))
         case "synthetic-metadata-repair":
@@ -1451,7 +1456,7 @@ extension PlayerEnvironment {
     }
   }
 
-  private actor E2ESeededLibraryStore: LibraryPersisting {
+  actor E2ESeededLibraryStore: LibraryPersisting {
     let base: CodableLibraryStore
     let seed: LibrarySnapshot
 

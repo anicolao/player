@@ -492,6 +492,7 @@ struct ImportJob: Codable, Equatable, Identifiable, Sendable {
   var reviewRevision: Int
   var zipStatus: ZipImportStatus?
   var queueCheckpoint: ImportQueueCheckpoint?
+  var recoveryPlan: ImportRecoveryPlan?
 
   var proposals: [BookProposal] {
     get { proposal.map { [$0] + additionalProposals } ?? additionalProposals }
@@ -516,7 +517,8 @@ struct ImportJob: Codable, Equatable, Identifiable, Sendable {
     additionalProposals: [BookProposal] = [],
     reviewRevision: Int = 0,
     zipStatus: ZipImportStatus? = nil,
-    queueCheckpoint: ImportQueueCheckpoint? = nil
+    queueCheckpoint: ImportQueueCheckpoint? = nil,
+    recoveryPlan: ImportRecoveryPlan? = nil
   ) {
     self.id = id
     self.sourceFilename = sourceFilename
@@ -533,12 +535,13 @@ struct ImportJob: Codable, Equatable, Identifiable, Sendable {
     self.reviewRevision = reviewRevision
     self.zipStatus = zipStatus
     self.queueCheckpoint = queueCheckpoint
+    self.recoveryPlan = recoveryPlan
   }
 
   private enum CodingKeys: String, CodingKey {
     case id, sourceFilename, phase, progress, stagedRelativePath, proposal
     case committedBookID, failure, createdAt, updatedAt, stagedAssets, additionalProposals
-    case reviewRevision, zipStatus, queueCheckpoint
+    case reviewRevision, zipStatus, queueCheckpoint, recoveryPlan
   }
 
   init(from decoder: any Decoder) throws {
@@ -558,6 +561,7 @@ struct ImportJob: Codable, Equatable, Identifiable, Sendable {
     reviewRevision = try values.decodeIfPresent(Int.self, forKey: .reviewRevision) ?? 0
     zipStatus = try values.decodeIfPresent(ZipImportStatus.self, forKey: .zipStatus)
     queueCheckpoint = try values.decodeIfPresent(ImportQueueCheckpoint.self, forKey: .queueCheckpoint)
+    recoveryPlan = try values.decodeIfPresent(ImportRecoveryPlan.self, forKey: .recoveryPlan)
   }
 }
 
@@ -581,6 +585,7 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
   var sleepTimerHistory: [SleepTimerHistoryEntry]
   var bookmarks: [Bookmark]
   var bookmarkDeletionTransactions: [BookmarkDeletionTransaction]
+  var storageManifests: [StorageManifest]
 
   init(
     books: [Book],
@@ -601,7 +606,8 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
     activeSleepTimer: ActiveSleepTimer? = nil,
     sleepTimerHistory: [SleepTimerHistoryEntry] = [],
     bookmarks: [Bookmark] = [],
-    bookmarkDeletionTransactions: [BookmarkDeletionTransaction] = []
+    bookmarkDeletionTransactions: [BookmarkDeletionTransaction] = [],
+    storageManifests: [StorageManifest] = []
   ) {
     self.books = books
     self.importJobs = importJobs
@@ -622,6 +628,7 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
     self.sleepTimerHistory = sleepTimerHistory
     self.bookmarks = bookmarks
     self.bookmarkDeletionTransactions = bookmarkDeletionTransactions
+    self.storageManifests = storageManifests
   }
 
 
@@ -633,6 +640,7 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
     case smartRewindPreferences, resumeRewindTransactions
     case activeSleepTimer, sleepTimerHistory
     case bookmarks, bookmarkDeletionTransactions
+    case storageManifests
   }
 
   init(from decoder: any Decoder) throws {
@@ -688,6 +696,10 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
     bookmarkDeletionTransactions = try values.decodeIfPresent(
       [BookmarkDeletionTransaction].self,
       forKey: .bookmarkDeletionTransactions
+    ) ?? []
+    storageManifests = try values.decodeIfPresent(
+      [StorageManifest].self,
+      forKey: .storageManifests
     ) ?? []
   }
 

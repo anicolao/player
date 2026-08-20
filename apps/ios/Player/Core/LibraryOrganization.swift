@@ -69,6 +69,7 @@ struct CollectionBookPlacement: Codable, Equatable, Sendable {
 enum LibraryTrashStatus: String, Codable, Equatable, Sendable {
   case recoverable
   case restored
+  case purged
 }
 
 struct LibraryTrashTransaction: Codable, Equatable, Identifiable, Sendable {

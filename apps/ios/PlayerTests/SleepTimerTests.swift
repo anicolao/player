@@ -328,7 +328,7 @@ final class SleepTimerTests: XCTestCase {
     let current = try XCTUnwrap(
       JSONSerialization.jsonObject(with: Data(contentsOf: fileURL)) as? [String: Any]
     )
-    XCTAssertEqual(current["schemaVersion"] as? Int, 13)
+    XCTAssertEqual(current["schemaVersion"] as? Int, 14)
   }
 
   private func makeBook() -> Book {

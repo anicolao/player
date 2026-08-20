@@ -29,6 +29,9 @@ protocol MediaManaging: Sendable {
     transactionID: UUID
   ) async throws -> TrashedMediaManifest
   func restoreManagedMediaFromTrash(_ manifest: TrashedMediaManifest) async throws
+  func storageInventory() async throws -> StorageInventorySnapshot
+  func discardStagedFile(relativePath: String) async throws
+  func discardStorage(scope: StorageScope) async throws
 }
 
 extension MediaManaging {
@@ -61,6 +64,18 @@ extension MediaManaging {
 
   func restoreManagedMediaFromTrash(_ manifest: TrashedMediaManifest) async throws {
     throw PlayerCoreError.fileOperation("This media source does not support trash restoration.")
+  }
+
+  func storageInventory() async throws -> StorageInventorySnapshot {
+    StorageInventorySnapshot(manifests: [], availableBytes: nil)
+  }
+
+  func discardStagedFile(relativePath: String) async throws {
+    throw PlayerCoreError.fileOperation("This media source cannot remove an individual staged file.")
+  }
+
+  func discardStorage(scope: StorageScope) async throws {
+    throw PlayerCoreError.fileOperation("This media source cannot clear recoverable storage.")
   }
 }
 

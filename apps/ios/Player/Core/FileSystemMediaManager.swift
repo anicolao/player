@@ -75,12 +75,14 @@ actor FileSystemMediaManager: MediaManaging {
   }
 
   func acquireSelection(_ selectedURLs: [URL], jobID: UUID) throws -> [AcquiredAudioFile] {
-    var acquired: [AcquiredAudioFile] = []
+    var securityScopedURLs: [URL] = []
+    for url in selectedURLs where url.startAccessingSecurityScopedResource() {
+      securityScopedURLs.append(url)
+    }
+    defer { securityScopedURLs.forEach { $0.stopAccessingSecurityScopedResource() } }
+
+    var candidates: [(url: URL, sourceRelativePath: String, commonFolderName: String?)] = []
     for selectedURL in selectedURLs {
-      let accessed = selectedURL.startAccessingSecurityScopedResource()
-      defer {
-        if accessed { selectedURL.stopAccessingSecurityScopedResource() }
-      }
       let values = try selectedURL.resourceValues(forKeys: [.isDirectoryKey, .isRegularFileKey])
       if values.isDirectory == true {
         let keys: Set<URLResourceKey> = [.isRegularFileKey, .isDirectoryKey]
@@ -108,45 +110,47 @@ actor FileSystemMediaManager: MediaManaging {
           return $0.relativePath.localizedStandardCompare($1.relativePath) == .orderedAscending
         }
         for child in children {
-          acquired.append(
-            AcquiredAudioFile(
-              staged: try stageFile(
-                sourceURL: child.url,
-                jobID: jobID,
-                storageName: String(format: "item-%05d", acquired.count)
-              ),
-              sourceRelativePath: child.relativePath,
-              commonFolderName: selectedURL.lastPathComponent
-            )
-          )
+          candidates.append((child.url, child.relativePath, selectedURL.lastPathComponent))
         }
-      } else if values.isRegularFile == true,
-        Self.supportedExtensions.contains(selectedURL.pathExtension.lowercased())
-      {
-        acquired.append(
-          AcquiredAudioFile(
-            staged: try stageFile(
-              sourceURL: selectedURL,
-              jobID: jobID,
-              storageName: String(format: "item-%05d", acquired.count)
-            ),
-            sourceRelativePath: selectedURL.lastPathComponent,
-            commonFolderName: nil
-          )
-        )
+      } else if values.isRegularFile == true {
+        candidates.append((selectedURL, selectedURL.lastPathComponent, nil))
       }
     }
-    guard !acquired.isEmpty else {
-      throw PlayerCoreError.fileOperation("The selection contains no supported audiobook files.")
+    guard !candidates.isEmpty else {
+      throw PlayerCoreError.fileOperation("The selection contains no readable files.")
     }
-    return acquired
+
+    var requiredBytes: Int64 = 0
+    for candidate in candidates {
+      let fileSize = Int64(try candidate.url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0)
+      let (sum, overflow) = requiredBytes.addingReportingOverflow(max(0, fileSize))
+      requiredBytes = overflow ? .max : sum
+    }
+    try prepareDirectories()
+    try preflight(requiredBytes: requiredBytes)
+
+    return try candidates.enumerated().map { index, candidate in
+      let selectedExtension = candidate.url.pathExtension.lowercased()
+      return AcquiredAudioFile(
+        staged: try stageFile(
+          sourceURL: candidate.url,
+          jobID: jobID,
+          storageName: String(format: "item-%05d", index),
+          allowedExtensions: [selectedExtension],
+          performsStoragePreflight: false
+        ),
+        sourceRelativePath: candidate.sourceRelativePath,
+        commonFolderName: candidate.commonFolderName
+      )
+    }
   }
 
   private func stageFile(
     sourceURL: URL,
     jobID: UUID,
     storageName: String,
-    allowedExtensions: Set<String> = supportedExtensions
+    allowedExtensions: Set<String> = supportedExtensions,
+    performsStoragePreflight: Bool = true
   ) throws -> StagedAudio {
     let filename = sourceURL.lastPathComponent
     let fileExtension = sourceURL.pathExtension.lowercased()
@@ -166,7 +170,7 @@ actor FileSystemMediaManager: MediaManaging {
 
     let byteCount = Int64(values.fileSize ?? 0)
     try prepareDirectories()
-    try preflight(requiredBytes: byteCount)
+    if performsStoragePreflight { try preflight(requiredBytes: byteCount) }
 
     let jobDirectory = stagingURL.appending(
       path: jobID.uuidString.lowercased(),
@@ -334,12 +338,73 @@ actor FileSystemMediaManager: MediaManaging {
     try? fileManager.removeItem(at: transactionDirectory)
   }
 
-  func discardStaging(for jobID: UUID) {
+  func discardStaging(for jobID: UUID) async {
     let directory = stagingURL.appending(
       path: jobID.uuidString.lowercased(),
       directoryHint: .isDirectory
     )
     try? fileManager.removeItem(at: directory)
+  }
+
+  func discardStagedFile(relativePath: String) async throws {
+    let file = try confinedURL(for: relativePath, beneath: stagingURL)
+    guard fileManager.fileExists(atPath: file.path) else {
+      throw PlayerCoreError.missingManagedFile(relativePath)
+    }
+    try fileManager.removeItem(at: file)
+  }
+
+  func discardStorage(scope: StorageScope) async throws {
+    let target: URL
+    switch scope {
+    case .stagingJob(let jobID):
+      target = stagingURL.appending(
+        path: jobID.uuidString.lowercased(),
+        directoryHint: .isDirectory
+      )
+    case .trashTransaction(let transactionID):
+      target = trashURL.appending(
+        path: transactionID.uuidString.lowercased(),
+        directoryHint: .isDirectory
+      )
+    case .managedBook, .database:
+      throw PlayerCoreError.fileOperation(
+        "Only recoverable staging or trash storage can be cleared without removing a library record."
+      )
+    }
+    if fileManager.fileExists(atPath: target.path) {
+      try fileManager.removeItem(at: target)
+    }
+  }
+
+  func storageInventory() async throws -> StorageInventorySnapshot {
+    try prepareDirectories()
+    var inventoryManifests: [StorageManifest] = []
+    inventoryManifests += try manifests(in: mediaURL) { .managedBook($0) }
+    inventoryManifests += try manifests(in: stagingURL) { .stagingJob($0) }
+    inventoryManifests += try manifests(in: trashURL) { .trashTransaction($0) }
+    let databaseURL = rootURL.appending(path: "Library.json")
+    if fileManager.fileExists(atPath: databaseURL.path) {
+      let values = try databaseURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+      if values.isRegularFile == true {
+        inventoryManifests.append(try StorageManifest(
+          id: UUID(uuidString: "ffffffff-ffff-5fff-8fff-fffffffffff0")!,
+          scope: .database,
+          entries: [StorageManifestEntry(
+            relativePath: "Library.json",
+            byteCount: Int64(values.fileSize ?? 0)
+          )],
+          createdAt: .distantPast
+        ))
+      }
+    }
+    let capacity = try rootURL.resourceValues(
+      forKeys: [.volumeAvailableCapacityForImportantUsageKey]
+    ).volumeAvailableCapacityForImportantUsage
+    return StorageInventorySnapshot(
+      manifests: inventoryManifests,
+      availableBytes: capacity.map { Int64($0) }
+    )
   }
 
   private func prepareDirectories() throws {
@@ -363,11 +428,55 @@ actor FileSystemMediaManager: MediaManaging {
     return total
   }
 
+  private func manifests(
+    in categoryDirectory: URL,
+    scope: (UUID) -> StorageScope
+  ) throws -> [StorageManifest] {
+    let children = try fileManager.contentsOfDirectory(
+      at: categoryDirectory,
+      includingPropertiesForKeys: [.isDirectoryKey],
+      options: [.skipsHiddenFiles]
+    ).sorted { $0.lastPathComponent < $1.lastPathComponent }
+    return try children.compactMap { child in
+      let values = try child.resourceValues(forKeys: [.isDirectoryKey])
+      guard values.isDirectory == true,
+        let identifier = UUID(uuidString: child.lastPathComponent)
+      else { return nil }
+      return try StorageManifest(
+        id: identifier,
+        scope: scope(identifier),
+        entries: storageEntries(in: child),
+        createdAt: .distantPast
+      )
+    }
+  }
+
+  private func storageEntries(in directory: URL) throws -> [StorageManifestEntry] {
+    guard let enumerator = fileManager.enumerator(
+      at: directory,
+      includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
+      options: [.skipsHiddenFiles]
+    ) else { return [] }
+    var entries: [StorageManifestEntry] = []
+    for case let file as URL in enumerator {
+      let values = try file.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+      guard values.isRegularFile == true else { continue }
+      entries.append(StorageManifestEntry(
+        relativePath: relativePath(for: file),
+        byteCount: Int64(values.fileSize ?? 0)
+      ))
+    }
+    return entries.sorted { $0.relativePath < $1.relativePath }
+  }
+
   private func preflight(requiredBytes: Int64) throws {
     let values = try rootURL.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
     guard let capacity = values.volumeAvailableCapacityForImportantUsage else { return }
     let available = Int64(capacity)
-    let required = requiredBytes + Self.storageSafetyMargin
+    let (requiredWithMargin, overflow) = max(0, requiredBytes).addingReportingOverflow(
+      Self.storageSafetyMargin
+    )
+    let required = overflow ? Int64.max : requiredWithMargin
     guard available >= required else {
       throw PlayerCoreError.insufficientStorage(required: required, available: available)
     }

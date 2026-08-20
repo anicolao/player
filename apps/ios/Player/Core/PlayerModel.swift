@@ -8,6 +8,7 @@ final class PlayerModel {
   private(set) var playbackState: PlaybackState = .unloaded
   private(set) var isRestored = false
   private(set) var lastErrorMessage: String?
+  private(set) var storageSummary: StorageSummary?
 
   @ObservationIgnored private let environment: PlayerEnvironment
   @ObservationIgnored private var playbackIntegrationsConfigured = false
@@ -26,6 +27,10 @@ final class PlayerModel {
   func restore() async {
     do {
       library = try await environment.persistence.load()
+      storageSummary = library.storageManifests.isEmpty ? nil : StorageSummaryPlanner.summarize(
+        manifests: library.storageManifests,
+        availableBytes: nil
+      )
       let recoveredInterruptedImports = recoverInterruptedImports()
       let recoveredSleepTimer = recoverInterruptedSleepTimer()
       let storedPosition = library.playbackPosition
@@ -661,7 +666,10 @@ final class PlayerModel {
     }
     if job.zipStatus?.retryAllowed == true {
       await executeZipImport(jobID: jobID, sourceURL: nil)
-    } else if job.queueCheckpoint != nil, job.failure?.recoveryAction == .retry {
+    } else if job.queueCheckpoint != nil,
+      (job.failure?.recoveryAction == .retry
+        || job.recoveryPlan?.phase == .failedRecoverable)
+    {
       await executeQueuedImport(jobID: jobID, initialURLs: nil)
     } else {
       lastErrorMessage = PlayerCoreError.importNotReady(jobID).localizedDescription
@@ -672,9 +680,220 @@ final class PlayerModel {
     } ?? false
   }
 
+  func recoveryPlan(for jobID: UUID) -> ImportRecoveryPlan? {
+    library.importJobs.first(where: { $0.id == jobID })?.recoveryPlan
+  }
+
+  /// Re-inspects one failed staged copy through the normal durable queue. The
+  /// source selection is never edited and successful siblings keep their
+  /// inspection checkpoints.
+  @discardableResult
+  func retryImportFile(jobID: UUID, fileID: UUID) async -> Bool {
+    guard var job = library.importJobs.first(where: { $0.id == jobID }),
+      var plan = job.recoveryPlan,
+      let statusIndex = plan.files.firstIndex(where: { $0.file.id == fileID }),
+      plan.files[statusIndex].disposition == .failed,
+      plan.files[statusIndex].issue?.isRecoverable == true,
+      job.queueCheckpoint != nil
+    else {
+      lastErrorMessage = PlayerCoreError.importNotReady(jobID).localizedDescription
+      return false
+    }
+    let previousLibrary = library
+    // A valid marker on the existing durable status means "retry pending" to
+    // the queue, while preserving the stable recovery-file identifier across
+    // the failed → accepted transition and an intervening app termination.
+    plan.files[statusIndex].file.validity = .valid
+    job.recoveryPlan = plan
+    job.phase = .inspecting
+    job.failure = nil
+    do {
+      try await replaceAndPersist(job)
+      await executeQueuedImport(jobID: jobID, initialURLs: nil)
+      return library.importJobs.first(where: { $0.id == jobID }).map {
+        $0.recoveryPlan?.files.contains(where: {
+          $0.file.id == fileID && $0.disposition == .accepted
+        }) == true
+      } ?? false
+    } catch {
+      library = previousLibrary
+      lastErrorMessage = error.localizedDescription
+      return false
+    }
+  }
+
+  /// Excludes one staged copy from this import. Only the app-owned staging
+  /// path is removed; the security-scoped source remains unchanged.
+  @discardableResult
+  func removeImportFile(jobID: UUID, fileID: UUID) async -> Bool {
+    guard let previousJob = library.importJobs.first(where: { $0.id == jobID }),
+      let status = previousJob.recoveryPlan?.files.first(where: { $0.file.id == fileID }),
+      var checkpoint = previousJob.queueCheckpoint
+    else {
+      lastErrorMessage = PlayerCoreError.importNotReady(jobID).localizedDescription
+      return false
+    }
+    let path = status.file.relativePath
+    let previousLibrary = library
+    var updated = previousJob
+    checkpoint.acquired.removeAll { $0.staged.relativePath == path }
+    checkpoint.inspected.removeAll { $0.acquired.staged.relativePath == path }
+    updated.queueCheckpoint = checkpoint
+    updated.recoveryPlan?.files.removeAll { $0.file.id == fileID }
+    updated.stagedAssets.removeAll { $0.stagedRelativePath == path }
+    do {
+      try await replaceAndPersist(updated)
+      do {
+        try await environment.media.discardStagedFile(relativePath: path)
+      } catch {
+        library = previousLibrary
+        try await environment.persistence.save(previousLibrary)
+        throw error
+      }
+      await executeQueuedImport(jobID: jobID, initialURLs: nil)
+      return library.importJobs.first(where: { $0.id == jobID })?
+        .recoveryPlan?.files.contains(where: { $0.file.id == fileID }) == false
+    } catch {
+      library = previousLibrary
+      lastErrorMessage = error.localizedDescription
+      return false
+    }
+  }
+
+  /// Confirms that unresolved failed/duplicate siblings should remain excluded
+  /// and moves the accepted proposal to the normal import-review boundary.
+  @discardableResult
+  func continueImportWithAcceptedFiles(jobID: UUID) async -> Bool {
+    guard var job = library.importJobs.first(where: { $0.id == jobID }),
+      job.recoveryPlan?.canContinueWithAcceptedFiles == true,
+      !job.proposals.isEmpty
+    else {
+      lastErrorMessage = PlayerCoreError.importNotReady(jobID).localizedDescription
+      return false
+    }
+    let previousLibrary = library
+    job.phase = job.proposals.contains(where: { !$0.warnings.isEmpty }) ? .needsReview : .ready
+    job.failure = nil
+    do {
+      try await replaceAndPersist(job)
+      lastErrorMessage = nil
+      return true
+    } catch {
+      library = previousLibrary
+      lastErrorMessage = error.localizedDescription
+      return false
+    }
+  }
+
+  @discardableResult
+  func refreshStorageSummary() async -> StorageSummary? {
+    let previousLibrary = library
+    do {
+      let inventory = try await environment.media.storageInventory()
+      var updated = library
+      updated.storageManifests = inventory.manifests
+      try await environment.persistence.save(updated)
+      library = updated
+      storageSummary = StorageSummaryPlanner.summarize(
+        manifests: inventory.manifests,
+        availableBytes: inventory.availableBytes
+      )
+      lastErrorMessage = nil
+      return storageSummary
+    } catch {
+      library = previousLibrary
+      lastErrorMessage = error.localizedDescription
+      return nil
+    }
+  }
+
+  /// Clears only recoverable app-owned staging or trash. The state change is
+  /// persisted first and rolled back if confined filesystem deletion fails.
+  @discardableResult
+  func clearRecoverableStorage(scope: StorageScope) async -> Bool {
+    let previousLibrary = library
+    var updated = library
+    switch scope {
+    case .stagingJob(let jobID):
+      guard let index = updated.importJobs.firstIndex(where: { $0.id == jobID }) else {
+        lastErrorMessage = PlayerCoreError.missingImport(jobID).localizedDescription
+        return false
+      }
+      updated.importJobs[index].phase = .cancelled
+      updated.importJobs[index].progress = .none
+      updated.importJobs[index].stagedRelativePath = nil
+      updated.importJobs[index].stagedAssets = []
+      updated.importJobs[index].proposals = []
+      updated.importJobs[index].recoveryPlan = nil
+      updated.importJobs[index].failure = nil
+      if var checkpoint = updated.importJobs[index].queueCheckpoint {
+        checkpoint.acquired = []
+        checkpoint.inspected = []
+        checkpoint.acquisitionComplete = false
+        updated.importJobs[index].queueCheckpoint = checkpoint
+      }
+    case .trashTransaction(let transactionID):
+      guard let index = updated.trashTransactions.firstIndex(where: { $0.id == transactionID }) else {
+        lastErrorMessage = LibraryOrganizationError.missingTrashTransaction(transactionID)
+          .localizedDescription
+        return false
+      }
+      updated.trashTransactions[index].status = .purged
+      updated.trashTransactions[index].mediaManifest = nil
+    case .managedBook, .database:
+      lastErrorMessage = "Only staging and Trash can be cleared from recoverable storage."
+      return false
+    }
+
+    do {
+      try await environment.persistence.save(updated)
+      library = updated
+      do {
+        try await environment.media.discardStorage(scope: scope)
+      } catch {
+        library = previousLibrary
+        try await environment.persistence.save(previousLibrary)
+        throw error
+      }
+      _ = await refreshStorageSummary()
+      return true
+    } catch {
+      library = previousLibrary
+      lastErrorMessage = error.localizedDescription
+      return false
+    }
+  }
+
   func cancelImport(jobID: UUID) async {
     guard var job = library.importJobs.first(where: { $0.id == jobID }) else { return }
+    let previousLibrary = library
     importTasks[jobID]?.cancel()
+    job.phase = .cancelled
+    job.progress = .none
+    job.proposals = []
+    job.stagedAssets = []
+    job.stagedRelativePath = nil
+    job.recoveryPlan = nil
+    job.failure = nil
+    if var checkpoint = job.queueCheckpoint {
+      checkpoint.acquired = []
+      checkpoint.inspected = []
+      checkpoint.acquisitionComplete = false
+      job.queueCheckpoint = checkpoint
+    }
+    if var status = job.zipStatus {
+      status.extractedEntryCount = 0
+      status.failureReasonCode = nil
+      status.retryAllowed = false
+      job.zipStatus = status
+    }
+    do {
+      try await replaceAndPersist(job)
+    } catch {
+      library = previousLibrary
+      lastErrorMessage = error.localizedDescription
+      return
+    }
     if job.zipStatus != nil, let workspace = try? await environment.media.zipWorkspace(for: jobID) {
       try? await environment.zipExtractor.cancelAndClean(
         destinationRoot: workspace.destinationRoot,
@@ -682,18 +901,6 @@ final class PlayerModel {
       )
     }
     await environment.media.discardStaging(for: jobID)
-    job.phase = .cancelled
-    job.progress = .none
-    job.proposals = []
-    job.stagedAssets = []
-    job.failure = nil
-    if var status = job.zipStatus {
-      status.extractedEntryCount = 0
-      status.failureReasonCode = nil
-      status.retryAllowed = false
-      job.zipStatus = status
-    }
-    try? await replaceAndPersist(job)
     lastErrorMessage = nil
   }
 
@@ -2421,47 +2628,135 @@ final class PlayerModel {
       current.phase = .inspecting
       current.failure = nil
       try await replaceAndPersist(current)
-      while currentCheckpoint.inspected.count < currentCheckpoint.acquired.count {
+
+      let priorStatusesByPath = Dictionary(
+        uniqueKeysWithValues: (current.recoveryPlan?.files ?? []).map {
+          ($0.file.relativePath, $0)
+        }
+      )
+      var failedAssessmentsByPath = Dictionary(
+        uniqueKeysWithValues: priorStatusesByPath.compactMap { path, status in
+          status.disposition == .failed && status.file.validity != .valid
+            ? (path, status.file) : nil
+        }
+      )
+      for (selectionIndex, item) in currentCheckpoint.acquired.enumerated() {
         try Task.checkCancellation()
-        let selectionIndex = currentCheckpoint.inspected.count
-        let item = currentCheckpoint.acquired[selectionIndex]
-        let stagedURL = try await environment.media.stagedURL(for: item.staged.relativePath)
-        let inspected = try await environment.inspector.inspect(url: stagedURL)
-        let assetID = await environment.ids.next()
-        let asset = AudioAsset(
-          id: assetID,
-          originalFilename: item.staged.originalFilename,
-          managedRelativePath: "",
-          checksumSHA256: item.staged.checksumSHA256,
-          byteCount: item.staged.byteCount,
-          durationSeconds: inspected.durationSeconds,
-          container: inspected.container,
-          discNumber: inspected.discNumber,
-          trackNumber: inspected.trackNumber,
-          importOrder: selectionIndex
-        )
-        currentCheckpoint.inspected.append(
-          InspectedImportAsset(asset: asset, inspected: inspected, acquired: item)
-        )
+        let path = item.staged.relativePath
+        if currentCheckpoint.inspected.contains(where: {
+          $0.acquired.staged.relativePath == path
+        }) { continue }
+        if failedAssessmentsByPath[path] != nil { continue }
+
+        do {
+          let stagedURL = try await environment.media.stagedURL(for: path)
+          let inspected = try await environment.inspector.inspect(url: stagedURL)
+          let assetID = await environment.ids.next()
+          let asset = AudioAsset(
+            id: assetID,
+            originalFilename: item.staged.originalFilename,
+            managedRelativePath: "",
+            checksumSHA256: item.staged.checksumSHA256,
+            byteCount: item.staged.byteCount,
+            durationSeconds: inspected.durationSeconds,
+            container: inspected.container,
+            discNumber: inspected.discNumber,
+            trackNumber: inspected.trackNumber,
+            importOrder: selectionIndex
+          )
+          currentCheckpoint.inspected.append(
+            InspectedImportAsset(asset: asset, inspected: inspected, acquired: item)
+          )
+        } catch is CancellationError {
+          throw CancellationError()
+        } catch {
+          let assessment = failedImportAssessment(
+            jobID: jobID,
+            item: item,
+            preferredID: priorStatusesByPath[path]?.file.id,
+            error: error
+          )
+          failedAssessmentsByPath[path] = assessment
+        }
         guard var progressed = library.importJobs.first(where: { $0.id == jobID }) else { return }
         progressed.queueCheckpoint = currentCheckpoint
+        let assessedPaths = Set(
+          currentCheckpoint.inspected.map { $0.acquired.staged.relativePath }
+            + Array(failedAssessmentsByPath.keys)
+        )
+        progressed.recoveryPlan = makeImportRecoveryPlan(
+          jobID: jobID,
+          acquired: currentCheckpoint.acquired.filter {
+            assessedPaths.contains($0.staged.relativePath)
+          },
+          inspected: currentCheckpoint.inspected,
+          failedAssessments: failedAssessmentsByPath,
+          priorStatusesByPath: priorStatusesByPath
+        )
         try await replaceAndPersist(progressed)
       }
 
-      let review = try await buildImportReview(from: currentCheckpoint.inspected)
+      let plan = makeImportRecoveryPlan(
+        jobID: jobID,
+        acquired: currentCheckpoint.acquired,
+        inspected: currentCheckpoint.inspected,
+        failedAssessments: failedAssessmentsByPath,
+        priorStatusesByPath: priorStatusesByPath
+      )
+      let acceptedPaths = Set(plan.files.compactMap {
+        $0.disposition == .accepted ? $0.file.relativePath : nil
+      })
+      let accepted = currentCheckpoint.inspected.filter {
+        acceptedPaths.contains($0.acquired.staged.relativePath)
+      }
+      let review: (stagedAssets: [StagedImportAsset], proposals: [BookProposal])
+      if accepted.isEmpty {
+        review = ([], [])
+      } else {
+        review = try await buildImportReview(from: accepted)
+      }
       guard var completed = library.importJobs.first(where: { $0.id == jobID }) else { return }
       completed.queueCheckpoint = currentCheckpoint
+      completed.recoveryPlan = plan
       completed.stagedAssets = review.stagedAssets
       completed.proposals = review.proposals
-      completed.phase = review.proposals.contains(where: { !$0.warnings.isEmpty })
-        ? .needsReview : .ready
-      completed.failure = nil
+      switch plan.phase {
+      case .ready:
+        completed.phase = review.proposals.contains(where: { !$0.warnings.isEmpty })
+          ? .needsReview : .ready
+        completed.failure = nil
+      case .needsReview:
+        completed.phase = .needsReview
+        completed.failure = nil
+      case .failedRecoverable, .failedTerminal:
+        completed.phase = .failed
+        completed.failure = importFailure(from: plan, fallbackFilename: completed.sourceFilename)
+      }
       try await replaceAndPersist(completed)
-      lastErrorMessage = nil
+      lastErrorMessage = completed.failure?.message
     } catch is CancellationError {
       await cancelImport(jobID: jobID)
     } catch {
       guard var failed = library.importJobs.first(where: { $0.id == jobID }) else { return }
+      if let coreError = error as? PlayerCoreError,
+        case let .insufficientStorage(required, available) = coreError
+      {
+        let plan = ImportRecoveryPlanner.assess(
+          files: failed.recoveryPlan?.files.map(\.file) ?? [],
+          existing: existingMediaFingerprints,
+          storage: ImportStoragePreflight(
+            requiredCopyBytes: required,
+            availableBytes: available,
+            safetyMarginBytes: 0
+          )
+        )
+        failed.recoveryPlan = plan
+        failed.phase = .failed
+        failed.failure = importFailure(from: plan, fallbackFilename: failed.sourceFilename)
+        try? await replaceAndPersist(failed)
+        lastErrorMessage = error.localizedDescription
+        return
+      }
       failed.phase = .failed
       failed.failure = ImportFailure(
         message: error.localizedDescription,
@@ -2475,6 +2770,116 @@ final class PlayerModel {
       try? await replaceAndPersist(failed)
       lastErrorMessage = error.localizedDescription
     }
+  }
+
+  private var existingMediaFingerprints: [ExistingMediaFingerprint] {
+    library.books.flatMap { book in
+      book.assets.map {
+        ExistingMediaFingerprint(
+          checksumSHA256: $0.checksumSHA256,
+          bookID: book.id,
+          assetID: $0.id,
+          filename: $0.originalFilename
+        )
+      }
+    }
+  }
+
+  private func makeImportRecoveryPlan(
+    jobID: UUID,
+    acquired: [AcquiredAudioFile],
+    inspected: [InspectedImportAsset],
+    failedAssessments: [String: ImportFileAssessment],
+    priorStatusesByPath: [String: ImportFileRecoveryStatus]
+  ) -> ImportRecoveryPlan {
+    let inspectedByPath = Dictionary(
+      uniqueKeysWithValues: inspected.map { ($0.acquired.staged.relativePath, $0) }
+    )
+    let files = acquired.map { item -> ImportFileAssessment in
+      let path = item.staged.relativePath
+      if let item = inspectedByPath[path] {
+        return ImportFileAssessment(
+          id: priorStatusesByPath[path]?.file.id ?? item.asset.id,
+          relativePath: path,
+          filename: item.asset.originalFilename,
+          byteCount: item.asset.byteCount,
+          checksumSHA256: item.asset.checksumSHA256,
+          format: item.asset.container,
+          validity: .valid
+        )
+      }
+      if let failure = failedAssessments[path] { return failure }
+      if let prior = priorStatusesByPath[path] { return prior.file }
+      return ImportFileAssessment(
+        id: ImportRecoveryPlanner.stableFileID(namespace: jobID, relativePath: path),
+        relativePath: path,
+        filename: item.staged.originalFilename,
+        byteCount: item.staged.byteCount,
+        checksumSHA256: item.staged.checksumSHA256,
+        format: URL(filePath: item.staged.originalFilename).pathExtension.uppercased(),
+        validity: .missing
+      )
+    }
+    return ImportRecoveryPlanner.assess(
+      files: files,
+      existing: existingMediaFingerprints
+    )
+  }
+
+  private func failedImportAssessment(
+    jobID: UUID,
+    item: AcquiredAudioFile,
+    preferredID: UUID?,
+    error: any Error
+  ) -> ImportFileAssessment {
+    let validity: ImportFileValidity
+    if let coreError = error as? PlayerCoreError {
+      switch coreError {
+      case .unsupportedFile:
+        validity = .unsupported(
+          format: URL(filePath: item.staged.originalFilename).pathExtension.uppercased()
+        )
+      case .sourceIsNotAFile, .missingManagedFile:
+        validity = .missing
+      case .unreadableAudio:
+        validity = .corrupt(details: nil)
+      default:
+        validity = .corrupt(details: coreError.localizedDescription)
+      }
+    } else if (error as NSError).code == NSFileNoSuchFileError {
+      validity = .missing
+    } else {
+      validity = .corrupt(details: error.localizedDescription)
+    }
+    return ImportFileAssessment(
+      id: preferredID
+        ?? ImportRecoveryPlanner.stableFileID(
+          namespace: jobID,
+          relativePath: item.staged.relativePath
+        ),
+      relativePath: item.staged.relativePath,
+      filename: item.staged.originalFilename,
+      byteCount: item.staged.byteCount,
+      checksumSHA256: item.staged.checksumSHA256,
+      format: URL(filePath: item.staged.originalFilename).pathExtension.uppercased(),
+      validity: validity
+    )
+  }
+
+  private func importFailure(
+    from plan: ImportRecoveryPlan,
+    fallbackFilename: String
+  ) -> ImportFailure {
+    let issue = plan.globalIssues.first ?? plan.files.compactMap(\.issue).first
+    let recoverable = plan.phase == .failedRecoverable
+    return ImportFailure(
+      message: issue?.message ?? "No usable audiobook files remain in this import.",
+      affectedFilename: issue?.affectedFilename ?? fallbackFilename,
+      sourceIsUnchanged: true,
+      isRecoverable: recoverable,
+      reasonCode: issue?.code.rawValue,
+      recoveryAction: recoverable ? .retry : .changeSelection
+    )
   }
 
   private func importZipArchive(
@@ -2572,6 +2977,7 @@ final class PlayerModel {
       completed.stagedRelativePath = acquired.first?.staged.relativePath
       completed.stagedAssets = review.stagedAssets
       completed.proposals = review.proposals
+      completed.recoveryPlan = nil
       completed.progress = ImportProgress(
         completed: Int64(clamping: result.checkpoint.extractedBytes),
         total: Int64(clamping: result.checkpoint.totalBytes)
@@ -2632,12 +3038,12 @@ final class PlayerModel {
   private func buildImportReview(
     from acquired: [AcquiredAudioFile]
   ) async throws -> (stagedAssets: [StagedImportAsset], proposals: [BookProposal]) {
-    var prepared: [PreparedImportAsset] = []
+    var inspectedAssets: [InspectedImportAsset] = []
     for (selectionIndex, item) in acquired.enumerated() {
       let url = try await environment.media.stagedURL(for: item.staged.relativePath)
       let inspected = try await environment.inspector.inspect(url: url)
       let assetID = await environment.ids.next()
-      prepared.append(PreparedImportAsset(
+      inspectedAssets.append(InspectedImportAsset(
         asset: AudioAsset(
           id: assetID,
           originalFilename: item.staged.originalFilename,
@@ -2654,9 +3060,7 @@ final class PlayerModel {
         acquired: item
       ))
     }
-    return try await buildImportReview(from: prepared.map {
-      InspectedImportAsset(asset: $0.asset, inspected: $0.inspected, acquired: $0.acquired)
-    })
+    return try await buildImportReview(from: inspectedAssets)
   }
 
   private func buildImportReview(

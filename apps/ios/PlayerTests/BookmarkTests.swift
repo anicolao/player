@@ -241,7 +241,7 @@ final class BookmarkTests: XCTestCase {
     }
   }
 
-  func testSchemaTwelveMigratesBookmarkDefaultsAndWritesSchemaThirteen() async throws {
+  func testSchemaTwelveMigratesBookmarkDefaultsAndWritesCurrentSchema() async throws {
     let directory = FileManager.default.temporaryDirectory.appending(
       path: "BookmarkMigration-\(UUID().uuidString)",
       directoryHint: .isDirectory
@@ -270,7 +270,7 @@ final class BookmarkTests: XCTestCase {
     let current = try XCTUnwrap(
       JSONSerialization.jsonObject(with: Data(contentsOf: fileURL)) as? [String: Any]
     )
-    XCTAssertEqual(current["schemaVersion"] as? Int, 13)
+    XCTAssertEqual(current["schemaVersion"] as? Int, 14)
   }
 
   private func makeBook() -> Book {

@@ -113,6 +113,7 @@ jobs:
           apps/ios/scripts/run-e2e.sh
           006-safe-zip-import
           PlayerUITests/SafeZIPImportUITests/testRejectsHostileZIPsThenCancelsAndRetriesAValidArchive
+          PlayerUITests/ImportRecoveryStorageUITests/testRecoversMixedImportsAndExplainsStorageWithoutTouchingSources
 
       - name: Run exact-pixel library organization story
         run: >-

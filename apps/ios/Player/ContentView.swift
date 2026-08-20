@@ -68,6 +68,11 @@ struct ContentView: View {
           E2EImportIngressProbes(model: model, queueRevision: sharedImportQueueRevision)
         }
       }
+      .overlay(alignment: .topTrailing) {
+        if E2EImportRecoveryBridge.shared.isConfigured {
+          E2EImportRecoveryProbes(model: model)
+        }
+      }
       .overlay(alignment: .topLeading) {
         if E2EMetadataRepairBridge.shared.isConfigured {
           Color.clear
@@ -332,7 +337,14 @@ private struct InboxView: View {
 
   @ViewBuilder
   private func destination(for job: ImportJob) -> some View {
-    if job.phase == .failed {
+    if job.recoveryPlan != nil {
+      ImportRecoveryView(
+        model: model,
+        jobID: job.id,
+        startImport: startImport,
+        didCommit: didCommit
+      )
+    } else if job.phase == .failed {
       ImportErrorView(model: model, jobID: job.id, startImport: startImport)
     } else {
       ReviewImportView(model: model, jobID: job.id, didCommit: didCommit)
@@ -515,7 +527,7 @@ private struct ImportErrorView: View {
   }
 }
 
-private struct ReviewImportView: View {
+struct ReviewImportView: View {
   @Bindable var model: PlayerModel
   let jobID: UUID
   let didCommit: () -> Void

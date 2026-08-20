@@ -37,3 +37,15 @@
 - [x] Both safe archive tracks form one warning-free proposal
 - [x] Retry retains source integrity and never writes outside extraction staging
 - [x] The safe proposal can continue
+
+## Settings shows what Player uses and what can be reclaimed safely
+
+Screenshot pending semantic-green guarded recording: `002-storage-recovery.png`.
+
+**Verifications:**
+
+- [ ] Managed, staging, trash, database, available, and reclaimable bytes are exact
+- [ ] Per-book managed usage is visible without exposing private metadata
+- [ ] Recoverable orphan staging has an explicit cleanup action
+- [ ] Managed book media cannot be cleared from the recoverable-storage surface
+- [ ] The library database cannot be cleared from the recoverable-storage surface
