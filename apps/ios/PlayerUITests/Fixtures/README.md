@@ -116,3 +116,25 @@ audio format, aggregate duration tolerance, aggregate storage size, and unchange
 pre/post content hashes. It suppresses paths, filenames, metadata, artwork, and
 hashes. It never launches XCTest and therefore cannot record a screenshot or UI
 hierarchy attachment.
+
+## Portable backup and restore
+
+`SyntheticBackupRestore/` contains one verified generated M4B, an invented
+two-book library descriptor, deterministic metadata-only and including-media
+portable backups, and three hostile packages: one checksum mismatch, one `../`
+entry, and one unsupported library schema. The manifest shape matches portable
+backup format 1, minimum reader 1, and library schema 14. No bytes or metadata
+come from `books/`, a local audiobook, user artwork, discovered tags, or a
+network source.
+
+Verify clean reproduction, playable media, exact safe entries, and the declared
+hostile properties with:
+
+```sh
+apps/ios/scripts/fixtures/verify-backup-restore-fixture.sh
+```
+
+The verifier never extracts the traversal package. It compares a fresh
+reproduction byte-for-byte and proves the checked-in source manifest remains
+unchanged. Runtime probes expose only synthetic lowercase UUIDs, counts,
+booleans, format/schema numbers, and byte totals—not paths or digest values.

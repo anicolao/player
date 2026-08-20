@@ -1,0 +1,68 @@
+{
+  "fixture": "synthetic-backup-restore",
+  "schemaVersion": 1,
+  "clock": "2026-08-20T13:41:00Z",
+  "audio": {
+    "file": "backup-restore-audio.m4b",
+    "byteCount": 8461,
+    "sha256": "6c5a700ee340ace483b4cd45188403ca9a77fd60d94ba248063ee2c7fc6366f7",
+    "logicalDurationMilliseconds": 120000
+  },
+  "books": [
+    {
+      "id": "a1000000-0000-0000-0000-000000000001",
+      "assetID": "a1000000-0000-0000-0000-000000000101",
+      "title": "Signal at Dawn",
+      "authors": ["Iris Vale"],
+      "narrators": ["Oren Pike"],
+      "series": "Signal Maps",
+      "seriesPosition": "1",
+      "positionMilliseconds": 45000,
+      "finished": false
+    },
+    {
+      "id": "a1000000-0000-0000-0000-000000000002",
+      "assetID": "a1000000-0000-0000-0000-000000000102",
+      "title": "Harbor of Glass",
+      "authors": ["Iris Vale"],
+      "narrators": ["Mara North"],
+      "series": "Signal Maps",
+      "seriesPosition": "2",
+      "positionMilliseconds": 120000,
+      "finished": true
+    }
+  ],
+  "bookmarks": [
+    {
+      "id": "a1000000-0000-0000-0000-000000000301",
+      "bookID": "a1000000-0000-0000-0000-000000000001",
+      "positionMilliseconds": 42000,
+      "label": "Opening Signal · 0:42",
+      "note": "Return to the quiet clue."
+    }
+  ],
+  "collections": [
+    {
+      "id": "a1000000-0000-0000-0000-000000000401",
+      "name": "Weekend Signals",
+      "bookIDs": [
+        "a1000000-0000-0000-0000-000000000002",
+        "a1000000-0000-0000-0000-000000000001"
+      ]
+    }
+  ],
+  "currentBookID": "a1000000-0000-0000-0000-000000000001",
+  "upNext": [
+    "a1000000-0000-0000-0000-000000000001",
+    "a1000000-0000-0000-0000-000000000002"
+  ],
+  "settings": {
+    "playbackRate": 1.25,
+    "skipBackwardSeconds": 15,
+    "skipForwardSeconds": 30,
+    "smartRewindEnabled": true,
+    "smartRewindMaximumSeconds": 20,
+    "sleepTimerFadeEnabled": true,
+    "libraryView": "list"
+  }
+}

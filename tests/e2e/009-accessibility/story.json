@@ -1,0 +1,15 @@
+{
+  "id": "009-accessibility",
+  "platform": "ios",
+  "test": "PlayerUITests/AccessibilityUITests/testCoreJourneysRemainOperableAcrossAccessibilityProfiles",
+  "fixture": "import-recovery-storage",
+  "additionalFixtures": [
+    "synthetic-metadata-repair",
+    "messy-multifile-unicode",
+    "bookmarks"
+  ],
+  "screenshots": [
+    "000-largest-text-import-recovery.png",
+    "001-largest-text-now-playing.png"
+  ]
+}

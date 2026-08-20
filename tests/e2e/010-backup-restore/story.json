@@ -1,0 +1,9 @@
+{
+  "id": "010-backup-restore",
+  "platform": "ios",
+  "test": "PlayerUITests/BackupRestoreUITests/testExportsRestoresRejectsHostilePackagesAndRecoversDatabaseBackup",
+  "fixture": "synthetic-backup-restore",
+  "screenshots": [
+    "000-restore-review.png"
+  ]
+}
