@@ -134,6 +134,7 @@ jobs:
           apps/ios/scripts/run-e2e.sh
           007-sleep-timer
           PlayerUITests/SleepTimerUITests/testSleepTimerPersistsFadesStopsAndResumesWithContextExactly
+          PlayerUITests/BookmarkUITests/testBookmarksCaptureOrganizeSearchJumpDeleteAndUndoExactly
 
       - name: Upload reviewable diagnostics
         if: always()

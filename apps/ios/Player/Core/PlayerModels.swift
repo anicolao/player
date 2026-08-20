@@ -579,6 +579,8 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
   var resumeRewindTransactions: [ResumeRewindTransaction]
   var activeSleepTimer: ActiveSleepTimer?
   var sleepTimerHistory: [SleepTimerHistoryEntry]
+  var bookmarks: [Bookmark]
+  var bookmarkDeletionTransactions: [BookmarkDeletionTransaction]
 
   init(
     books: [Book],
@@ -597,7 +599,9 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
     smartRewindPreferences: SmartRewindPreferences = .default,
     resumeRewindTransactions: [ResumeRewindTransaction] = [],
     activeSleepTimer: ActiveSleepTimer? = nil,
-    sleepTimerHistory: [SleepTimerHistoryEntry] = []
+    sleepTimerHistory: [SleepTimerHistoryEntry] = [],
+    bookmarks: [Bookmark] = [],
+    bookmarkDeletionTransactions: [BookmarkDeletionTransaction] = []
   ) {
     self.books = books
     self.importJobs = importJobs
@@ -616,6 +620,8 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
     self.resumeRewindTransactions = resumeRewindTransactions
     self.activeSleepTimer = activeSleepTimer
     self.sleepTimerHistory = sleepTimerHistory
+    self.bookmarks = bookmarks
+    self.bookmarkDeletionTransactions = bookmarkDeletionTransactions
   }
 
 
@@ -626,6 +632,7 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
     case globalTransportPreferences
     case smartRewindPreferences, resumeRewindTransactions
     case activeSleepTimer, sleepTimerHistory
+    case bookmarks, bookmarkDeletionTransactions
   }
 
   init(from decoder: any Decoder) throws {
@@ -676,6 +683,11 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
     sleepTimerHistory = try values.decodeIfPresent(
       [SleepTimerHistoryEntry].self,
       forKey: .sleepTimerHistory
+    ) ?? []
+    bookmarks = try values.decodeIfPresent([Bookmark].self, forKey: .bookmarks) ?? []
+    bookmarkDeletionTransactions = try values.decodeIfPresent(
+      [BookmarkDeletionTransaction].self,
+      forKey: .bookmarkDeletionTransactions
     ) ?? []
   }
 

@@ -1111,6 +1111,149 @@ final class PlayerModel {
     await setLibrarySearchPreferences(.default)
   }
 
+  func bookmarks(for bookID: UUID) -> [Bookmark] {
+    library.bookmarks.filter { $0.bookID == bookID }
+  }
+
+  func searchBookmarks(
+    bookID: UUID,
+    query: String,
+    sort: BookmarkSort = .positionAscending
+  ) -> [Bookmark] {
+    BookmarkIndex(bookmarks: bookmarks(for: bookID)).search(query: query, sort: sort)
+  }
+
+  @discardableResult
+  func addBookmark(note: String? = nil) async -> UUID? {
+    guard let book = currentBook else {
+      lastErrorMessage = BookmarkError.noCurrentBook.localizedDescription
+      return nil
+    }
+    do {
+      let bookmarkID = await environment.ids.next()
+      let bookmark = try BookmarkPlanner.makeBookmark(
+        id: bookmarkID,
+        book: book,
+        positionSeconds: sleepTimerPosition(for: book.id),
+        note: note,
+        createdAt: environment.clock.now()
+      )
+      var candidate = library
+      candidate.bookmarks.append(bookmark)
+      try await environment.persistence.save(candidate)
+      library = candidate
+      lastErrorMessage = nil
+      return bookmarkID
+    } catch {
+      lastErrorMessage = error.localizedDescription
+      return nil
+    }
+  }
+
+  @discardableResult
+  func editBookmark(
+    id bookmarkID: UUID,
+    label: String,
+    note: String?
+  ) async -> Bool {
+    await applyLibraryOrganizationMutation { candidate in
+      guard let index = candidate.bookmarks.firstIndex(where: { $0.id == bookmarkID }) else {
+        throw BookmarkError.missingBookmark(bookmarkID)
+      }
+      candidate.bookmarks[index] = try BookmarkPlanner.edited(
+        candidate.bookmarks[index],
+        label: label,
+        note: note,
+        updatedAt: environment.clock.now()
+      )
+    }
+  }
+
+  @discardableResult
+  func deleteBookmark(id bookmarkID: UUID) async -> UUID? {
+    guard let bookmarkIndex = library.bookmarks.firstIndex(where: { $0.id == bookmarkID }) else {
+      lastErrorMessage = BookmarkError.missingBookmark(bookmarkID).localizedDescription
+      return nil
+    }
+    let transactionID = await environment.ids.next()
+    var candidate = library
+    let bookmark = candidate.bookmarks.remove(at: bookmarkIndex)
+    candidate.bookmarkDeletionTransactions.append(BookmarkDeletionTransaction(
+      id: transactionID,
+      bookmark: bookmark,
+      originalIndex: bookmarkIndex,
+      deletedAt: environment.clock.now(),
+      status: .deleted,
+      undoneAt: nil
+    ))
+    do {
+      try await environment.persistence.save(candidate)
+      library = candidate
+      lastErrorMessage = nil
+      return transactionID
+    } catch {
+      lastErrorMessage = error.localizedDescription
+      return nil
+    }
+  }
+
+  @discardableResult
+  func undoDeleteBookmark(transactionID: UUID) async -> Bool {
+    await applyLibraryOrganizationMutation { candidate in
+      guard let transactionIndex = candidate.bookmarkDeletionTransactions.firstIndex(where: {
+        $0.id == transactionID && $0.status == .deleted
+      }) else {
+        throw BookmarkError.noDeletionToUndo(transactionID)
+      }
+      let transaction = candidate.bookmarkDeletionTransactions[transactionIndex]
+      guard !candidate.bookmarks.contains(where: { $0.id == transaction.bookmark.id }) else {
+        throw BookmarkError.noDeletionToUndo(transactionID)
+      }
+      candidate.bookmarks.insert(
+        transaction.bookmark,
+        at: min(max(0, transaction.originalIndex), candidate.bookmarks.count)
+      )
+      candidate.bookmarkDeletionTransactions[transactionIndex].status = .undone
+      candidate.bookmarkDeletionTransactions[transactionIndex].undoneAt = environment.clock.now()
+    }
+  }
+
+  @discardableResult
+  func jumpToBookmark(id bookmarkID: UUID) async -> Bool {
+    guard let bookmark = library.bookmarks.first(where: { $0.id == bookmarkID }) else {
+      lastErrorMessage = BookmarkError.missingBookmark(bookmarkID).localizedDescription
+      return false
+    }
+    guard let book = library.books.first(where: { $0.id == bookmark.bookID }) else {
+      lastErrorMessage = PlayerCoreError.missingBook(bookmark.bookID).localizedDescription
+      return false
+    }
+    let wasPlaying = playbackState.status == .playing
+    do {
+      if currentBook?.id != book.id || environment.playback.state.loadedBookID != book.id {
+        if let timer = library.activeSleepTimer, timer.bookID != book.id,
+          !(await cancelSleepTimer())
+        {
+          return false
+        }
+        try await load(book: book, at: bookmark.bookPositionSeconds)
+        applyCurrentTransportConfiguration(for: book.id)
+      }
+      guard await seekToBookPosition(bookmark.bookPositionSeconds) != nil else { return false }
+      if wasPlaying {
+        environment.playback.play()
+        playbackState = environment.playback.state
+        playbackState.elapsedSeconds = currentBookPositionSeconds
+        publishNowPlaying()
+      }
+      lastErrorMessage = nil
+      return true
+    } catch {
+      lastErrorMessage = error.localizedDescription
+      return false
+    }
+  }
+
   @discardableResult
   func removeBook(
     bookID: UUID,

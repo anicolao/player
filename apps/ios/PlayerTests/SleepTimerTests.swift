@@ -297,7 +297,7 @@ final class SleepTimerTests: XCTestCase {
     XCTAssertFalse(resumed)
   }
 
-  func testSchemaElevenMigratesSleepDefaultsAndWritesSchemaTwelve() async throws {
+  func testSchemaElevenMigratesSleepDefaultsAndWritesCurrentSchema() async throws {
     let directory = FileManager.default.temporaryDirectory.appending(
       path: "SleepTimerMigration-\(UUID().uuidString)",
       directoryHint: .isDirectory
@@ -328,7 +328,7 @@ final class SleepTimerTests: XCTestCase {
     let current = try XCTUnwrap(
       JSONSerialization.jsonObject(with: Data(contentsOf: fileURL)) as? [String: Any]
     )
-    XCTAssertEqual(current["schemaVersion"] as? Int, 12)
+    XCTAssertEqual(current["schemaVersion"] as? Int, 13)
   }
 
   private func makeBook() -> Book {

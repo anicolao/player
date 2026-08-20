@@ -62,6 +62,12 @@ struct LibrarySearchIndex: Sendable {
         collectionsByBookID[bookID, default: []].append(collection.name)
       }
     }
+    let persistedBookmarkTextByBookID = Dictionary(grouping: library.bookmarks, by: \.bookID)
+      .mapValues { bookmarks in
+        bookmarks.flatMap { bookmark in
+          [bookmark.label, bookmark.note, bookmark.chapterTitleSnapshot].compactMap { $0 }
+        }
+      }
 
     entries = library.books.map { book in
       let collectionNames = collectionsByBookID[book.id] ?? []
@@ -83,6 +89,7 @@ struct LibrarySearchIndex: Sendable {
         + book.assets.map(\.originalFilename)
         + book.chapters.map(\.title)
         + collectionNames
+        + (persistedBookmarkTextByBookID[book.id] ?? [])
         + (bookmarkNotesByBookID[book.id] ?? [])
 
       return Entry(

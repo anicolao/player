@@ -1,7 +1,7 @@
 import Foundation
 
 actor CodableLibraryStore: LibraryPersisting {
-  static let currentSchemaVersion = 12
+  static let currentSchemaVersion = 13
 
   private let fileURL: URL
   private let fileManager: FileManager
@@ -118,7 +118,15 @@ actor CodableLibraryStore: LibraryPersisting {
       }
     case 12:
       do {
-        return try JSONDecoder.playerDecoder.decode(EnvelopeV12.self, from: data).library
+        return migrateBookmarkDefaults(
+          in: try JSONDecoder.playerDecoder.decode(EnvelopeV12.self, from: data).library
+        )
+      } catch {
+        throw PlayerCoreError.invalidStore
+      }
+    case 13:
+      do {
+        return try JSONDecoder.playerDecoder.decode(EnvelopeV13.self, from: data).library
       } catch {
         throw PlayerCoreError.invalidStore
       }
@@ -131,7 +139,7 @@ actor CodableLibraryStore: LibraryPersisting {
     let directory = fileURL.deletingLastPathComponent()
     try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
 
-    let envelope = EnvelopeV12(
+    let envelope = EnvelopeV13(
       schemaVersion: Self.currentSchemaVersion,
       library: snapshot
     )
@@ -254,6 +262,13 @@ actor CodableLibraryStore: LibraryPersisting {
     migrated.sleepTimerHistory = []
     return migrated
   }
+
+  private func migrateBookmarkDefaults(in snapshot: LibrarySnapshot) -> LibrarySnapshot {
+    var migrated = snapshot
+    migrated.bookmarks = []
+    migrated.bookmarkDeletionTransactions = []
+    return migrated
+  }
 }
 
 actor InMemoryLibraryStore: LibraryPersisting {
@@ -336,6 +351,11 @@ private struct EnvelopeV11: Codable {
 }
 
 private struct EnvelopeV12: Codable {
+  let schemaVersion: Int
+  let library: LibrarySnapshot
+}
+
+private struct EnvelopeV13: Codable {
   let schemaVersion: Int
   let library: LibrarySnapshot
 }

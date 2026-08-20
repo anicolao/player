@@ -1088,6 +1088,8 @@ struct BookRow: View {
   }
 }
 
+private enum BookDetailContent: String { case chapters, bookmarks }
+
 struct BookDetailView: View {
   @Environment(\.dismiss) private var dismiss
   @Bindable var model: PlayerModel
@@ -1095,6 +1097,7 @@ struct BookDetailView: View {
   let play: (Book, Double?) -> Void
   @State private var isConfirmingRemoval = false
   @State private var isConfirmingFinished = false
+  @State private var selectedContent: BookDetailContent = .chapters
 
   var body: some View {
     ZStack {
@@ -1188,7 +1191,19 @@ struct BookDetailView: View {
             .buttonStyle(.bordered)
             .accessibilityIdentifier("remove-book")
 
-            if !book.chapters.isEmpty {
+            if !book.chapters.isEmpty || !model.bookmarks(for: book.id).isEmpty {
+              HStack(spacing: 8) {
+                contentButton("Chapters", value: .chapters, id: "chapters-segment")
+                contentButton("Bookmarks", value: .bookmarks, id: "bookmarks-segment")
+              }
+              .padding(4)
+              .background(PlayerColor.card, in: RoundedRectangle(cornerRadius: 12))
+              .accessibilityElement(children: .contain)
+              .accessibilityIdentifier("book-detail-content-picker")
+              .accessibilityValue(selectedContent.rawValue)
+            }
+
+            if selectedContent == .chapters, !book.chapters.isEmpty {
               VStack(alignment: .leading, spacing: 10) {
                 Text("Chapters").font(.title3.bold())
                 ForEach(Array(book.chapters.enumerated()), id: \.element.id) { index, chapter in
@@ -1215,9 +1230,16 @@ struct BookDetailView: View {
                 }
               }
               .frame(maxWidth: .infinity, alignment: .leading)
+            } else if selectedContent == .bookmarks {
+              VStack(alignment: .leading, spacing: 10) {
+                Text("Bookmarks").font(.title3.bold())
+                BookmarksView(model: model, bookID: book.id)
+              }
+              .frame(maxWidth: .infinity, alignment: .leading)
             }
           }
           .padding(24)
+          .padding(.bottom, 72)
         }
         metadataProbe(id: "book-metadata-probe", value: bookMetadataValue(book))
         metadataProbe(id: "book-metadata-provenance-probe", value: bookProvenanceValue(book))
@@ -1261,6 +1283,29 @@ struct BookDetailView: View {
 
   private var book: Book? {
     model.library.books.first(where: { $0.id == bookID })
+  }
+
+  private func contentButton(
+    _ title: String,
+    value: BookDetailContent,
+    id: String
+  ) -> some View {
+    Button {
+      selectedContent = value
+    } label: {
+      Text(title)
+        .font(.subheadline.weight(.semibold))
+        .foregroundStyle(selectedContent == value ? Color.white : PlayerColor.ink)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 9)
+        .background(
+          selectedContent == value ? PlayerColor.accent : Color.clear,
+          in: RoundedRectangle(cornerRadius: 9)
+        )
+    }
+    .buttonStyle(.plain)
+    .accessibilityIdentifier(id)
+    .accessibilityValue(selectedContent == value ? "selected" : "not-selected")
   }
 
   private var bookDetailValue: String {
@@ -1342,6 +1387,7 @@ private struct NowPlayingView: View {
   @State private var showsTransportPreferences = false
   @State private var showsSleepTimer = false
   @State private var smartRewindUndoPositionMilliseconds: Int64?
+  @State private var savedBookmarkID: UUID?
   var body: some View {
     NavigationStack {
       ZStack {
@@ -1358,7 +1404,9 @@ private struct NowPlayingView: View {
                 .font(.caption).foregroundStyle(PlayerColor.secondary)
             }
           }
-          if let context = model.sleepResumeContext, context.bookID == book.id {
+          if let savedBookmark {
+            bookmarkSavedBanner(savedBookmark)
+          } else if let context = model.sleepResumeContext, context.bookID == book.id {
             sleepResumeBanner(context)
           } else if let transaction = model.pendingResumeRewind {
             smartRewindBanner(transaction)
@@ -1450,7 +1498,14 @@ private struct NowPlayingView: View {
       }
       .toolbar {
         ToolbarItem(placement: .topBarLeading) { Button("Done") { dismiss() } }
-        ToolbarItem(placement: .topBarTrailing) {
+        ToolbarItemGroup(placement: .topBarTrailing) {
+          Button {
+            Task { savedBookmarkID = await model.addBookmark() }
+          } label: {
+            Image(systemName: "bookmark")
+          }
+          .accessibilityLabel("Add Bookmark")
+          .accessibilityIdentifier("add-bookmark")
           Button { showsSleepTimer = true } label: {
             Image(systemName: model.activeSleepTimer == nil ? "moon.zzz" : "timer")
           }
@@ -1469,6 +1524,13 @@ private struct NowPlayingView: View {
             E2ESleepTimerControlSurface(model: model)
           }
         }
+        .overlay(alignment: .bottomLeading) {
+          if E2EBookmarkBridge.shared.isConfigured {
+            E2EBookmarkControlSurface(model: model)
+              .padding(.leading, 4)
+              .padding(.bottom, 72)
+          }
+        }
       #endif
       .sheet(isPresented: $showsTransportPreferences) {
         TransportPreferencesEditor(model: model, book: currentBookFromModel ?? book)
@@ -1485,6 +1547,39 @@ private struct NowPlayingView: View {
 
   private var currentBookFromModel: Book? {
     model.library.books.first(where: { $0.id == book.id })
+  }
+
+  private var savedBookmark: Bookmark? {
+    guard let savedBookmarkID else { return nil }
+    return model.library.bookmarks.first(where: { $0.id == savedBookmarkID })
+  }
+
+  private func bookmarkSavedBanner(_ bookmark: Bookmark) -> some View {
+    HStack(spacing: 10) {
+      Image(systemName: "bookmark.fill")
+        .foregroundStyle(PlayerColor.accent)
+      VStack(alignment: .leading, spacing: 2) {
+        Text("Bookmark saved").font(.headline)
+        Text(bookmark.label)
+          .font(.caption)
+          .foregroundStyle(PlayerColor.secondary)
+          .lineLimit(1)
+      }
+      Spacer()
+    }
+    .padding(14)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(PlayerColor.card, in: RoundedRectangle(cornerRadius: 16))
+    .overlay {
+      RoundedRectangle(cornerRadius: 16)
+        .stroke(PlayerColor.accent.opacity(0.25), lineWidth: 1)
+    }
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel("Bookmark saved")
+    .accessibilityIdentifier("bookmark-saved")
+    .accessibilityValue(
+      Text(verbatim: "bookmark=\(bookmark.id.uuidString.lowercased()):book=\(bookmark.bookID.uuidString.lowercased()):position=\(bookmark.bookPositionMilliseconds)")
+    )
   }
 
   private var sleepTimerButtonValue: String {
