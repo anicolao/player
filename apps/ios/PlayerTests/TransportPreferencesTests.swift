@@ -160,7 +160,7 @@ final class TransportPreferencesTests: XCTestCase {
     XCTAssertEqual(durable.books.first?.transportPreferenceOverride?.playbackRate, 1.75)
   }
 
-  func testSchemaNineMigratesTransportDefaultsAndWritesSchemaTen() async throws {
+  func testSchemaNineMigratesTransportDefaultsAndWritesCurrentSchema() async throws {
     let directory = FileManager.default.temporaryDirectory.appending(
       path: "TransportMigration-\(UUID().uuidString)",
       directoryHint: .isDirectory
@@ -200,7 +200,7 @@ final class TransportPreferencesTests: XCTestCase {
     let current = try XCTUnwrap(
       JSONSerialization.jsonObject(with: Data(contentsOf: fileURL)) as? [String: Any]
     )
-    XCTAssertEqual(current["schemaVersion"] as? Int, 10)
+    XCTAssertEqual(current["schemaVersion"] as? Int, 11)
   }
 
   private func makeHarness() -> TransportHarness {

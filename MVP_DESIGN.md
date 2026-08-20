@@ -307,7 +307,7 @@ After resuming:
 - 10 minutes to 1 hour: 15 seconds;
 - more than 1 hour: 30 seconds.
 
-The listener can disable Smart Rewind or change the maximum. Rewind never crosses the start of the current logical chapter unless the chapter began less than the rewind interval ago. The position journal records the pre-rewind location so Undo Resume Rewind can be offered briefly.
+The listener can disable Smart Rewind or change the maximum. Rewind never crosses the start of the current logical chapter. The position journal records the pre-rewind location so Undo Resume Rewind can be offered briefly.
 
 ### 14. Sleep timer
 
@@ -525,4 +525,3 @@ The MVP target is complete only when:
 - Dark-mode visual baseline
 
 Deferral means the model should leave room for these capabilities; it does not authorize placeholder buttons, nonfunctional settings, or premature infrastructure in the MVP.
-

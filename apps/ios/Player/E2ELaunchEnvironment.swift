@@ -28,6 +28,11 @@ extension PlayerEnvironment {
           return try metadataRepairEnvironment()
         case "synthetic-populated-library":
           return try populatedLibraryEnvironment(reset: arguments.contains("-e2e-reset"))
+        case "smart-rewind":
+          return try smartRewindEnvironment(
+            reset: arguments.contains("-e2e-reset"),
+            scenario: smartRewindScenario(in: arguments)
+          )
         default:
           break
         }
@@ -203,6 +208,212 @@ extension PlayerEnvironment {
           ? E2ERemoteCommandController()
           : DisabledRemoteCommandController(),
         clock: FixedPlayerClock(value: date),
+        ids: DeterministicPlayerIDGenerator(values: ids)
+      )
+    }
+
+    private static func smartRewindScenario(in arguments: [String]) -> String {
+      guard
+        let marker = arguments.firstIndex(of: "-e2e-smart-rewind-scenario"),
+        arguments.indices.contains(marker + 1)
+      else { return "chapter-clamp" }
+      return arguments[marker + 1]
+    }
+
+    private static func smartRewindEnvironment(
+      reset: Bool,
+      scenario: String
+    ) throws -> PlayerEnvironment {
+      struct Scenario {
+        var secondsAway: TimeInterval
+        var positionMilliseconds: Int64
+        var preferences: SmartRewindPreferences
+      }
+
+      var preferences = SmartRewindPreferences.default
+      let configuration: Scenario
+      switch scenario {
+      case "below-threshold":
+        configuration = Scenario(
+          secondsAway: 29,
+          positionMilliseconds: 120_000,
+          preferences: preferences
+        )
+      case "short":
+        configuration = Scenario(
+          secondsAway: 30,
+          positionMilliseconds: 120_000,
+          preferences: preferences
+        )
+      case "medium":
+        configuration = Scenario(
+          secondsAway: 600,
+          positionMilliseconds: 120_000,
+          preferences: preferences
+        )
+      case "long":
+        configuration = Scenario(
+          secondsAway: 3_601,
+          positionMilliseconds: 170_000,
+          preferences: preferences
+        )
+      case "maximum":
+        configuration = Scenario(
+          secondsAway: 3_601,
+          positionMilliseconds: 170_000,
+          preferences: preferences
+        )
+      case "disabled":
+        preferences.isEnabled = false
+        configuration = Scenario(
+          secondsAway: 3_601,
+          positionMilliseconds: 120_000,
+          preferences: preferences
+        )
+      case "chapter-clamp":
+        configuration = Scenario(
+          secondsAway: 600,
+          positionMilliseconds: 110_000,
+          preferences: preferences
+        )
+      default:
+        throw PlayerCoreError.fileOperation("Unknown Smart Rewind E2E scenario: \(scenario)")
+      }
+
+      let support = try FileManager.default.url(
+        for: .applicationSupportDirectory,
+        in: .userDomainMask,
+        appropriateFor: nil,
+        create: true
+      )
+      let root = support.appending(
+        path: "PlayerE2ESmartRewind-\(scenario)",
+        directoryHint: .isDirectory
+      )
+      if reset { try? FileManager.default.removeItem(at: root) }
+
+      let bookID = UUID(uuidString: "51000000-0000-0000-0000-000000000001")!
+      let assetID = UUID(uuidString: "51000000-0000-0000-0000-000000000002")!
+      let pauseEventID = UUID(uuidString: "51000000-0000-0000-0000-000000000003")!
+      let managedPath = "Media/\(bookID.uuidString.lowercased())/\(assetID.uuidString.lowercased()).m4b"
+      let managedURL = root.appending(path: managedPath)
+      if !FileManager.default.fileExists(atPath: managedURL.path) {
+        try FileManager.default.createDirectory(
+          at: managedURL.deletingLastPathComponent(),
+          withIntermediateDirectories: true
+        )
+        try Data("player deterministic smart rewind fixture".utf8).write(to: managedURL)
+      }
+
+      let resumedAt = Date(timeIntervalSince1970: 1_700_010_000)
+      let pausedAt = resumedAt.addingTimeInterval(-configuration.secondsAway)
+      let asset = AudioAsset(
+        id: assetID,
+        originalFilename: "intervals-of-quiet.m4b",
+        managedRelativePath: managedPath,
+        checksumSHA256: "e2e-smart-rewind-fixture",
+        byteCount: 41,
+        durationSeconds: 180,
+        container: "M4B"
+      )
+      let book = Book(
+        id: bookID,
+        title: "Intervals of Quiet",
+        authors: ["Mara Vale"],
+        durationSeconds: 180,
+        artworkData: nil,
+        assets: [asset],
+        dateAdded: Date(timeIntervalSince1970: 1_700_000_000),
+        chapters: [
+          Chapter(
+            id: "smart-rewind-1",
+            title: "Before the Pause",
+            startSeconds: 0,
+            durationSeconds: 60,
+            source: .embedded,
+            assetID: assetID
+          ),
+          Chapter(
+            id: "smart-rewind-2",
+            title: "A Familiar Thread",
+            startSeconds: 60,
+            durationSeconds: 40,
+            source: .embedded,
+            assetID: assetID
+          ),
+          Chapter(
+            id: "smart-rewind-3",
+            title: "Finding the Thread",
+            startSeconds: 100,
+            durationSeconds: 40,
+            source: .embedded,
+            assetID: assetID
+          ),
+          Chapter(
+            id: "smart-rewind-4",
+            title: "Moving Forward",
+            startSeconds: 140,
+            durationSeconds: 40,
+            source: .embedded,
+            assetID: assetID
+          ),
+        ]
+      )
+      let pauseEvent = PositionEvent.acknowledged(
+        id: pauseEventID,
+        bookID: bookID,
+        positionMilliseconds: configuration.positionMilliseconds,
+        sequence: 1,
+        reason: .pause,
+        acknowledgedAt: pausedAt,
+        previousEventID: nil
+      )
+      let seed = LibrarySnapshot(
+        books: [book],
+        importJobs: [],
+        currentBookID: bookID,
+        playbackPosition: PlaybackPosition(
+          bookID: bookID,
+          positionMilliseconds: configuration.positionMilliseconds,
+          sequence: 1,
+          sourceEventID: pauseEvent.id,
+          updatedAt: pausedAt
+        ),
+        positionJournal: [pauseEvent],
+        smartRewindPreferences: configuration.preferences
+      )
+      struct SnapshotEnvelope: Decodable {
+        var library: LibrarySnapshot
+      }
+      let libraryURL = root.appending(path: "Library.json")
+      let snapshotDecoder = JSONDecoder()
+      snapshotDecoder.dateDecodingStrategy = .iso8601
+      let persistedLibrary = try? snapshotDecoder.decode(
+        SnapshotEnvelope.self,
+        from: Data(contentsOf: libraryURL)
+      ).library
+      let journalIDs = persistedLibrary?.positionJournal.map(\.id) ?? []
+      let transactionIDs = persistedLibrary?.resumeRewindTransactions.flatMap {
+          [$0.id, $0.preRewindEventID, $0.rewindEventID]
+            + [$0.undoEventID].compactMap { $0 }
+        } ?? []
+      let persistedIDs = journalIDs + transactionIDs
+      let largestPersistedSuffix = persistedIDs.compactMap { id in
+        Int(id.uuidString.split(separator: "-").last ?? "")
+      }.max() ?? 100
+      let firstAvailableSuffix = max(101, largestPersistedSuffix + 1)
+      let ids = (firstAvailableSuffix...(firstAvailableSuffix + 39)).map {
+        UUID(uuidString: String(format: "51000000-0000-0000-0000-%012d", $0))!
+      }
+      return PlayerEnvironment(
+        persistence: E2ESeededLibraryStore(
+          base: CodableLibraryStore(fileURL: libraryURL),
+          seed: seed
+        ),
+        media: FileSystemMediaManager(rootURL: root),
+        inspector: DeterministicAudioInspector(result: .failure(.unreadableAudio("unused"))),
+        playback: DeterministicPlaybackController(),
+        clock: FixedPlayerClock(value: resumedAt),
         ids: DeterministicPlayerIDGenerator(values: ids)
       )
     }

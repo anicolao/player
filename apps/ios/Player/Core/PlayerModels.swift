@@ -575,6 +575,8 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
   var trashTransactions: [LibraryTrashTransaction]
   var searchPreferences: LibrarySearchPreferences
   var globalTransportPreferences: TransportPreferences
+  var smartRewindPreferences: SmartRewindPreferences
+  var resumeRewindTransactions: [ResumeRewindTransaction]
 
   init(
     books: [Book],
@@ -589,7 +591,9 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
     allBooksViewStyle: LibraryViewStyle = .grid,
     trashTransactions: [LibraryTrashTransaction] = [],
     searchPreferences: LibrarySearchPreferences = .default,
-    globalTransportPreferences: TransportPreferences = .default
+    globalTransportPreferences: TransportPreferences = .default,
+    smartRewindPreferences: SmartRewindPreferences = .default,
+    resumeRewindTransactions: [ResumeRewindTransaction] = []
   ) {
     self.books = books
     self.importJobs = importJobs
@@ -604,6 +608,8 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
     self.trashTransactions = trashTransactions
     self.searchPreferences = searchPreferences
     self.globalTransportPreferences = globalTransportPreferences
+    self.smartRewindPreferences = smartRewindPreferences
+    self.resumeRewindTransactions = resumeRewindTransactions
   }
 
 
@@ -612,6 +618,7 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
     case metadataTransactions
     case upNextBookIDs, collections, allBooksViewStyle, trashTransactions, searchPreferences
     case globalTransportPreferences
+    case smartRewindPreferences, resumeRewindTransactions
   }
 
   init(from decoder: any Decoder) throws {
@@ -647,6 +654,14 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
       TransportPreferences.self,
       forKey: .globalTransportPreferences
     ) ?? .default
+    smartRewindPreferences = try values.decodeIfPresent(
+      SmartRewindPreferences.self,
+      forKey: .smartRewindPreferences
+    ) ?? .default
+    resumeRewindTransactions = try values.decodeIfPresent(
+      [ResumeRewindTransaction].self,
+      forKey: .resumeRewindTransactions
+    ) ?? []
   }
 
   static let empty = LibrarySnapshot(books: [], importJobs: [], currentBookID: nil)
@@ -660,6 +675,9 @@ enum PositionEventReason: String, Codable, Equatable, Sendable {
   case background
   case interruption
   case routeChange
+  case preResumeRewind
+  case resumeRewind
+  case undoResumeRewind
 }
 
 enum AudioSessionEvent: Equatable, Sendable {

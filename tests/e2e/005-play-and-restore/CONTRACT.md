@@ -124,3 +124,69 @@ The final configured skip must be durably acknowledged as book position
 `55000` milliseconds, with the visible scrubber in chapter-relative mode. Only
 the final stable paused state is captured as
 `002-transport-controls.png`; all setup and moving states are assertion-only.
+
+## Smart Rewind, durable explanation, and exact Undo
+
+`SmartRewindUITests` launches the `smart-rewind` fixture with an injected fixed
+clock and one of these scenario arguments:
+
+```text
+-e2e-smart-rewind-scenario <below-threshold|short|medium|long|maximum|chapter-clamp|disabled>
+```
+
+Every scenario contains the same synthetic 180-second audiobook with lowercase
+book UUID `51000000-0000-0000-0000-000000000001`, four embedded chapters, one
+managed synthetic media file, and a latest acknowledged `pause` event. Only the
+pause timestamp, saved position, and Smart Rewind preferences vary. The fixed
+resume clock makes time-away calculations exact:
+
+| Scenario | Away | Saved position | Expected target | Contract |
+| --- | ---: | ---: | ---: | --- |
+| `below-threshold` | 29 s | 120000 ms | 120000 ms | No transaction below 30 seconds |
+| `short` | 30 s | 120000 ms | 115000 ms | Short 5-second tier |
+| `medium` | 600 s | 120000 ms | 105000 ms | Medium 15-second tier |
+| `long` | 3601 s | 170000 ms | 140000 ms | Long 30-second tier |
+| `maximum` | 3601 s | 170000 ms | 150000 ms | The visible setting caps the 30-second tier at 20 seconds |
+| `chapter-clamp` | 600 s | 110000 ms | 100000 ms | The 15-second request clamps to chapter start |
+| `disabled` | 3601 s | 120000 ms | 120000 ms | Disabled means no transaction or rewind |
+
+The normal Now Playing `player-play-pause` action drives implicit resume; the
+fixture does not call a test-only playback mutation. When a rewind applies, the
+visible `smart-rewind-banner` value is:
+
+```text
+rewound|<lowercase-book-uuid>|from=<ms>|to=<ms>|by=<ms>|away=<seconds>|clamped=<true|false>|status=applied
+```
+
+The banner explains the adjustment and exposes `undo-smart-rewind` with value
+`restore=<original-ms>`. The E2E-only read-only `smart-rewind-state-probe`
+serializes production snapshot and journal state as pipe-delimited key/value
+tokens. It includes enabled, maximum milliseconds, transaction count/status and
+IDs, original/target/rewind/away/clamp fields, current persisted position, and a
+`journal=<sequence>:<reason>@<position>,...` suffix.
+
+The maximum scenario first navigates through `smart-rewind-settings` to the
+production `smart-rewind-settings-screen`. It changes `smart-rewind-maximum`
+from 30 to 20 seconds, toggles `smart-rewind-enabled` off, terminates, and
+asserts both values after relaunch. It then toggles Smart Rewind on, relaunches
+again, and uses that durable 20-second maximum through the normal resume action.
+The separate disabled scenario proves that an off preference produces neither
+a rewind transaction nor a position adjustment.
+
+For every applied scenario, deterministic IDs are consumed in this order:
+
+1. pre-rewind event `51000000-0000-0000-0000-000000000101`;
+2. rewind event `51000000-0000-0000-0000-000000000102`;
+3. transaction `51000000-0000-0000-0000-000000000103`;
+4. play event `51000000-0000-0000-0000-000000000104`.
+
+The chapter-clamp process terminates after applying the rewind and relaunches
+without reset. The transaction must still be `applied`, the restored position
+must remain exactly `100000` ms, and relaunch must not apply a second rewind.
+One tap on Undo seeks exactly to `110000` ms, appends one
+`undoResumeRewind` event with ID
+`51000000-0000-0000-0000-000000000105`, marks the transaction `undone`, and removes the Undo
+action. No setup, maximum, disabled, or post-Undo state is captured. After the
+complete semantic journey is green, the sole new stable baseline is
+`003-smart-rewind-applied.png`, showing the explanatory chapter-clamped banner
+and Undo action on Now Playing.

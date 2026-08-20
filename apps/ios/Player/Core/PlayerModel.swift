@@ -1363,6 +1363,85 @@ final class PlayerModel {
     return await setTransportPreferenceOverride(preferenceOverride, for: bookID)
   }
 
+  var pendingResumeRewind: ResumeRewindTransaction? {
+    guard let bookID = playbackState.loadedBookID ?? library.currentBookID else { return nil }
+    return library.resumeRewindTransactions.last(where: {
+      $0.bookID == bookID && $0.status == .applied
+    })
+  }
+
+  func smartRewindPlan(for bookID: UUID) -> SmartRewindPlan? {
+    guard
+      let book = library.books.first(where: { $0.id == bookID }),
+      let position = library.playbackPosition,
+      position.bookID == bookID,
+      let pauseEvent = library.positionJournal.first(where: {
+        $0.id == position.sourceEventID && $0.bookID == bookID && $0.hasValidIntegrity
+      }),
+      [.pause, .interruption, .routeChange].contains(pauseEvent.reason)
+    else { return nil }
+    return SmartRewindPlanner.plan(
+      for: book,
+      positionMilliseconds: position.positionMilliseconds,
+      pausedAt: pauseEvent.acknowledgedAt,
+      resumedAt: environment.clock.now(),
+      preferences: library.smartRewindPreferences
+    )
+  }
+
+  @discardableResult
+  func setSmartRewindPreferences(_ preferences: SmartRewindPreferences) async -> Bool {
+    guard preferences.isValid else {
+      lastErrorMessage = SmartRewindError.invalidPreferences.localizedDescription
+      return false
+    }
+    return await applyLibraryOrganizationMutation { candidate in
+      candidate.smartRewindPreferences = preferences
+    }
+  }
+
+  @discardableResult
+  func setSmartRewindEnabled(_ isEnabled: Bool) async -> Bool {
+    var preferences = library.smartRewindPreferences
+    preferences.isEnabled = isEnabled
+    return await setSmartRewindPreferences(preferences)
+  }
+
+  @discardableResult
+  func setSmartRewindMaximum(_ seconds: Double) async -> Bool {
+    var preferences = library.smartRewindPreferences
+    preferences.maximumRewindSeconds = seconds
+    return await setSmartRewindPreferences(preferences)
+  }
+
+  @discardableResult
+  func undoResumeRewind() async -> Bool {
+    guard let transaction = pendingResumeRewind else {
+      lastErrorMessage = SmartRewindError.noRewindToUndo.localizedDescription
+      return false
+    }
+    guard let undoEvent = await seekToBookPosition(
+      transaction.plan.originalSeconds,
+      reason: .undoResumeRewind
+    ) else { return false }
+    let previousLibrary = library
+    do {
+      guard let index = library.resumeRewindTransactions.firstIndex(where: {
+        $0.id == transaction.id && $0.status == .applied
+      }) else { throw SmartRewindError.noRewindToUndo }
+      library.resumeRewindTransactions[index].status = .undone
+      library.resumeRewindTransactions[index].undoneAt = undoEvent.acknowledgedAt
+      library.resumeRewindTransactions[index].undoEventID = undoEvent.id
+      try await persist()
+      lastErrorMessage = nil
+      return true
+    } catch {
+      library = previousLibrary
+      lastErrorMessage = error.localizedDescription
+      return false
+    }
+  }
+
   func loadCurrentBook() async {
     do {
       try await loadCurrentBookIntoPlayback()
@@ -1377,6 +1456,7 @@ final class PlayerModel {
       lastErrorMessage = PlayerCoreError.missingBook(bookID).localizedDescription
       return
     }
+    let rewindPlan = seconds == nil ? smartRewindPlan(for: bookID) : nil
 
     do {
       try environment.audioSession.activate()
@@ -1385,6 +1465,9 @@ final class PlayerModel {
         ?? (book.listeningState.status == .finished ? 0 : book.listeningState.positionSeconds)
       try await load(book: book, at: startSeconds)
       applyCurrentTransportConfiguration(for: bookID)
+      if let rewindPlan {
+        _ = await applySmartRewind(rewindPlan)
+      }
       environment.playback.play()
       playbackState = environment.playback.state
       playbackState.elapsedSeconds = currentBookPositionSeconds
@@ -1475,6 +1558,9 @@ final class PlayerModel {
       do {
         try environment.audioSession.activate()
         applyCurrentTransportConfiguration(for: bookID)
+        if let rewindPlan = smartRewindPlan(for: bookID) {
+          _ = await applySmartRewind(rewindPlan)
+        }
         environment.playback.play()
         playbackState = environment.playback.state
         playbackState.elapsedSeconds = currentBookPositionSeconds
@@ -1574,10 +1660,38 @@ final class PlayerModel {
     playbackState.elapsedSeconds = location.bookSeconds
   }
 
-  private func seekToBookPosition(_ requestedSeconds: Double) async {
+  @discardableResult
+  private func applySmartRewind(_ plan: SmartRewindPlan) async -> Bool {
+    guard playbackState.loadedBookID == plan.bookID else { return false }
+    guard let preRewindEvent = await recordAcknowledgedPlaybackPosition(
+      plan.originalSeconds,
+      reason: .preResumeRewind
+    ) else { return false }
+    guard await seekToBookPosition(
+      plan.targetSeconds,
+      reason: .resumeRewind,
+      resumeRewindPlan: plan,
+      preRewindEventID: preRewindEvent.id
+    ) != nil else {
+      if let book = library.books.first(where: { $0.id == plan.bookID }) {
+        try? await load(book: book, at: plan.originalSeconds)
+        applyCurrentTransportConfiguration(for: plan.bookID)
+      }
+      return false
+    }
+    return true
+  }
+
+  @discardableResult
+  private func seekToBookPosition(
+    _ requestedSeconds: Double,
+    reason: PositionEventReason = .seek,
+    resumeRewindPlan: SmartRewindPlan? = nil,
+    preRewindEventID: UUID? = nil
+  ) async -> PositionEvent? {
     guard let book = currentBook,
       let location = PlaybackTimeline.location(in: book, at: requestedSeconds)
-    else { return }
+    else { return nil }
     let wasPlaying = playbackState.status == .playing
     do {
       if loadedAssetID == location.asset.id,
@@ -1593,9 +1707,15 @@ final class PlayerModel {
         playbackState = environment.playback.state
         playbackState.elapsedSeconds = location.bookSeconds
       }
-      await acknowledgePlaybackPosition(location.bookSeconds, reason: .seek)
+      return await recordAcknowledgedPlaybackPosition(
+        location.bookSeconds,
+        reason: reason,
+        resumeRewindPlan: resumeRewindPlan,
+        preRewindEventID: preRewindEventID
+      )
     } catch {
       lastErrorMessage = error.localizedDescription
+      return nil
     }
   }
 
@@ -1614,11 +1734,20 @@ final class PlayerModel {
     _ seconds: Double,
     reason: PositionEventReason = .periodic
   ) async {
+    _ = await recordAcknowledgedPlaybackPosition(seconds, reason: reason)
+  }
+
+  private func recordAcknowledgedPlaybackPosition(
+    _ seconds: Double,
+    reason: PositionEventReason,
+    resumeRewindPlan: SmartRewindPlan? = nil,
+    preRewindEventID: UUID? = nil
+  ) async -> PositionEvent? {
     guard
       seconds.isFinite,
       let bookID = playbackState.loadedBookID ?? library.currentBookID,
       let book = library.books.first(where: { $0.id == bookID })
-    else { return }
+    else { return nil }
 
     let previousLibrary = library
     let maximumMilliseconds = Int64((book.durationSeconds * 1_000).rounded(.down))
@@ -1659,13 +1788,33 @@ final class PlayerModel {
     }
     playbackState.loadedBookID = bookID
     playbackState.elapsedSeconds = position.seconds
+    if let resumeRewindPlan, let preRewindEventID {
+      let transactionID = await environment.ids.next()
+      for index in library.resumeRewindTransactions.indices where
+        library.resumeRewindTransactions[index].bookID == resumeRewindPlan.bookID
+          && library.resumeRewindTransactions[index].status == .applied
+      {
+        library.resumeRewindTransactions[index].status = .superseded
+      }
+      library.resumeRewindTransactions.append(ResumeRewindTransaction(
+        id: transactionID,
+        plan: resumeRewindPlan,
+        preRewindEventID: preRewindEventID,
+        rewindEventID: event.id,
+        status: .applied,
+        undoneAt: nil,
+        undoEventID: nil
+      ))
+    }
     do {
       try await persist()
       lastErrorMessage = nil
       publishNowPlaying()
+      return event
     } catch {
       library = previousLibrary
       lastErrorMessage = error.localizedDescription
+      return nil
     }
   }
 

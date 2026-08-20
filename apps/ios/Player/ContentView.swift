@@ -1340,6 +1340,7 @@ private struct NowPlayingView: View {
   let book: Book
   @State private var requestedPosition: Double?
   @State private var showsTransportPreferences = false
+  @State private var smartRewindUndoPositionMilliseconds: Int64?
   var body: some View {
     NavigationStack {
       ZStack {
@@ -1355,6 +1356,20 @@ private struct NowPlayingView: View {
               Text("Chapter \(currentChapterIndex + 1) of \(book.chapters.count)")
                 .font(.caption).foregroundStyle(PlayerColor.secondary)
             }
+          }
+          if let transaction = model.pendingResumeRewind {
+            smartRewindBanner(transaction)
+          } else if let restored = smartRewindUndoPositionMilliseconds {
+            Label(
+              "Returned to \(timecode(Double(restored) / 1_000))",
+              systemImage: "checkmark.circle.fill"
+            )
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(PlayerColor.secondary)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Returned to saved position")
+            .accessibilityIdentifier("smart-rewind-undo-confirmation")
+            .accessibilityValue("restored=\(restored)")
           }
           Slider(
             value: Binding(
@@ -1434,6 +1449,9 @@ private struct NowPlayingView: View {
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("now-playing-screen")
       .accessibilityValue(playerValue)
+      #if E2E
+        .overlay { smartRewindStateProbe }
+      #endif
       .sheet(isPresented: $showsTransportPreferences) {
         TransportPreferencesEditor(model: model, book: currentBookFromModel ?? book)
       }
@@ -1446,6 +1464,63 @@ private struct NowPlayingView: View {
 
   private var currentBookFromModel: Book? {
     model.library.books.first(where: { $0.id == book.id })
+  }
+
+  private func smartRewindBanner(_ transaction: ResumeRewindTransaction) -> some View {
+    let plan = transaction.plan
+    return VStack(alignment: .leading, spacing: 8) {
+      HStack(spacing: 10) {
+        Image(systemName: "gobackward")
+          .foregroundStyle(PlayerColor.accent)
+        VStack(alignment: .leading, spacing: 2) {
+          Text("Rewound \(smartRewindDuration(plan.rewindMilliseconds))")
+            .font(.headline)
+          Text(
+            plan.wasClampedToChapterStart
+              ? "Stopped at this chapter’s start."
+              : "Helping you pick up after time away."
+          )
+            .font(.caption)
+            .foregroundStyle(PlayerColor.secondary)
+        }
+        Spacer(minLength: 8)
+        Button("Undo") {
+          Task {
+            if await model.undoResumeRewind() {
+              smartRewindUndoPositionMilliseconds = plan.originalPositionMilliseconds
+            }
+          }
+        }
+        .buttonStyle(.bordered)
+        .accessibilityIdentifier("undo-smart-rewind")
+        .accessibilityValue("restore=\(plan.originalPositionMilliseconds)")
+      }
+    }
+    .padding(14)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(PlayerColor.card, in: RoundedRectangle(cornerRadius: 16))
+    .overlay {
+      RoundedRectangle(cornerRadius: 16)
+        .stroke(PlayerColor.accent.opacity(0.25), lineWidth: 1)
+    }
+    .accessibilityElement(children: .contain)
+    .accessibilityIdentifier("smart-rewind-banner")
+    .accessibilityValue([
+      "rewound",
+      book.id.uuidString.lowercased(),
+      "from=\(plan.originalPositionMilliseconds)",
+      "to=\(plan.targetPositionMilliseconds)",
+      "by=\(plan.rewindMilliseconds)",
+      "away=\(Int(plan.secondsAway.rounded(.down)))",
+      "clamped=\(plan.wasClampedToChapterStart)",
+      "status=\(transaction.status.rawValue)",
+    ].joined(separator: "|"))
+  }
+
+  private func smartRewindDuration(_ milliseconds: Int64) -> String {
+    let seconds = Double(milliseconds) / 1_000
+    if seconds.rounded() == seconds { return "\(Int(seconds)) seconds" }
+    return String(format: "%.1f seconds", seconds)
   }
 
   private var displayedPosition: Double {
@@ -1493,6 +1568,51 @@ private struct NowPlayingView: View {
     let milliseconds = Int((model.playbackState.elapsedSeconds * 1_000).rounded())
     return "player:\(model.playbackState.status.rawValue):\(book.id.uuidString.lowercased()):\(currentChapterIndex):\(milliseconds)"
   }
+
+  #if E2E
+    private var smartRewindStateProbe: some View {
+      Color.clear
+        .frame(width: 1, height: 1)
+        .id(smartRewindStateValue)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Smart Rewind state")
+        .accessibilityIdentifier("smart-rewind-state-probe")
+        .accessibilityValue(smartRewindStateValue)
+    }
+
+    private var smartRewindStateValue: String {
+      let rewindPreferences = model.library.smartRewindPreferences
+      let transactions = model.library.resumeRewindTransactions
+      let latest = transactions.last
+      let position = model.library.playbackPosition?.positionMilliseconds ?? 0
+      let journal = model.library.positionJournal.map {
+        "\($0.sequence):\($0.reason.rawValue)@\($0.positionMilliseconds)"
+      }.joined(separator: ",")
+      var tokens = [
+        "smart-rewind",
+        "enabled=\(rewindPreferences.isEnabled)",
+        "maximum=\(Int64((rewindPreferences.maximumRewindSeconds * 1_000).rounded(.down)))",
+        "transactions=\(transactions.count)",
+        "latest=\(latest?.status.rawValue ?? "none")",
+      ]
+      if let latest {
+        tokens.append(contentsOf: [
+          "transaction=\(latest.id.uuidString.lowercased())",
+          "from=\(latest.plan.originalPositionMilliseconds)",
+          "to=\(latest.plan.targetPositionMilliseconds)",
+          "by=\(latest.plan.rewindMilliseconds)",
+          "away=\(Int(latest.plan.secondsAway.rounded(.down)))",
+          "clamped=\(latest.plan.wasClampedToChapterStart)",
+          "pre=\(latest.preRewindEventID.uuidString.lowercased())",
+          "rewind=\(latest.rewindEventID.uuidString.lowercased())",
+          "undo=\(latest.undoEventID?.uuidString.lowercased() ?? "none")",
+        ])
+      }
+      tokens.append("position=\(position)")
+      tokens.append("journal=\(journal)")
+      return tokens.joined(separator: "|")
+    }
+  #endif
 
   private var currentChapterIndex: Int {
     book.chapters.lastIndex(where: { $0.startSeconds <= model.playbackState.elapsedSeconds }) ?? 0

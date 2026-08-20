@@ -627,6 +627,12 @@ struct LibraryOrganizationSettingsView: View {
             Label("Playback defaults", systemImage: "gauge.with.dots.needle.50percent")
           }
           .accessibilityIdentifier("playback-defaults")
+          NavigationLink {
+            SmartRewindSettingsView(model: model)
+          } label: {
+            Label("Smart Rewind", systemImage: "gobackward")
+          }
+          .accessibilityIdentifier("smart-rewind-settings")
         }
       }
       .scrollContentBackground(.hidden)

@@ -127,6 +127,7 @@ jobs:
           PlayerUITests/PositionRestoreUITests/testRestoresAnAcknowledgedPausedPositionAfterTermination
           PlayerUITests/RemoteInterruptionUITests/testRemoteInterruptionAndBackgroundEventsJournalAcknowledgedPositions
           PlayerUITests/TransportControlsUITests/testCustomizesAndRestoresListeningControls
+          PlayerUITests/SmartRewindUITests/testSmartRewindAdaptsClampsPersistsAndUndoesExactly
 
       - name: Upload reviewable diagnostics
         if: always()

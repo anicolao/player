@@ -1,7 +1,7 @@
 import Foundation
 
 actor CodableLibraryStore: LibraryPersisting {
-  static let currentSchemaVersion = 10
+  static let currentSchemaVersion = 11
 
   private let fileURL: URL
   private let fileManager: FileManager
@@ -102,7 +102,15 @@ actor CodableLibraryStore: LibraryPersisting {
       }
     case 10:
       do {
-        return try JSONDecoder.playerDecoder.decode(EnvelopeV10.self, from: data).library
+        return migrateSmartRewindDefaults(
+          in: try JSONDecoder.playerDecoder.decode(EnvelopeV10.self, from: data).library
+        )
+      } catch {
+        throw PlayerCoreError.invalidStore
+      }
+    case 11:
+      do {
+        return try JSONDecoder.playerDecoder.decode(EnvelopeV11.self, from: data).library
       } catch {
         throw PlayerCoreError.invalidStore
       }
@@ -115,7 +123,7 @@ actor CodableLibraryStore: LibraryPersisting {
     let directory = fileURL.deletingLastPathComponent()
     try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
 
-    let envelope = EnvelopeV10(
+    let envelope = EnvelopeV11(
       schemaVersion: Self.currentSchemaVersion,
       library: snapshot
     )
@@ -224,6 +232,13 @@ actor CodableLibraryStore: LibraryPersisting {
     }
     return migrated
   }
+
+  private func migrateSmartRewindDefaults(in snapshot: LibrarySnapshot) -> LibrarySnapshot {
+    var migrated = snapshot
+    migrated.smartRewindPreferences = .default
+    migrated.resumeRewindTransactions = []
+    return migrated
+  }
 }
 
 actor InMemoryLibraryStore: LibraryPersisting {
@@ -296,6 +311,11 @@ private struct EnvelopeV9: Codable {
 }
 
 private struct EnvelopeV10: Codable {
+  let schemaVersion: Int
+  let library: LibrarySnapshot
+}
+
+private struct EnvelopeV11: Codable {
   let schemaVersion: Int
   let library: LibrarySnapshot
 }

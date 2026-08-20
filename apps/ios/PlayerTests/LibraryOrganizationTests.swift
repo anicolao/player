@@ -268,7 +268,7 @@ final class LibraryOrganizationTests: XCTestCase {
     let current = try XCTUnwrap(
       JSONSerialization.jsonObject(with: Data(contentsOf: fileURL)) as? [String: Any]
     )
-    XCTAssertEqual(current["schemaVersion"] as? Int, 10)
+    XCTAssertEqual(current["schemaVersion"] as? Int, 11)
   }
 
   private func makeModel(
