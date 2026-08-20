@@ -111,6 +111,11 @@ nix develop
 
 The development simulator and its app data are reused on later runs. To enter the same development shell without building or launching Simulator, run `PLAYER_SKIP_SIMULATOR_LAUNCH=1 nix develop`.
 
+For the one-time Apple Developer Program and App Store Connect handoff needed
+for unattended signing and TestFlight deployment, follow
+[TESTFLIGHT_SETUP.md](TESTFLIGHT_SETUP.md). Never place Apple API private keys
+in this repository or in chat.
+
 Generate the Xcode project:
 
 ```bash

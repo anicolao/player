@@ -1,0 +1,179 @@
+# TestFlight developer handoff
+
+This is the one-time Apple Developer Program setup required before Codex can
+sign, upload, and distribute Player build 1 without pausing for credentials or
+two-factor authentication.
+
+The repository is already configured for these identifiers:
+
+- App: `com.spnss.player`
+- Share extension: `com.spnss.player.share`
+- Shared app group: `group.com.spnss.player`
+
+Do not choose different identifiers in Apple's portals. If one is unavailable
+and does not already belong to your team, stop and report that conflict so the
+repository can be changed consistently.
+
+## Security boundary
+
+Never paste any of the following into chat, an issue, a pull request, or a Git
+commit:
+
+- the contents of an `AuthKey_*.p8` file;
+- your Apple Account password or a two-factor authentication code;
+- signing-certificate private keys;
+- provisioning profiles.
+
+The Team ID, API Key ID, API Issuer ID, bundle IDs, app name, and SKU are
+identifiers rather than secrets. The helper below stores them outside the
+repository anyway. The downloaded `.p8` file is the only secret in this
+handoff.
+
+The recommended credential is a temporary **Admin team API key**. Admin is
+broad access, but it permits unattended automatic signing as well as App Store
+Connect upload and TestFlight management. Team keys apply across the account
+and cannot be limited to one app. Revoke this bootstrap key after build 1 is
+distributed; a narrower App Manager key can be used for later uploads once the
+signing assets exist.
+
+## One-time manual checklist
+
+### 1. Confirm the account is ready
+
+1. Sign in at <https://developer.apple.com/account>.
+2. Confirm the Apple Developer Program membership is active.
+3. Record the 10-character **Team ID** shown in Membership details.
+4. Sign in at <https://appstoreconnect.apple.com>.
+5. Open **Business** and accept any pending agreement. Apple will not allow an
+   app record to be created until the Account Holder accepts the latest
+   agreement.
+
+No banking or tax setup is required merely to distribute a free internal
+TestFlight build.
+
+### 2. Register only the primary App ID
+
+In **Certificates, Identifiers & Profiles** at
+<https://developer.apple.com/account/resources/identifiers/list>, create or
+verify one explicit App ID:
+
+- Description: `Audiobook Player`
+- Type: App
+- Bundle ID: Explicit
+- Identifier: `com.spnss.player`
+- Capabilities: leave the defaults unchanged
+
+The primary App ID must exist before the App Store Connect app record can be
+created. Do not manually register the share-extension ID, app group,
+certificates, or provisioning profiles. After the API credential is installed,
+the deployment automation will create `com.spnss.player.share`, create
+`group.com.spnss.player`, associate the app-group capability with both IDs, and
+let `xcodebuild` manage signing assets.
+
+### 3. Create the App Store Connect app record
+
+In **App Store Connect → Apps**, click the add button and choose **New App**.
+Use:
+
+- Platforms: **iOS**
+- Name: **Player** (if unavailable, choose the final name you want and record
+  it for the helper)
+- Primary language: **English (Canada)**, or your preferred English locale
+- Bundle ID: `com.spnss.player`
+- SKU: `player-ios` (if already used in your account, use a unique variant and
+  record it)
+- User Access: **Full Access**
+
+Create the record. Store-listing text and screenshots are not required for the
+first internal TestFlight upload.
+
+### 4. Generate the temporary API key
+
+In **App Store Connect → Users and Access → Integrations → App Store Connect
+API**:
+
+1. If API access has not been enabled, the Account Holder must click **Request
+   Access**, accept the terms, and wait for Apple to approve the request. Stop
+   here if approval is pending.
+2. Open **Team Keys** and click **Generate API Key** (`+`).
+3. Name: `Player TestFlight Bootstrap`
+4. Access: **Admin**
+5. Generate and download the key. Apple permits the private key to be
+   downloaded only once.
+6. Record the **Issuer ID** and **Key ID** shown on this page.
+
+Leave the downloaded `AuthKey_<KEY_ID>.p8` file intact. Do not open it or paste
+its contents anywhere.
+
+### 5. Install the handoff locally
+
+From the repository root, run:
+
+```bash
+apps/ios/scripts/configure-testflight-handoff.sh
+```
+
+The helper asks for:
+
+- Team ID;
+- API Issuer ID;
+- API Key ID;
+- the downloaded `.p8` path;
+- the exact App Store Connect name and SKU;
+- the email of an existing App Store Connect user who should receive the
+  internal TestFlight build.
+
+It moves the key to the private location searched by Apple's upload tool:
+
+```text
+~/.appstoreconnect/private_keys/AuthKey_<KEY_ID>.p8
+```
+
+It writes non-secret deployment configuration with owner-only permissions to:
+
+```text
+~/.config/player/testflight.env
+```
+
+Neither path is inside the repository. The helper validates identifier formats
+and confirms that the file is a parseable private key without printing it.
+
+### 6. Hand control back to Codex
+
+Reply only:
+
+```text
+Developer handoff complete.
+```
+
+Do not include IDs or credentials in the reply. Codex will read the local
+configuration, verify API access without exposing the key, and then handle the
+remaining work: repository recovery, local tests, CI, branch publication,
+automatic signing, archive validation, build 1 upload, processing checks, and
+internal TestFlight assignment.
+
+## Conditions that still require a report
+
+Report the exact on-screen error, but no secrets, if:
+
+- an identifier is owned by another team;
+- `Player` is unavailable as an App Store Connect name;
+- API access is pending or denied;
+- the app record cannot be created;
+- your intended tester is not an App Store Connect user.
+
+## After build 1 is available
+
+Once Codex confirms the build is assigned to the internal group, revoke
+`Player TestFlight Bootstrap` under **Users and Access → Integrations → Team
+Keys**. The local `.p8` copy will also be removed. Revocation is permanent and
+does not remove the uploaded build or signing assets.
+
+## Apple references
+
+- [App Store Connect API access and API keys](https://developer.apple.com/help/app-store-connect/get-started/app-store-connect-api)
+- [Register an App ID](https://developer.apple.com/help/account/identifiers/register-an-app-id)
+- [Register an app group](https://developer.apple.com/help/account/identifiers/register-an-app-group)
+- [Add a new app record](https://developer.apple.com/help/app-store-connect/create-an-app-record/add-a-new-app)
+- [Apple Developer Program role permissions](https://developer.apple.com/help/account/access/roles)
+- [Add internal TestFlight testers](https://developer.apple.com/help/app-store-connect/test-a-beta-version/add-internal-testers)
