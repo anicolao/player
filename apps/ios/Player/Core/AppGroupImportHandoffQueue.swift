@@ -2,7 +2,7 @@ import CryptoKit
 import Foundation
 
 enum PlayerAppGroup {
-  static let identifier = "group.org.boardgamescafe.player"
+  static let identifier = "group.com.spnss.player"
   static let importQueueDirectoryName = "ImportHandoffs"
 }
 

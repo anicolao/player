@@ -4,7 +4,7 @@
 <dict>
 	<key>com.apple.security.application-groups</key>
 	<array>
-		<string>group.org.boardgamescafe.player</string>
+		<string>group.com.spnss.player</string>
 	</array>
 </dict>
 </plist>

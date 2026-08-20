@@ -6,7 +6,7 @@ ios_dir="$(cd "${script_dir}/.." && pwd)"
 simulator_name="Player Development"
 device_type="com.apple.CoreSimulator.SimDeviceType.iPhone-17"
 runtime="com.apple.CoreSimulator.SimRuntime.iOS-26-5"
-bundle_identifier="org.boardgamescafe.player"
+bundle_identifier="com.spnss.player"
 derived_data="${ios_dir}/DerivedData/Development"
 
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
