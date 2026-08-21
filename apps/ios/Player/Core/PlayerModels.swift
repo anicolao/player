@@ -863,6 +863,7 @@ enum PositionJournalRecovery {
 
 struct InspectedAudio: Codable, Equatable, Sendable {
   var title: String?
+  var albumTitle: String?
   var authors: [String]
   var durationSeconds: Double
   var artworkData: Data?
@@ -877,6 +878,7 @@ struct InspectedAudio: Codable, Equatable, Sendable {
 
   init(
     title: String?,
+    albumTitle: String? = nil,
     authors: [String],
     durationSeconds: Double,
     artworkData: Data?,
@@ -890,6 +892,7 @@ struct InspectedAudio: Codable, Equatable, Sendable {
     trackNumber: Int? = nil
   ) {
     self.title = title
+    self.albumTitle = albumTitle
     self.authors = authors
     self.durationSeconds = durationSeconds
     self.artworkData = artworkData

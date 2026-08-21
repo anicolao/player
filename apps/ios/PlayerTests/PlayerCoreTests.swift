@@ -124,6 +124,55 @@ final class PlayerCoreTests: XCTestCase {
     XCTAssertEqual(model.library.trashTransactions.first?.status, .recoverable)
   }
 
+  func testImportingSingleBookCollectionUsesChildFolderAndAlbumTitle() async throws {
+    let temporaryRoot = FileManager.default.temporaryDirectory.appending(
+      path: "PlayerCollectionTitleTests-\(UUID().uuidString)",
+      directoryHint: .isDirectory
+    )
+    defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+    let collection = temporaryRoot.appending(path: "books", directoryHint: .isDirectory)
+    let book = collection.appending(
+      path: "Andy Weir - Project Hail Mary",
+      directoryHint: .isDirectory
+    )
+    try FileManager.default.createDirectory(at: book, withIntermediateDirectories: true)
+    try Data("part one".utf8).write(to: book.appending(path: "Project Hail Mary - 01.mp3"))
+    try Data("part two".utf8).write(to: book.appending(path: "Project Hail Mary - 02.mp3"))
+
+    let ids = (1...8).map {
+      UUID(uuidString: String(format: "22000000-0000-0000-0000-%012d", $0))!
+    }
+    let model = PlayerModel(environment: PlayerEnvironment(
+      persistence: InMemoryLibraryStore(),
+      media: FileSystemMediaManager(rootURL: temporaryRoot.appending(path: "Storage")),
+      inspector: DeterministicAudioInspector(result: .success(InspectedAudio(
+        title: "Track title",
+        albumTitle: "Project Hail Mary",
+        authors: ["Andy Weir"],
+        durationSeconds: 10,
+        artworkData: nil,
+        container: "MP3"
+      ))),
+      playback: DeterministicPlaybackController(),
+      ids: DeterministicPlayerIDGenerator(values: ids)
+    ))
+
+    await model.restore()
+    let importedJobID = await model.importAudioSelection(from: [collection])
+    let jobID = try XCTUnwrap(importedJobID)
+    let job = try XCTUnwrap(model.library.importJobs.first(where: { $0.id == jobID }))
+    let proposal = try XCTUnwrap(job.proposal)
+
+    XCTAssertEqual(job.phase, .ready)
+    XCTAssertEqual(proposal.title, "Project Hail Mary")
+    XCTAssertEqual(proposal.assets.count, 2)
+    XCTAssertTrue(proposal.groupingEvidence.contains {
+      $0.kind == .commonFolder
+        && $0.explanation.contains("Andy Weir - Project Hail Mary")
+    })
+    XCTAssertFalse(proposal.groupingEvidence.contains { $0.explanation.contains("folder books") })
+  }
+
   func testVersionedStoreMigratesSchemaOneAndWritesCurrentSchema() async throws {
     let directory = FileManager.default.temporaryDirectory.appending(
       path: "PlayerStoreTests-\(UUID().uuidString)",

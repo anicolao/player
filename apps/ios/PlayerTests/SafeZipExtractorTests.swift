@@ -270,6 +270,49 @@ final class SafeZipExtractorTests: XCTestCase {
     XCTAssertEqual(try Data(contentsOf: source), sourceData)
   }
 
+  func testPlayerModelCommitsValidArchiveAndRepeatedAddIsIdempotent() async throws {
+    let root = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let source = root.appending(path: "Project Hail Mary.zip")
+    let sourceData = try ZipFixture.make([
+      .init(name: "Project Hail Mary/01.mp3", data: Data("one".utf8)),
+      .init(name: "Project Hail Mary/02.mp3", data: Data("two".utf8)),
+    ])
+    try sourceData.write(to: source)
+    let ids = (1...8).map {
+      UUID(uuidString: String(format: "61000000-0000-0000-0000-%012d", $0))!
+    }
+    let model = PlayerModel(environment: PlayerEnvironment(
+      persistence: InMemoryLibraryStore(),
+      media: FileSystemMediaManager(rootURL: root.appending(path: "Storage")),
+      inspector: ZipTestInspector(),
+      playback: ZipTestPlaybackController(),
+      ids: DeterministicPlayerIDGenerator(values: ids)
+    ))
+
+    await model.restore()
+    let importedJobID = await model.importAudioSelection(from: [source])
+    let jobID = try XCTUnwrap(importedJobID)
+    XCTAssertEqual(
+      model.library.importJobs.first(where: { $0.id == jobID })?.phase,
+      .ready
+    )
+
+    let committedBookID = await model.addImportToLibrary(jobID: jobID)
+    let firstBookID = try XCTUnwrap(committedBookID)
+    XCTAssertEqual(model.library.books.map(\.id), [firstBookID])
+    XCTAssertEqual(
+      model.library.importJobs.first(where: { $0.id == jobID })?.phase,
+      .committed
+    )
+
+    let repeatedBookID = await model.addImportToLibrary(jobID: jobID)
+    XCTAssertEqual(repeatedBookID, firstBookID)
+    XCTAssertEqual(model.library.books.count, 1)
+    XCTAssertNil(model.lastErrorMessage)
+    XCTAssertEqual(try Data(contentsOf: source), sourceData)
+  }
+
   func testPlayerModelPersistsPrevalidationCountAndCancelsUnsafeArchive() async throws {
     let root = try temporaryDirectory()
     defer { try? FileManager.default.removeItem(at: root) }

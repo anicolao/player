@@ -110,7 +110,11 @@ actor FileSystemMediaManager: MediaManaging {
           return $0.relativePath.localizedStandardCompare($1.relativePath) == .orderedAscending
         }
         for child in children {
-          candidates.append((child.url, child.relativePath, selectedURL.lastPathComponent))
+          let relativeComponents = child.relativePath.split(separator: "/").map(String.init)
+          let groupingFolder = relativeComponents.count > 1
+            ? relativeComponents[0]
+            : selectedURL.lastPathComponent
+          candidates.append((child.url, child.relativePath, groupingFolder))
         }
       } else if values.isRegularFile == true {
         candidates.append((selectedURL, selectedURL.lastPathComponent, nil))

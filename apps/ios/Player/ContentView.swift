@@ -737,7 +737,8 @@ struct ReviewImportView: View {
   private func primaryAction(job: ImportJob) -> some View {
     let warnings = job.proposals.reduce(0) { $0 + $1.warnings.count }
     let isCommitting = job.phase == .committing
-    let canAdd = warnings == 0 && !isCommitting
+    let isReady = job.phase == .ready || job.phase == .needsReview
+    let canAdd = isReady && warnings == 0
     return VStack(spacing: 7) {
       Button {
         Task {
@@ -755,7 +756,11 @@ struct ReviewImportView: View {
       .accessibilityValue(
         isCommitting
           ? "committing:disabled"
-          : warnings == 0 ? "ready:enabled" : "blocked:\(warnings)-warnings:disabled"
+          : canAdd
+            ? "ready:enabled"
+            : warnings > 0
+              ? "blocked:\(warnings)-warnings:disabled"
+              : "\(job.phase.rawValue):disabled"
       )
       if warnings > 0 {
         Text("Resolve \(warnings) warning\(warnings == 1 ? "" : "s") to add this book.")

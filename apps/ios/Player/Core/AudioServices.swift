@@ -23,6 +23,7 @@ struct AVFoundationAudioInspector: AudioInspecting {
     let formatMetadata = try await asset.load(.metadata)
     let metadata = commonMetadata + formatMetadata
     let title = await stringValue(for: .commonIdentifierTitle, in: metadata)
+    let albumTitle = await stringValue(for: .commonIdentifierAlbumName, in: metadata)
     let artist = await stringValue(for: .commonIdentifierArtist, in: metadata)
     let artwork = await dataValue(for: .commonIdentifierArtwork, in: metadata)
     let narrator = await textValue(
@@ -52,6 +53,7 @@ struct AVFoundationAudioInspector: AudioInspecting {
 
     return InspectedAudio(
       title: title,
+      albumTitle: albumTitle,
       authors: ContributorParser.names(from: artist),
       durationSeconds: seconds,
       artworkData: artwork,

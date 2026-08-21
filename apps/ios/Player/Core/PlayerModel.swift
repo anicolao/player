@@ -610,6 +610,7 @@ final class PlayerModel {
         let proposalID = await environment.ids.next()
         let bookID = await environment.ids.next()
         let commonFolder = commonNonBlank(group.compactMap(\.acquired.commonFolderName))
+        let commonAlbumTitle = commonNonBlank(group.compactMap(\.inspected.albumTitle))
         let commonTitle = commonNonBlank(group.compactMap(\.inspected.title))
         let filenameTitle = filenameStem(for: group[0].asset.originalFilename).display
         let warnings = (preparedGroups.count > 1
@@ -619,7 +620,7 @@ final class PlayerModel {
           BookProposal(
             id: proposalID,
             proposedBookID: bookID,
-            title: commonFolder ?? commonTitle ?? filenameTitle,
+            title: commonAlbumTitle ?? commonTitle ?? commonFolder ?? filenameTitle,
             authors: uniqueContributors(group.flatMap(\.inspected.authors)),
             durationSeconds: timelineStart,
             artworkData: group.compactMap(\.inspected.artworkData).first,
@@ -963,6 +964,13 @@ final class PlayerModel {
   func addImportToLibrary(jobID: UUID) async -> UUID? {
     guard var job = library.importJobs.first(where: { $0.id == jobID }) else {
       lastErrorMessage = PlayerCoreError.missingImport(jobID).localizedDescription
+      return nil
+    }
+    if job.phase == .committed, let committedBookID = job.committedBookID {
+      lastErrorMessage = nil
+      return committedBookID
+    }
+    if job.phase == .committing {
       return nil
     }
     let proposals = job.proposals
@@ -3152,11 +3160,13 @@ final class PlayerModel {
       let proposalID = await environment.ids.next()
       let bookID = await environment.ids.next()
       let commonFolder = commonNonBlank(group.compactMap(\.acquired.commonFolderName))
+      let commonAlbumTitle = commonNonBlank(group.compactMap(\.inspected.albumTitle))
       let commonTitle = commonNonBlank(group.compactMap(\.inspected.title))
       proposals.append(BookProposal(
         id: proposalID,
         proposedBookID: bookID,
-        title: commonFolder ?? commonTitle ?? filenameStem(for: first.originalFilename).display,
+        title: commonAlbumTitle ?? commonTitle ?? commonFolder
+          ?? filenameStem(for: first.originalFilename).display,
         authors: uniqueContributors(group.flatMap(\.inspected.authors)),
         durationSeconds: start,
         artworkData: group.compactMap(\.inspected.artworkData).first,
