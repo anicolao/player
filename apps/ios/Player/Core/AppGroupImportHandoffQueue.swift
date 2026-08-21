@@ -70,6 +70,156 @@ enum ShareImportHandoffError: LocalizedError, Equatable, Sendable {
   }
 }
 
+/// Builds a handoff directly in the shared container while provider URLs are
+/// valid. Share extensions have a much smaller memory budget than the host
+/// app, so every item is copied and hashed as a bounded stream. The request is
+/// kept under Incoming until `publish()` atomically makes the complete
+/// selection visible to the app.
+final class AppGroupImportHandoffWriter: @unchecked Sendable {
+  let id: UUID
+
+  private let createdAt: Date
+  private let incomingURL: URL
+  private let publishedURL: URL
+  private let itemsURL: URL
+  private let fileManager: FileManager
+  private var items: [ShareImportHandoffItem] = []
+  private var isFinished = false
+
+  init(
+    containerURL: URL,
+    id: UUID = UUID(),
+    createdAt: Date = Date(),
+    fileManager: FileManager = .default
+  ) throws {
+    self.id = id
+    self.createdAt = createdAt
+    self.fileManager = fileManager
+
+    let root = containerURL.appending(
+      path: PlayerAppGroup.importQueueDirectoryName,
+      directoryHint: .isDirectory
+    )
+    let incomingRoot = root.appending(path: "Incoming", directoryHint: .isDirectory)
+    let pendingRoot = root.appending(path: "Pending", directoryHint: .isDirectory)
+    let processingRoot = root.appending(path: "Processing", directoryHint: .isDirectory)
+    for directory in [root, incomingRoot, pendingRoot, processingRoot] {
+      try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+    }
+
+    let requestName = id.uuidString.lowercased()
+    incomingURL = incomingRoot.appending(path: requestName, directoryHint: .isDirectory)
+    publishedURL = pendingRoot.appending(path: requestName, directoryHint: .isDirectory)
+    itemsURL = incomingURL.appending(path: "Items", directoryHint: .isDirectory)
+    guard
+      !fileManager.fileExists(atPath: incomingURL.path),
+      !fileManager.fileExists(atPath: publishedURL.path),
+      !fileManager.fileExists(
+        atPath: processingRoot.appending(path: requestName, directoryHint: .isDirectory).path
+      )
+    else { throw ShareImportHandoffError.fileOperation("This share request already exists.") }
+    try fileManager.createDirectory(at: itemsURL, withIntermediateDirectories: true)
+  }
+
+  func appendCopying(
+    _ sourceURL: URL,
+    fileExtension: String,
+    contentTypeIdentifier: String?,
+    originalFilename: String
+  ) throws {
+    guard !isFinished else {
+      throw ShareImportHandoffError.fileOperation("This share request is already complete.")
+    }
+    let normalizedExtension = fileExtension.lowercased()
+    guard ["m4a", "m4b", "mp3", "zip"].contains(normalizedExtension) else {
+      throw ShareImportHandoffError.fileOperation(
+        "The shared item \(originalFilename) is not a supported audiobook file."
+      )
+    }
+
+    let accessed = sourceURL.startAccessingSecurityScopedResource()
+    defer { if accessed { sourceURL.stopAccessingSecurityScopedResource() } }
+    let sourceValues = try sourceURL.resourceValues(forKeys: [.isRegularFileKey])
+    guard sourceValues.isRegularFile == true else {
+      throw ShareImportHandoffError.fileOperation(
+        "The shared item \(originalFilename) is not a regular file."
+      )
+    }
+
+    let storedName = String(format: "%05d.%@", items.count, normalizedExtension)
+    let destination = itemsURL.appending(path: storedName)
+    let checksum = try copyAndHash(from: sourceURL, to: destination)
+    let destinationValues = try destination.resourceValues(forKeys: [.fileSizeKey])
+    guard let byteCount = destinationValues.fileSize else {
+      throw ShareImportHandoffError.fileOperation(
+        "The copied size of \(originalFilename) could not be verified."
+      )
+    }
+    items.append(ShareImportHandoffItem(
+      relativePath: "Items/\(storedName)",
+      originalFilename: originalFilename,
+      contentTypeIdentifier: contentTypeIdentifier,
+      byteCount: Int64(byteCount),
+      checksumSHA256: checksum
+    ))
+  }
+
+  @discardableResult
+  func publish() throws -> UUID {
+    guard !isFinished else {
+      throw ShareImportHandoffError.fileOperation("This share request is already complete.")
+    }
+    guard !items.isEmpty else { throw ShareImportHandoffError.emptySelection }
+    let handoff = ShareImportHandoff(id: id, createdAt: createdAt, items: items)
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+    encoder.dateEncodingStrategy = .iso8601
+    try encoder.encode(handoff).write(
+      to: incomingURL.appending(path: "handoff.json"),
+      options: [.atomic]
+    )
+    try fileManager.moveItem(at: incomingURL, to: publishedURL)
+    isFinished = true
+    return id
+  }
+
+  func cancel() {
+    guard !isFinished else { return }
+    try? fileManager.removeItem(at: incomingURL)
+    isFinished = true
+  }
+
+  deinit {
+    if !isFinished { try? fileManager.removeItem(at: incomingURL) }
+  }
+
+  private func copyAndHash(from source: URL, to destination: URL) throws -> String {
+    guard fileManager.createFile(atPath: destination.path, contents: nil) else {
+      throw ShareImportHandoffError.fileOperation(
+        "Player could not create storage for \(source.lastPathComponent)."
+      )
+    }
+    let input = try FileHandle(forReadingFrom: source)
+    let output = try FileHandle(forWritingTo: destination)
+    defer {
+      try? input.close()
+      try? output.close()
+    }
+    var hash = SHA256()
+    while try autoreleasepool(invoking: {
+      try Task.checkCancellation()
+      guard let data = try input.read(upToCount: 1_024 * 1_024), !data.isEmpty else {
+        return false
+      }
+      hash.update(data: data)
+      try output.write(contentsOf: data)
+      return true
+    }) {}
+    try output.synchronize()
+    return hash.finalize().map { String(format: "%02x", $0) }.joined()
+  }
+}
+
 /// A small filesystem queue shared by the app and Share Extension. A request is
 /// invisible until every source copy and its manifest are durable, then one
 /// directory rename publishes it atomically.
@@ -288,12 +438,15 @@ actor AppGroupImportHandoffQueue {
       try? output.close()
     }
     var hash = SHA256()
-    while true {
+    while try autoreleasepool(invoking: {
       try Task.checkCancellation()
-      guard let data = try input.read(upToCount: 1_024 * 1_024), !data.isEmpty else { break }
+      guard let data = try input.read(upToCount: 1_024 * 1_024), !data.isEmpty else {
+        return false
+      }
       hash.update(data: data)
       try output.write(contentsOf: data)
-    }
+      return true
+    }) {}
     try output.synchronize()
     return hash.finalize().map { String(format: "%02x", $0) }.joined()
   }
@@ -302,11 +455,14 @@ actor AppGroupImportHandoffQueue {
     let input = try FileHandle(forReadingFrom: url)
     defer { try? input.close() }
     var hash = SHA256()
-    while true {
+    while try autoreleasepool(invoking: {
       try Task.checkCancellation()
-      guard let data = try input.read(upToCount: 1_024 * 1_024), !data.isEmpty else { break }
+      guard let data = try input.read(upToCount: 1_024 * 1_024), !data.isEmpty else {
+        return false
+      }
       hash.update(data: data)
-    }
+      return true
+    }) {}
     return hash.finalize().map { String(format: "%02x", $0) }.joined()
   }
 }

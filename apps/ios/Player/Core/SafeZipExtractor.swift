@@ -823,11 +823,15 @@ actor SafeZipExtractor: ZipExtracting {
     defer { try? handle.close() }
     var hash = SHA256()
     var byteCount: UInt64 = 0
-    while let data = try handle.read(upToCount: 1_024 * 1_024), !data.isEmpty {
+    while try autoreleasepool(invoking: {
+      guard let data = try handle.read(upToCount: 1_024 * 1_024), !data.isEmpty else {
+        return false
+      }
       try Task.checkCancellation()
       hash.update(data: data)
       byteCount += UInt64(data.count)
-    }
+      return true
+    }) {}
     return ArchiveIdentity(
       sha256: hash.finalize().map { String(format: "%02x", $0) }.joined(),
       byteCount: byteCount
@@ -841,10 +845,14 @@ actor SafeZipExtractor: ZipExtracting {
     let handle = try FileHandle(forReadingFrom: url)
     defer { try? handle.close() }
     var crc = CRC32()
-    while let data = try handle.read(upToCount: 256 * 1_024), !data.isEmpty {
+    while try autoreleasepool(invoking: {
+      guard let data = try handle.read(upToCount: 256 * 1_024), !data.isEmpty else {
+        return false
+      }
       try Task.checkCancellation()
       crc.update(data)
-    }
+      return true
+    }) {}
     return crc.finalized == crc32
   }
 

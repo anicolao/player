@@ -1288,6 +1288,73 @@ final class PlayerCoreTests: XCTestCase {
     XCTAssertNil(emptyClaim)
   }
 
+  func testShareWriterPublishesOnlyACompleteMultiFileSelection() async throws {
+    let root = FileManager.default.temporaryDirectory.appending(
+      path: "PlayerShareWriterTests-\(UUID().uuidString)",
+      directoryHint: .isDirectory
+    )
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let first = root.appending(path: "provider-first")
+    let second = root.appending(path: "provider-second")
+    try Data(repeating: 0x41, count: 2 * 1_024 * 1_024).write(to: first)
+    try Data(repeating: 0x42, count: 3 * 1_024 * 1_024).write(to: second)
+
+    let group = root.appending(path: "Group")
+    let queue = AppGroupImportHandoffQueue(containerURL: group)
+    let writer = try AppGroupImportHandoffWriter(containerURL: group)
+    try writer.appendCopying(
+      first,
+      fileExtension: "mp3",
+      contentTypeIdentifier: "public.mp3",
+      originalFilename: "Book Part 01.mp3"
+    )
+    try writer.appendCopying(
+      second,
+      fileExtension: "mp3",
+      contentTypeIdentifier: "public.mp3",
+      originalFilename: "Book Part 02.mp3"
+    )
+
+    let unpublishedClaim = try await queue.claimNext()
+    XCTAssertNil(unpublishedClaim, "Incoming selections must remain invisible")
+    try writer.publish()
+    let publishedClaim = try await queue.claimNext()
+    let claim = try XCTUnwrap(publishedClaim)
+    XCTAssertEqual(claim.handoff.items.map(\.originalFilename), [
+      "Book Part 01.mp3", "Book Part 02.mp3",
+    ])
+    XCTAssertEqual(claim.handoff.items.map(\.byteCount), [
+      Int64(2 * 1_024 * 1_024), Int64(3 * 1_024 * 1_024),
+    ])
+    XCTAssertEqual(claim.fileURLs.count, 2)
+  }
+
+  func testCancelledShareWriterRemovesItsUnpublishedFiles() async throws {
+    let root = FileManager.default.temporaryDirectory.appending(
+      path: "PlayerCancelledShareWriterTests-\(UUID().uuidString)",
+      directoryHint: .isDirectory
+    )
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let source = root.appending(path: "provider-file")
+    try Data(repeating: 0x41, count: 1_024 * 1_024).write(to: source)
+    let group = root.appending(path: "Group")
+    let writer = try AppGroupImportHandoffWriter(containerURL: group)
+    try writer.appendCopying(
+      source,
+      fileExtension: "zip",
+      contentTypeIdentifier: "public.zip-archive",
+      originalFilename: "Book.zip"
+    )
+    writer.cancel()
+
+    let incoming = group.appending(path: "ImportHandoffs/Incoming")
+    XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: incoming.path), [])
+    let cancelledClaim = try await AppGroupImportHandoffQueue(containerURL: group).claimNext()
+    XCTAssertNil(cancelledClaim)
+  }
+
   func testShareHandoffRejectsPayloadChangedAfterPublication() async throws {
     let root = FileManager.default.temporaryDirectory.appending(
       path: "PlayerShareTamperTests-\(UUID().uuidString)",

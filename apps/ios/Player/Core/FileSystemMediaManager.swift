@@ -491,14 +491,15 @@ actor FileSystemMediaManager: MediaManaging {
     }
 
     var hash = SHA256()
-    while true {
+    while try autoreleasepool(invoking: {
       try Task.checkCancellation()
       guard let chunk = try input.read(upToCount: 1_024 * 1_024), !chunk.isEmpty else {
-        break
+        return false
       }
       hash.update(data: chunk)
       try output.write(contentsOf: chunk)
-    }
+      return true
+    }) {}
     try output.synchronize()
     return hash.finalize().map { String(format: "%02x", $0) }.joined()
   }
@@ -507,11 +508,14 @@ actor FileSystemMediaManager: MediaManaging {
     let input = try FileHandle(forReadingFrom: url)
     defer { try? input.close() }
     var hash = SHA256()
-    while true {
+    while try autoreleasepool(invoking: {
       try Task.checkCancellation()
-      guard let chunk = try input.read(upToCount: 1_024 * 1_024), !chunk.isEmpty else { break }
+      guard let chunk = try input.read(upToCount: 1_024 * 1_024), !chunk.isEmpty else {
+        return false
+      }
       hash.update(data: chunk)
-    }
+      return true
+    }) {}
     return hash.finalize().map { String(format: "%02x", $0) }.joined()
   }
 
