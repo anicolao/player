@@ -224,12 +224,7 @@ final class ImportRecoveryStorageUITests: XCTestCase {
   }
 
   private func requireValue(_ element: XCUIElement, _ expected: String) throws {
-    let predicate = NSPredicate(format: "value == %@", expected)
-    let result = XCTWaiter.wait(
-      for: [XCTNSPredicateExpectation(predicate: predicate, object: element)],
-      timeout: 3
-    )
-    guard result == .completed else {
+    guard element.waitForStringValue(expected, timeout: 3) else {
       let latest = element.value.map(String.init(describing:)) ?? "nil"
       XCTFail("Expected \(element.identifier) value \(expected), latest=\(latest)")
       throw ImportRecoveryStorageTestError.semanticStateUnavailable

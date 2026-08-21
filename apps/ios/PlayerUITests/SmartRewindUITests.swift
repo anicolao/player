@@ -281,11 +281,7 @@ final class SmartRewindUITests: XCTestCase {
     _ expected: String,
     timeout: TimeInterval = 2
   ) throws {
-    let expectation = XCTNSPredicateExpectation(
-      predicate: NSPredicate(format: "value == %@", expected),
-      object: element
-    )
-    guard XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed else {
+    guard element.waitForStringValue(expected, timeout: timeout) else {
       XCTFail("Expected \(element) to expose \(expected); actual=\(String(describing: element.value))")
       throw SmartRewindUITestError.probeUnavailable
     }

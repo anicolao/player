@@ -1,6 +1,20 @@
 import XCTest
 
 @MainActor
+extension XCUIElement {
+  func waitForStringValue(_ expectedValue: String, timeout: TimeInterval) -> Bool {
+    let deadline = Date().addingTimeInterval(timeout)
+    repeat {
+      if exists, value.map(String.init(describing:)) == expectedValue {
+        return true
+      }
+      RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+    } while Date() < deadline
+    return false
+  }
+}
+
+@MainActor
 struct StepVerification {
   let specification: String
   let check: () -> Bool
@@ -36,15 +50,13 @@ struct StepVerification {
     _ specification: String
   ) -> StepVerification {
     StepVerification(specification: specification) {
-      let deadline = Date().addingTimeInterval(TestStepHelper.conditionTimeout)
-      var latest = "missing"
-      repeat {
-        if element.exists {
-          latest = element.value.map(String.init(describing:)) ?? "nil"
-          if latest == expectedValue { return true }
-        }
-        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
-      } while Date() < deadline
+      if element.waitForStringValue(
+        expectedValue,
+        timeout: TestStepHelper.conditionTimeout
+      ) {
+        return true
+      }
+      let latest = element.value.map(String.init(describing:)) ?? "missing"
       print(
         "Value verification failed: identifier=\(element.identifier), "
           + "expected=\(expectedValue), latest=\(latest)"

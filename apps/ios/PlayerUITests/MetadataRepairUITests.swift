@@ -202,12 +202,10 @@ final class MetadataRepairUITests: XCTestCase {
   }
 
   private func requireValue(_ element: XCUIElement, _ expected: String) throws {
-    let expectation = XCTNSPredicateExpectation(
-      predicate: NSPredicate(format: "value == %@", expected),
-      object: element
-    )
-    guard XCTWaiter.wait(for: [expectation], timeout: 2) == .completed else {
-      XCTFail("The metadata-repair journey did not reach its required semantic state")
+    guard element.waitForStringValue(expected, timeout: 2) else {
+      XCTFail(
+        "The metadata-repair journey did not reach its required semantic state; actual=\(String(describing: element.value))"
+      )
       throw MetadataRepairTestError.semanticStateUnavailable
     }
   }

@@ -143,18 +143,12 @@ final class ImportIngressResilienceUITests: XCTestCase {
   }
 
   private func requireValue(_ element: XCUIElement, _ expected: String) throws {
-    let deadline = Date().addingTimeInterval(3)
-    repeat {
-      if element.exists, String(describing: element.value ?? "nil") == expected {
-        return
-      }
-      RunLoop.current.run(until: Date().addingTimeInterval(0.05))
-    } while Date() < deadline
-
-    XCTFail(
-      "The import ingress journey did not reach its required semantic state; actual=\(String(describing: element.value))"
-    )
-    throw ImportIngressTestError.semanticStateUnavailable
+    guard element.waitForStringValue(expected, timeout: 3) else {
+      XCTFail(
+        "The import ingress journey did not reach its required semantic state; actual=\(String(describing: element.value))"
+      )
+      throw ImportIngressTestError.semanticStateUnavailable
+    }
   }
 }
 
