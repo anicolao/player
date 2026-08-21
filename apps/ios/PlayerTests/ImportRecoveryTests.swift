@@ -481,6 +481,64 @@ final class ImportRecoveryTests: XCTestCase {
     XCTAssertEqual(try Data(contentsOf: sourceURL), sourceData)
   }
 
+  @MainActor
+  func testAbandonImportRemovesInboxRecordAndStagingButRetainsSource() async throws {
+    let root = FileManager.default.temporaryDirectory.appending(
+      path: "player-recovery-abandon-\(UUID().uuidString)",
+      directoryHint: .isDirectory
+    )
+    defer { try? FileManager.default.removeItem(at: root) }
+    let jobID = uuid(82)
+    let sourceURL = root.appending(path: "Source/original.m4b")
+    try FileManager.default.createDirectory(
+      at: sourceURL.deletingLastPathComponent(),
+      withIntermediateDirectories: true
+    )
+    let sourceData = Data("source-survives-abandonment".utf8)
+    try sourceData.write(to: sourceURL)
+    let base = FileSystemMediaManager(rootURL: root.appending(path: "PlayerData"))
+    let staged = try await base.stage(sourceURL: sourceURL, jobID: jobID)
+    let job = ImportJob(
+      id: jobID,
+      sourceFilename: sourceURL.lastPathComponent,
+      phase: .ready,
+      progress: ImportProgress(completed: staged.byteCount, total: staged.byteCount),
+      stagedRelativePath: staged.relativePath,
+      createdAt: .distantPast,
+      updatedAt: .distantPast,
+      stagedAssets: [StagedImportAsset(
+        assetID: uuid(83),
+        stagedRelativePath: staged.relativePath,
+        sourceRelativePath: sourceURL.lastPathComponent
+      )]
+    )
+    let store = InMemoryLibraryStore(snapshot: LibrarySnapshot(
+      books: [],
+      importJobs: [job],
+      currentBookID: nil
+    ))
+    let model = PlayerModel(environment: PlayerEnvironment(
+      persistence: store,
+      media: ConcreteDiscardForwarder(base: base),
+      inspector: DeterministicAudioInspector(result: .failure(.unreadableAudio("unused"))),
+      playback: DeterministicPlaybackController()
+    ))
+    await model.restore()
+
+    let abandoned = await model.abandonImport(jobID: jobID)
+    let persisted = await store.load()
+
+    XCTAssertTrue(abandoned)
+    XCTAssertTrue(model.library.importJobs.isEmpty)
+    XCTAssertTrue(persisted.importJobs.isEmpty)
+    let stagingDirectory = root.appending(
+      path: "PlayerData/Staging/\(jobID.uuidString.lowercased())",
+      directoryHint: .isDirectory
+    )
+    XCTAssertFalse(FileManager.default.fileExists(atPath: stagingDirectory.path))
+    XCTAssertEqual(try Data(contentsOf: sourceURL), sourceData)
+  }
+
   func testSchema13MigrationClearsUnversionedRecoveryAndStorageDefaults() async throws {
     let root = FileManager.default.temporaryDirectory.appending(
       path: "player-recovery-migration-\(UUID().uuidString)",

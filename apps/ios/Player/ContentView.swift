@@ -104,6 +104,17 @@ struct ContentView: View {
         break
       }
     }
+    .alert(
+      "Couldn’t Complete Import",
+      isPresented: Binding(
+        get: { model.lastErrorMessage != nil },
+        set: { if !$0 { model.clearLastError() } }
+      )
+    ) {
+      Button("OK") { model.clearLastError() }
+    } message: {
+      Text(model.lastErrorMessage ?? "The audiobook could not be imported.")
+    }
   }
 
   private var currentBook: Book? {
@@ -292,6 +303,7 @@ private struct InboxView: View {
   @Bindable var model: PlayerModel
   let startImport: () -> Void
   let didCommit: () -> Void
+  @State private var pendingAbandonment: ImportJob?
 
   var body: some View {
     NavigationStack {
@@ -314,6 +326,13 @@ private struct InboxView: View {
                   ? "view-import-error-\(job.id.uuidString.lowercased())"
                   : "review-import-job-\(job.id.uuidString.lowercased())"
               )
+              .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                Button("Delete", systemImage: "trash", role: .destructive) {
+                  pendingAbandonment = job
+                }
+                .disabled(job.phase == .committing)
+                .accessibilityIdentifier("abandon-import-\(job.id.uuidString.lowercased())")
+              }
           }
           .scrollContentBackground(.hidden)
         }
@@ -322,7 +341,32 @@ private struct InboxView: View {
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("inbox-screen")
       .accessibilityValue(inboxState)
+      .confirmationDialog(
+        "Abandon this import?",
+        isPresented: Binding(
+          get: { pendingAbandonment != nil },
+          set: { if !$0 { pendingAbandonment = nil } }
+        ),
+        titleVisibility: .visible
+      ) {
+        Button("Abandon Import", role: .destructive) {
+          guard let job = pendingAbandonment else { return }
+          pendingAbandonment = nil
+          Task { await model.abandonImport(jobID: job.id) }
+        }
+        Button("Keep Import", role: .cancel) { pendingAbandonment = nil }
+      } message: {
+        Text(abandonmentMessage)
+      }
     }
+  }
+
+  private var abandonmentMessage: String {
+    guard let job = pendingAbandonment else { return "" }
+    if job.phase == .committed {
+      return "This removes the Inbox history only. The audiobook stays in your Library."
+    }
+    return "This removes the Inbox entry and its temporary copied files. Your original files stay untouched."
   }
 
   private var inboxState: String {
@@ -528,9 +572,11 @@ private struct ImportErrorView: View {
 }
 
 struct ReviewImportView: View {
+  @Environment(\.dismiss) private var dismiss
   @Bindable var model: PlayerModel
   let jobID: UUID
   let didCommit: () -> Void
+  @State private var isConfirmingAbandonment = false
 
   var body: some View {
     ZStack {
@@ -553,6 +599,29 @@ struct ReviewImportView: View {
     }
     .navigationTitle("Review Import")
     .navigationBarTitleDisplayMode(.inline)
+    .toolbar {
+      ToolbarItem(placement: .topBarTrailing) {
+        Button("Abandon Import", systemImage: "trash", role: .destructive) {
+          isConfirmingAbandonment = true
+        }
+        .tint(.red)
+        .accessibilityIdentifier("abandon-import")
+      }
+    }
+    .confirmationDialog(
+      "Abandon this import?",
+      isPresented: $isConfirmingAbandonment,
+      titleVisibility: .visible
+    ) {
+      Button("Abandon Import", role: .destructive) {
+        Task {
+          if await model.abandonImport(jobID: jobID) { dismiss() }
+        }
+      }
+      Button("Keep Import", role: .cancel) {}
+    } message: {
+      Text("This removes the Inbox entry and its temporary copied files. Your original files stay untouched.")
+    }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("review-import-screen")
     .accessibilityValue(reviewAccessibilityValue)

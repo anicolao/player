@@ -4,6 +4,26 @@ import XCTest
 final class ImportPlaybackUITests: XCTestCase {
   private let jobID = "10000000-0000-0000-0000-000000000001"
 
+  func testAbandonsReadyImportAndClearsInbox() throws {
+    continueAfterFailure = false
+    XCUIDevice.shared.orientation = .portrait
+
+    let app = makeApplication()
+    app.launch()
+    app.tabBars.buttons["Inbox"].tap()
+    app.buttons["review-import-job-\(jobID)"].tap()
+    XCTAssertTrue(app.buttons["abandon-import"].waitForExistence(timeout: 2))
+
+    app.buttons["abandon-import"].tap()
+    let confirmation = app.sheets.buttons["Abandon Import"]
+    XCTAssertTrue(confirmation.waitForExistence(timeout: 2))
+    confirmation.tap()
+
+    let inbox = app.descendants(matching: .any)["inbox-screen"]
+    XCTAssertTrue(inbox.waitForStringValue("import:0-review:0-processing:0", timeout: 2))
+    XCTAssertTrue(app.staticTexts["Inbox is clear"].exists)
+  }
+
   func testReviewsCommitsAndPlaysOneAudiobook() throws {
     continueAfterFailure = false
     XCUIDevice.shared.orientation = .portrait

@@ -52,14 +52,18 @@ final class ShareViewController: UIViewController {
 
       var materialized: [URL] = []
       var typeIdentifiers: [String?] = []
+      var originalFilenames: [String?] = []
       for (index, selection) in selections.enumerated() {
-        materialized.append(try await Self.copyFileRepresentation(
+        let file = try await Self.copyFileRepresentation(
           from: selection.0,
           typeIdentifier: selection.1,
+          suggestedName: selection.2,
           index: index,
           temporaryDirectory: temporaryDirectory
-        ))
-        typeIdentifiers.append(selection.1)
+        )
+        materialized.append(file.url)
+        typeIdentifiers.append(file.contentTypeIdentifier)
+        originalFilenames.append(file.originalFilename)
       }
 
       guard let container = FileManager.default.containerURL(
@@ -69,7 +73,7 @@ final class ShareViewController: UIViewController {
       try await queue.enqueueCopying(
         materialized,
         contentTypeIdentifiers: typeIdentifiers,
-        originalFilenames: selections.map(\.originalName)
+        originalFilenames: originalFilenames
       )
       statusLabel.text = "Added to Player Inbox"
       try? await Task.sleep(for: .milliseconds(350))
@@ -87,40 +91,76 @@ final class ShareViewController: UIViewController {
       "public.mp3",
       "public.zip-archive",
     ]
-    return provider.registeredTypeIdentifiers.first { identifier in
+    if let supportedIdentifier = provider.registeredTypeIdentifiers.first(where: { identifier in
       guard let candidate = UTType(identifier) else { return false }
       return supported.contains { supportedIdentifier in
         guard let supportedType = UTType(supportedIdentifier) else { return false }
         return candidate.conforms(to: supportedType)
       }
+    }) {
+      return supportedIdentifier
+    }
+
+    // Files may expose a multi-selection as generic file/data providers even
+    // when every suggested filename has a supported audiobook extension. Load
+    // the representation, then validate its actual extension before copying.
+    let genericTypes = [UTType.fileURL, .data, .item]
+    return provider.registeredTypeIdentifiers.first { identifier in
+      guard let candidate = UTType(identifier) else { return false }
+      return genericTypes.contains { candidate.conforms(to: $0) }
     }
   }
 
   private static func copyFileRepresentation(
     from provider: NSItemProvider,
     typeIdentifier: String,
+    suggestedName: String?,
     index: Int,
     temporaryDirectory: URL
-  ) async throws -> URL {
+  ) async throws -> MaterializedShareFile {
     try await withCheckedThrowingContinuation { continuation in
       provider.loadFileRepresentation(forTypeIdentifier: typeIdentifier) { sourceURL, error in
         do {
           if let error { throw error }
           guard let sourceURL else { throw ShareViewError.missingFileRepresentation }
-          let fileExtension = sourceURL.pathExtension.isEmpty
-            ? (UTType(typeIdentifier)?.preferredFilenameExtension ?? "data")
-            : sourceURL.pathExtension
+          let suggestedExtension = suggestedName.map { URL(filePath: $0).pathExtension } ?? ""
+          let fileExtension = [
+            suggestedExtension,
+            sourceURL.pathExtension,
+            UTType(typeIdentifier)?.preferredFilenameExtension ?? "",
+          ]
+            .map { $0.lowercased() }
+            .first { ["m4a", "m4b", "mp3", "zip"].contains($0) }
+          guard let fileExtension else { throw ShareViewError.noSupportedFiles }
           let destination = temporaryDirectory.appending(
             path: String(format: "%05d.%@", index, fileExtension)
           )
           try FileManager.default.copyItem(at: sourceURL, to: destination)
-          continuation.resume(returning: destination)
+          let suppliedName = suggestedName.flatMap { name -> String? in
+            let safeName = URL(filePath: name).lastPathComponent
+            return safeName.isEmpty ? nil : safeName
+          }
+          let sourceName = sourceURL.lastPathComponent
+          let originalFilename = suppliedName
+            ?? (sourceName.isEmpty ? nil : sourceName)
+            ?? String(format: "Shared audiobook %02d.%@", index + 1, fileExtension)
+          continuation.resume(returning: MaterializedShareFile(
+            url: destination,
+            contentTypeIdentifier: UTType(filenameExtension: fileExtension)?.identifier,
+            originalFilename: originalFilename
+          ))
         } catch {
           continuation.resume(throwing: error)
         }
       }
     }
   }
+}
+
+private struct MaterializedShareFile {
+  var url: URL
+  var contentTypeIdentifier: String?
+  var originalFilename: String
 }
 
 private enum ShareViewError: LocalizedError {

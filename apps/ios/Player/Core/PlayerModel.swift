@@ -354,6 +354,12 @@ final class PlayerModel {
       lastErrorMessage = PlayerCoreError.invalidAssetSelection.localizedDescription
       return nil
     }
+    let securityScopedURLs = request.selectedURLs.filter {
+      $0.startAccessingSecurityScopedResource()
+    }
+    defer {
+      securityScopedURLs.forEach { $0.stopAccessingSecurityScopedResource() }
+    }
     do {
       let sources = try makeDurableSources(for: request)
       if request.selectedURLs.count == 1,
@@ -901,6 +907,55 @@ final class PlayerModel {
       )
     }
     await environment.media.discardStaging(for: jobID)
+    lastErrorMessage = nil
+  }
+
+  /// Permanently removes an Inbox record and all of its app-owned temporary
+  /// files. A completed book is left untouched when its import receipt is
+  /// dismissed.
+  @discardableResult
+  func abandonImport(jobID: UUID) async -> Bool {
+    guard let job = library.importJobs.first(where: { $0.id == jobID }) else {
+      lastErrorMessage = PlayerCoreError.missingImport(jobID).localizedDescription
+      return false
+    }
+    guard job.phase != .committing else {
+      lastErrorMessage = "Wait for this audiobook to finish adding before dismissing it."
+      return false
+    }
+
+    let previousLibrary = library
+    importTasks[jobID]?.cancel()
+    library.importJobs.removeAll { $0.id == jobID }
+    library.metadataTransactions.removeAll { transaction in
+      if case .proposal(let targetJobID, _) = transaction.target {
+        return targetJobID == jobID
+      }
+      return false
+    }
+    library.storageManifests.removeAll { $0.scope == .stagingJob(jobID) }
+
+    do {
+      try await persist()
+    } catch {
+      library = previousLibrary
+      lastErrorMessage = error.localizedDescription
+      return false
+    }
+
+    if job.zipStatus != nil, let workspace = try? await environment.media.zipWorkspace(for: jobID) {
+      try? await environment.zipExtractor.cancelAndClean(
+        destinationRoot: workspace.destinationRoot,
+        checkpointURL: workspace.checkpointURL
+      )
+    }
+    await environment.media.discardStaging(for: jobID)
+    _ = await refreshStorageSummary()
+    lastErrorMessage = nil
+    return true
+  }
+
+  func clearLastError() {
     lastErrorMessage = nil
   }
 

@@ -91,6 +91,7 @@ jobs:
         run: >-
           apps/ios/scripts/run-e2e.sh
           002-import-and-play
+          PlayerUITests/ImportPlaybackUITests/testAbandonsReadyImportAndClearsInbox
           PlayerUITests/ImportPlaybackUITests/testReviewsCommitsAndPlaysOneAudiobook
           PlayerUITests/MetadataChapterUITests/testShowsEmbeddedMetadataAndStartsAChapter
           PlayerUITests/ImportIngressResilienceUITests/testDocumentOpenResumesOneImportAcrossAcquireAndInspectRestarts
