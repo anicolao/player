@@ -15,6 +15,10 @@ targets:
   Player:
     type: application
     platform: iOS
+    attributes:
+      SystemCapabilities:
+        com.apple.ApplicationGroups.iOS:
+          enabled: 1
     sources:
       - path: Player
     configFiles:
@@ -34,6 +38,10 @@ targets:
   ShareExtension:
     type: app-extension
     platform: iOS
+    attributes:
+      SystemCapabilities:
+        com.apple.ApplicationGroups.iOS:
+          enabled: 1
     sources:
       - path: ShareExtension
       - path: Player/Core/AppGroupImportHandoffQueue.swift

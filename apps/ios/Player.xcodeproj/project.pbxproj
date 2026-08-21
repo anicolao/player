@@ -647,6 +647,7 @@
 				TargetAttributes = {
 					5881E8E59EEA854DF68330AE = {
 						ProvisioningStyle = Automatic;
+						SystemCapabilities = { com.apple.ApplicationGroups.iOS = { enabled = 1; }; };
 					};
 					8DA48459DF19DCAFCEDD3018 = {
 						ProvisioningStyle = Automatic;
@@ -657,6 +658,7 @@
 					};
 					C526B3C6F7440F582811B83B = {
 						ProvisioningStyle = Automatic;
+						SystemCapabilities = { com.apple.ApplicationGroups.iOS = { enabled = 1; }; };
 					};
 				};
 			};

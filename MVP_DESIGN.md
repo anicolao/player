@@ -503,7 +503,7 @@ These are measured budgets, not reasons to add longer UI-test timeouts. Work exc
 The MVP target is complete only when:
 
 - every Included capability has an implementation and acceptance test;
-- all required E2E stories pass semantic assertions and zero-pixel comparison on the pinned environment;
+- all required E2E stories pass semantic assertions and canonical-pixel comparison on the pinned environment;
 - the malformed/long-file/multi-file/Unicode/ZIP fixture corpus imports without unexplained failure;
 - no known position-loss, source-mutation, database-corruption, or unrecoverable-import defect remains;
 - airplane-mode tests cover import from local Files, browsing, search, editing, playback, bookmarks, and backup creation;

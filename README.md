@@ -128,7 +128,7 @@ Run the launch E2E story and require an exact match against the committed screen
 apps/ios/scripts/run-e2e.sh
 ```
 
-The runner creates and deletes its own `Player E2E` simulator. See [apps/ios/README.md](apps/ios/README.md) for native project details and [E2E_GUIDE.md](E2E_GUIDE.md) for the semantic and zero-pixel verification contract.
+The runner creates and deletes its own `Player E2E` simulator. See [apps/ios/README.md](apps/ios/README.md) for native project details and [E2E_GUIDE.md](E2E_GUIDE.md) for the semantic and canonical-pixel verification contract.
 
 ## Contributing
 

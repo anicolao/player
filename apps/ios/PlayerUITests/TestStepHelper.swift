@@ -36,14 +36,20 @@ struct StepVerification {
     _ specification: String
   ) -> StepVerification {
     StepVerification(specification: specification) {
-      let expectation = XCTNSPredicateExpectation(
-        predicate: NSPredicate(format: "value == %@", expectedValue),
-        object: element
+      let deadline = Date().addingTimeInterval(TestStepHelper.conditionTimeout)
+      var latest = "missing"
+      repeat {
+        if element.exists {
+          latest = element.value.map(String.init(describing:)) ?? "nil"
+          if latest == expectedValue { return true }
+        }
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+      } while Date() < deadline
+      print(
+        "Value verification failed: identifier=\(element.identifier), "
+          + "expected=\(expectedValue), latest=\(latest)"
       )
-      return XCTWaiter.wait(
-        for: [expectation],
-        timeout: TestStepHelper.conditionTimeout
-      ) == .completed
+      return false
     }
   }
 }

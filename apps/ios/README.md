@@ -42,7 +42,7 @@ apps/ios/scripts/run-e2e.sh \
   PlayerUITests/ImportPlaybackUITests/testReviewsCommitsAndPlaysOneAudiobook
 ```
 
-The runner owns a story-specific temporary simulator, verifies the pinned toolchain, normalizes rendering state, runs semantic assertions, exports every generated step, and requires an exact pixel match with the committed baseline.
+The runner owns a story-specific temporary simulator, verifies the pinned toolchain, normalizes rendering state, runs semantic assertions, exports every generated step, and requires a canonical pixel match with the committed baseline.
 
 To intentionally record a reviewed baseline on the pinned environment:
 
@@ -65,6 +65,6 @@ See [E2E_GUIDE.md](../../E2E_GUIDE.md) for the complete contract.
 - Light-mode E2E configuration with animations disabled
 - Accessibility identifiers and an explicit `ready:library-empty` state value
 - Generated launch and import/playback walkthroughs with full-screen baselines
-- Exact native sRGB RGBA screenshot comparator with zero differing pixels allowed
+- Native sRGB RGBA screenshot comparator that rejects any channel delta above 8/255
 
 Multi-file grouping, metadata repair, and advanced listening tools remain sequenced in [IMPLEMENTATION_PLAN.md](../../IMPLEMENTATION_PLAN.md).

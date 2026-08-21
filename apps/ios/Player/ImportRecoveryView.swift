@@ -9,7 +9,9 @@ struct ImportRecoveryView: View {
 
   var body: some View {
     Group {
-      if let job, job.phase == .ready, !job.proposals.isEmpty {
+      if let job, !job.proposals.isEmpty,
+        job.phase == .ready || job.recoveryPlan?.phase == .ready
+      {
         ReviewImportView(model: model, jobID: job.id, didCommit: didCommit)
       } else if let job, let plan = job.recoveryPlan {
         recoveryContent(job: job, plan: plan)
