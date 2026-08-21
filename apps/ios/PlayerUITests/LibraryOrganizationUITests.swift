@@ -160,7 +160,7 @@ final class LibraryOrganizationUITests: XCTestCase {
     let restoredAllBooks = anyElement(restoredApp, "all-books-probe")
     try requireValue(restoredAllBooks, allBooksValue(view: "list", order: allBookOrder))
     restoredApp.buttons["all-books-book-\(books[4])"].tap()
-    restoredApp.buttons["remove-book"].tap()
+    restoredApp.buttons["move-book-to-trash-toolbar"].tap()
     restoredApp.buttons["remove-book-to-trash"].firstMatch.tap()
     restoredApp.buttons["open-trash"].tap()
     let trash = anyElement(restoredApp, "trash-probe")
@@ -175,6 +175,7 @@ final class LibraryOrganizationUITests: XCTestCase {
         ),
         .exists(anyElement(restoredApp, "trash-book-\(books[4])"), "The removed book is identifiable in Trash"),
         .exists(restoredApp.buttons["restore-trash-\(trashID)"], "The exact removal transaction can be restored"),
+        .exists(restoredApp.buttons["delete-trash-\(trashID)"], "The managed copy can be permanently deleted after confirmation"),
       ]
     )
     restoredApp.buttons["restore-trash-\(trashID)"].tap()

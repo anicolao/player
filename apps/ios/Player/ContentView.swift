@@ -1267,7 +1267,7 @@ struct BookDetailView: View {
             }
 
             Button(role: .destructive) { isConfirmingRemoval = true } label: {
-              Label("Remove Book", systemImage: "trash").frame(maxWidth: .infinity)
+              Label("Move to Trash", systemImage: "trash").frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
             .accessibilityIdentifier("remove-book")
@@ -1331,25 +1331,30 @@ struct BookDetailView: View {
     }
     .navigationTitle("Book Detail")
     .navigationBarTitleDisplayMode(.inline)
+    .toolbar {
+      ToolbarItem(placement: .topBarTrailing) {
+        Button(role: .destructive) { isConfirmingRemoval = true } label: {
+          Image(systemName: "trash")
+        }
+        .accessibilityLabel("Move to Trash")
+        .accessibilityIdentifier("move-book-to-trash-toolbar")
+      }
+    }
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("book-detail-screen")
     .accessibilityValue(bookDetailValue)
     .confirmationDialog(
-      "Remove this book?",
+      "Move this audiobook to Trash?",
       isPresented: $isConfirmingRemoval,
       titleVisibility: .visible
     ) {
-      Button("Remove and Recover Space", role: .destructive) {
+      Button("Move to Trash", role: .destructive) {
         removeBook(mediaPolicy: .moveManagedMediaToTrash)
       }
       .accessibilityIdentifier("remove-book-to-trash")
-      Button("Remove Record Only", role: .destructive) {
-        removeBook(mediaPolicy: .retainManagedMedia)
-      }
-      .accessibilityIdentifier("remove-book-retain-audio")
       Button("Cancel", role: .cancel) {}
     } message: {
-      Text("The book stays recoverable in Trash. Source files are never changed.")
+      Text("The audiobook and its app-managed audio stay recoverable in Trash. You can import the same audiobook again, and your original source files are never changed.")
     }
     .alert("Mark as finished?", isPresented: $isConfirmingFinished) {
       Button("Mark Finished") {

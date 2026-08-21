@@ -69,6 +69,61 @@ final class PlayerCoreTests: XCTestCase {
     XCTAssertEqual(model.library.positionJournal.map(\.reason), [.play, .pause])
   }
 
+  func testTrashingBookAllowsSameAudioToBeImportedAgain() async throws {
+    let temporaryRoot = FileManager.default.temporaryDirectory.appending(
+      path: "PlayerReimportTests-\(UUID().uuidString)",
+      directoryHint: .isDirectory
+    )
+    try FileManager.default.createDirectory(at: temporaryRoot, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+    let bundled = try XCTUnwrap(
+      Bundle(for: PlayerCoreTests.self).url(forResource: "01-opening-tone", withExtension: "m4a")
+    )
+    let source = temporaryRoot.appending(path: "repeatable-source.m4a")
+    try FileManager.default.copyItem(at: bundled, to: source)
+    let ids = (1...40).map {
+      UUID(uuidString: String(format: "21000000-0000-0000-0000-%012d", $0))!
+    }
+    let model = PlayerModel(environment: PlayerEnvironment(
+      persistence: InMemoryLibraryStore(),
+      media: FileSystemMediaManager(rootURL: temporaryRoot.appending(path: "Storage")),
+      inspector: AVFoundationAudioInspector(),
+      playback: DeterministicPlaybackController(),
+      ids: DeterministicPlayerIDGenerator(values: ids)
+    ))
+
+    await model.restore()
+    let importedFirstJobID = await model.importAudio(from: source)
+    let firstJobID = try XCTUnwrap(importedFirstJobID)
+    let committedFirstBookID = await model.addImportToLibrary(jobID: firstJobID)
+    let firstBookID = try XCTUnwrap(committedFirstBookID)
+    XCTAssertEqual(model.library.books.map(\.id), [firstBookID])
+
+    let removedTransactionID = await model.removeBook(
+      bookID: firstBookID,
+      mediaPolicy: .moveManagedMediaToTrash
+    )
+    let trashID = try XCTUnwrap(removedTransactionID)
+    XCTAssertTrue(model.library.books.isEmpty)
+    XCTAssertEqual(model.library.trashTransactions.first?.id, trashID)
+    XCTAssertEqual(model.library.trashTransactions.first?.status, .recoverable)
+
+    let importedSecondJobID = await model.importAudio(from: source)
+    let secondJobID = try XCTUnwrap(importedSecondJobID)
+    let secondJob = try XCTUnwrap(
+      model.library.importJobs.first(where: { $0.id == secondJobID })
+    )
+    XCTAssertEqual(secondJob.phase, .ready)
+    XCTAssertEqual(secondJob.recoveryPlan?.duplicateFileCount, 0)
+    XCTAssertEqual(secondJob.recoveryPlan?.acceptedFileCount, 1)
+    let committedSecondBookID = await model.addImportToLibrary(jobID: secondJobID)
+    let secondBookID = try XCTUnwrap(committedSecondBookID)
+    XCTAssertNotEqual(secondBookID, firstBookID)
+    XCTAssertEqual(model.library.books.map(\.id), [secondBookID])
+    XCTAssertEqual(model.library.trashTransactions.first?.status, .recoverable)
+  }
+
   func testVersionedStoreMigratesSchemaOneAndWritesCurrentSchema() async throws {
     let directory = FileManager.default.temporaryDirectory.appending(
       path: "PlayerStoreTests-\(UUID().uuidString)",

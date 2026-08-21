@@ -545,6 +545,7 @@ private struct CollectionBookPicker: View {
 
 struct LibraryTrashView: View {
   @Bindable var model: PlayerModel
+  @State private var pendingDeletion: LibraryTrashTransaction?
 
   var body: some View {
     ZStack {
@@ -566,6 +567,12 @@ struct LibraryTrashView: View {
             }
             .buttonStyle(.bordered)
             .accessibilityIdentifier("restore-trash-\(transaction.id.uuidString.lowercased())")
+            Button(role: .destructive) { pendingDeletion = transaction } label: {
+              Image(systemName: "trash")
+            }
+            .buttonStyle(.bordered)
+            .accessibilityLabel("Delete Forever")
+            .accessibilityIdentifier("delete-trash-\(transaction.id.uuidString.lowercased())")
           }
           .accessibilityElement(children: .contain)
           .listRowBackground(PlayerColor.card)
@@ -577,6 +584,26 @@ struct LibraryTrashView: View {
       StateProbe(id: "trash-screen", value: "ready")
     }
     .navigationTitle("Trash")
+    .confirmationDialog(
+      "Delete this audiobook forever?",
+      isPresented: Binding(
+        get: { pendingDeletion != nil },
+        set: { if !$0 { pendingDeletion = nil } }
+      ),
+      titleVisibility: .visible
+    ) {
+      Button("Delete Forever", role: .destructive) {
+        guard let transaction = pendingDeletion else { return }
+        pendingDeletion = nil
+        Task {
+          _ = await model.clearRecoverableStorage(scope: .trashTransaction(transaction.id))
+        }
+      }
+      .accessibilityIdentifier("confirm-delete-trash")
+      Button("Cancel", role: .cancel) { pendingDeletion = nil }
+    } message: {
+      Text("This permanently deletes the app-managed audio in Trash. Your original source files are never changed.")
+    }
   }
 
   private var recoverable: [LibraryTrashTransaction] {

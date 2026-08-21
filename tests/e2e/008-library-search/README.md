@@ -50,6 +50,7 @@
 - [x] Trash reports one intact restorable managed asset
 - [x] The removed book is identifiable in Trash
 - [x] The exact removal transaction can be restored
+- [x] The managed copy can be permanently deleted after confirmation
 
 ## Restore returns the book and its organization while list preference persists
 
