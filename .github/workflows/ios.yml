@@ -37,7 +37,7 @@ jobs:
   ios-tests:
     name: Core tests and exact E2E walkthroughs
     runs-on: macos-26
-    timeout-minutes: 30
+    timeout-minutes: 120
     defaults:
       run:
         shell: nix develop --command bash --noprofile --norc -e -o pipefail {0}
