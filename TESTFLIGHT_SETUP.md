@@ -51,24 +51,33 @@ signing assets exist.
 No banking or tax setup is required merely to distribute a free internal
 TestFlight build.
 
-### 2. Register only the primary App ID
+### 2. Register the identifiers and shared app group
 
 In **Certificates, Identifiers & Profiles** at
 <https://developer.apple.com/account/resources/identifiers/list>, create or
-verify one explicit App ID:
+verify these two explicit App IDs:
 
-- Description: `Audiobook Player`
-- Type: App
-- Bundle ID: Explicit
-- Identifier: `com.spnss.player`
-- Capabilities: leave the defaults unchanged
+- `Audiobook Player` — `com.spnss.player`
+- `Audiobook Player Share Extension` — `com.spnss.player.share`
 
-The primary App ID must exist before the App Store Connect app record can be
-created. Do not manually register the share-extension ID, app group,
-certificates, or provisioning profiles. After the API credential is installed,
-the deployment automation will create `com.spnss.player.share`, create
-`group.com.spnss.player`, associate the app-group capability with both IDs, and
-let `xcodebuild` manage signing assets.
+For each one, choose **App IDs → App**, **Explicit**, and leave unrelated
+capabilities unchanged. The primary App ID must exist before the App Store
+Connect app record can be created.
+
+Next, return to the Identifiers list, click add (`+`), choose **App Groups**,
+and register:
+
+- Description: `Player Shared Imports`
+- Identifier: `group.com.spnss.player`
+
+Finally, open each App ID, enable **App Groups**, click **Configure**, select
+`group.com.spnss.player`, and save. Apple currently exposes App IDs,
+capabilities, certificates, and profiles through its public provisioning API,
+but not named App Group creation or group membership. These selections are the
+only signing-resource steps that cannot be completed with the API key.
+
+Do not manually create certificates or provisioning profiles; deployment
+automation manages those.
 
 ### 3. Create the App Store Connect app record
 
@@ -157,6 +166,7 @@ internal TestFlight assignment.
 Report the exact on-screen error, but no secrets, if:
 
 - an identifier is owned by another team;
+- the App Group cannot be registered or selected for both App IDs;
 - `Player` is unavailable as an App Store Connect name;
 - API access is pending or denied;
 - the app record cannot be created;
