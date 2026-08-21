@@ -28,12 +28,11 @@ final class PositionRestoreUITests: XCTestCase {
 
     let positionSlider = app.sliders["player-position-slider"]
     XCTAssertTrue(positionSlider.waitForExistence(timeout: 2))
-    positionSlider.adjust(toNormalizedSliderPosition: 0.5)
-
-    let seekedState = try requirePlaybackState(
-      nowPlaying,
-      status: "paused",
-      positionMilliseconds: seekPositionMilliseconds
+    let seekedState = try adjustSliderUntilAcknowledged(
+      positionSlider,
+      to: 0.5,
+      reportingThrough: nowPlaying,
+      expectedPositionMilliseconds: seekPositionMilliseconds
     )
     XCTAssertEqual(seekedState.bookID, fixtureBookID)
     XCTAssertEqual(seekedState.chapterIndex, 0)
@@ -160,6 +159,48 @@ final class PositionRestoreUITests: XCTestCase {
     status: String,
     positionMilliseconds: Int? = nil
   ) throws -> PlaybackSemanticState {
+    if let state = waitForPlaybackState(
+      element,
+      status: status,
+      positionMilliseconds: positionMilliseconds
+    ) {
+      return state
+    }
+
+    XCTFail(
+      "The player did not report status=\(status), position=\(positionMilliseconds.map(String.init) ?? "any"); latest=\(String(describing: element.value))"
+    )
+    throw PositionRestoreTestError.semanticStateUnavailable
+  }
+
+  private func adjustSliderUntilAcknowledged(
+    _ slider: XCUIElement,
+    to normalizedPosition: CGFloat,
+    reportingThrough element: XCUIElement,
+    expectedPositionMilliseconds: Int
+  ) throws -> PlaybackSemanticState {
+    for _ in 0..<3 {
+      slider.adjust(toNormalizedSliderPosition: normalizedPosition)
+      if let state = waitForPlaybackState(
+        element,
+        status: "paused",
+        positionMilliseconds: expectedPositionMilliseconds
+      ) {
+        return state
+      }
+    }
+
+    XCTFail(
+      "The slider did not acknowledge position=\(expectedPositionMilliseconds) after 3 attempts; latest=\(String(describing: element.value))"
+    )
+    throw PositionRestoreTestError.semanticStateUnavailable
+  }
+
+  private func waitForPlaybackState(
+    _ element: XCUIElement,
+    status: String,
+    positionMilliseconds: Int? = nil
+  ) -> PlaybackSemanticState? {
     let deadline = Date().addingTimeInterval(2)
     repeat {
       if let state = PlaybackSemanticState(element.value as? String),
@@ -169,11 +210,7 @@ final class PositionRestoreUITests: XCTestCase {
       }
       RunLoop.current.run(until: Date().addingTimeInterval(0.05))
     } while Date() < deadline
-
-    XCTFail(
-      "The player did not report status=\(status), position=\(positionMilliseconds.map(String.init) ?? "any"); latest=\(String(describing: element.value))"
-    )
-    throw PositionRestoreTestError.semanticStateUnavailable
+    return nil
   }
 
   private func restoredPositionVerification(
