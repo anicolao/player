@@ -94,7 +94,8 @@ The unavoidable tradeoff is therefore:
 
 ## Current foundation
 
-Player already has the import core and Build 6 adds the first direct transport:
+Player already has the import core and Build 7 includes the direct transport,
+single-storage receiver ingestion, and reliable same-session retry:
 
 - The document picker accepts M4B, M4A, MP3, ZIP, folders, and multiple items.
 - registered document types route single audio files and ZIPs through

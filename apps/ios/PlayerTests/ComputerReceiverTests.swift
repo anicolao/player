@@ -21,12 +21,21 @@ final class ComputerReceiverTests: XCTestCase {
     for (index, data) in [first, second].enumerated() {
       let target = try await store.writeTarget(sessionID: created.id, index: index)
       try data.write(to: target.partialURL)
+      await store.updateProgress(
+        sessionID: created.id,
+        fileBytes: Int64(data.count),
+        completedBefore: target.completedBefore
+      )
       try await store.finishWrite(
         sessionID: created.id,
         index: index,
         receivedBytes: Int64(data.count)
       )
     }
+
+    let receivedStatus = try await store.status(sessionID: created.id)
+    XCTAssertEqual(receivedStatus.completedBytes, Int64(first.count + second.count))
+    XCTAssertEqual(receivedStatus.totalBytes, Int64(first.count + second.count))
 
     let sealed = try await store.seal(sessionID: created.id)
     XCTAssertEqual(sealed.displayName, "Project Hail Mary")
@@ -112,6 +121,38 @@ final class ComputerReceiverTests: XCTestCase {
     XCTAssertFalse(FileManager.default.fileExists(atPath: secondTarget.partialURL.path))
   }
 
+  func testReopeningReceiverDoesNotDeleteAnAcceptedImport() async throws {
+    let root = temporaryRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let firstStore = ComputerImportStore(rootURL: root)
+    let payload = Data("accepted transport file".utf8)
+    let created = try await firstStore.create(.init(
+      entries: [.init(path: "Book/Chapter 01.mp3", byteCount: Int64(payload.count))],
+      selectionKind: "folder",
+      selectionName: "Book"
+    ))
+    let target = try await firstStore.writeTarget(sessionID: created.id, index: 0)
+    try payload.write(to: target.partialURL)
+    try await firstStore.finishWrite(
+      sessionID: created.id,
+      index: 0,
+      receivedBytes: Int64(payload.count)
+    )
+    _ = try await firstStore.seal(sessionID: created.id)
+    let acceptedFile = target.finalURL
+
+    _ = ComputerImportStore(rootURL: root)
+
+    XCTAssertEqual(try Data(contentsOf: acceptedFile), payload)
+    await firstStore.finish(sessionID: created.id, outcome: DirectImportOutcome(
+      state: .completed,
+      message: "Book added",
+      addedBookCount: 1,
+      cleanupIncomingFiles: true
+    ))
+    XCTAssertFalse(FileManager.default.fileExists(atPath: acceptedFile.path))
+  }
+
   func testLocalHTTPFlowServesSveltePairsUploadsAndCompletes() async throws {
     let root = temporaryRoot()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -189,6 +230,64 @@ final class ComputerReceiverTests: XCTestCase {
     XCTAssertEqual(try JSONDecoder().decode(StatusResponse.self, from: statusData).state, "completed")
   }
 
+  func testAcceptedHTTPImportSurvivesReceiverStop() async throws {
+    let root = temporaryRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let capture = DelayedReceiverImportCapture()
+    let server = ComputerReceiverServer(rootURL: root, bundle: .main)
+    let ready = try await server.start(
+      importHandler: { urls in await capture.importURLs(urls) },
+      eventHandler: { _ in }
+    )
+    let port = try XCTUnwrap(URL(string: ready.address)?.port)
+    let baseURL = try XCTUnwrap(URL(string: "http://127.0.0.1:\(port)"))
+    let pairBody = try JSONEncoder().encode(["code": ready.pairingCode])
+    let (pairData, _) = try await request(
+      baseURL.appending(path: "api/pair"),
+      method: "POST",
+      body: pairBody,
+      headers: ["Content-Type": "application/json"]
+    )
+    let pair = try JSONDecoder().decode(PairResponse.self, from: pairData)
+    let auth = ["Authorization": "Bearer \(pair.token)"]
+    let audio = Data("slow durable import".utf8)
+    let manifest = try JSONEncoder().encode(ComputerImportStore.CreateRequest(
+      entries: [.init(path: "Chapter.mp3", byteCount: Int64(audio.count))],
+      selectionKind: "folder",
+      selectionName: "Slow Book"
+    ))
+    let (createData, _) = try await request(
+      baseURL.appending(path: "api/imports"),
+      method: "POST",
+      body: manifest,
+      headers: auth.merging(["Content-Type": "application/json"]) { current, _ in current }
+    )
+    let created = try JSONDecoder().decode(CreateResponse.self, from: createData)
+    _ = try await request(
+      baseURL.appending(path: "api/imports/\(created.id)/files/0"),
+      method: "PUT",
+      body: audio,
+      headers: auth
+    )
+    let (_, completeResponse) = try await request(
+      baseURL.appending(path: "api/imports/\(created.id)/complete"),
+      method: "POST",
+      body: nil,
+      headers: auth
+    )
+    XCTAssertEqual(completeResponse.statusCode, 202)
+
+    await server.stop()
+    for _ in 0..<80 {
+      if await capture.finished { break }
+      try await Task.sleep(for: .milliseconds(25))
+    }
+    let finished = await capture.finished
+    let wasCancelled = await capture.wasCancelled
+    XCTAssertTrue(finished)
+    XCTAssertFalse(wasCancelled)
+  }
+
   private func temporaryRoot() -> URL {
     FileManager.default.temporaryDirectory.appending(
       path: "ComputerReceiverTests-\(UUID().uuidString)",
@@ -227,6 +326,26 @@ private actor ReceiverImportCapture {
     return DirectImportOutcome(
       state: .completed,
       message: "HTTP Test Book added",
+      addedBookCount: 1,
+      cleanupIncomingFiles: true
+    )
+  }
+}
+
+private actor DelayedReceiverImportCapture {
+  var finished = false
+  var wasCancelled = false
+
+  func importURLs(_ urls: [URL]) async -> DirectImportOutcome {
+    do {
+      try await Task.sleep(for: .milliseconds(250))
+    } catch is CancellationError {
+      wasCancelled = true
+    } catch {}
+    finished = true
+    return DirectImportOutcome(
+      state: .completed,
+      message: "Slow Book added",
       addedBookCount: 1,
       cleanupIncomingFiles: true
     )

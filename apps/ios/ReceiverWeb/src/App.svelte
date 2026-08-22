@@ -110,21 +110,30 @@
   async function dropped(event) {
     event.preventDefault();
     dragging = false;
-    const items = Array.from(event.dataTransfer?.items || []);
-    const gathered = [];
-    for (const item of items) {
-      const entry = item.webkitGetAsEntry?.();
-      if (entry?.isDirectory) gathered.push(...await entriesFromDirectory(entry));
-      else if (entry?.isFile) gathered.push(await fileFromEntry(entry, ''));
-      else {
-        const file = item.getAsFile();
-        if (file) gathered.push({ file, path: file.name });
+    error = '';
+    try {
+      const items = Array.from(event.dataTransfer?.items || []);
+      const gathered = [];
+      for (const item of items) {
+        const entry = item.webkitGetAsEntry?.();
+        if (entry?.isDirectory) gathered.push(...await entriesFromDirectory(entry));
+        else if (entry?.isFile) gathered.push(await fileFromEntry(entry, ''));
+        else {
+          const file = item.getAsFile();
+          if (file) gathered.push({ file, path: file.name });
+        }
       }
+      acceptFiles(gathered);
+    } catch (caught) {
+      error = caught instanceof Error
+        ? `That folder could not be read: ${caught.message}`
+        : 'That folder could not be read. Try Choose Folder instead.';
+      phase = 'ready';
     }
-    acceptFiles(gathered);
   }
 
   async function beginUpload() {
+    importID = '';
     totalBytes = selection.reduce((total, item) => total + item.file.size, 0);
     completedBytes = 0;
     statusMessage = 'Preparing transfer…';
@@ -145,10 +154,12 @@
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.message || 'Player rejected this selection.');
       importID = payload.id;
+      let confirmedBytes = 0;
       for (let index = 0; index < selection.length; index += 1) {
-        statusMessage = `Sending ${index + 1} of ${selection.length} files`;
-        await uploadFile(importID, index, selection[index].file, completedBytes);
-        completedBytes += selection[index].file.size;
+        statusMessage = `Sending ${index + 1} of ${selection.length} files · waiting for Player to confirm each file`;
+        await uploadFile(importID, index, selection[index].file);
+        confirmedBytes += selection[index].file.size;
+        completedBytes = confirmedBytes;
       }
       statusMessage = 'Player is checking your files…';
       const complete = await fetch(`/api/imports/${importID}/complete`, {
@@ -159,9 +170,20 @@
       if (!complete.ok) throw new Error(completePayload.message || 'The upload could not be completed.');
       await pollResult();
     } catch (caught) {
-      error = caught instanceof Error ? caught.message : 'The transfer failed.';
+      const message = caught instanceof Error ? caught.message : 'The transfer failed.';
       await discardImport();
-      phase = 'ready';
+      selection = [];
+      completedBytes = 0;
+      totalBytes = 0;
+      if (/not paired|no longer has|failed to fetch|load failed|network|could not be reached/i.test(message)) {
+        token = '';
+        code = '';
+        error = 'This receiver session ended. Enter the new code shown in Player.';
+        phase = 'pairing';
+      } else {
+        error = message;
+        phase = 'ready';
+      }
     } finally {
       activeRequest = null;
     }
@@ -177,22 +199,50 @@
     }).catch(() => {});
   }
 
-  function uploadFile(id, index, file, priorBytes) {
+  function uploadFile(id, index, file) {
     return new Promise((resolve, reject) => {
       const request = new XMLHttpRequest();
+      let polling = false;
+      const updateFromPlayer = async () => {
+        if (polling) return;
+        polling = true;
+        try {
+          const response = await fetch(`/api/imports/${id}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (!response.ok) return;
+          const payload = await response.json();
+          if (Number.isFinite(payload.completedBytes)) completedBytes = payload.completedBytes;
+          if (Number.isFinite(payload.totalBytes)) totalBytes = payload.totalBytes;
+        } catch {
+          // The upload request owns connection errors; polling is best-effort.
+        } finally {
+          polling = false;
+        }
+      };
+      const timer = setInterval(() => void updateFromPlayer(), 400);
+      const finish = (callback) => {
+        clearInterval(timer);
+        callback();
+      };
       activeRequest = request;
       request.open('PUT', `/api/imports/${id}/files/${index}`);
       request.setRequestHeader('Authorization', `Bearer ${token}`);
       request.setRequestHeader('Content-Type', 'application/octet-stream');
-      request.upload.onprogress = (event) => {
-        if (event.lengthComputable) completedBytes = priorBytes + event.loaded;
-      };
       request.onload = () => {
-        if (request.status >= 200 && request.status < 300) resolve();
-        else reject(new Error(JSON.parse(request.responseText || '{}').message || `Could not send ${file.name}.`));
+        if (request.status >= 200 && request.status < 300) finish(resolve);
+        else {
+          let message = `Could not send ${file.name}.`;
+          try {
+            message = JSON.parse(request.responseText || '{}').message || message;
+          } catch {
+            // Keep the actionable fallback when an intermediary returns non-JSON.
+          }
+          finish(() => reject(new Error(message)));
+        }
       };
-      request.onerror = () => reject(new Error(`Connection lost while sending ${file.name}.`));
-      request.onabort = () => reject(new Error('Transfer cancelled.'));
+      request.onerror = () => finish(() => reject(new Error(`Connection lost while sending ${file.name}.`)));
+      request.onabort = () => finish(() => reject(new Error('Transfer cancelled.')));
       request.send(file);
     });
   }
@@ -207,14 +257,18 @@
       if (!response.ok) throw new Error(payload.message || 'Player lost this import.');
       statusMessage = payload.message || 'Player is checking your files…';
       if (payload.state === 'completed') {
+        importID = '';
+        selection = [];
         phase = 'completed';
         return;
       }
-      if (payload.state === 'needsReview' || payload.state === 'failed') {
-        error = payload.message;
-        phase = 'ready';
+      if (payload.state === 'needsReview') {
+        importID = '';
+        selection = [];
+        phase = 'completed';
         return;
       }
+      if (payload.state === 'failed') throw new Error(payload.message || 'Player could not import these files.');
     }
   }
 
@@ -229,10 +283,10 @@
   }
 
   function formatBytes(bytes) {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`;
-    if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
-    return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+    if (bytes < 1000) return `${bytes} B`;
+    if (bytes < 1000 ** 2) return `${(bytes / 1000).toFixed(1)} KB`;
+    if (bytes < 1000 ** 3) return `${(bytes / 1000 ** 2).toFixed(1)} MB`;
+    return `${(bytes / 1000 ** 3).toFixed(2)} GB`;
   }
 
   $: progress = totalBytes ? Math.min(100, Math.round(completedBytes / totalBytes * 100)) : 0;

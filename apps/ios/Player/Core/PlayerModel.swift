@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import OSLog
 
 @MainActor
 @Observable
@@ -18,6 +19,10 @@ final class PlayerModel {
   @ObservationIgnored private var sleepTimerEvaluationInProgress = false
   @ObservationIgnored private var loadedAssetID: UUID?
   @ObservationIgnored private var loadedAssetTimelineStartSeconds = 0.0
+  @ObservationIgnored private let logger = Logger(
+    subsystem: "com.spnss.player",
+    category: "ImportPipeline"
+  )
 
   init(environment: PlayerEnvironment) {
     self.environment = environment
@@ -2858,7 +2863,23 @@ final class PlayerModel {
       try await replaceAndPersist(completed)
       lastErrorMessage = completed.failure?.message
     } catch is CancellationError {
-      await cancelImport(jobID: jobID)
+      guard var interrupted = library.importJobs.first(where: { $0.id == jobID }) else { return }
+      // A user-requested cancellation has already persisted its terminal state.
+      // Any other cancellation is a failure worth retaining rather than being
+      // silently rewritten as though the listener deliberately cancelled it.
+      guard interrupted.phase != .cancelled else { return }
+      interrupted.phase = .failed
+      interrupted.failure = ImportFailure(
+        message: "Player's import task stopped unexpectedly. Try sending the audiobook again.",
+        affectedFilename: interrupted.sourceFilename,
+        sourceIsUnchanged: true,
+        isRecoverable: false,
+        reasonCode: "unexpected-task-cancellation",
+        recoveryAction: .changeSelection
+      )
+      try? await replaceAndPersist(interrupted)
+      lastErrorMessage = interrupted.failure?.message
+      logger.error("Import task \(jobID.uuidString, privacy: .public) was cancelled unexpectedly")
     } catch {
       guard var failed = library.importJobs.first(where: { $0.id == jobID }) else { return }
       if let coreError = error as? PlayerCoreError,

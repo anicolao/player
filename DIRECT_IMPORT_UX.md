@@ -18,9 +18,10 @@ screen explains that the same files can be dragged directly onto the mirrored
 Player window. That card is absent in the European Union and whenever regional
 eligibility is unknown.
 
-## Build 6 implementation scope
+## Build 7 implementation scope
 
-Build 6 ships the primary end-to-end path specified here:
+Build 7 ships the primary end-to-end path specified here and hardens the
+real-device behavior first introduced in Build 6:
 
 - explicit `Receive from Computer` discovery in an empty or populated Library;
 - an on-device local HTTP receiver with Bonjour advertisement, a per-session
@@ -33,13 +34,19 @@ Build 6 ships the primary end-to-end path specified here:
 - the region-gated iPhone Mirroring explanation and a native drop target;
 - free-space preflight, safe path validation, partial-transfer cancellation,
   and launch/stop/success cleanup of app-owned transport copies; and
+- single-storage ingestion for receiver-owned files by adopting them into
+  durable staging with same-volume hard links, so a received audiobook is not
+  physically copied a second time before inspection;
+- matching decimal byte units, server-confirmed browser progress, durable
+  import tasks that outlive an HTTP request or receiver screen, and retry that
+  keeps a valid paired browser session alive; and
 - deterministic native UI coverage plus an end-to-end HTTP integration test.
 
 The Handoff shortcut, wired Finder/Apple Devices drop box, trusted-computer
 credentials, resumable chunk offsets, multi-selection queuing, remote region
 policy, and user-configurable automatic-add setting remain follow-up work. Those
 sections below specify the intended evolution; they are not claims about Build
-6. The primary web route does not depend on them.
+7. The primary web route does not depend on them.
 
 The listener must never be told to:
 

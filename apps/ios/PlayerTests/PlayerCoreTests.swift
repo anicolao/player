@@ -4,6 +4,83 @@ import XCTest
 
 @MainActor
 final class PlayerCoreTests: XCTestCase {
+  func testComputerReceiverUsesOnePhysicalCopyAndCompletesRealImporter() async throws {
+    let temporaryRoot = FileManager.default.temporaryDirectory.appending(
+      path: "ComputerReceiverPipelineTests-\(UUID().uuidString)",
+      directoryHint: .isDirectory
+    )
+    try FileManager.default.createDirectory(at: temporaryRoot, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+    let bundled = try XCTUnwrap(
+      Bundle(for: PlayerCoreTests.self).url(forResource: "01-opening-tone", withExtension: "m4a")
+    )
+    let receiverSelection = temporaryRoot.appending(
+      path: "ComputerReceiver/session/Payload/books",
+      directoryHint: .isDirectory
+    )
+    let receiverBook = receiverSelection.appending(
+      path: "Project Hail Mary",
+      directoryHint: .isDirectory
+    )
+    try FileManager.default.createDirectory(at: receiverBook, withIntermediateDirectories: true)
+    let receiverFile = receiverBook.appending(path: "01-opening-tone.m4a")
+    try FileManager.default.copyItem(at: bundled, to: receiverFile)
+    let expectedChecksum = try checksum(receiverFile)
+
+    let media = FileSystemMediaManager(rootURL: temporaryRoot)
+    let model = PlayerModel(environment: PlayerEnvironment(
+      persistence: InMemoryLibraryStore(),
+      media: media,
+      inspector: AVFoundationAudioInspector(),
+      playback: DeterministicPlaybackController()
+    ))
+    await model.restore()
+
+    let outcome = await model.importFromComputer([receiverSelection])
+    XCTAssertEqual(outcome.state, .completed)
+    XCTAssertEqual(outcome.addedBookCount, 1)
+    let book = try XCTUnwrap(model.library.books.first)
+    XCTAssertEqual(book.title, "Project Hail Mary")
+    let asset = try XCTUnwrap(book.assets.first)
+    let managedURL = try await media.managedURL(for: asset.managedRelativePath)
+    XCTAssertEqual(try checksum(managedURL), expectedChecksum)
+
+    let receiverAttributes = try FileManager.default.attributesOfItem(atPath: receiverFile.path)
+    XCTAssertGreaterThanOrEqual(
+      (receiverAttributes[.referenceCount] as? NSNumber)?.intValue ?? 0,
+      2,
+      "Receiver ingestion should hard-link app-owned bytes instead of copying them"
+    )
+    try FileManager.default.removeItem(at: temporaryRoot.appending(path: "ComputerReceiver"))
+    XCTAssertEqual(try checksum(managedURL), expectedChecksum)
+  }
+
+  func testUnexpectedReceiverTaskCancellationIsReportedAsFailure() async throws {
+    let source = FileManager.default.temporaryDirectory.appending(
+      path: "cancelled-receiver-source-\(UUID().uuidString).m4a"
+    )
+    try Data("receiver cancellation fixture".utf8).write(to: source)
+    defer { try? FileManager.default.removeItem(at: source) }
+    let model = PlayerModel(environment: PlayerEnvironment(
+      persistence: InMemoryLibraryStore(),
+      media: CancellationMediaManager(),
+      inspector: DeterministicAudioInspector(result: .failure(.unreadableAudio("unused"))),
+      playback: DeterministicPlaybackController()
+    ))
+    await model.restore()
+
+    let outcome = await model.importFromComputer([source])
+    XCTAssertEqual(outcome.state, .failed)
+    XCTAssertEqual(
+      outcome.message,
+      "Player's import task stopped unexpectedly. Try sending the audiobook again."
+    )
+    let job = try XCTUnwrap(model.library.importJobs.first)
+    XCTAssertEqual(job.phase, .failed)
+    XCTAssertEqual(job.failure?.reasonCode, "unexpected-task-cancellation")
+  }
+
   func testRealImporterCommitsImmutableCopyAndLoadsPlayback() async throws {
     let temporaryRoot = FileManager.default.temporaryDirectory.appending(
       path: "PlayerCoreTests-\(UUID().uuidString)",
@@ -1654,4 +1731,30 @@ private actor StubMediaManager: MediaManaging {
   }
 
   func discardStaging(for jobID: UUID) {}
+}
+
+private actor CancellationMediaManager: MediaManaging {
+  func stage(sourceURL: URL, jobID: UUID) throws -> StagedAudio {
+    throw CancellationError()
+  }
+
+  func stagedURL(for relativePath: String) throws -> URL {
+    throw PlayerCoreError.fileOperation("Unused after cancellation.")
+  }
+
+  func commit(_ staged: StagedAudio, bookID: UUID, assetID: UUID) throws -> ManagedAudio {
+    throw PlayerCoreError.fileOperation("Unused after cancellation.")
+  }
+
+  func rollback(_ managed: ManagedAudio) {}
+
+  func managedURL(for relativePath: String) -> URL {
+    URL(filePath: "/tmp/\(relativePath)")
+  }
+
+  func discardStaging(for jobID: UUID) {}
+
+  func acquireSelection(_ selectedURLs: [URL], jobID: UUID) throws -> [AcquiredAudioFile] {
+    throw CancellationError()
+  }
 }

@@ -6,6 +6,8 @@ import UIKit
 @MainActor
 @Observable
 final class ComputerReceiverController {
+  private static var preparedTransportRoots: Set<String> = []
+
   enum Phase: Equatable {
     case idle
     case starting
@@ -21,6 +23,7 @@ final class ComputerReceiverController {
   private(set) var phase: Phase = .idle
   private(set) var address = ""
   private(set) var pairingCode = ""
+  private(set) var receiverIsRunning = false
   @ObservationIgnored private let server: ComputerReceiverServer
   @ObservationIgnored private let usesSimulatedReadyState: Bool
   @ObservationIgnored private var startTask: Task<Void, Never>?
@@ -38,6 +41,14 @@ final class ComputerReceiverController {
     let root = support
       .appending(path: "Player", directoryHint: .isDirectory)
       .appending(path: "ComputerReceiver", directoryHint: .isDirectory)
+      .standardizedFileURL
+    // Receiver sessions cannot resume after process death. Remove leftovers on
+    // the first screen construction in this process, but never when reopening
+    // the screen while an accepted background import is still using the root.
+    if Self.preparedTransportRoots.insert(root.path).inserted {
+      try? fileManager.removeItem(at: root)
+      try? fileManager.createDirectory(at: root, withIntermediateDirectories: true)
+    }
     server = ComputerReceiverServer(rootURL: root, bundle: bundle)
   }
 
@@ -46,6 +57,7 @@ final class ComputerReceiverController {
     if usesSimulatedReadyState {
       address = "http://192.168.1.42:49152"
       pairingCode = "482731"
+      receiverIsRunning = true
       phase = .ready
       return
     }
@@ -57,7 +69,9 @@ final class ComputerReceiverController {
           importHandler: { urls in await model.importFromComputer(urls) },
           eventHandler: { [weak self] event in self?.apply(event) }
         )
+        receiverIsRunning = true
       } catch {
+        receiverIsRunning = false
         phase = .failed(error.localizedDescription)
       }
     }
@@ -66,8 +80,35 @@ final class ComputerReceiverController {
   func stop() {
     startTask?.cancel()
     startTask = nil
+    receiverIsRunning = false
     if !usesSimulatedReadyState { Task { await server.stop() } }
     phase = .idle
+  }
+
+  func retry(model: PlayerModel) {
+    if receiverIsRunning {
+      // Import failures do not stop the listener. Keep the paired browser and
+      // its bearer credential valid so another drag can begin immediately.
+      phase = .ready
+      return
+    }
+    startTask?.cancel()
+    phase = .starting
+    startTask = Task { [weak self] in
+      guard let self else { return }
+      await server.stop()
+      guard !Task.isCancelled else { return }
+      do {
+        _ = try await server.start(
+          importHandler: { urls in await model.importFromComputer(urls) },
+          eventHandler: { [weak self] event in self?.apply(event) }
+        )
+        receiverIsRunning = true
+      } catch {
+        receiverIsRunning = false
+        phase = .failed(error.localizedDescription)
+      }
+    }
   }
 
   func importDroppedURLs(_ urls: [URL], model: PlayerModel) {
@@ -266,9 +307,8 @@ struct ComputerReceiverView: View {
         Text(message)
           .multilineTextAlignment(.center)
           .foregroundStyle(PlayerColor.ink)
-        Button("Try Again") {
-          controller.stop()
-          controller.start(model: model)
+        Button(controller.receiverIsRunning ? "Try Another Upload" : "Restart Receiver") {
+          controller.retry(model: model)
         }
         .buttonStyle(.borderedProminent)
         .tint(PlayerColor.accent)

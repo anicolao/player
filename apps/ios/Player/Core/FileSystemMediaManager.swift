@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import OSLog
 
 actor FileSystemMediaManager: MediaManaging {
   private static let supportedExtensions: Set<String> = ["m4a", "m4b", "mp3"]
@@ -10,6 +11,7 @@ actor FileSystemMediaManager: MediaManaging {
   private let mediaURL: URL
   private let trashURL: URL
   private let fileManager: FileManager
+  private let logger = Logger(subsystem: "com.spnss.player", category: "MediaStorage")
 
   init(rootURL: URL, fileManager: FileManager = .default) {
     self.rootURL = rootURL.standardizedFileURL
@@ -131,7 +133,8 @@ actor FileSystemMediaManager: MediaManaging {
       requiredBytes = overflow ? .max : sum
     }
     try prepareDirectories()
-    try preflight(requiredBytes: requiredBytes)
+    let adoptsReceiverFiles = candidates.allSatisfy { isComputerReceiverSource($0.url) }
+    try preflight(requiredBytes: adoptsReceiverFiles ? 0 : requiredBytes)
 
     return try candidates.enumerated().map { index, candidate in
       let selectedExtension = candidate.url.pathExtension.lowercased()
@@ -174,7 +177,8 @@ actor FileSystemMediaManager: MediaManaging {
 
     let byteCount = Int64(values.fileSize ?? 0)
     try prepareDirectories()
-    if performsStoragePreflight { try preflight(requiredBytes: byteCount) }
+    let adoptsReceiverFile = isComputerReceiverSource(sourceURL)
+    if performsStoragePreflight { try preflight(requiredBytes: adoptsReceiverFile ? 0 : byteCount) }
 
     let jobDirectory = stagingURL.appending(
       path: jobID.uuidString.lowercased(),
@@ -184,6 +188,27 @@ actor FileSystemMediaManager: MediaManaging {
     let stagedURL = jobDirectory.appending(path: "\(storageName).\(fileExtension)")
     guard !fileManager.fileExists(atPath: stagedURL.path) else {
       throw PlayerCoreError.fileOperation("A staged copy already exists for \(filename).")
+    }
+
+    if adoptsReceiverFile {
+      do {
+        try fileManager.linkItem(at: sourceURL, to: stagedURL)
+        let checksum = try hashFile(at: stagedURL)
+        logger.info("Adopted receiver file without a second physical copy")
+        return StagedAudio(
+          relativePath: relativePath(for: stagedURL),
+          originalFilename: filename,
+          checksumSHA256: checksum,
+          byteCount: byteCount
+        )
+      } catch is CancellationError {
+        try? fileManager.removeItem(at: stagedURL)
+        throw CancellationError()
+      } catch {
+        try? fileManager.removeItem(at: stagedURL)
+        logger.warning("Could not hard-link a receiver file; falling back to a durable copy")
+        try preflight(requiredBytes: byteCount)
+      }
     }
 
     fileManager.createFile(atPath: stagedURL.path, contents: nil)
@@ -521,6 +546,13 @@ actor FileSystemMediaManager: MediaManaging {
       return true
     }) {}
     return hash.finalize().map { String(format: "%02x", $0) }.joined()
+  }
+
+  private func isComputerReceiverSource(_ sourceURL: URL) -> Bool {
+    let receiverRoot = rootURL
+      .appending(path: "ComputerReceiver", directoryHint: .isDirectory)
+      .standardizedFileURL.path + "/"
+    return sourceURL.standardizedFileURL.path.hasPrefix(receiverRoot)
   }
 
   private func relativePath(for url: URL) -> String {

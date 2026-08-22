@@ -1,5 +1,6 @@
 import Foundation
 import Network
+import OSLog
 
 struct DirectImportOutcome: Sendable, Equatable {
   enum State: String, Sendable {
@@ -62,6 +63,8 @@ actor ComputerImportStore {
     var message: String
     var displayName: String
     var addedBookCount: Int
+    var completedBytes: Int64
+    var totalBytes: Int64
   }
 
   private struct StoredEntry: Sendable {
@@ -80,6 +83,7 @@ actor ComputerImportStore {
     var state: String
     var message: String
     var addedBookCount: Int
+    var receivedBytes: Int64
   }
 
   static let maximumEntries = 20_000
@@ -93,10 +97,6 @@ actor ComputerImportStore {
   init(rootURL: URL, fileManager: FileManager = .default) {
     self.rootURL = rootURL.standardizedFileURL
     self.fileManager = fileManager
-    // Receiver sessions are memory-only and cannot resume after process death.
-    // Durable importer staging is owned separately, so stale transport bytes
-    // can always be removed before accepting a fresh receiver session.
-    try? fileManager.removeItem(at: self.rootURL)
     try? fileManager.createDirectory(at: self.rootURL, withIntermediateDirectories: true)
   }
 
@@ -176,10 +176,11 @@ actor ComputerImportStore {
       if let available = try rootURL.resourceValues(
         forKeys: [.volumeAvailableCapacityForImportantUsageKey]
       ).volumeAvailableCapacityForImportantUsage {
-        let transferAndImportBytes = totalBytes.multipliedReportingOverflow(by: 2)
         let reserve: Int64 = 256 * 1_024 * 1_024
-        let required = transferAndImportBytes.partialValue.addingReportingOverflow(reserve)
-        guard !transferAndImportBytes.overflow, !required.overflow, required.partialValue <= available else {
+        // Receiver files are adopted into durable staging with same-volume hard
+        // links. Only the incoming bytes plus a safety reserve are required.
+        let required = totalBytes.addingReportingOverflow(reserve)
+        guard !required.overflow, required.partialValue <= available else {
           throw ComputerReceiverError.invalidSelection(
             "This iPhone does not have enough free space for that selection."
           )
@@ -199,7 +200,8 @@ actor ComputerImportStore {
       entries: storedEntries,
       state: "receiving",
       message: "Waiting for files…",
-      addedBookCount: 0
+      addedBookCount: 0,
+      receivedBytes: 0
     )
     return Created(id: id, displayName: displayName, totalBytes: totalBytes)
   }
@@ -247,7 +249,17 @@ actor ComputerImportStore {
     entry.isComplete = true
     session.entries[index] = entry
     let completedCount = session.entries.filter(\.isComplete).count
+    session.receivedBytes = session.entries.reduce(Int64(0)) {
+      $0 + ($1.isComplete ? $1.manifest.byteCount : 0)
+    }
     session.message = "Received \(completedCount) of \(session.entries.count) files"
+    sessions[sessionID] = session
+  }
+
+  func updateProgress(sessionID: UUID, fileBytes: Int64, completedBefore: Int64) {
+    guard var session = sessions[sessionID], session.state == "receiving" else { return }
+    let total = session.entries.reduce(Int64(0)) { $0 + $1.manifest.byteCount }
+    session.receivedBytes = min(total, max(0, completedBefore + fileBytes))
     sessions[sessionID] = session
   }
 
@@ -283,13 +295,15 @@ actor ComputerImportStore {
       state: session.state,
       message: session.message,
       displayName: session.displayName,
-      addedBookCount: session.addedBookCount
+      addedBookCount: session.addedBookCount,
+      completedBytes: session.receivedBytes,
+      totalBytes: session.entries.reduce(Int64(0)) { $0 + $1.manifest.byteCount }
     )
   }
 
   func cancel(sessionID: UUID) throws {
     guard let session = sessions[sessionID] else { throw ComputerReceiverError.importNotFound }
-    guard session.state == "receiving" else { throw ComputerReceiverError.importAlreadySealed }
+    guard session.state != "importing" else { throw ComputerReceiverError.importAlreadySealed }
     sessions[sessionID] = nil
     try? fileManager.removeItem(at: session.rootURL)
   }
@@ -339,6 +353,7 @@ actor ComputerReceiverServer {
   typealias EventHandler = @MainActor @Sendable (ComputerReceiverEvent) -> Void
 
   private let queue = DispatchQueue(label: "com.spnss.player.computer-receiver")
+  private let logger = Logger(subsystem: "com.spnss.player", category: "ComputerReceiver")
   private let store: ComputerImportStore
   private let bundle: Bundle
   private var listener: NWListener?
@@ -348,6 +363,7 @@ actor ComputerReceiverServer {
   private var eventHandler: EventHandler?
   private var startContinuation: CheckedContinuation<UInt16, any Error>?
   private var connections: [ObjectIdentifier: NWConnection] = [:]
+  private var activeImports: [UUID: Task<Void, Never>] = [:]
   private var failedPairingAttempts = 0
   private var pairedClientName = "Computer"
 
@@ -498,13 +514,16 @@ actor ComputerReceiverServer {
         progress: { [weak self] fileBytes in
           guard let self else { return }
           let completed = target.completedBefore + fileBytes
-          Task {
-            await self.publish(.receiving(
-              name: target.displayName,
-              completedBytes: completed,
-              totalBytes: target.totalBytes
-            ))
-          }
+          await self.store.updateProgress(
+            sessionID: sessionID,
+            fileBytes: fileBytes,
+            completedBefore: target.completedBefore
+          )
+          await self.publish(.receiving(
+            name: target.displayName,
+            completedBytes: completed,
+            totalBytes: target.totalBytes
+          ))
         }
       )
       try await store.finishWrite(sessionID: sessionID, index: index, receivedBytes: received)
@@ -515,10 +534,12 @@ actor ComputerReceiverServer {
       let sealed = try await store.seal(sessionID: sessionID)
       await eventHandler?(.importing(name: sealed.displayName))
       guard let importHandler else { throw ComputerReceiverError.listenerStopped }
-      Task { [weak self] in
+      logger.info("Starting durable import for receiver session \(sessionID.uuidString, privacy: .public)")
+      let task = Task.detached(priority: .userInitiated) { [self] in
         let outcome = await importHandler(sealed.urls)
-        await self?.finishImport(sessionID: sessionID, outcome: outcome)
+        await finishImport(sessionID: sessionID, outcome: outcome)
       }
+      activeImports[sessionID] = task
       return .json(status: 202, object: ["state": "importing"])
     }
 
@@ -529,6 +550,8 @@ actor ComputerReceiverServer {
         "message": status.message,
         "displayName": status.displayName,
         "addedBookCount": status.addedBookCount,
+        "completedBytes": status.completedBytes,
+        "totalBytes": status.totalBytes,
       ])
     }
 
@@ -540,6 +563,10 @@ actor ComputerReceiverServer {
   }
 
   private func finishImport(sessionID: UUID, outcome: DirectImportOutcome) async {
+    activeImports[sessionID] = nil
+    logger.info(
+      "Finished receiver session \(sessionID.uuidString, privacy: .public) with state \(outcome.state.rawValue, privacy: .public)"
+    )
     await store.finish(sessionID: sessionID, outcome: outcome)
     switch outcome.state {
     case .completed:
@@ -691,7 +718,7 @@ private struct HTTPRequest {
   func streamBody(
     from connection: NWConnection,
     to url: URL,
-    progress: @escaping @Sendable (Int64) -> Void
+    progress: @escaping @Sendable (Int64) async -> Void
   ) async throws -> Int64 {
     FileManager.default.createFile(atPath: url.path, contents: nil)
     let handle = try FileHandle(forWritingTo: url)
@@ -701,7 +728,7 @@ private struct HTTPRequest {
       let prefix = initialBody.prefix(Int(min(Int64(initialBody.count), contentLength)))
       try handle.write(contentsOf: prefix)
       received += Int64(prefix.count)
-      progress(received)
+      await progress(received)
     }
     while received < contentLength {
       let remaining = contentLength - received
@@ -710,7 +737,7 @@ private struct HTTPRequest {
       }
       try handle.write(contentsOf: chunk)
       received += Int64(chunk.count)
-      progress(received)
+      await progress(received)
     }
     try handle.synchronize()
     return received
