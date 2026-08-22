@@ -23,7 +23,7 @@ final class SafeZIPImportUITests: XCTestCase {
 
     let traversalApp = try makeApplication(zipCase: "traversal")
     traversalApp.launch()
-    traversalApp.buttons["add-audiobook"].tap()
+    traversalApp.buttons["choose-from-files-empty-library"].tap()
     let traversalProbe = anyElement(traversalApp, "zip-safety-probe")
     try requireValue(
       traversalProbe,
@@ -72,7 +72,7 @@ final class SafeZIPImportUITests: XCTestCase {
     for hostileCase in hostileCases {
       let app = try makeApplication(zipCase: hostileCase.fixture)
       app.launch()
-      app.buttons["add-audiobook"].tap()
+      app.buttons["choose-from-files-empty-library"].tap()
       let probe = anyElement(app, "zip-safety-probe")
       try requireValue(
         probe,
@@ -92,7 +92,7 @@ final class SafeZIPImportUITests: XCTestCase {
 
     let validApp = try makeApplication(zipCase: "valid", failInspectionOnce: true)
     validApp.launch()
-    validApp.buttons["add-audiobook"].tap()
+    validApp.buttons["choose-from-files-empty-library"].tap()
     let validProbe = anyElement(validApp, "zip-safety-probe")
     try requireValue(
       validProbe,

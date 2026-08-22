@@ -20,6 +20,12 @@
     <string>$(CURRENT_PROJECT_VERSION)</string>
     <key>ITSAppUsesNonExemptEncryption</key>
     <false/>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Player uses your local network to receive audiobooks directly from your computer.</string>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_player-import._tcp</string>
+    </array>
     <key>CFBundleDocumentTypes</key>
     <array>
         <dict>

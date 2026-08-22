@@ -6,6 +6,8 @@ struct ContentView: View {
   @Bindable var model: PlayerModel
   @State private var selection: AppSection = .library
   @State private var isImporting = false
+  @State private var isChoosingImportSource = false
+  @State private var isReceivingFromComputer = false
   @State private var isDrainingSharedImports = false
   @State private var sharedImportQueueRevision = 0
   @State private var pendingDocumentURLs: [URL] = []
@@ -13,7 +15,12 @@ struct ContentView: View {
 
   var body: some View {
     TabView(selection: $selection) {
-      LibraryView(model: model, startImport: beginImport) { presentedPlayerBook = $0 }
+      LibraryView(
+        model: model,
+        startImport: beginImport,
+        startComputerReceiver: { isReceivingFromComputer = true },
+        startFileImport: beginFileImport
+      ) { presentedPlayerBook = $0 }
         .tag(AppSection.library)
         .tabItem { Label("Library", systemImage: "books.vertical") }
 
@@ -35,6 +42,24 @@ struct ContentView: View {
       guard case .success(let urls) = result, !urls.isEmpty else { return }
       selection = .inbox
       Task { await model.importAudioSelection(from: urls) }
+    }
+    .confirmationDialog(
+      "Add Audiobooks",
+      isPresented: $isChoosingImportSource,
+      titleVisibility: .visible
+    ) {
+      Button("Receive from Computer", systemImage: "laptopcomputer.and.iphone") {
+        isReceivingFromComputer = true
+      }
+      Button("Choose from Files", systemImage: "folder") { beginFileImport() }
+      Button("Cancel", role: .cancel) {}
+    } message: {
+      Text("Receive a folder tree over your local network or choose files already on this iPhone.")
+    }
+    .sheet(isPresented: $isReceivingFromComputer) {
+      ComputerReceiverView(model: model) { needsInbox in
+        selection = needsInbox ? .inbox : .library
+      }
     }
     .fullScreenCover(item: $presentedPlayerBook) { book in
       NowPlayingView(model: model, book: book)
@@ -134,6 +159,16 @@ struct ContentView: View {
 
   private func beginImport() {
     #if E2E
+      if E2EMultifileAcquisition.shared.isConfigured || E2EZipAcquisition.shared.sourceURL != nil {
+        beginFileImport()
+        return
+      }
+    #endif
+    isChoosingImportSource = true
+  }
+
+  private func beginFileImport() {
+    #if E2E
       if E2EMultifileAcquisition.shared.isConfigured {
         selection = .inbox
         Task {
@@ -203,6 +238,8 @@ private enum AppSection: Hashable { case library, inbox, settings }
 private struct LibraryView: View {
   @Bindable var model: PlayerModel
   let startImport: () -> Void
+  let startComputerReceiver: () -> Void
+  let startFileImport: () -> Void
   @State private var path = NavigationPath()
   @State private var isRootVisible = true
   let presentPlayer: (Book) -> Void
@@ -279,19 +316,27 @@ private struct LibraryView: View {
       }
       VStack(spacing: 10) {
         Text("Build your listening library").font(.title2.bold()).foregroundStyle(PlayerColor.ink)
-        Text("Import an M4B, M4A, MP3, or ZIP from Files.\nYour source files stay untouched.")
+        Text("Send books from your computer or choose files already on this iPhone.")
           .multilineTextAlignment(.center)
           .foregroundStyle(PlayerColor.secondary)
           .lineSpacing(3)
       }
-      Button { startImport() } label: {
-        Label("Add Audiobook", systemImage: "plus").font(.headline).frame(maxWidth: .infinity)
+      Button { startComputerReceiver() } label: {
+        Label("Receive from Computer", systemImage: "laptopcomputer.and.iphone")
+          .font(.headline)
+          .frame(maxWidth: .infinity)
       }
       .buttonStyle(.borderedProminent)
       .controlSize(.large)
       .tint(PlayerColor.accent)
       .frame(maxWidth: 280)
-      .accessibilityIdentifier("add-audiobook")
+      .accessibilityIdentifier("receive-from-computer-empty-library")
+      Button("Choose from Files", systemImage: "folder") { startFileImport() }
+        .buttonStyle(.bordered)
+        .controlSize(.large)
+        .tint(PlayerColor.accent)
+        .frame(maxWidth: 280)
+        .accessibilityIdentifier("choose-from-files-empty-library")
       Spacer()
       Spacer()
     }

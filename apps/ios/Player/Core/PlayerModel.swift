@@ -276,6 +276,66 @@ final class PlayerModel {
     await enqueueImport(ImportRequest(entryPoint: .files, selectedURLs: selectedURLs))
   }
 
+  func importFromComputer(_ selectedURLs: [URL]) async -> DirectImportOutcome {
+    let previousBookIDs = Set(library.books.map(\.id))
+    guard let jobID = await enqueueImport(ImportRequest(
+      entryPoint: .computerReceiver,
+      selectedURLs: selectedURLs
+    )), let job = library.importJobs.first(where: { $0.id == jobID }) else {
+      return DirectImportOutcome(
+        state: .failed,
+        message: lastErrorMessage ?? "Player could not import these files.",
+        addedBookCount: 0,
+        cleanupIncomingFiles: false
+      )
+    }
+    switch job.phase {
+    case .ready where job.proposals.allSatisfy({ $0.warnings.isEmpty }):
+      guard await addImportToLibrary(jobID: jobID) != nil else {
+        return DirectImportOutcome(
+          state: .failed,
+          message: lastErrorMessage ?? "Player could not add this audiobook.",
+          addedBookCount: 0,
+          cleanupIncomingFiles: true
+        )
+      }
+      let added = library.books.filter { !previousBookIDs.contains($0.id) }
+      let message: String
+      if added.count == 1, let book = added.first {
+        message = "\(book.title) added"
+      } else {
+        message = "\(added.count) books added"
+      }
+      return DirectImportOutcome(
+        state: .completed,
+        message: message,
+        addedBookCount: added.count,
+        cleanupIncomingFiles: true
+      )
+    case .ready, .needsReview:
+      return DirectImportOutcome(
+        state: .needsReview,
+        message: "The files were received. Open Inbox to review this import.",
+        addedBookCount: 0,
+        cleanupIncomingFiles: true
+      )
+    case .failed:
+      return DirectImportOutcome(
+        state: .failed,
+        message: job.failure?.message ?? "Player could not import these files.",
+        addedBookCount: 0,
+        cleanupIncomingFiles: true
+      )
+    default:
+      return DirectImportOutcome(
+        state: .failed,
+        message: "Player did not finish checking these files.",
+        addedBookCount: 0,
+        cleanupIncomingFiles: false
+      )
+    }
+  }
+
   @discardableResult
   func handleDocumentOpen(_ url: URL, receivedViaAirDrop: Bool = false) async -> UUID? {
     await enqueueImport(ImportRequest(

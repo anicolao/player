@@ -29,7 +29,7 @@ Each process launches with:
 -e2e-zip-limits 32,131072,20
 ```
 
-Tapping production `add-audiobook` asks the injected document-acquisition source
+Tapping production `choose-from-files-empty-library` asks the injected document-acquisition source
 for the selected checked-in ZIP URL and calls the normal multi-selection import
 boundary. The selected source checksum is recorded before acquisition and checked
 after every terminal or retry state.

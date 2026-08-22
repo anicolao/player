@@ -31,7 +31,7 @@ final class MultifileGroupingUITests: XCTestCase {
     )
 
     app.launch()
-    app.buttons["add-audiobook"].tap()
+    app.buttons["choose-from-files-empty-library"].tap()
 
     let acquisitionProbe = anyElement(app, "acquisition-probe")
     try requireValue(

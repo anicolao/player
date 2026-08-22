@@ -22,7 +22,7 @@ The test launches with:
 -e2e -e2e-reset -e2e-fixture messy-multifile-unicode -e2e-acquisition SyntheticMessyMultifile
 ```
 
-Tapping production `add-audiobook` asks the injected E2E document-acquisition
+Tapping production `choose-from-files-empty-library` asks the injected E2E document-acquisition
 source for five top-level URLs: the `Signal Δ — Folder` directory plus four files
 inside `Loose Files`. The source then calls the normal
 `importAudioSelection(from: [URL])` boundary. It must not seed proposals directly

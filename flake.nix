@@ -14,6 +14,7 @@
           bashInteractive
           git
           jq
+          nodejs_24
           ripgrep
         ];
 

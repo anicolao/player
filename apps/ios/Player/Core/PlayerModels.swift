@@ -259,6 +259,7 @@ enum ImportEntryPoint: String, Codable, Equatable, Sendable {
   case documentOpen
   case airDrop
   case shareExtension
+  case computerReceiver
 }
 
 struct ImportRequest: Equatable, Sendable {

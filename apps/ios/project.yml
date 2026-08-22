@@ -21,6 +21,11 @@ targets:
           enabled: 1
     sources:
       - path: Player
+        excludes:
+          - ReceiverWeb
+      - path: Player/ReceiverWeb
+        type: folder
+        buildPhase: resources
     configFiles:
       Debug: Config/Debug.xcconfig
       E2E: Config/E2E.xcconfig

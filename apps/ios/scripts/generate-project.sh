@@ -8,6 +8,8 @@ archive="${ios_dir}/.tools/xcodegen-2.46.0.zip"
 xcodegen="${tool_dir}/xcodegen/bin/xcodegen"
 expected_sha256="4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806"
 
+"${script_dir}/build-receiver-web.sh"
+
 if [[ ! -x "${xcodegen}" ]]; then
   mkdir -p "${ios_dir}/.tools"
   curl --fail --location --silent --show-error \
