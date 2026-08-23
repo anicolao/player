@@ -48,10 +48,13 @@ policy, and user-configurable automatic-add setting remain follow-up work. Those
 sections below specify the intended evolution; they are not claims about Build
 7. The primary web route does not depend on them.
 
-## Build 8 Mirroring completion scope
+## Build 9 Mirroring completion scope
 
-Build 8 replaces the URL-only drop prototype with a production
-item-provider ingress adapter. While `Receive from Computer` is open, it:
+Build 9 replaces Build 8's SwiftUI-only drop registration, which physical
+iPhone Mirroring did not expose as a Finder destination, with a UIKit
+`UIDropInteraction` installed on the active app window. The production
+item-provider ingress adapter remains behind that native entry point. While
+`Receive from Computer` is open, it:
 
 - accepts Finder-provided M4B, M4A, MP3, ZIP, file URL, and folder
   representations;
@@ -69,7 +72,8 @@ item-provider ingress adapter. While `Receive from Computer` is open, it:
 
 Synthetic `NSItemProvider` tests cover individual files, recursive folders,
 unsafe links, ZIP-selection rules, cancellation, cleanup, and the complete
-folder-to-Library pipeline. The deterministic UI story covers the visible
+folder-to-Library pipeline. A native-interaction lifecycle test covers window
+registration and removal. The deterministic UI story covers the visible
 Mirroring progress state. Apple's actual Mac-to-iPhone Mirroring transport
 cannot be created by Simulator, so single-file, folder, multi-file, ZIP, and
 large-tree drags on physical hardware remain the release gate for this route.

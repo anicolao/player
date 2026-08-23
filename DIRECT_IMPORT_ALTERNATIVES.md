@@ -223,8 +223,9 @@ apps through iPhone Mirroring.
 
 ### Implementation
 
-- The `Receive from Computer` screen has a full-window SwiftUI drop target
-  backed by raw `NSItemProvider` objects.
+- The `Receive from Computer` screen installs a full-window UIKit
+  `UIDropInteraction` on the active app window, backed by raw
+  `NSItemProvider` objects.
 - It accepts audio types, ZIPs, file URLs, and folder representations.
 - `MirroringDropAdapter` owns in-place/fallback provider loading, safe recursive
   folder traversal, path preservation, no-extra-copy adoption, cancellation,

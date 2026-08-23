@@ -1,3 +1,4 @@
+import SwiftUI
 import UniformTypeIdentifiers
 import UIKit
 import XCTest
@@ -216,6 +217,34 @@ final class MirroringDropAdapterTests: XCTestCase {
     let asset = try XCTUnwrap(model.library.books.first?.assets.first)
     let managedURL = try await media.managedURL(for: asset.managedRelativePath)
     XCTAssertTrue(FileManager.default.fileExists(atPath: managedURL.path))
+  }
+
+  func testNativeDropInteractionMovesBetweenWindowsAndUninstallsCleanly() {
+    var isTargeted = false
+    let binding = Binding(
+      get: { isTargeted },
+      set: { isTargeted = $0 }
+    )
+    let coordinator = MirroringWindowDropInteraction.Coordinator(
+      acceptedTypeIdentifiers: MirroringDropAdapter.acceptedTypeIdentifiers,
+      isTargeted: binding,
+      performDrop: { _ in true }
+    )
+    let firstWindow = UIWindow()
+    let secondWindow = UIWindow()
+
+    coordinator.install(on: firstWindow)
+
+    XCTAssertEqual(firstWindow.interactions.compactMap { $0 as? UIDropInteraction }.count, 1)
+    coordinator.install(on: secondWindow)
+    XCTAssertTrue(firstWindow.interactions.compactMap { $0 as? UIDropInteraction }.isEmpty)
+    XCTAssertEqual(secondWindow.interactions.compactMap { $0 as? UIDropInteraction }.count, 1)
+
+    isTargeted = true
+    coordinator.uninstall()
+
+    XCTAssertTrue(secondWindow.interactions.compactMap { $0 as? UIDropInteraction }.isEmpty)
+    XCTAssertFalse(isTargeted)
   }
 
   private func fileProvider(

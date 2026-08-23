@@ -235,12 +235,13 @@ struct ComputerReceiverView: View {
           dismiss()
         }
       }
-      .onDrop(
-        of: MirroringDropAdapter.acceptedTypeIdentifiers,
-        isTargeted: $isDropTargeted
-      ) { providers in
-        isDropTargeted = false
-        return controller.importDroppedProviders(providers, model: model)
+      .background {
+        MirroringWindowDropInteraction(
+          acceptedTypeIdentifiers: MirroringDropAdapter.acceptedTypeIdentifiers,
+          isTargeted: $isDropTargeted
+        ) { providers in
+          controller.importDroppedProviders(providers, model: model)
+        }
       }
       .confirmationDialog(
         "Stop receiving from this computer?",
@@ -505,6 +506,128 @@ struct ComputerReceiverView: View {
       controller.stop()
       dismiss()
     }
+  }
+}
+
+/// Installs UIKit's native drop interaction on the app window while this screen
+/// is visible. A transparent SwiftUI overlay would steal taps and scrolling,
+/// while SwiftUI's `onDrop` isn't reliably exposed as a Finder destination by
+/// iPhone Mirroring. Attaching the interaction to the existing window makes the
+/// whole mirrored phone a destination without changing normal touch handling.
+struct MirroringWindowDropInteraction: UIViewRepresentable {
+  let acceptedTypeIdentifiers: [String]
+  @Binding var isTargeted: Bool
+  let performDrop: ([NSItemProvider]) -> Bool
+
+  func makeCoordinator() -> Coordinator {
+    Coordinator(
+      acceptedTypeIdentifiers: acceptedTypeIdentifiers,
+      isTargeted: $isTargeted,
+      performDrop: performDrop
+    )
+  }
+
+  func makeUIView(context: Context) -> MirroringWindowProbeView {
+    let view = MirroringWindowProbeView()
+    view.isUserInteractionEnabled = false
+    view.isAccessibilityElement = false
+    view.didMoveToWindowHandler = { [weak coordinator = context.coordinator] window in
+      coordinator?.install(on: window)
+    }
+    return view
+  }
+
+  func updateUIView(_ uiView: MirroringWindowProbeView, context: Context) {
+    context.coordinator.update(
+      acceptedTypeIdentifiers: acceptedTypeIdentifiers,
+      isTargeted: $isTargeted,
+      performDrop: performDrop
+    )
+    context.coordinator.install(on: uiView.window)
+  }
+
+  static func dismantleUIView(_ uiView: MirroringWindowProbeView, coordinator: Coordinator) {
+    uiView.didMoveToWindowHandler = nil
+    coordinator.uninstall()
+  }
+
+  final class Coordinator: NSObject, UIDropInteractionDelegate {
+    private var acceptedTypeIdentifiers: [String]
+    private var isTargeted: Binding<Bool>
+    private var performDrop: ([NSItemProvider]) -> Bool
+    private weak var installedView: UIView?
+    private lazy var interaction = UIDropInteraction(delegate: self)
+
+    init(
+      acceptedTypeIdentifiers: [String],
+      isTargeted: Binding<Bool>,
+      performDrop: @escaping ([NSItemProvider]) -> Bool
+    ) {
+      self.acceptedTypeIdentifiers = acceptedTypeIdentifiers
+      self.isTargeted = isTargeted
+      self.performDrop = performDrop
+    }
+
+    func update(
+      acceptedTypeIdentifiers: [String],
+      isTargeted: Binding<Bool>,
+      performDrop: @escaping ([NSItemProvider]) -> Bool
+    ) {
+      self.acceptedTypeIdentifiers = acceptedTypeIdentifiers
+      self.isTargeted = isTargeted
+      self.performDrop = performDrop
+    }
+
+    func install(on view: UIView?) {
+      guard installedView !== view else { return }
+      uninstall()
+      guard let view else { return }
+      view.addInteraction(interaction)
+      installedView = view
+    }
+
+    func uninstall() {
+      installedView?.removeInteraction(interaction)
+      installedView = nil
+      isTargeted.wrappedValue = false
+    }
+
+    func dropInteraction(_ interaction: UIDropInteraction, canHandle session: UIDropSession) -> Bool {
+      session.hasItemsConforming(toTypeIdentifiers: acceptedTypeIdentifiers)
+    }
+
+    func dropInteraction(
+      _ interaction: UIDropInteraction,
+      sessionDidUpdate session: UIDropSession
+    ) -> UIDropProposal {
+      UIDropProposal(operation: .copy)
+    }
+
+    func dropInteraction(_ interaction: UIDropInteraction, sessionDidEnter session: UIDropSession) {
+      isTargeted.wrappedValue = true
+    }
+
+    func dropInteraction(_ interaction: UIDropInteraction, sessionDidExit session: UIDropSession) {
+      isTargeted.wrappedValue = false
+    }
+
+    func dropInteraction(_ interaction: UIDropInteraction, sessionDidEnd session: UIDropSession) {
+      isTargeted.wrappedValue = false
+    }
+
+    func dropInteraction(_ interaction: UIDropInteraction, performDrop session: UIDropSession) {
+      isTargeted.wrappedValue = false
+      _ = performDrop(session.items.map(\.itemProvider))
+    }
+  }
+}
+
+final class MirroringWindowProbeView: UIView {
+  var didMoveToWindowHandler: ((UIWindow?) -> Void)?
+
+  override func didMoveToWindow() {
+    super.didMoveToWindow()
+    didMoveToWindowHandler?(window)
   }
 }
 
