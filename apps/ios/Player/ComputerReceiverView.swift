@@ -14,6 +14,7 @@ final class ComputerReceiverController {
     case ready
     case connected(String)
     case receiving(name: String, completedBytes: Int64, totalBytes: Int64)
+    case preparingDrop(name: String, completedItems: Int, totalItems: Int)
     case importing(String)
     case completed(message: String, addedBookCount: Int)
     case needsReview(String)
@@ -25,12 +26,18 @@ final class ComputerReceiverController {
   private(set) var pairingCode = ""
   private(set) var receiverIsRunning = false
   @ObservationIgnored private let server: ComputerReceiverServer
+  @ObservationIgnored private let mirroringDropAdapter: MirroringDropAdapter
   @ObservationIgnored private let usesSimulatedReadyState: Bool
+  @ObservationIgnored private let usesSimulatedDropProgress: Bool
   @ObservationIgnored private var startTask: Task<Void, Never>?
+  @ObservationIgnored private var dropTask: Task<Void, Never>?
 
   init(fileManager: FileManager = .default, bundle: Bundle = .main) {
     usesSimulatedReadyState = ProcessInfo.processInfo.arguments.contains(
       "-e2e-computer-receiver-ready"
+    )
+    usesSimulatedDropProgress = ProcessInfo.processInfo.arguments.contains(
+      "-e2e-mirroring-drop-progress"
     )
     let support = (try? fileManager.url(
       for: .applicationSupportDirectory,
@@ -50,6 +57,7 @@ final class ComputerReceiverController {
       try? fileManager.createDirectory(at: root, withIntermediateDirectories: true)
     }
     server = ComputerReceiverServer(rootURL: root, bundle: bundle)
+    mirroringDropAdapter = MirroringDropAdapter(rootURL: root, fileManager: fileManager)
   }
 
   func start(model: PlayerModel) {
@@ -58,7 +66,9 @@ final class ComputerReceiverController {
       address = "http://192.168.1.42:49152"
       pairingCode = "482731"
       receiverIsRunning = true
-      phase = .ready
+      phase = usesSimulatedDropProgress
+        ? .preparingDrop(name: "Project Hail Mary", completedItems: 1, totalItems: 3)
+        : .ready
       return
     }
     phase = .starting
@@ -80,6 +90,8 @@ final class ComputerReceiverController {
   func stop() {
     startTask?.cancel()
     startTask = nil
+    dropTask?.cancel()
+    dropTask = nil
     receiverIsRunning = false
     if !usesSimulatedReadyState { Task { await server.stop() } }
     phase = .idle
@@ -111,21 +123,46 @@ final class ComputerReceiverController {
     }
   }
 
-  func importDroppedURLs(_ urls: [URL], model: PlayerModel) {
-    guard !urls.isEmpty else { return }
-    phase = .importing(urls.count == 1 ? urls[0].lastPathComponent : "Dropped audiobooks")
-    Task { [weak self] in
-      let outcome = await model.importFromComputer(urls)
+  @discardableResult
+  func importDroppedProviders(_ providers: [NSItemProvider], model: PlayerModel) -> Bool {
+    guard !providers.isEmpty, dropTask == nil else { return false }
+    phase = .preparingDrop(name: "Dropped items", completedItems: 0, totalItems: providers.count)
+    dropTask = Task { [weak self] in
       guard let self else { return }
-      switch outcome.state {
-      case .completed:
-        phase = .completed(message: outcome.message, addedBookCount: outcome.addedBookCount)
-    case .needsReview:
-      phase = .needsReview(outcome.message)
-    case .failed:
-      phase = .failed(outcome.message)
+      if !usesSimulatedReadyState {
+        await server.stop()
+        receiverIsRunning = false
       }
+      do {
+        let materialization = try await mirroringDropAdapter.materialize(providers) {
+          [weak self] progress in
+          self?.phase = .preparingDrop(
+            name: progress.currentName,
+            completedItems: progress.completedItems,
+            totalItems: progress.totalItems
+          )
+        }
+        defer { mirroringDropAdapter.cleanup(materialization) }
+        phase = .importing(materialization.displayName)
+        let outcome = await model.importFromComputer(materialization.selectionURLs)
+        switch outcome.state {
+        case .completed:
+          phase = .completed(message: outcome.message, addedBookCount: outcome.addedBookCount)
+        case .needsReview:
+          phase = .needsReview(outcome.message)
+        case .failed:
+          phase = .failed(outcome.message)
+        }
+      } catch is CancellationError {
+        if phase != .idle {
+          phase = .failed("The mirrored drop was cancelled and its temporary files were removed.")
+        }
+      } catch {
+        phase = .failed(error.localizedDescription)
+      }
+      dropTask = nil
     }
+    return true
   }
 
   private func apply(_ event: ComputerReceiverEvent) {
@@ -157,7 +194,9 @@ struct ComputerReceiverView: View {
   @Bindable var model: PlayerModel
   @State private var controller = ComputerReceiverController()
   @State private var showStopConfirmation = false
-  @State private var isDropTargeted = false
+  @State private var isDropTargeted = ProcessInfo.processInfo.arguments.contains(
+    "-e2e-mirroring-drop-targeted"
+  )
   let didFinish: (_ needsInbox: Bool) -> Void
 
   var body: some View {
@@ -196,11 +235,13 @@ struct ComputerReceiverView: View {
           dismiss()
         }
       }
-      .dropDestination(for: URL.self) { urls, _ in
+      .onDrop(
+        of: MirroringDropAdapter.acceptedTypeIdentifiers,
+        isTargeted: $isDropTargeted
+      ) { providers in
         isDropTargeted = false
-        controller.importDroppedURLs(urls, model: model)
-        return !urls.isEmpty
-      } isTargeted: { isDropTargeted = $0 }
+        return controller.importDroppedProviders(providers, model: model)
+      }
       .confirmationDialog(
         "Stop receiving from this computer?",
         isPresented: $showStopConfirmation,
@@ -238,6 +279,10 @@ struct ComputerReceiverView: View {
       Label("Receiving audiobook", systemImage: "arrow.down.circle.fill")
         .font(.headline)
         .foregroundStyle(PlayerColor.accent)
+    case .preparingDrop:
+      Label("Receiving mirrored drop", systemImage: "arrow.down.doc.fill")
+        .font(.headline)
+        .foregroundStyle(PlayerColor.accent)
     case .importing:
       Label("Checking audiobook", systemImage: "waveform.badge.magnifyingglass")
         .font(.headline)
@@ -270,6 +315,17 @@ struct ComputerReceiverView: View {
       readyContent
     case .receiving(let name, let completedBytes, let totalBytes):
       transferCard(name: name, completedBytes: completedBytes, totalBytes: totalBytes)
+    case .preparingDrop(let name, let completedItems, let totalItems):
+      VStack(spacing: 18) {
+        ProgressView(value: Double(completedItems), total: Double(max(1, totalItems)))
+          .tint(PlayerColor.accent)
+        Text(name).font(.title3.bold()).foregroundStyle(PlayerColor.ink)
+        Text("Preparing dropped item \(min(completedItems + 1, totalItems)) of \(totalItems)…")
+          .multilineTextAlignment(.center)
+          .foregroundStyle(PlayerColor.secondary)
+      }
+      .padding(.vertical, 48)
+      .accessibilityIdentifier("mirroring-drop-progress")
     case .importing(let name):
       VStack(spacing: 18) {
         ProgressView().controlSize(.large).tint(PlayerColor.accent)
@@ -435,6 +491,7 @@ struct ComputerReceiverView: View {
     case .ready: "receiver:ready"
     case .connected: "receiver:connected"
     case .receiving: "receiver:receiving"
+    case .preparingDrop: "receiver:preparing-mirrored-drop"
     case .importing: "receiver:importing"
     case .completed(_, let count): "receiver:completed:\(count)"
     case .needsReview: "receiver:needs-review"
@@ -454,7 +511,7 @@ struct ComputerReceiverView: View {
 private extension ComputerReceiverController.Phase {
   var isActivelyReceiving: Bool {
     switch self {
-    case .connected, .receiving, .importing: true
+    case .connected, .receiving, .preparingDrop, .importing: true
     default: false
     }
   }

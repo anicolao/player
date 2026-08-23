@@ -72,10 +72,34 @@ final class LaunchUITests: XCTestCase {
       ]
     )
 
+    app.terminate()
+    let receivingApp = makeApplication(additionalArguments: ["-e2e-mirroring-drop-progress"])
+    receivingApp.launch()
+    receivingApp.buttons["receive-from-computer-empty-library"].tap()
+    try tester.step(
+      "mirroring-drop-progress",
+      description: "A mirrored folder drop reports deterministic preparation progress on iPhone",
+      verifications: [
+        .valueEquals(
+          receivingApp.scrollViews["computer-receiver-screen"],
+          "receiver:preparing-mirrored-drop",
+          "The receiver reports the native mirrored-drop state"
+        ),
+        .exists(
+          receivingApp.progressIndicators["mirroring-drop-progress"],
+          "The listener sees progress while the dropped folder is materialized"
+        ),
+        .exists(
+          receivingApp.staticTexts["Project Hail Mary"],
+          "The progress view identifies the book currently being received"
+        ),
+      ]
+    )
+
     tester.generateDocs()
   }
 
-  private func makeApplication() -> XCUIApplication {
+  private func makeApplication(additionalArguments: [String] = []) -> XCUIApplication {
     let app = XCUIApplication()
     app.launchArguments += [
       "-e2e",
@@ -89,6 +113,7 @@ final class LaunchUITests: XCTestCase {
       "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryM",
       "-NSTreatUnknownArgumentsAsOpen", "NO",
     ]
+    app.launchArguments += additionalArguments
     app.launchEnvironment["TZ"] = "America/Toronto"
     return app
   }

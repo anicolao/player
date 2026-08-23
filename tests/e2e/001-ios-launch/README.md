@@ -39,3 +39,13 @@
 - [x] A copyable local-network address is shown
 - [x] A six-digit pairing code is shown
 - [x] Supported locales also see the optional iPhone Mirroring path
+
+## A mirrored folder drop reports deterministic preparation progress on iPhone
+
+![A mirrored folder drop reports deterministic preparation progress on iPhone](./screenshots/ios/002-mirroring-drop-progress.png)
+
+**Verifications:**
+
+- [x] The receiver reports the native mirrored-drop state
+- [x] The listener sees progress while the dropped folder is materialized
+- [x] The progress view identifies the book currently being received

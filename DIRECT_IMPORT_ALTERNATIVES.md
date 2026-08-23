@@ -94,7 +94,7 @@ The unavoidable tradeoff is therefore:
 
 ## Current foundation
 
-Player already has the import core and Build 7 includes the direct transport,
+Player already has the import core and Build 8 includes the direct transport,
 single-storage receiver ingestion, and reliable same-session retry:
 
 - The document picker accepts M4B, M4A, MP3, ZIP, folders, and multiple items.
@@ -109,7 +109,10 @@ single-storage receiver ingestion, and reliable same-session retry:
   `Media/<book-id>/<asset-id>.<extension>`; and
 - cancellation and Inbox abandonment clean app-owned staging; and
 - a paired local web receiver now auto-commits warning-free imports while
-  routing ambiguous imports to Inbox.
+  routing ambiguous imports to Inbox; and
+- the receiver screen now accepts native Mirroring item providers, recursively
+  preserves folder trees, rejects unsafe entries, supports cancellation, and
+  cleans its transport session after the real importer adopts the media.
 
 The app currently has `LSSupportsOpeningDocumentsInPlace` set to `false` and
 does not enable `UIFileSharingEnabled`, so the wired drop-box alternative is
@@ -220,14 +223,15 @@ apps through iPhone Mirroring.
 
 ### Implementation
 
-- Add a full-window SwiftUI drop target to Library and Inbox using item
-  providers/`Transferable`.
-- Accept audio types, ZIP, file URLs, and folder representations.
-- Extract the existing robust `NSItemProvider` file-copy logic from the Share
-  Extension into a shared ingress component.
-- Preserve relative paths for directory providers and seal one transfer only
-  after every provider has completed.
-- Feed the sealed manifest to the common direct-import coordinator.
+- The `Receive from Computer` screen has a full-window SwiftUI drop target
+  backed by raw `NSItemProvider` objects.
+- It accepts audio types, ZIPs, file URLs, and folder representations.
+- `MirroringDropAdapter` owns in-place/fallback provider loading, safe recursive
+  folder traversal, path preservation, no-extra-copy adoption, cancellation,
+  and cleanup.
+- It exposes only a fully materialized selection after every provider has
+  completed, then feeds that selection to the same automatic importer as the
+  web receiver.
 
 ### Advantages
 
@@ -626,7 +630,7 @@ Finder/Apple Devices file sharing provides the supported USB path.
 | --- | --- | --- | --- | --- | --- | --- |
 | Local web receiver | Start receiver, then drag | Yes | Yes | No | Any modern desktop | P0 |
 | Finder/Apple Devices drop box | One drag | Validate clients | No; imports next launch | No after cleanup | Mac/Windows | P1 |
-| iPhone Mirroring drop | One drag | Prototype required | Yes | No | Supported Mac regions | P1 enhancement |
+| iPhone Mirroring drop | One drag | Implemented; physical validation pending | Yes | No | Supported Mac regions | P1 enhancement |
 | AirDrop | Share/AirDrop | Weak for trees | Destination-dependent | No | Apple | Maintain as fallback |
 | Watched provider folder | One drag after setup | Yes | Scans when scheduled/active | Provider-dependent | Provider-dependent | P2 |
 | Mac companion | One drag after pairing | Yes | Yes unless queued | No | Mac | P2 |
@@ -657,7 +661,7 @@ Finder/Apple Devices file sharing provides the supported USB path.
 
 ### Phase 2: regional Mac shortcut and system drop box
 
-1. Add the iOS drop target and reuse the Share Extension provider loader.
+1. **Implemented:** add the iOS drop target and hardened item-provider loader.
 2. Add the remotely maintainable regional Mirroring-tip policy, default hidden
    for the EU and unknown eligibility.
 3. Test single files, multifile selections, folders, directory trees, and ZIPs

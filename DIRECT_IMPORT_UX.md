@@ -48,6 +48,32 @@ policy, and user-configurable automatic-add setting remain follow-up work. Those
 sections below specify the intended evolution; they are not claims about Build
 7. The primary web route does not depend on them.
 
+## Build 8 Mirroring completion scope
+
+Build 8 replaces the URL-only drop prototype with a production
+item-provider ingress adapter. While `Receive from Computer` is open, it:
+
+- accepts Finder-provided M4B, M4A, MP3, ZIP, file URL, and folder
+  representations;
+- recursively materializes audio from folder trees without flattening their
+  relative paths;
+- tries an in-place representation first, falls back to a temporary provider
+  representation, and uses same-volume hard links before streaming a copy;
+- rejects symbolic links, canonical path collisions, overlarge trees, and a
+  ZIP mixed with other dropped items;
+- cancels the provider operation and removes the whole app-owned drop session
+  when the listener closes the screen;
+- hands the completed selection to the same real automatic importer used by
+  the web receiver; and
+- removes transport files after the importer has adopted durable media.
+
+Synthetic `NSItemProvider` tests cover individual files, recursive folders,
+unsafe links, ZIP-selection rules, cancellation, cleanup, and the complete
+folder-to-Library pipeline. The deterministic UI story covers the visible
+Mirroring progress state. Apple's actual Mac-to-iPhone Mirroring transport
+cannot be created by Simulator, so single-file, folder, multi-file, ZIP, and
+large-tree drags on physical hardware remain the release gate for this route.
+
 The listener must never be told to:
 
 - save the uploaded files into Files and select them again;
@@ -327,8 +353,9 @@ Books, folders, audio files, or ZIPs
 
 Dropping starts a direct-import session using the item-provider transport. It
 does not send those bytes through the local HTTP server and does not require the
-pairing code. The receiver screen then shows the same transfer/import progress
-cards used by web upload.
+pairing code. The receiver screen identifies the item being materialized, shows
+provider-item progress, and then changes to the shared checking/import result
+states.
 
 If the provider cannot vend a folder recursively, show:
 
@@ -688,6 +715,10 @@ produce transport entries; only the coordinator seals them and starts import.
 - valid direct imports auto-commit without an Add action;
 - mixed trees add valid books and badge only blocked books;
 - cancellation and success satisfy the no-extra-copy storage inventory;
+- synthetic item providers preserve recursive folder paths and complete the
+  real folder-to-Library importer;
+- unsafe links, canonical collisions, mixed ZIP selections, and cancelled
+  provider operations remove every partial Mirroring session;
 - EU/unknown region policies hide the Mirroring card;
 - a supported-region policy shows the Mirroring card without displacing the web
   address, pairing code, or Stop action; and
@@ -709,14 +740,10 @@ produce transport entries; only the coordinator seals them and starts import.
 
 ### Exact E2E visual story
 
-Add `tests/e2e/009-direct-computer-import` with canonical screens:
-
-1. `000-empty-library-receive-primary.png`;
-2. `001-receiver-ready.png` using deterministic address and code;
-3. `002-receiver-ready-mirroring-eligible.png`;
-4. `003-transfer-progress.png`;
-5. `004-direct-import-completed-library.png`; and
-6. `005-direct-import-blocked-item.png`.
+`tests/e2e/001-ios-launch` now includes canonical empty-Library discovery,
+receiver-ready, region-eligible Mirroring guidance, and native Mirroring
+preparation-progress screens. A future receiver-specific story should add web
+transfer progress, automatic completion, and blocked-item states.
 
 The web uploader receives browser-level snapshot and accessibility tests rather
 than being rasterized inside the iOS exact-pixel story.
