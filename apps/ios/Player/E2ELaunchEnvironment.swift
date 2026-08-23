@@ -16,6 +16,8 @@ extension PlayerEnvironment {
             reset: arguments.contains("-e2e-reset"),
             eventControls: arguments.contains("-e2e-event-controls")
           )
+        case "zero-duration-current-book":
+          return zeroDurationCurrentBookEnvironment()
         case "metadata-rich-book":
           return try metadataRichBookEnvironment(reset: arguments.contains("-e2e-reset"))
         case "messy-multifile-unicode":
@@ -221,6 +223,39 @@ extension PlayerEnvironment {
           : DisabledRemoteCommandController(),
         clock: FixedPlayerClock(value: date),
         ids: DeterministicPlayerIDGenerator(values: ids)
+      )
+    }
+
+    private static func zeroDurationCurrentBookEnvironment() -> PlayerEnvironment {
+      let bookID = UUID(uuidString: "22000000-0000-0000-0000-000000000001")!
+      let assetID = UUID(uuidString: "22000000-0000-0000-0000-000000000002")!
+      let asset = AudioAsset(
+        id: assetID,
+        originalFilename: "atmosphere.m4b",
+        managedRelativePath: "Media/atmosphere.m4b",
+        checksumSHA256: "e2e-zero-duration-fixture",
+        byteCount: 1,
+        durationSeconds: 0,
+        container: "M4B"
+      )
+      let book = Book(
+        id: bookID,
+        title: "Atmosphere",
+        authors: ["Taylor Jenkins Reid"],
+        durationSeconds: 0,
+        artworkData: nil,
+        assets: [asset],
+        dateAdded: Date(timeIntervalSince1970: 1_700_000_000)
+      )
+      return PlayerEnvironment(
+        persistence: InMemoryLibraryStore(
+          snapshot: LibrarySnapshot(books: [book], importJobs: [], currentBookID: bookID)
+        ),
+        media: FileSystemMediaManager(rootURL: FileManager.default.temporaryDirectory),
+        inspector: DeterministicAudioInspector(result: .failure(.unreadableAudio("unused"))),
+        playback: DeterministicPlaybackController(),
+        clock: FixedPlayerClock(value: Date(timeIntervalSince1970: 1_700_000_000)),
+        ids: DeterministicPlayerIDGenerator(values: [])
       )
     }
 

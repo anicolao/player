@@ -88,6 +88,14 @@ private background queue. Regression coverage runs both fixes on Simulator and
 on a connected iPhone; the normal import and playback walkthroughs remain part
 of the release gate.
 
+## Build 11 playback follow-up
+
+Build 11 fixes the TestFlight crash reported for an imported book whose
+duration was temporarily unavailable. Now Playing always gives SwiftUI a
+finite slider range, a step no larger than that range, and a clamped position.
+Unit coverage exercises zero, negative, non-finite, short, and normal values;
+the UI release gate opens Now Playing with a zero-duration imported book.
+
 The listener must never be told to:
 
 - save the uploaded files into Files and select them again;

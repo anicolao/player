@@ -4,6 +4,31 @@ import XCTest
 
 @MainActor
 final class PlayerCoreTests: XCTestCase {
+  func testPlaybackSliderConfigurationNormalizesUnavailableAndShortDurations() {
+    for duration: Double in [0, -1, .nan, .infinity, -Double.infinity] {
+      let configuration = PlaybackSliderConfiguration(durationSeconds: duration)
+      XCTAssertEqual(configuration.upperBound, 1)
+      XCTAssertEqual(configuration.step, 1)
+    }
+
+    let short = PlaybackSliderConfiguration(durationSeconds: 12)
+    XCTAssertEqual(short.upperBound, 12)
+    XCTAssertEqual(short.step, 12)
+
+    let normal = PlaybackSliderConfiguration(durationSeconds: 120)
+    XCTAssertEqual(normal.upperBound, 120)
+    XCTAssertEqual(normal.step, 30)
+  }
+
+  func testPlaybackSliderConfigurationClampsInvalidAndOutOfRangePositions() {
+    let configuration = PlaybackSliderConfiguration(durationSeconds: 120)
+    XCTAssertEqual(configuration.clampedPosition(-1), 0)
+    XCTAssertEqual(configuration.clampedPosition(.nan), 0)
+    XCTAssertEqual(configuration.clampedPosition(.infinity), 0)
+    XCTAssertEqual(configuration.clampedPosition(45), 45)
+    XCTAssertEqual(configuration.clampedPosition(121), 120)
+  }
+
   func testNowPlayingArtworkProviderCanBeInvokedOffMainActor() async throws {
     let renderer = UIGraphicsImageRenderer(size: CGSize(width: 2, height: 3))
     let image = renderer.image { context in

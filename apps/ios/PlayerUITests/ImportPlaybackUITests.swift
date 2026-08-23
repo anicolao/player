@@ -24,6 +24,24 @@ final class ImportPlaybackUITests: XCTestCase {
     XCTAssertTrue(app.staticTexts["Inbox is clear"].exists)
   }
 
+  func testNowPlayingRendersWhenImportedDurationIsUnavailable() {
+    continueAfterFailure = false
+    XCUIDevice.shared.orientation = .portrait
+
+    let app = makeApplication(fixture: "zero-duration-current-book")
+    app.launch()
+    let miniPlayer = app.otherElements["mini-player"]
+    XCTAssertTrue(miniPlayer.waitForExistence(timeout: 2))
+    miniPlayer.tap()
+
+    XCTAssertTrue(
+      app.otherElements["now-playing-screen"].waitForExistence(timeout: 2),
+      "Now Playing must not crash while an imported duration is unavailable"
+    )
+    XCTAssertTrue(app.sliders["player-position-slider"].exists)
+    XCTAssertTrue(app.buttons["player-play-pause"].exists)
+  }
+
   func testReviewsCommitsAndPlaysOneAudiobook() throws {
     continueAfterFailure = false
     XCUIDevice.shared.orientation = .portrait
@@ -128,10 +146,10 @@ final class ImportPlaybackUITests: XCTestCase {
     tester.generateDocs()
   }
 
-  private func makeApplication() -> XCUIApplication {
+  private func makeApplication(fixture: String = "single-audiobook-ready") -> XCUIApplication {
     let app = XCUIApplication()
     app.launchArguments += [
-      "-e2e", "-e2e-reset", "-e2e-fixture", "single-audiobook-ready",
+      "-e2e", "-e2e-reset", "-e2e-fixture", fixture,
       "-AppleLanguages", "(en)", "-AppleLocale", "en_CA",
       "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryM",
       "-NSTreatUnknownArgumentsAsOpen", "NO",

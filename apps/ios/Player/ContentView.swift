@@ -1515,6 +1515,23 @@ struct BookDetailView: View {
   }
 }
 
+struct PlaybackSliderConfiguration: Equatable {
+  let upperBound: Double
+  let step: Double
+
+  init(durationSeconds: Double) {
+    upperBound = durationSeconds.isFinite && durationSeconds > 0
+      ? max(1, durationSeconds)
+      : 1
+    step = min(30, upperBound)
+  }
+
+  func clampedPosition(_ positionSeconds: Double) -> Double {
+    guard positionSeconds.isFinite else { return 0 }
+    return min(max(0, positionSeconds), upperBound)
+  }
+}
+
 private struct NowPlayingView: View {
   @Environment(\.dismiss) private var dismiss
   @Bindable var model: PlayerModel
@@ -1525,6 +1542,7 @@ private struct NowPlayingView: View {
   @State private var smartRewindUndoPositionMilliseconds: Int64?
   @State private var savedBookmarkID: UUID?
   var body: some View {
+    let slider = PlaybackSliderConfiguration(durationSeconds: displayedDuration)
     NavigationStack {
       ZStack {
         PlayerColor.background.ignoresSafeArea()
@@ -1560,11 +1578,11 @@ private struct NowPlayingView: View {
           }
           Slider(
             value: Binding(
-              get: { requestedPosition ?? displayedPosition },
-              set: { requestedPosition = $0 }
+              get: { slider.clampedPosition(requestedPosition ?? displayedPosition) },
+              set: { requestedPosition = slider.clampedPosition($0) }
             ),
-            in: 0...max(1, displayedDuration),
-            step: 30,
+            in: 0...slider.upperBound,
+            step: slider.step,
             onEditingChanged: { isEditing in
               guard !isEditing, let position = requestedPosition else { return }
               Task {
