@@ -579,17 +579,42 @@ final class MPNowPlayingPublisher: NowPlayingPublishing {
     if let seriesName = snapshot.seriesName {
       information[MPMediaItemPropertyAlbumTitle] = seriesName
     }
-    if let data = snapshot.artworkData, let image = UIImage(data: data) {
-      information[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(
-        boundsSize: image.size,
-        requestHandler: { _ in image }
-      )
+    if let data = snapshot.artworkData, let artwork = MPNowPlayingArtworkFactory.make(from: data) {
+      information[MPMediaItemPropertyArtwork] = artwork
     }
     center.nowPlayingInfo = information
   }
 
   func clear() {
     center.nowPlayingInfo = nil
+  }
+}
+
+/// `MPNowPlayingInfoCenter` invokes artwork request handlers on its private
+/// access queue. Building the closure inside `MPNowPlayingPublisher`, which is
+/// main-actor isolated, gives the closure a main-actor executor check and
+/// crashes when MediaPlayer calls it off-main. Keep the factory and handler
+/// explicitly outside that isolation and only capture an immutable image.
+enum MPNowPlayingArtworkFactory {
+  nonisolated static func make(from data: Data) -> MPMediaItemArtwork? {
+    guard let image = UIImage(data: data) else { return nil }
+    let provider = MPNowPlayingArtworkProvider(image: image)
+    return MPMediaItemArtwork(
+      boundsSize: image.size,
+      requestHandler: provider.image(for:)
+    )
+  }
+}
+
+final class MPNowPlayingArtworkProvider: @unchecked Sendable {
+  private let storedImage: UIImage
+
+  nonisolated init(image: UIImage) {
+    storedImage = image
+  }
+
+  nonisolated func image(for _: CGSize) -> UIImage {
+    storedImage
   }
 }
 

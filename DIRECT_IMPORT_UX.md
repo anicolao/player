@@ -78,6 +78,16 @@ Mirroring progress state. Apple's actual Mac-to-iPhone Mirroring transport
 cannot be created by Simulator, so single-file, folder, multi-file, ZIP, and
 large-tree drags on physical hardware remain the release gate for this route.
 
+## Build 10 stability follow-up
+
+Build 10 fixes two crashes observed in Build 9 on physical hardware. Removing
+the Mirroring interaction no longer writes through its SwiftUI binding while
+SwiftUI is dismantling the view. Now Playing artwork is also supplied through
+a nonisolated, immutable provider because MediaPlayer requests artwork on its
+private background queue. Regression coverage runs both fixes on Simulator and
+on a connected iPhone; the normal import and playback walkthroughs remain part
+of the release gate.
+
 The listener must never be told to:
 
 - save the uploaded files into Files and select them again;

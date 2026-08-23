@@ -219,7 +219,7 @@ final class MirroringDropAdapterTests: XCTestCase {
     XCTAssertTrue(FileManager.default.fileExists(atPath: managedURL.path))
   }
 
-  func testNativeDropInteractionMovesBetweenWindowsAndUninstallsCleanly() {
+  func testNativeDropInteractionMovesBetweenWindowsAndUninstallsWithoutMutatingSwiftUIState() {
     var isTargeted = false
     let binding = Binding(
       get: { isTargeted },
@@ -244,7 +244,7 @@ final class MirroringDropAdapterTests: XCTestCase {
     coordinator.uninstall()
 
     XCTAssertTrue(secondWindow.interactions.compactMap { $0 as? UIDropInteraction }.isEmpty)
-    XCTAssertFalse(isTargeted)
+    XCTAssertTrue(isTargeted)
   }
 
   private func fileProvider(

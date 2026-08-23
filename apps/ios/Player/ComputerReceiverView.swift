@@ -589,7 +589,6 @@ struct MirroringWindowDropInteraction: UIViewRepresentable {
     func uninstall() {
       installedView?.removeInteraction(interaction)
       installedView = nil
-      isTargeted.wrappedValue = false
     }
 
     func dropInteraction(_ interaction: UIDropInteraction, canHandle session: UIDropSession) -> Bool {

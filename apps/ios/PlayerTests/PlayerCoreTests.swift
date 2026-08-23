@@ -4,6 +4,47 @@ import XCTest
 
 @MainActor
 final class PlayerCoreTests: XCTestCase {
+  func testNowPlayingArtworkProviderCanBeInvokedOffMainActor() async throws {
+    let renderer = UIGraphicsImageRenderer(size: CGSize(width: 2, height: 3))
+    let image = renderer.image { context in
+      UIColor.systemIndigo.setFill()
+      context.fill(CGRect(x: 0, y: 0, width: 2, height: 3))
+    }
+    let provider = MPNowPlayingArtworkProvider(image: image)
+
+    let requestedSize = await Task.detached {
+      provider.image(for: CGSize(width: 200, height: 300)).size
+    }.value
+
+    XCTAssertEqual(requestedSize, image.size)
+    XCTAssertNotNil(MPNowPlayingArtworkFactory.make(from: image.pngData() ?? Data()))
+  }
+
+  func testRealNowPlayingPublisherSurvivesArtworkConsumption() async throws {
+    let renderer = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 12))
+    let artworkData = renderer.pngData { context in
+      UIColor.systemOrange.setFill()
+      context.fill(CGRect(x: 0, y: 0, width: 8, height: 12))
+    }
+    let publisher = MPNowPlayingPublisher()
+    defer { publisher.clear() }
+
+    publisher.publish(NowPlayingSnapshot(
+      bookID: UUID(uuidString: "A9000000-0000-0000-0000-000000000001")!,
+      title: "Artwork concurrency regression",
+      authors: ["Player Tests"],
+      narrators: [],
+      seriesName: nil,
+      chapterTitle: nil,
+      durationSeconds: 60,
+      elapsedSeconds: 5,
+      playbackRate: 1,
+      artworkData: artworkData
+    ))
+
+    try await Task.sleep(for: .milliseconds(500))
+  }
+
   func testComputerReceiverUsesOnePhysicalCopyAndCompletesRealImporter() async throws {
     let temporaryRoot = FileManager.default.temporaryDirectory.appending(
       path: "ComputerReceiverPipelineTests-\(UUID().uuidString)",
