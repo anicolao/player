@@ -1,0 +1,17 @@
+{
+  "fixture": "synthetic-import-channels",
+  "documentOpen": {
+    "file": "document-open-interrupted-acquire.m4a",
+    "jobID": "70000000-0000-0000-0000-000000000001",
+    "byteCount": 9350,
+    "sha256": "9fe8b420c8d1f64d51f87a98a1465e7dea69082d74c1a014220f6838ba4aa60d"
+  },
+  "shareExtension": {
+    "file": "share-extension-handoff.m4a",
+    "envelope": "share-extension-envelope.json",
+    "handoffID": "70000000-0000-0000-0000-000000000101",
+    "jobID": "70000000-0000-0000-0000-000000000102",
+    "byteCount": 9183,
+    "sha256": "ec875798951295f4b5fdd1e9349a58fd94fbb7cb78455595345fcb3ca51d3964"
+  }
+}

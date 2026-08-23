@@ -4,7 +4,7 @@
 
 **Player** is a working title for an iOS app for people who bring their own DRM-free audiobooks. Its defining feature is not another play button: it is a forgiving path from “these files are somewhere on my phone or cloud drive” to “this is one correctly ordered, beautifully presented book.”
 
-The repository now contains an initial runnable SwiftUI scaffold and a deterministic launch-story test. [VISION.md](VISION.md) explains the product direction, [MVP_DESIGN.md](MVP_DESIGN.md) defines the first buildable target, and [UX_DESIGN.md](UX_DESIGN.md) turns it into an implementation-facing interaction and visual system with screen mockups.
+The repository now contains an initial runnable SwiftUI scaffold and a deterministic launch-story test. [VISION.md](VISION.md) explains the product direction, [MVP_DESIGN.md](MVP_DESIGN.md) defines the first buildable target, [UX_DESIGN.md](UX_DESIGN.md) turns it into an implementation-facing interaction and visual system, and [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) sequences the MVP as tested tracer-bullet commits.
 
 ## The product promise
 
@@ -103,6 +103,19 @@ The roadmap is capability-based, not a release-date promise. Reliability gates a
 
 The iPhone scaffold lives in `apps/ios/` and is generated reproducibly with XcodeGen. The pinned local setup is Xcode 26.6, iOS 26.5, iPhone 17, and XcodeGen 2.46.0.
 
+With Nix installed, generate the project, build the app, boot a persistent development simulator, install Player, and launch it with one command:
+
+```bash
+nix develop
+```
+
+The development simulator and its app data are reused on later runs. To enter the same development shell without building or launching Simulator, run `PLAYER_SKIP_SIMULATOR_LAUNCH=1 nix develop`.
+
+For the one-time Apple Developer Program and App Store Connect handoff needed
+for unattended signing and TestFlight deployment, follow
+[TESTFLIGHT_SETUP.md](TESTFLIGHT_SETUP.md). Never place Apple API private keys
+in this repository or in chat.
+
 Generate the Xcode project:
 
 ```bash
@@ -115,7 +128,7 @@ Run the launch E2E story and require an exact match against the committed screen
 apps/ios/scripts/run-e2e.sh
 ```
 
-The runner creates and deletes its own `Player E2E` simulator. See [apps/ios/README.md](apps/ios/README.md) for native project details and [E2E_GUIDE.md](E2E_GUIDE.md) for the semantic and zero-pixel verification contract.
+The runner creates and deletes its own `Player E2E` simulator. See [apps/ios/README.md](apps/ios/README.md) for native project details and [E2E_GUIDE.md](E2E_GUIDE.md) for the semantic and canonical-pixel verification contract.
 
 ## Contributing
 

@@ -1,0 +1,48 @@
+{
+  "fixture": "synthetic-metadata-repair",
+  "ids": {
+    "job": "80000000-0000-0000-0000-000000000001",
+    "proposal": "80000000-0000-0000-0000-000000000002",
+    "asset": "80000000-0000-0000-0000-000000000003",
+    "book": "80000000-0000-0000-0000-000000000004"
+  },
+  "audio": {
+    "file": "metadata-repair-source.m4b",
+    "byteCount": 8461,
+    "sha256": "6c5a700ee340ace483b4cd45188403ca9a77fd60d94ba248063ee2c7fc6366f7"
+  },
+  "proposal": {
+    "title": {
+      "value": "The Brass Lantern",
+      "source": "embedded-tag",
+      "confidence": "high"
+    },
+    "authors": {
+      "values": ["Mira Sol"],
+      "source": "embedded-tag",
+      "confidence": "high"
+    },
+    "narrators": {
+      "values": ["Anika Reed"],
+      "source": "embedded-tag",
+      "confidence": "high"
+    },
+    "series": {
+      "name": "Night Signals",
+      "position": "4",
+      "source": "embedded-tag",
+      "confidence": "high"
+    },
+    "cover": {
+      "file": "metadata-repair-original-cover.png",
+      "source": "embedded-artwork"
+    }
+  },
+  "repair": {
+    "title": "The Amber Signal",
+    "explicitlyClear": ["narrators"],
+    "explicitlyLock": ["series"],
+    "replacementCover": "metadata-repair-replacement-cover.png",
+    "undoRestores": "proposal-revision-0"
+  }
+}

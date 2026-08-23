@@ -1,0 +1,19 @@
+{
+  "id": "005-play-and-restore",
+  "platform": "ios",
+  "test": "PlayerUITests/PositionRestoreUITests/testRestoresAnAcknowledgedPausedPositionAfterTermination",
+  "additionalTests": [
+    "PlayerUITests/TransportControlsUITests/testCustomizesAndRestoresListeningControls",
+    "PlayerUITests/SmartRewindUITests/testSmartRewindAdaptsClampsPersistsAndUndoesExactly"
+  ],
+  "nonvisualTests": [
+    "PlayerUITests/RemoteInterruptionUITests/testRemoteInterruptionAndBackgroundEventsJournalAcknowledgedPositions"
+  ],
+  "fixture": "committed-current-book",
+  "screenshots": [
+    "000-restored-library.png",
+    "001-restored-now-playing.png",
+    "002-transport-controls.png",
+    "003-smart-rewind-applied.png"
+  ]
+}

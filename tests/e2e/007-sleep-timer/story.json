@@ -1,0 +1,17 @@
+{
+  "id": "007-sleep-timer",
+  "platform": "ios",
+  "test": "PlayerUITests/SleepTimerUITests/testSleepTimerPersistsFadesStopsAndResumesWithContextExactly",
+  "additionalTests": [
+    "PlayerUITests/BookmarkUITests/testBookmarksCaptureOrganizeSearchJumpDeleteAndUndoExactly"
+  ],
+  "fixture": "sleep-timer",
+  "additionalFixtures": [
+    "bookmarks"
+  ],
+  "screenshots": [
+    "000-persisted-active-sleep-timer.png",
+    "001-sleep-stop-resume-context.png",
+    "002-bookmarks-list.png"
+  ]
+}

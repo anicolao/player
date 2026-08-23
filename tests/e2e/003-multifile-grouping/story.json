@@ -1,0 +1,12 @@
+{
+  "id": "003-multifile-grouping",
+  "platform": "ios",
+  "test": "PlayerUITests/MultifileGroupingUITests/testRepairsMessyMultifileGroupingAndCommitsOneBookAtomically",
+  "fixture": "messy-multifile-unicode",
+  "screenshots": [
+    "000-explainable-grouping.png",
+    "001-natural-order-review.png",
+    "002-corrected-one-book.png",
+    "003-atomic-commit.png"
+  ]
+}

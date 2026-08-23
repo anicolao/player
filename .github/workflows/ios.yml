@@ -3,12 +3,15 @@ name: iOS
 on:
   workflow_dispatch:
   pull_request:
-    branches: [main]
     paths:
       - apps/ios/**
       - tests/e2e/**
       - E2E_GUIDE.md
+      - IMPLEMENTATION_PLAN.md
       - MVP_DESIGN.md
+      - README.md
+      - UX_DESIGN.md
+      - VISION.md
       - .github/workflows/ios.yml
       - flake.nix
       - flake.lock
@@ -18,7 +21,11 @@ on:
       - apps/ios/**
       - tests/e2e/**
       - E2E_GUIDE.md
+      - IMPLEMENTATION_PLAN.md
       - MVP_DESIGN.md
+      - README.md
+      - UX_DESIGN.md
+      - VISION.md
       - .github/workflows/ios.yml
       - flake.nix
       - flake.lock
@@ -27,10 +34,10 @@ permissions:
   contents: read
 
 jobs:
-  launch-story:
-    name: Build and exact launch walkthrough
+  ios-tests:
+    name: Core tests and exact E2E walkthroughs
     runs-on: macos-26
-    timeout-minutes: 20
+    timeout-minutes: 120
     defaults:
       run:
         shell: nix develop --command bash --noprofile --norc -e -o pipefail {0}
@@ -46,9 +53,7 @@ jobs:
         uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
 
       - name: Verify pinned environment
-        run: |
-          xcodebuild -version
-          xcrun simctl list runtimes
+        run: apps/ios/scripts/verify-e2e-environment.sh
 
       - name: Generate Xcode project
         run: apps/ios/scripts/generate-project.sh
@@ -56,17 +61,112 @@ jobs:
       - name: Require reproducible project generation
         run: git diff --exit-code -- apps/ios/Player.xcodeproj
 
-      - name: Run semantic and exact-pixel launch story
-        run: apps/ios/scripts/run-e2e.sh
+      - name: Verify committed synthetic audio fixtures
+        run: |
+          apps/ios/scripts/fixtures/verify-generated-fixtures.sh
+          apps/ios/scripts/fixtures/verify-messy-multifile-fixture.sh
+          apps/ios/scripts/fixtures/verify-zip-fixtures.sh
+          apps/ios/scripts/fixtures/verify-import-channel-fixtures.sh
+          apps/ios/scripts/fixtures/verify-metadata-repair-fixture.sh
+          apps/ios/scripts/fixtures/verify-populated-library-fixture.sh
+
+      - name: Run import, storage, persistence, and playback tests
+        run: |
+          xcodebuild -quiet \
+            -project apps/ios/Player.xcodeproj \
+            -scheme Player \
+            -configuration E2E \
+            -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' \
+            -only-testing:PlayerTests \
+            test \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Run exact-pixel launch story
+        run: >-
+          apps/ios/scripts/run-e2e.sh
+          001-ios-launch
+          PlayerUITests/LaunchUITests/testLaunchesIntoEmptyLibrary
+
+      - name: Run exact-pixel import and playback story
+        run: >-
+          apps/ios/scripts/run-e2e.sh
+          002-import-and-play
+          PlayerUITests/ImportPlaybackUITests/testAbandonsReadyImportAndClearsInbox
+          PlayerUITests/ImportPlaybackUITests/testReviewsCommitsAndPlaysOneAudiobook
+          PlayerUITests/MetadataChapterUITests/testShowsEmbeddedMetadataAndStartsAChapter
+          PlayerUITests/ImportIngressResilienceUITests/testDocumentOpenResumesOneImportAcrossAcquireAndInspectRestarts
+          PlayerUITests/ImportIngressResilienceUITests/testConsumesAndDeduplicatesShareExtensionAppGroupHandoff
+
+      - name: Run exact-pixel multifile grouping story
+        run: >-
+          apps/ios/scripts/run-e2e.sh
+          003-multifile-grouping
+          PlayerUITests/MultifileGroupingUITests/testRepairsMessyMultifileGroupingAndCommitsOneBookAtomically
+
+      - name: Run exact-pixel metadata repair story
+        run: >-
+          apps/ios/scripts/run-e2e.sh
+          004-metadata-repair
+          PlayerUITests/MetadataRepairUITests/testRepairsLocksCommitsAndUndoesMetadataWithoutChangingAudio
+
+      - name: Run exact-pixel safe ZIP story
+        run: >-
+          apps/ios/scripts/run-e2e.sh
+          006-safe-zip-import
+          PlayerUITests/SafeZIPImportUITests/testRejectsHostileZIPsThenCancelsAndRetriesAValidArchive
+          PlayerUITests/ImportRecoveryStorageUITests/testRecoversMixedImportsAndExplainsStorageWithoutTouchingSources
+
+      - name: Run exact-pixel library organization story
+        run: >-
+          apps/ios/scripts/run-e2e.sh
+          008-library-search
+          PlayerUITests/LibraryOrganizationUITests/testOrganizesDailyLibraryAndRestoresATrashedBook
+
+      - name: Run exact-pixel position restoration story
+        run: >-
+          apps/ios/scripts/run-e2e.sh
+          005-play-and-restore
+          PlayerUITests/PositionRestoreUITests/testRestoresAnAcknowledgedPausedPositionAfterTermination
+          PlayerUITests/RemoteInterruptionUITests/testRemoteInterruptionAndBackgroundEventsJournalAcknowledgedPositions
+          PlayerUITests/TransportControlsUITests/testCustomizesAndRestoresListeningControls
+          PlayerUITests/SmartRewindUITests/testSmartRewindAdaptsClampsPersistsAndUndoesExactly
+
+      - name: Run exact-pixel sleep timer story
+        run: >-
+          apps/ios/scripts/run-e2e.sh
+          007-sleep-timer
+          PlayerUITests/SleepTimerUITests/testSleepTimerPersistsFadesStopsAndResumesWithContextExactly
+          PlayerUITests/BookmarkUITests/testBookmarksCaptureOrganizeSearchJumpDeleteAndUndoExactly
 
       - name: Upload reviewable diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ios-launch-walkthrough
+          name: ios-e2e-walkthroughs
           path: |
-            apps/ios/DerivedData/ActualWalkthrough/
-            apps/ios/DerivedData/LaunchAttachments/
-            apps/ios/DerivedData/Launch.xcresult/
+            apps/ios/DerivedData/E2E/001-ios-launch/ActualWalkthrough/
+            apps/ios/DerivedData/E2E/001-ios-launch/Attachments/
+            apps/ios/DerivedData/E2E/001-ios-launch/Results/Story.xcresult/
+            apps/ios/DerivedData/E2E/002-import-and-play/ActualWalkthrough/
+            apps/ios/DerivedData/E2E/002-import-and-play/Attachments/
+            apps/ios/DerivedData/E2E/002-import-and-play/Results/Story.xcresult/
+            apps/ios/DerivedData/E2E/003-multifile-grouping/ActualWalkthrough/
+            apps/ios/DerivedData/E2E/003-multifile-grouping/Attachments/
+            apps/ios/DerivedData/E2E/003-multifile-grouping/Results/Story.xcresult/
+            apps/ios/DerivedData/E2E/004-metadata-repair/ActualWalkthrough/
+            apps/ios/DerivedData/E2E/004-metadata-repair/Attachments/
+            apps/ios/DerivedData/E2E/004-metadata-repair/Results/Story.xcresult/
+            apps/ios/DerivedData/E2E/006-safe-zip-import/ActualWalkthrough/
+            apps/ios/DerivedData/E2E/006-safe-zip-import/Attachments/
+            apps/ios/DerivedData/E2E/006-safe-zip-import/Results/Story.xcresult/
+            apps/ios/DerivedData/E2E/008-library-search/ActualWalkthrough/
+            apps/ios/DerivedData/E2E/008-library-search/Attachments/
+            apps/ios/DerivedData/E2E/008-library-search/Results/Story.xcresult/
+            apps/ios/DerivedData/E2E/005-play-and-restore/ActualWalkthrough/
+            apps/ios/DerivedData/E2E/005-play-and-restore/Attachments/
+            apps/ios/DerivedData/E2E/005-play-and-restore/Results/Story.xcresult/
+            apps/ios/DerivedData/E2E/007-sleep-timer/ActualWalkthrough/
+            apps/ios/DerivedData/E2E/007-sleep-timer/Attachments/
+            apps/ios/DerivedData/E2E/007-sleep-timer/Results/Story.xcresult/
           if-no-files-found: warn
           retention-days: 7

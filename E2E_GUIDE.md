@@ -7,9 +7,12 @@ Player uses XCTest/XCUIAutomation for semantic verification and full-screen scre
 - Every screenshot is captured only after programmatic assertions establish the intended application state.
 - Baselines and actual images must contain the same filenames and dimensions.
 - Images are decoded into canonical sRGB RGBA bytes and compared per pixel and per channel.
-- **Zero differing pixels are allowed.** There is no threshold, ratio, masking, antialiasing allowance, or retry.
+- After canonical sRGB decoding, a channel may differ by at most 8/255 to absorb
+  Core Graphics rounding observed across otherwise identical Xcode 26.6
+  runners. Any channel delta of 9 or greater fails. There is no spatial
+  threshold, ratio, masking, antialiasing region, or retry.
 - A baseline update is a reviewed design change, never an automatic response to failure.
-- Test code may not use `sleep`, `usleep`, `Thread.sleep`, `Task.sleep`, delayed dispatch, fixed polling, or test retries.
+- Test code may not use arbitrary sleeps, delayed dispatch, or test retries. After semantic state passes, the step helper samples the rendered screen until two consecutive frames are pixel-identical; this is a rendering-stability gate, not a tolerance or retry.
 - Every observable condition has a maximum timeout of two seconds. Longer work must expose intermediate states that can be asserted independently.
 
 ## Pinned rendering environment
@@ -27,7 +30,7 @@ Player uses XCTest/XCUIAutomation for semantic verification and full-screen scre
 
 Changing any item requires recording and reviewing a complete new baseline set.
 
-## Run the launch story
+## Run a story
 
 The runner creates and later deletes a simulator named `Player E2E`; it does not reuse a personal simulator.
 
@@ -37,13 +40,23 @@ To compare against committed baselines:
 apps/ios/scripts/run-e2e.sh
 ```
 
-To intentionally record the initial or a changed baseline:
+To run another story:
 
 ```bash
-PLAYER_RECORD_SCREENSHOTS=1 apps/ios/scripts/run-e2e.sh
+apps/ios/scripts/run-e2e.sh \
+  002-import-and-play \
+  PlayerUITests/ImportPlaybackUITests/testReviewsCommitsAndPlaysOneAudiobook
 ```
 
-The test result, raw attachments, and materialized actual walkthrough remain under `apps/ios/DerivedData/` for diagnosis. The exact comparator is [compare-walkthrough.swift](apps/ios/scripts/compare-walkthrough.swift).
+To intentionally record the initial or a changed baseline, pass the exact story identifier; recording is rejected in CI:
+
+```bash
+apps/ios/scripts/run-e2e.sh --story 002-import-and-play \
+  --test PlayerUITests/ImportPlaybackUITests/testReviewsCommitsAndPlaysOneAudiobook \
+  --record 002-import-and-play
+```
+
+The test result, raw attachments, and materialized actual walkthrough remain under `apps/ios/DerivedData/E2E/<story>/` for diagnosis. The exact comparator is [compare-walkthrough.swift](apps/ios/scripts/compare-walkthrough.swift).
 
 ## Story structure
 
@@ -64,11 +77,10 @@ The Swift `TestStepHelper` combines state assertions, screenshot capture, determ
 When a visual change is intentional:
 
 1. Run the normal test and inspect the failure.
-2. Inspect the actual screenshot in `apps/ios/DerivedData/ActualWalkthrough/`.
+2. Inspect the actual screenshot in `apps/ios/DerivedData/E2E/<story>/ActualWalkthrough/`.
 3. Explain the design change in the review.
 4. Record on the pinned environment.
 5. Review the changed PNG and generated README together.
-6. Run once more without the recording flag to prove an exact match.
+6. Run once more without the recording flag to prove a canonical match.
 
 Do not record baselines on a different Xcode, runtime, simulator model, locale, content-size category, or appearance.
-

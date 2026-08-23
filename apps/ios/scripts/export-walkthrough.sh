@@ -18,37 +18,78 @@ fi
 
 mkdir -p "${screenshot_directory}"
 
-copy_attachment() {
-  local attachment_name="$1"
-  local destination="$2"
-  local attachment_stem="${attachment_name%.*}"
-  local exported_name
+attachment_rows="$(
+  jq -r '
+    .[]? as $test
+    | $test.attachments[]?
+    | [
+        ($test.testIdentifier // "unknown-test"),
+        (.suggestedHumanReadableName // ""),
+        (.exportedFileName // "")
+      ]
+    | @tsv
+  ' "${manifest}"
+)"
 
-  exported_name="$(
-    jq -r \
-      --arg attachment_name "${attachment_name}" \
-      --arg attachment_stem "${attachment_stem}" '
-      [
-        .[]?.attachments[]?
-        | select(
-            .suggestedHumanReadableName == $attachment_name
-            or (.suggestedHumanReadableName | startswith($attachment_stem + "_"))
-          )
-        | .exportedFileName
-      ][0] // empty
-      ' "${manifest}"
-  )"
+screenshot_count=0
+readme_count=0
+readme_directory="$(mktemp -d "${TMPDIR:-/tmp}/player-e2e-readmes.XXXXXX")"
+trap 'rm -rf "${readme_directory}"' EXIT
 
-  if [[ -z "${exported_name}" || ! -f "${attachments_directory}/${exported_name}" ]]; then
-    echo "XCTest attachment is missing: ${attachment_name}" >&2
+while IFS=$'\t' read -r test_identifier suggested_name exported_name; do
+  [[ -n "${suggested_name}" && -n "${exported_name}" ]] || continue
+
+  source_path="${attachments_directory}/${exported_name}"
+  if [[ ! -f "${source_path}" ]]; then
+    echo "Exported XCTest attachment is missing: ${exported_name}" >&2
     exit 1
   fi
 
-  cp "${attachments_directory}/${exported_name}" "${destination}"
-}
+  if [[ "${suggested_name}" =~ ^([0-9]{3}-.+)_([0-9]+)_([0-9A-Fa-f-]+)\.png$ ]]; then
+    screenshot_name="${BASH_REMATCH[1]}.png"
+  elif [[ "${suggested_name}" =~ ^[0-9]{3}-.+\.png$ ]]; then
+    screenshot_name="${suggested_name}"
+  else
+    screenshot_name=""
+  fi
 
-copy_attachment \
-  "000-empty-library.png" \
-  "${screenshot_directory}/000-empty-library.png"
-copy_attachment "README.md" "${story_directory}/README.md"
+  if [[ -n "${screenshot_name}" ]]; then
+    destination="${screenshot_directory}/${screenshot_name}"
+    if [[ -e "${destination}" ]]; then
+      echo "Screenshot attachment collision for ${screenshot_name} (${test_identifier})" >&2
+      exit 1
+    fi
+    cp "${source_path}" "${destination}"
+    screenshot_count=$((screenshot_count + 1))
+    continue
+  fi
 
+  if [[ "${suggested_name}" =~ ^README(_[0-9]+_[0-9A-Fa-f-]+)?\.md$ ]]; then
+    readme_count=$((readme_count + 1))
+    cp "${source_path}" "${readme_directory}/$(printf '%03d' "${readme_count}").md"
+  fi
+done <<< "${attachment_rows}"
+
+if [[ ${screenshot_count} -eq 0 ]]; then
+  echo "No numbered walkthrough screenshot attachments were exported." >&2
+  exit 1
+fi
+
+if [[ ${readme_count} -eq 0 ]]; then
+  echo "No generated walkthrough README attachment was exported." >&2
+  exit 1
+fi
+
+if [[ ${readme_count} -eq 1 ]]; then
+  cp "${readme_directory}/001.md" "${story_directory}/README.md"
+else
+  : > "${story_directory}/README.md"
+  for readme in "${readme_directory}/"*.md; do
+    if [[ -s "${story_directory}/README.md" ]]; then
+      printf '\n---\n\n' >> "${story_directory}/README.md"
+    fi
+    sed '1{/^# Test: /!s/^/# Test: /;}' "${readme}" >> "${story_directory}/README.md"
+  done
+fi
+
+printf 'Materialized %d screenshot(s) for the walkthrough.\n' "${screenshot_count}"

@@ -6,5 +6,11 @@ books/
 # Xcode local state and generated build products
 apps/ios/.tools/
 apps/ios/DerivedData/
+apps/ios/ReceiverWeb/node_modules/
 apps/ios/Player.xcodeproj/project.xcworkspace/xcuserdata/
 apps/ios/Player.xcodeproj/xcuserdata/
+
+# Apple signing and App Store Connect credentials must remain local.
+AuthKey_*.p8
+*.mobileprovision
+*.p12
