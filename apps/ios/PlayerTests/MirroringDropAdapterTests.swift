@@ -43,6 +43,153 @@ final class MirroringDropAdapterTests: XCTestCase {
     XCTAssertEqual(try Data(contentsOf: source), payload)
   }
 
+  func testMaterializesFinderURLObjectWhenFileRepresentationsAreUnavailable() async throws {
+    let fixtureRoot = temporaryRoot("url-object-fixture")
+    let receiverRoot = temporaryRoot("url-object-receiver")
+    defer {
+      try? FileManager.default.removeItem(at: fixtureRoot)
+      try? FileManager.default.removeItem(at: receiverRoot)
+    }
+    try FileManager.default.createDirectory(at: fixtureRoot, withIntermediateDirectories: true)
+    let source = fixtureRoot.appending(path: "This Story Might Save Your Life.m4b")
+    let payload = Data("finder URL object".utf8)
+    try payload.write(to: source)
+    let unavailable = NSError(domain: NSItemProvider.errorDomain, code: -1)
+    let provider = MirroringItemProvider(
+      registeredTypeIdentifiers: [UTType.fileURL.identifier],
+      suggestedName: source.lastPathComponent,
+      canLoadURLObject: true,
+      loadURLObject: { completion in
+        completion(source, nil)
+        return Progress(totalUnitCount: 1)
+      },
+      loadInPlace: { _, completion in
+        completion(nil, false, unavailable)
+        return Progress(totalUnitCount: 1)
+      },
+      loadFile: { _, completion in
+        completion(nil, unavailable)
+        return Progress(totalUnitCount: 1)
+      }
+    )
+    let adapter = MirroringDropAdapter(rootURL: receiverRoot)
+
+    let materialized = try await adapter.materialize([provider])
+
+    let received = try XCTUnwrap(materialized.selectionURLs.first)
+    XCTAssertEqual(received.lastPathComponent, source.lastPathComponent)
+    XCTAssertEqual(try Data(contentsOf: received), payload)
+    adapter.cleanup(materialized)
+  }
+
+  func testMaterializesSystemURLObjectProvider() async throws {
+    let fixtureRoot = temporaryRoot("system-url-object-fixture")
+    let receiverRoot = temporaryRoot("system-url-object-receiver")
+    defer {
+      try? FileManager.default.removeItem(at: fixtureRoot)
+      try? FileManager.default.removeItem(at: receiverRoot)
+    }
+    try FileManager.default.createDirectory(at: fixtureRoot, withIntermediateDirectories: true)
+    let source = fixtureRoot.appending(path: "Finder Audiobook.m4b")
+    let payload = Data("system NSItemProvider URL object".utf8)
+    try payload.write(to: source)
+    let provider = NSItemProvider(object: source as NSURL)
+    provider.suggestedName = source.lastPathComponent
+    let adapter = MirroringDropAdapter(rootURL: receiverRoot)
+
+    let materialized = try await adapter.materialize([provider])
+
+    let received = try XCTUnwrap(materialized.selectionURLs.first)
+    XCTAssertEqual(received.lastPathComponent, source.lastPathComponent)
+    XCTAssertEqual(try Data(contentsOf: received), payload)
+    adapter.cleanup(materialized)
+  }
+
+  func testMaterializesFinderFolderURLObjectWhenFileRepresentationsAreUnavailable() async throws {
+    let fixtureRoot = temporaryRoot("folder-url-object-fixture")
+    let receiverRoot = temporaryRoot("folder-url-object-receiver")
+    defer {
+      try? FileManager.default.removeItem(at: fixtureRoot)
+      try? FileManager.default.removeItem(at: receiverRoot)
+    }
+    let source = fixtureRoot.appending(path: "Project Hail Mary", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+    let payload = Data("finder folder URL object".utf8)
+    try payload.write(to: source.appending(path: "Chapter 01.m4b"))
+    let unavailable = NSError(domain: NSItemProvider.errorDomain, code: -1)
+    let provider = MirroringItemProvider(
+      registeredTypeIdentifiers: [UTType.folder.identifier, UTType.fileURL.identifier],
+      suggestedName: source.lastPathComponent,
+      canLoadURLObject: true,
+      loadURLObject: { completion in
+        completion(source, nil)
+        return Progress(totalUnitCount: 1)
+      },
+      loadInPlace: { _, completion in
+        completion(nil, false, unavailable)
+        return Progress(totalUnitCount: 1)
+      },
+      loadFile: { _, completion in
+        completion(nil, unavailable)
+        return Progress(totalUnitCount: 1)
+      }
+    )
+    let adapter = MirroringDropAdapter(rootURL: receiverRoot)
+
+    let materialized = try await adapter.materialize([provider])
+
+    let received = try XCTUnwrap(materialized.selectionURLs.first)
+    XCTAssertEqual(received.lastPathComponent, source.lastPathComponent)
+    XCTAssertEqual(
+      try Data(contentsOf: received.appending(path: "Chapter 01.m4b")),
+      payload
+    )
+    adapter.cleanup(materialized)
+  }
+
+  func testTriesGenericFinderTypeAfterAdvertisedAudioTypeFails() async throws {
+    let fixtureRoot = temporaryRoot("alternate-type-fixture")
+    let receiverRoot = temporaryRoot("alternate-type-receiver")
+    defer {
+      try? FileManager.default.removeItem(at: fixtureRoot)
+      try? FileManager.default.removeItem(at: receiverRoot)
+    }
+    try FileManager.default.createDirectory(at: fixtureRoot, withIntermediateDirectories: true)
+    let source = fixtureRoot.appending(path: "Chapter 01.m4b")
+    let payload = Data("generic Finder representation".utf8)
+    try payload.write(to: source)
+    let m4bType = try XCTUnwrap(UTType(filenameExtension: "m4b")?.identifier)
+    let unavailable = NSError(domain: NSItemProvider.errorDomain, code: -1)
+    let provider = MirroringItemProvider(
+      registeredTypeIdentifiers: [m4bType, UTType.fileURL.identifier],
+      suggestedName: source.lastPathComponent,
+      canLoadURLObject: false,
+      loadURLObject: { completion in
+        completion(nil, unavailable)
+        return Progress(totalUnitCount: 1)
+      },
+      loadInPlace: { typeIdentifier, completion in
+        if typeIdentifier == UTType.fileURL.identifier {
+          completion(source, true, nil)
+        } else {
+          completion(nil, false, unavailable)
+        }
+        return Progress(totalUnitCount: 1)
+      },
+      loadFile: { _, completion in
+        completion(nil, unavailable)
+        return Progress(totalUnitCount: 1)
+      }
+    )
+    let adapter = MirroringDropAdapter(rootURL: receiverRoot)
+
+    let materialized = try await adapter.materialize([provider])
+
+    let received = try XCTUnwrap(materialized.selectionURLs.first)
+    XCTAssertEqual(try Data(contentsOf: received), payload)
+    adapter.cleanup(materialized)
+  }
+
   func testMaterializesFolderProviderRecursivelyAndPreservesBookTree() async throws {
     let fixtureRoot = temporaryRoot("folder-fixture")
     let receiverRoot = temporaryRoot("folder-receiver")

@@ -91,7 +91,14 @@ final class MirroringDropAdapter: @unchecked Sendable {
     _ itemProviders: [NSItemProvider],
     progress: @escaping @MainActor @Sendable (MirroringDropProgress) -> Void = { _ in }
   ) async throws -> MirroringDropMaterialization {
-    let providers = itemProviders.map(MirroringItemProvider.init)
+    try await materialize(itemProviders.map(MirroringItemProvider.init), progress: progress)
+  }
+
+  @MainActor
+  func materialize(
+    _ providers: [MirroringItemProvider],
+    progress: @escaping @MainActor @Sendable (MirroringDropProgress) -> Void = { _ in }
+  ) async throws -> MirroringDropMaterialization {
     guard !providers.isEmpty else { throw MirroringDropError.noSupportedItems }
 
     let sessionRoot = rootURL.appending(
@@ -151,42 +158,102 @@ final class MirroringDropAdapter: @unchecked Sendable {
     index: Int,
     payloadRoot: URL
   ) async throws -> URL {
-    guard let typeIdentifier = preferredTypeIdentifier(for: provider) else {
+    let typeIdentifiers = preferredTypeIdentifiers(for: provider)
+    guard provider.canLoadURLObject || !typeIdentifiers.isEmpty else {
       throw MirroringDropError.noSupportedItems
     }
-    do {
-      return try await loadRepresentation(
-        provider: provider,
-        typeIdentifier: typeIdentifier,
-        suggestedName: provider.suggestedName,
-        index: index,
-        payloadRoot: payloadRoot,
-        inPlace: true
-      )
-    } catch is CancellationError {
-      throw CancellationError()
-    } catch let error as MirroringDropError {
-      throw error
-    } catch {
+
+    var lastMaterializationError: MirroringDropError?
+    if provider.canLoadURLObject {
       do {
-        return try await loadRepresentation(
+        return try await loadURLObject(
           provider: provider,
-          typeIdentifier: typeIdentifier,
+          typeIdentifier: typeIdentifiers.first ?? UTType.fileURL.identifier,
           suggestedName: provider.suggestedName,
           index: index,
-          payloadRoot: payloadRoot,
-          inPlace: false
+          payloadRoot: payloadRoot
         )
       } catch is CancellationError {
         throw CancellationError()
       } catch let error as MirroringDropError {
-        throw error
-      } catch {
-        if typeConformsToFolder(typeIdentifier) { throw MirroringDropError.folderUnavailable }
-        throw MirroringDropError.providerUnavailable(
-          nonBlank(provider.suggestedName) ?? "that dropped item"
-        )
+        if shouldStopTryingRepresentations(after: error) { throw error }
+        lastMaterializationError = error
+      } catch {}
+    }
+
+    for typeIdentifier in typeIdentifiers {
+      for inPlace in [true, false] {
+        do {
+          return try await loadRepresentation(
+            provider: provider,
+            typeIdentifier: typeIdentifier,
+            suggestedName: provider.suggestedName,
+            index: index,
+            payloadRoot: payloadRoot,
+            inPlace: inPlace
+          )
+        } catch is CancellationError {
+          throw CancellationError()
+        } catch let error as MirroringDropError {
+          if shouldStopTryingRepresentations(after: error) { throw error }
+          lastMaterializationError = error
+        } catch {}
       }
+    }
+
+    if let lastMaterializationError { throw lastMaterializationError }
+    if typeIdentifiers.contains(where: typeConformsToFolder) {
+      throw MirroringDropError.folderUnavailable
+    }
+    throw MirroringDropError.providerUnavailable(
+      nonBlank(provider.suggestedName) ?? "that dropped item"
+    )
+  }
+
+  private func shouldStopTryingRepresentations(after error: MirroringDropError) -> Bool {
+    switch error {
+    case .unsafeFolderEntry, .tooManyFiles, .duplicatePath, .mixedArchiveSelection,
+      .insufficientStorage:
+      true
+    case .noSupportedItems, .providerUnavailable, .folderUnavailable:
+      false
+    }
+  }
+
+  private func loadURLObject(
+    provider: MirroringItemProvider,
+    typeIdentifier: String,
+    suggestedName: String?,
+    index: Int,
+    payloadRoot: URL
+  ) async throws -> URL {
+    let state = ProviderRepresentationState()
+    return try await withTaskCancellationHandler {
+      try await withCheckedThrowingContinuation {
+        (continuation: CheckedContinuation<URL, any Error>) in
+        state.install(continuation)
+        let providerProgress = provider.loadURLObject { [self, state] sourceURL, error in
+          do {
+            try state.checkCancellation()
+            if let error { throw error }
+            guard let sourceURL else { throw ProviderRepresentationError.unavailable }
+            let result = try materializeRepresentation(
+              sourceURL: sourceURL,
+              typeIdentifier: typeIdentifier,
+              suggestedName: suggestedName,
+              index: index,
+              payloadRoot: payloadRoot,
+              state: state
+            )
+            state.complete(.success(result))
+          } catch {
+            state.complete(.failure(error))
+          }
+        }
+        state.setProgress(providerProgress)
+      }
+    } onCancel: {
+      state.cancel()
     }
   }
 
@@ -419,28 +486,33 @@ final class MirroringDropAdapter: @unchecked Sendable {
     }
   }
 
-  private func preferredTypeIdentifier(for provider: MirroringItemProvider) -> String? {
+  private func preferredTypeIdentifiers(for provider: MirroringItemProvider) -> [String] {
     let identifiers = provider.registeredTypeIdentifiers
-    if let folder = identifiers.first(where: { typeConformsToFolder($0) }) { return folder }
-    if let supported = identifiers.first(where: { identifier in
+    var preferred: [String] = []
+    func append(_ identifier: String) {
+      guard !preferred.contains(identifier) else { return }
+      preferred.append(identifier)
+    }
+    identifiers.filter(typeConformsToFolder).forEach(append)
+    identifiers.filter { identifier in
       guard let candidate = UTType(identifier) else { return false }
       return Self.explicitTypeIdentifiers.contains { supportedIdentifier in
         guard let supportedType = UTType(supportedIdentifier) else { return false }
         return candidate.conforms(to: supportedType)
       }
-    }) { return supported }
+    }.forEach(append)
     if let name = provider.suggestedName,
-      Self.supportedExtensions.contains(URL(filePath: name).pathExtension.lowercased()),
-      let first = identifiers.first
+      Self.supportedExtensions.contains(URL(filePath: name).pathExtension.lowercased())
     {
-      return first
+      identifiers.forEach(append)
     }
-    return identifiers.first(where: { identifier in
+    identifiers.filter { identifier in
       guard let candidate = UTType(identifier) else { return false }
       return candidate.conforms(to: .fileURL)
         || candidate.conforms(to: .data)
         || candidate.conforms(to: .item)
-    })
+    }.forEach(append)
+    return preferred
   }
 
   private func typeConformsToFolder(_ identifier: String) -> Bool {
@@ -479,9 +551,13 @@ final class MirroringDropAdapter: @unchecked Sendable {
   }
 }
 
-private struct MirroringItemProvider: @unchecked Sendable {
+struct MirroringItemProvider: @unchecked Sendable {
   var registeredTypeIdentifiers: [String]
   var suggestedName: String?
+  var canLoadURLObject: Bool
+  var loadURLObject: (@Sendable (
+    _ completion: @escaping @Sendable (URL?, Error?) -> Void
+  ) -> Progress)
   var loadInPlace: (@Sendable (
     _ typeIdentifier: String,
     _ completion: @escaping @Sendable (URL?, Bool, Error?) -> Void
@@ -491,10 +567,40 @@ private struct MirroringItemProvider: @unchecked Sendable {
     _ completion: @escaping @Sendable (URL?, Error?) -> Void
   ) -> Progress)
 
+  init(
+    registeredTypeIdentifiers: [String],
+    suggestedName: String?,
+    canLoadURLObject: Bool,
+    loadURLObject: @escaping @Sendable (
+      _ completion: @escaping @Sendable (URL?, Error?) -> Void
+    ) -> Progress,
+    loadInPlace: @escaping @Sendable (
+      _ typeIdentifier: String,
+      _ completion: @escaping @Sendable (URL?, Bool, Error?) -> Void
+    ) -> Progress,
+    loadFile: @escaping @Sendable (
+      _ typeIdentifier: String,
+      _ completion: @escaping @Sendable (URL?, Error?) -> Void
+    ) -> Progress
+  ) {
+    self.registeredTypeIdentifiers = registeredTypeIdentifiers
+    self.suggestedName = suggestedName
+    self.canLoadURLObject = canLoadURLObject
+    self.loadURLObject = loadURLObject
+    self.loadInPlace = loadInPlace
+    self.loadFile = loadFile
+  }
+
   init(_ provider: NSItemProvider) {
     let box = UncheckedItemProviderBox(provider)
     registeredTypeIdentifiers = provider.registeredTypeIdentifiers
     suggestedName = provider.suggestedName
+    canLoadURLObject = provider.canLoadObject(ofClass: NSURL.self)
+    loadURLObject = { completion in
+      box.provider.loadObject(ofClass: NSURL.self) { value, error in
+        completion((value as? NSURL).map { $0 as URL }, error)
+      }
+    }
     loadInPlace = { typeIdentifier, completion in
       box.provider.loadInPlaceFileRepresentation(
         forTypeIdentifier: typeIdentifier,
