@@ -76,8 +76,10 @@ final class MetadataRepairUITests: XCTestCase {
 
     let titleInput = app.textFields["metadata-title-input"]
     XCTAssertTrue(titleInput.waitForExistence(timeout: 2))
-    titleInput.tap(withNumberOfTaps: 3, numberOfTouches: 1)
+    titleInput.tap()
+    titleInput.typeKey("a", modifierFlags: .command)
     titleInput.typeText("The Amber Signal")
+    try requireValue(titleInput, "The Amber Signal")
     app.buttons["metadata-apply-title"].tap()
     try requireValue(
       title,
