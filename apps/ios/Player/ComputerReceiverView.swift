@@ -31,6 +31,8 @@ final class ComputerReceiverController {
   @ObservationIgnored private let usesSimulatedDropProgress: Bool
   @ObservationIgnored private var startTask: Task<Void, Never>?
   @ObservationIgnored private var dropTask: Task<Void, Never>?
+  @ObservationIgnored private var dropOperation: MirroringDropMaterializationOperation?
+  @ObservationIgnored private var activeDropSession: (any UIDropSession)?
 
   init(fileManager: FileManager = .default, bundle: Bundle = .main) {
     usesSimulatedReadyState = ProcessInfo.processInfo.arguments.contains(
@@ -92,6 +94,9 @@ final class ComputerReceiverController {
     startTask = nil
     dropTask?.cancel()
     dropTask = nil
+    dropOperation?.cancel()
+    dropOperation = nil
+    activeDropSession = nil
     receiverIsRunning = false
     if !usesSimulatedReadyState { Task { await server.stop() } }
     phase = .idle
@@ -124,17 +129,28 @@ final class ComputerReceiverController {
   }
 
   @discardableResult
-  func importDroppedProviders(_ providers: [NSItemProvider], model: PlayerModel) -> Bool {
+  func importDroppedSession(_ session: any UIDropSession, model: PlayerModel) -> Bool {
+    let providers = session.items.map(\.itemProvider)
     guard !providers.isEmpty, dropTask == nil else { return false }
+    // iPhone Mirroring owns the cross-device data-transfer monitor through the
+    // UIDropSession. Retaining only its item providers lets UIKit tear that
+    // monitor down while a large Finder file is still being materialized.
+    activeDropSession = session
+    let operation: MirroringDropMaterializationOperation
+    do {
+      // This call must remain synchronous with UIDropInteraction.performDrop.
+      operation = try mirroringDropAdapter.beginMaterializing(providers)
+      dropOperation = operation
+    } catch {
+      activeDropSession = nil
+      phase = .failed(error.localizedDescription)
+      return false
+    }
     phase = .preparingDrop(name: "Dropped items", completedItems: 0, totalItems: providers.count)
     dropTask = Task { [weak self] in
       guard let self else { return }
-      if !usesSimulatedReadyState {
-        await server.stop()
-        receiverIsRunning = false
-      }
       do {
-        let materialization = try await mirroringDropAdapter.materialize(providers) {
+        let materialization = try await operation.value {
           [weak self] progress in
           self?.phase = .preparingDrop(
             name: progress.currentName,
@@ -161,6 +177,8 @@ final class ComputerReceiverController {
         phase = .failed(error.localizedDescription)
       }
       dropTask = nil
+      dropOperation = nil
+      activeDropSession = nil
     }
     return true
   }
@@ -239,8 +257,8 @@ struct ComputerReceiverView: View {
         MirroringWindowDropInteraction(
           acceptedTypeIdentifiers: MirroringDropAdapter.acceptedTypeIdentifiers,
           isTargeted: $isDropTargeted
-        ) { providers in
-          controller.importDroppedProviders(providers, model: model)
+        ) { session in
+          controller.importDroppedSession(session, model: model)
         }
       }
       .confirmationDialog(
@@ -517,7 +535,7 @@ struct ComputerReceiverView: View {
 struct MirroringWindowDropInteraction: UIViewRepresentable {
   let acceptedTypeIdentifiers: [String]
   @Binding var isTargeted: Bool
-  let performDrop: ([NSItemProvider]) -> Bool
+  let performDrop: (any UIDropSession) -> Bool
 
   func makeCoordinator() -> Coordinator {
     Coordinator(
@@ -554,14 +572,14 @@ struct MirroringWindowDropInteraction: UIViewRepresentable {
   final class Coordinator: NSObject, UIDropInteractionDelegate {
     private var acceptedTypeIdentifiers: [String]
     private var isTargeted: Binding<Bool>
-    private var performDrop: ([NSItemProvider]) -> Bool
+    private var performDrop: (any UIDropSession) -> Bool
     private weak var installedView: UIView?
     private lazy var interaction = UIDropInteraction(delegate: self)
 
     init(
       acceptedTypeIdentifiers: [String],
       isTargeted: Binding<Bool>,
-      performDrop: @escaping ([NSItemProvider]) -> Bool
+      performDrop: @escaping (any UIDropSession) -> Bool
     ) {
       self.acceptedTypeIdentifiers = acceptedTypeIdentifiers
       self.isTargeted = isTargeted
@@ -571,7 +589,7 @@ struct MirroringWindowDropInteraction: UIViewRepresentable {
     func update(
       acceptedTypeIdentifiers: [String],
       isTargeted: Binding<Bool>,
-      performDrop: @escaping ([NSItemProvider]) -> Bool
+      performDrop: @escaping (any UIDropSession) -> Bool
     ) {
       self.acceptedTypeIdentifiers = acceptedTypeIdentifiers
       self.isTargeted = isTargeted
@@ -616,7 +634,7 @@ struct MirroringWindowDropInteraction: UIViewRepresentable {
 
     func dropInteraction(_ interaction: UIDropInteraction, performDrop session: UIDropSession) {
       isTargeted.wrappedValue = false
-      _ = performDrop(session.items.map(\.itemProvider))
+      _ = performDrop(session)
     }
   }
 }
