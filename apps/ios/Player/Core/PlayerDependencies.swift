@@ -3,6 +3,16 @@ import Foundation
 protocol LibraryPersisting: Sendable {
   func load() async throws -> LibrarySnapshot
   func save(_ snapshot: LibrarySnapshot) async throws
+  func automaticBackups() async -> [AutomaticLibraryBackup]
+  func restoreLatestAutomaticBackup() async throws -> LibrarySnapshot
+}
+
+extension LibraryPersisting {
+  func automaticBackups() async -> [AutomaticLibraryBackup] { [] }
+
+  func restoreLatestAutomaticBackup() async throws -> LibrarySnapshot {
+    throw PlayerCoreError.fileOperation("No valid automatic library backup is available.")
+  }
 }
 
 protocol MediaManaging: Sendable {
@@ -181,6 +191,7 @@ struct PlayerEnvironment {
   let clock: any PlayerClock
   let ids: any PlayerIDGenerating
   let zipExtractor: any ZipExtracting
+  let backups: any LibraryBackupManaging
 
   init(
     persistence: any LibraryPersisting,
@@ -192,7 +203,8 @@ struct PlayerEnvironment {
     nowPlaying: any NowPlayingPublishing = DisabledNowPlayingPublisher(),
     clock: any PlayerClock = SystemPlayerClock(),
     ids: any PlayerIDGenerating = SystemPlayerIDGenerator(),
-    zipExtractor: any ZipExtracting = SafeZipExtractor()
+    zipExtractor: any ZipExtracting = SafeZipExtractor(),
+    backups: any LibraryBackupManaging = DisabledLibraryBackupManager()
   ) {
     self.persistence = persistence
     self.media = media
@@ -204,6 +216,7 @@ struct PlayerEnvironment {
     self.clock = clock
     self.ids = ids
     self.zipExtractor = zipExtractor
+    self.backups = backups
   }
 
   static func production(rootURL: URL? = nil) throws -> PlayerEnvironment {
@@ -215,7 +228,8 @@ struct PlayerEnvironment {
       playback: AVPlayerPlaybackController(),
       audioSession: AVAudioSessionController(),
       remoteCommands: MPRemoteCommandController(),
-      nowPlaying: MPNowPlayingPublisher()
+      nowPlaying: MPNowPlayingPublisher(),
+      backups: FileSystemLibraryBackupManager(rootURL: root)
     )
   }
 

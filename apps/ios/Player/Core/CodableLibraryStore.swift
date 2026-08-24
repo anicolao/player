@@ -2,6 +2,7 @@ import Foundation
 
 actor CodableLibraryStore: LibraryPersisting {
   static let currentSchemaVersion = 14
+  private static let automaticBackupLimit = 3
 
   private let fileURL: URL
   private let fileManager: FileManager
@@ -28,16 +29,21 @@ actor CodableLibraryStore: LibraryPersisting {
       throw PlayerCoreError.newerStoreVersion(header.schemaVersion)
     }
 
+    if header.schemaVersion < Self.currentSchemaVersion {
+      try createAutomaticBackup(of: fileURL, prefix: "before-migration-v\(header.schemaVersion)")
+    }
+
     switch header.schemaVersion {
     case 1:
       do {
         let legacy = try JSONDecoder.playerDecoder.decode(EnvelopeV1.self, from: data).library
         return migrateImportGroupingDefaults(
-          in: migrateMetadataDefaults(in: LibrarySnapshot(
-            books: legacy.books,
-            importJobs: legacy.importJobs,
-            currentBookID: legacy.currentBookID
-          ))
+          in: migrateMetadataDefaults(
+            in: LibrarySnapshot(
+              books: legacy.books,
+              importJobs: legacy.importJobs,
+              currentBookID: legacy.currentBookID
+            ))
         )
       } catch {
         throw PlayerCoreError.invalidStore
@@ -153,6 +159,102 @@ actor CodableLibraryStore: LibraryPersisting {
     )
     let data = try JSONEncoder.playerEncoder.encode(envelope)
     try data.write(to: fileURL, options: [.atomic, .completeFileProtectionUnlessOpen])
+    // Once the primary atomic write succeeds, a low-space failure while making
+    // a redundant copy must not report the committed mutation as failed.
+    try? createAutomaticBackup(of: fileURL, prefix: "library")
+  }
+
+  func automaticBackups() async -> [AutomaticLibraryBackup] {
+    let directory = automaticBackupDirectory
+    guard
+      let urls = try? fileManager.contentsOfDirectory(
+        at: directory,
+        includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey, .isRegularFileKey],
+        options: [.skipsHiddenFiles]
+      )
+    else { return [] }
+    var backups: [AutomaticLibraryBackup] = []
+    for url in urls {
+      guard
+        let values = try? url.resourceValues(
+          forKeys: [.contentModificationDateKey, .fileSizeKey, .isRegularFileKey]
+        ), values.isRegularFile == true
+      else { continue }
+      guard (try? await CodableLibraryStore(fileURL: url).load()) != nil
+      else { continue }
+      backups.append(
+        AutomaticLibraryBackup(
+          url: url,
+          createdAt: values.contentModificationDate ?? .distantPast,
+          byteCount: Int64(values.fileSize ?? 0)
+        ))
+    }
+    return backups.sorted { $0.createdAt > $1.createdAt }
+  }
+
+  func restoreLatestAutomaticBackup() async throws -> LibrarySnapshot {
+    guard let backup = await automaticBackups().first else {
+      throw PlayerCoreError.fileOperation("No valid automatic library backup is available.")
+    }
+    let snapshot = try await CodableLibraryStore(fileURL: backup.url).load()
+    try save(snapshot)
+    return snapshot
+  }
+
+  private var automaticBackupDirectory: URL {
+    fileURL.deletingLastPathComponent().appending(
+      path: "AutomaticBackups",
+      directoryHint: .isDirectory
+    )
+  }
+
+  private func createAutomaticBackup(of source: URL, prefix: String) throws {
+    let directory = automaticBackupDirectory
+    try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+    let sourceData = try Data(contentsOf: source)
+    let existing =
+      (try? fileManager.contentsOfDirectory(
+        at: directory,
+        includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey],
+        options: [.skipsHiddenFiles]
+      )) ?? []
+    if let latest = existing.sorted(by: { lhs, rhs in
+      let left =
+        (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+        ?? .distantPast
+      let right =
+        (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+        ?? .distantPast
+      return left > right
+    }).first,
+      (try? Data(contentsOf: latest)) == sourceData
+    {
+      return
+    }
+    let name =
+      "\(prefix)-\(Int(Date().timeIntervalSince1970 * 1_000))-\(UUID().uuidString.lowercased()).json"
+    try sourceData.write(
+      to: directory.appending(path: name),
+      options: [.atomic, .completeFileProtectionUnlessOpen]
+    )
+    let backups = try fileManager.contentsOfDirectory(
+      at: directory,
+      includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey],
+      options: [.skipsHiddenFiles]
+    ).filter {
+      (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
+    }.sorted { lhs, rhs in
+      let left =
+        (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+        ?? .distantPast
+      let right =
+        (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+        ?? .distantPast
+      return left > right
+    }
+    for expired in backups.dropFirst(Self.automaticBackupLimit) {
+      try? fileManager.removeItem(at: expired)
+    }
   }
 
   private func migrateImportGroupingDefaults(in snapshot: LibrarySnapshot) -> LibrarySnapshot {
@@ -382,7 +484,7 @@ private struct EnvelopeV14: Codable {
   let library: LibrarySnapshot
 }
 
-private extension JSONEncoder {
+extension JSONEncoder {
   static var playerEncoder: JSONEncoder {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -391,7 +493,7 @@ private extension JSONEncoder {
   }
 }
 
-private extension JSONDecoder {
+extension JSONDecoder {
   static var playerDecoder: JSONDecoder {
     let decoder = JSONDecoder()
     decoder.dateDecodingStrategy = .iso8601

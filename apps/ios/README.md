@@ -74,7 +74,9 @@ See [E2E_GUIDE.md](../../E2E_GUIDE.md) for the complete contract.
 - Native sRGB RGBA screenshot comparator that rejects any channel delta above 8/255
 - Server-confirmed byte-offset resume and explicit repeat-import controls for
   the local computer receiver (Build 14 candidate)
+- Versioned `.playerbackup` export/restore with streamed media checksums and
+  rotating automatic database copies (Build 15 candidate)
 
-Backup/restore, accessibility audit evidence, launch recovery/diagnostics, scale
-evidence, and the final mockup comparison remain in the serial
+Accessibility audit evidence, launch recovery/diagnostics, scale evidence, and
+the final mockup comparison remain in the serial
 [MVP completion release train](../../MVP_COMPLETION_PLAN.md).

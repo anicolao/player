@@ -44,6 +44,26 @@
             </array>
         </dict>
     </array>
+    <key>UTExportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>com.apple.package</string>
+            </array>
+            <key>UTTypeDescription</key>
+            <string>Player Library Backup</string>
+            <key>UTTypeIdentifier</key>
+            <string>com.spnss.player.library-backup</string>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array>
+                    <string>playerbackup</string>
+                </array>
+            </dict>
+        </dict>
+    </array>
     <key>LSSupportsOpeningDocumentsInPlace</key>
     <false/>
     <key>UILaunchScreen</key>

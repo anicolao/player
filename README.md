@@ -5,14 +5,15 @@
 **Player** is a working title for an iOS app for people who bring their own DRM-free audiobooks. Its defining feature is not another play button: it is a forgiving path from “these files are somewhere on my phone or cloud drive” to “this is one correctly ordered, beautifully presented book.”
 
 The repository contains the native SwiftUI product, its local import and
-playback core, and eight deterministic end-to-end product journeys. Builds are
+playback core, and nine deterministic end-to-end product journeys. Builds are
 distributed to an internal TestFlight group while the remaining MVP completion
 gates are closed. [VISION.md](VISION.md) explains the product direction,
 [MVP_DESIGN.md](MVP_DESIGN.md) defines the first useful target,
 [UX_DESIGN.md](UX_DESIGN.md) defines the interaction and visual system,
 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) contains the original tracer
 plan, and [MVP_COMPLETION_PLAN.md](MVP_COMPLETION_PLAN.md) is the active release
-train.
+train. [BACKUP_AND_RESTORE.md](BACKUP_AND_RESTORE.md) specifies the portable
+backup format and recovery guarantees.
 
 ## The product promise
 
@@ -61,7 +62,7 @@ The listener can accept the proposal, correct just the uncertain fields, split o
 - Multi-select and batch editing
 - Custom collections, favorites, reading list, archive, and manual ordering
 - Per-book file inspection and storage management
-- Library backup and portable metadata export before cloud sync is introduced
+- Checksum-verified metadata-only or media-inclusive library backup and restore
 
 ### Playback that earns trust
 

@@ -652,6 +652,12 @@ struct LibraryOrganizationSettingsView: View {
             Label("Storage", systemImage: "internaldrive")
           }
           .accessibilityIdentifier("settings-storage")
+          NavigationLink {
+            BackupSettingsView(model: model)
+          } label: {
+            Label("Backup", systemImage: "externaldrive.badge.timemachine")
+          }
+          .accessibilityIdentifier("settings-backup")
         }
         Section("Playback") {
           NavigationLink {

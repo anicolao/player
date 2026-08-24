@@ -89,6 +89,48 @@ final class PlayerModel {
     }
   }
 
+  func prepareLibraryBackup(kind: PortableBackupKind) async throws -> PreparedLibraryBackup {
+    try await environment.backups.prepareExport(library: library, kind: kind)
+  }
+
+  func discardPreparedLibraryBackup(_ backup: PreparedLibraryBackup) async {
+    await environment.backups.discardPreparedExport(backup)
+  }
+
+  func restoreLibraryBackup(from url: URL) async throws {
+    environment.playback.pause()
+    let restored = try await environment.backups.restore(from: url)
+    try await environment.persistence.save(restored)
+    await restore()
+    guard isRestored else {
+      throw PlayerCoreError.fileOperation(
+        lastErrorMessage ?? "The restored library could not be opened."
+      )
+    }
+  }
+
+  func automaticLibraryBackups() async -> [AutomaticLibraryBackup] {
+    await environment.persistence.automaticBackups()
+  }
+
+  func restoreLatestAutomaticLibraryBackup() async throws {
+    environment.playback.pause()
+    _ = try await environment.persistence.restoreLatestAutomaticBackup()
+    await restore()
+    guard isRestored else {
+      throw PlayerCoreError.fileOperation(
+        lastErrorMessage ?? "The automatic backup could not be opened."
+      )
+    }
+  }
+
+  #if E2E
+    func replaceLibraryForBackupE2E(with snapshot: LibrarySnapshot) async throws {
+      try await environment.persistence.save(snapshot)
+      await restore()
+    }
+  #endif
+
   private func recoverInterruptedSleepTimer() -> Bool {
     guard var timer = library.activeSleepTimer else { return false }
     guard library.books.contains(where: { $0.id == timer.bookID }) else {

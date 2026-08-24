@@ -47,6 +47,8 @@ extension PlayerEnvironment {
           )
         case "bookmarks":
           return try bookmarksEnvironment(reset: arguments.contains("-e2e-reset"))
+        case "portable-backup":
+          return try portableBackupEnvironment()
         default:
           break
         }
@@ -1129,6 +1131,114 @@ extension PlayerEnvironment {
       )
     }
 
+    private static func portableBackupEnvironment() throws -> PlayerEnvironment {
+      let root = FileManager.default.temporaryDirectory.appending(
+        path: "PlayerE2EPortableBackup",
+        directoryHint: .isDirectory
+      )
+      try? FileManager.default.removeItem(at: root)
+      let bookID = UUID(uuidString: "a1000000-0000-0000-0000-000000000001")!
+      let assetID = UUID(uuidString: "a1000000-0000-0000-0000-000000000002")!
+      let eventID = UUID(uuidString: "a1000000-0000-0000-0000-000000000003")!
+      let bookmarkID = UUID(uuidString: "a1000000-0000-0000-0000-000000000004")!
+      let date = Date(timeIntervalSince1970: 1_750_000_000)
+      let audio = Data("player deterministic portable backup audio".utf8)
+      let managedPath = "Media/\(bookID.uuidString.lowercased())/\(assetID.uuidString.lowercased()).m4b"
+      let managedURL = root.appending(path: managedPath)
+      try FileManager.default.createDirectory(
+        at: managedURL.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+      )
+      try audio.write(to: managedURL)
+      let checksum = SHA256.hash(data: audio).map { String(format: "%02x", $0) }.joined()
+      let asset = AudioAsset(
+        id: assetID,
+        originalFilename: "portable-lighthouse.m4b",
+        managedRelativePath: managedPath,
+        checksumSHA256: checksum,
+        byteCount: Int64(audio.count),
+        durationSeconds: 300,
+        container: "M4B"
+      )
+      let book = Book(
+        id: bookID,
+        title: "The Portable Lighthouse",
+        authors: ["Mara Vale"],
+        durationSeconds: 300,
+        artworkData: Data([0x89, 0x50, 0x4e, 0x47]),
+        assets: [asset],
+        dateAdded: date,
+        narrators: ["Nora Reed"],
+        seriesName: "Signal Stories",
+        seriesPosition: "1",
+        artworkMediaType: "image/png",
+        chapters: [Chapter(
+          id: "opening", title: "Opening", startSeconds: 0,
+          durationSeconds: 300, source: .embedded, assetID: assetID
+        )],
+        listeningState: BookListeningState(
+          status: .inProgress,
+          positionMilliseconds: 42_000,
+          lastListenedAt: date,
+          finishedAt: nil
+        )
+      )
+      let event = PositionEvent.acknowledged(
+        id: eventID,
+        bookID: bookID,
+        positionMilliseconds: 42_000,
+        sequence: 1,
+        reason: .pause,
+        acknowledgedAt: date,
+        previousEventID: nil
+      )
+      let snapshot = LibrarySnapshot(
+        books: [book],
+        importJobs: [],
+        currentBookID: bookID,
+        playbackPosition: PlaybackPosition(
+          bookID: bookID,
+          positionMilliseconds: 42_000,
+          sequence: 1,
+          sourceEventID: eventID,
+          updatedAt: date
+        ),
+        positionJournal: [event],
+        upNextBookIDs: [bookID],
+        allBooksViewStyle: .list,
+        bookmarks: [Bookmark(
+          id: bookmarkID,
+          bookID: bookID,
+          bookPositionMilliseconds: 42_000,
+          assetID: assetID,
+          assetPositionMilliseconds: 42_000,
+          chapterID: "opening",
+          chapterTitleSnapshot: "Opening",
+          label: "Important signal",
+          note: "Return here",
+          createdAt: date,
+          updatedAt: date
+        )]
+      )
+      E2EBackupBridge.shared.configure(
+        rootURL: root,
+        expectedLibrary: snapshot,
+        expectedAudio: audio,
+        managedRelativePath: managedPath
+      )
+      return PlayerEnvironment(
+        persistence: InMemoryLibraryStore(snapshot: snapshot),
+        media: FileSystemMediaManager(rootURL: root),
+        inspector: DeterministicAudioInspector(result: .failure(.unreadableAudio("unused"))),
+        playback: DeterministicPlaybackController(),
+        clock: FixedPlayerClock(value: date),
+        backups: FileSystemLibraryBackupManager(
+          rootURL: root,
+          clock: FixedPlayerClock(value: date)
+        )
+      )
+    }
+
     private static func messyMultifileEnvironment(reset: Bool) throws -> PlayerEnvironment {
       let root = FileManager.default.temporaryDirectory.appending(
         path: "PlayerE2EMessyMultifile",
@@ -1470,6 +1580,82 @@ extension PlayerEnvironment {
     var sourceIsUnchanged: Bool {
       guard let sourceURL, let sourceBytes else { return false }
       return (try? Data(contentsOf: sourceURL)) == sourceBytes
+    }
+  }
+
+  @MainActor
+  final class E2EBackupBridge {
+    static let shared = E2EBackupBridge()
+
+    private var rootURL: URL?
+    private var expectedLibrary: LibrarySnapshot?
+    private var expectedAudio: Data?
+    private var managedRelativePath: String?
+    private var preparedBackup: PreparedLibraryBackup?
+
+    var isConfigured: Bool { rootURL != nil }
+
+    func configure(
+      rootURL: URL,
+      expectedLibrary: LibrarySnapshot,
+      expectedAudio: Data,
+      managedRelativePath: String
+    ) {
+      self.rootURL = rootURL
+      self.expectedLibrary = expectedLibrary
+      self.expectedAudio = expectedAudio
+      self.managedRelativePath = managedRelativePath
+      preparedBackup = nil
+    }
+
+    func export(using model: PlayerModel) async throws {
+      preparedBackup = try await model.prepareLibraryBackup(kind: .includingMedia)
+    }
+
+    func clear(using model: PlayerModel) async throws {
+      guard let rootURL else { return }
+      try? FileManager.default.removeItem(at: rootURL.appending(path: "Media"))
+      try await model.replaceLibraryForBackupE2E(with: .empty)
+    }
+
+    func restore(using model: PlayerModel) async throws {
+      guard let preparedBackup else {
+        throw PlayerCoreError.fileOperation("The deterministic backup has not been exported.")
+      }
+      try await model.restoreLibraryBackup(from: preparedBackup.url)
+      await model.discardPreparedLibraryBackup(preparedBackup)
+      self.preparedBackup = nil
+    }
+
+    func value(for model: PlayerModel) -> String {
+      guard let rootURL, let expectedLibrary, let expectedAudio, let managedRelativePath else {
+        return "backup:unconfigured"
+      }
+      let mediaURL = rootURL.appending(path: managedRelativePath)
+      let audioMatches = (try? Data(contentsOf: mediaURL)) == expectedAudio
+      let mediaFiles: Int
+      if let enumerator = FileManager.default.enumerator(
+        at: rootURL.appending(path: "Media"),
+        includingPropertiesForKeys: [.isRegularFileKey],
+        options: [.skipsHiddenFiles]
+      ) {
+        mediaFiles = enumerator.compactMap { $0 as? URL }.filter {
+          (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
+        }.count
+      } else {
+        mediaFiles = 0
+      }
+      let state: String
+      if model.library == expectedLibrary, audioMatches, preparedBackup != nil {
+        state = "exported"
+      } else if model.library == .empty, mediaFiles == 0, preparedBackup != nil {
+        state = "cleared"
+      } else if model.library == expectedLibrary, audioMatches, preparedBackup == nil {
+        state = "restored"
+      } else {
+        state = "unexpected"
+      }
+      return "backup:\(state):books=\(model.library.books.count):bookmarks=\(model.library.bookmarks.count):position=\(model.library.playbackPosition?.positionMilliseconds ?? -1):media=\(mediaFiles):audio=\(audioMatches)"
     }
   }
 
