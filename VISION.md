@@ -241,22 +241,23 @@ Sync needs a visible state and conflict policy. A newer timestamp alone is not a
 - Chapters, speed, skip controls, smart rewind, sleep timer, and bookmarks
 - Continue Listening, series, search, sorting, filters, and finished state
 - Full offline behavior, backup/export of library data, VoiceOver, and Dynamic Type
+- Import diagnostics, safe library/database recovery, and large-library
+  performance and migration evidence
 
 ### Expected for 1.0
 
 - Metadata lookup with field-level acceptance and provenance
 - Batch edit and series cleanup
 - CarPlay
-- Import diagnostics and support bundle with private data excluded by default
-- Library/database recovery tooling
-- Performance and migration testing at large-library scale
-- Localization-ready UI and a complete accessibility audit
+- Localization-ready UI beyond the MVP's English evidence
+- Provider-assisted batch workflows and integration-level accessibility audits
 
 ### Valuable later
 
 - Opt-in iCloud library/progress sync
 - Audiobookshelf first, then other server/source adapters based on demand
-- Wi-Fi browser upload, Shortcuts automation, and watched-folder import where iOS permits
+- Finder/Apple Devices drop box, Shortcuts automation, and watched-folder import
+  where iOS permits (the foreground local web receiver already ships)
 - Apple Watch control and, later, standalone downloads/playback
 - Voice boost, equalizer, silence shortening, and listening statistics
 - Chapter waveform editing, safe consolidation/export to M4B, and embedded-tag export
@@ -327,13 +328,16 @@ Add multi-select, folders, ZIPs, grouping, natural ordering, duplicate detection
 
 ### Phase 3 — Daily-driver MVP
 
-Add series and collection browsing, search/filter, bookmarks, speed, smart rewind, sleep timer, backup/export, storage tools, and accessibility coverage.
+Add series and collection browsing, search/filter, bookmarks, speed, smart
+rewind, sleep timer, backup/export, storage tools, accessibility coverage,
+startup recovery, sanitized diagnostics, and large-library evidence.
 
 **Gate:** A test cohort can use Player as its primary local audiobook app for four weeks with no position loss or source-file damage.
 
 ### Phase 4 — 1.0 integration quality
 
-Add provider-assisted metadata, batch workflows, CarPlay, diagnostics, localization groundwork, and large-library optimization.
+Add provider-assisted metadata, batch workflows, CarPlay, localization
+groundwork, and optimizations or diagnostic tools beyond the MVP evidence.
 
 **Gate:** Core interactions meet performance targets at 10,000 records; CarPlay and VoiceOver task audits pass; recovery from low storage and interrupted import is verified.
 
@@ -396,4 +400,3 @@ These questions should be answered with prototypes, fixture tests, and interview
 - [Reddit: progress synchronization failure](https://www.reddit.com/r/audiobookshelf/comments/1kig06p/progress_sync_failure_between_ios_app_downloaded/)
 - [MobileRead: series management and iOS player requirements](https://www.mobileread.com/forums/showthread.php?nojs=1&t=323085)
 - [Apple Support Community: personal audiobook metadata limitations](https://discussions.apple.com/thread/250728842)
-

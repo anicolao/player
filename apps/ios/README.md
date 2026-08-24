@@ -42,7 +42,7 @@ apps/ios/scripts/run-e2e.sh \
   PlayerUITests/ImportPlaybackUITests/testReviewsCommitsAndPlaysOneAudiobook
 ```
 
-The runner owns a story-specific temporary simulator, verifies the pinned toolchain, normalizes rendering state, runs semantic assertions, exports every generated step, and requires a canonical pixel match with the committed baseline.
+The runner owns a story-specific temporary simulator, verifies the pinned toolchain, normalizes rendering state, runs semantic assertions, exports every generated step, and requires a canonical pixel match with the committed baseline. The canonical comparator permits at most 8/255 per sRGB channel for decoder rounding and permits no spatial mismatch.
 
 To intentionally record a reviewed baseline on the pinned environment:
 
@@ -56,15 +56,23 @@ See [E2E_GUIDE.md](../../E2E_GUIDE.md) for the complete contract.
 
 ## Current product slice
 
-- Library, Inbox, and Settings tabs
-- Files importer with queued, acquiring, inspecting, review, and committed states
+- Library, Inbox, and Settings tabs with search, sorting, filtering, collections,
+  trash, and storage management
+- Files, document-open/AirDrop, Share Extension, safe ZIP, private local web,
+  and region-gated iPhone Mirroring import routes
+- Queued, acquiring, inspecting, recoverable failure, review, committed,
+  cancellation, retry, abandonment, and duplicate states
 - Versioned atomic local persistence and immutable managed-media storage
 - Streaming SHA-256 copy verification and storage preflight
-- AVFoundation duration/basic metadata inspection and play/pause
-- Review Import, populated Library, Book Detail, and Now Playing screens
+- Explainable grouping/order, full manual metadata and cover repair, and undo
+- AVFoundation playback with chapters, durable position/history, remote
+  commands, speed, skip preferences, Smart Rewind, sleep timer, and bookmarks
 - Light-mode E2E configuration with animations disabled
-- Accessibility identifiers and an explicit `ready:library-empty` state value
-- Generated launch and import/playback walkthroughs with full-screen baselines
+- Accessibility identifiers and exact semantic values for stable story states
+- Stories 001–008 covering launch/import, grouping, metadata, ZIP, Library,
+  position restoration, sleep timer, and bookmarks
 - Native sRGB RGBA screenshot comparator that rejects any channel delta above 8/255
 
-Multi-file grouping, metadata repair, and advanced listening tools remain sequenced in [IMPLEMENTATION_PLAN.md](../../IMPLEMENTATION_PLAN.md).
+Backup/restore, accessibility audit evidence, launch recovery/diagnostics, scale
+evidence, and the final mockup comparison remain in the serial
+[MVP completion release train](../../MVP_COMPLETION_PLAN.md).

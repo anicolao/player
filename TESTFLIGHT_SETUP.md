@@ -1,8 +1,10 @@
-# TestFlight developer handoff
+# TestFlight developer handoff and release configuration
 
-This is the one-time Apple Developer Program setup required before Codex can
-sign, upload, and distribute Player build 1 without pausing for credentials or
-two-factor authentication.
+This is the one-time Apple Developer Program setup required before the release
+automation can sign, upload, and distribute Player builds without pausing for
+credentials or two-factor authentication. Once the local handoff is installed,
+the same configuration is reused for later builds until its API key is rotated
+or revoked.
 
 The repository is already configured for these identifiers:
 
@@ -29,12 +31,13 @@ identifiers rather than secrets. The helper below stores them outside the
 repository anyway. The downloaded `.p8` file is the only secret in this
 handoff.
 
-The recommended credential is a temporary **Admin team API key**. Admin is
-broad access, but it permits unattended automatic signing as well as App Store
-Connect upload and TestFlight management. Team keys apply across the account
-and cannot be limited to one app. Revoke this bootstrap key after build 1 is
-distributed; a narrower App Manager key can be used for later uploads once the
-signing assets exist.
+The bootstrap credential is an **Admin team API key**. Admin is broad access,
+but it permits unattended automatic signing as well as App Store Connect upload
+and TestFlight management. Team keys apply across the account and cannot be
+limited to one app. Keep it installed only as long as unattended signing needs
+it; rotate or revoke it when this release train is complete. A narrower App
+Manager key can handle later App Store Connect operations once signing assets
+exist, but changing roles must be verified before removing the working key.
 
 ## One-time manual checklist
 
@@ -71,10 +74,10 @@ and register:
 - Identifier: `group.com.spnss.player`
 
 Finally, open each App ID, enable **App Groups**, click **Configure**, select
-`group.com.spnss.player`, and save. Apple currently exposes App IDs,
-capabilities, certificates, and profiles through its public provisioning API,
-but not named App Group creation or group membership. These selections are the
-only signing-resource steps that cannot be completed with the API key.
+`group.com.spnss.player`, and save. Apple's current public API can register App
+IDs and enable the `APP_GROUPS` capability, but it exposes no named App Group
+resource or membership relationship. Registering this group and selecting it
+for both IDs therefore remain the only manual signing-resource steps.
 
 Do not manually create certificates or provisioning profiles; deployment
 automation manages those.
@@ -105,7 +108,8 @@ API**:
    Access**, accept the terms, and wait for Apple to approve the request. Stop
    here if approval is pending.
 2. Open **Team Keys** and click **Generate API Key** (`+`).
-3. Name: `Player TestFlight Bootstrap`
+3. Name: `Player TestFlight Bootstrap` (or another name that clearly identifies
+   this repository's automation key)
 4. Access: **Admin**
 5. Generate and download the key. Apple permits the private key to be
    downloaded only once.
@@ -130,7 +134,7 @@ The helper asks for:
 - the downloaded `.p8` path;
 - the exact App Store Connect name and SKU;
 - the email of an existing App Store Connect user who should receive the
-  internal TestFlight build.
+  internal TestFlight builds.
 
 It moves the key to the private location searched by Apple's upload tool:
 
@@ -158,8 +162,8 @@ Developer handoff complete.
 Do not include IDs or credentials in the reply. Codex will read the local
 configuration, verify API access without exposing the key, and then handle the
 remaining work: repository recovery, local tests, CI, branch publication,
-automatic signing, archive validation, build 1 upload, processing checks, and
-internal TestFlight assignment.
+automatic signing, archive validation, monotonically increasing build uploads,
+processing checks, and internal TestFlight assignment.
 
 ## Conditions that still require a report
 
@@ -172,18 +176,27 @@ Report the exact on-screen error, but no secrets, if:
 - the app record cannot be created;
 - your intended tester is not an App Store Connect user.
 
-## After build 1 is available
+## Releasing later builds
 
-Once Codex confirms the build is assigned to the internal group, revoke
-`Player TestFlight Bootstrap` under **Users and Access → Integrations → Team
-Keys**. The local `.p8` copy will also be removed. Revocation is permanent and
-does not remove the uploaded build or signing assets.
+Do not repeat the portal checklist. Leave the private key and
+`~/.config/player/testflight.env` in place and hand control to Codex. The release
+process supplies the next build number while archiving, validates the signed
+archive, uploads it, and checks distribution. A release is complete only after
+App Store Connect reports the build `VALID` and the configured internal group
+reports `IN_BETA_TESTING`.
+
+When unattended releases are no longer needed, revoke the installed automation
+key under **Users and Access → Integrations → Team Keys**, then remove its local
+`.p8` file. Revocation is permanent and does not remove uploaded builds or
+signing assets. Do not revoke or delete the only working key in the middle of an
+active release train.
 
 ## Apple references
 
 - [App Store Connect API access and API keys](https://developer.apple.com/help/app-store-connect/get-started/app-store-connect-api)
 - [Register an App ID](https://developer.apple.com/help/account/identifiers/register-an-app-id)
 - [Register an app group](https://developer.apple.com/help/account/identifiers/register-an-app-group)
+- [Manage Bundle ID capabilities with the API](https://developer.apple.com/documentation/appstoreconnectapi/bundle-id-capabilities)
 - [Add a new app record](https://developer.apple.com/help/app-store-connect/create-an-app-record/add-a-new-app)
 - [Apple Developer Program role permissions](https://developer.apple.com/help/account/access/roles)
 - [Add internal TestFlight testers](https://developer.apple.com/help/app-store-connect/test-a-beta-version/add-internal-testers)

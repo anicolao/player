@@ -58,6 +58,12 @@ apps/ios/scripts/run-e2e.sh --story 002-import-and-play \
 
 The test result, raw attachments, and materialized actual walkthrough remain under `apps/ios/DerivedData/E2E/<story>/` for diagnosis. The exact comparator is [compare-walkthrough.swift](apps/ios/scripts/compare-walkthrough.swift).
 
+In GitHub Actions, the core suite and each committed story run in isolated
+parallel jobs. Every story uploads its own diagnostics artifact, and the
+`Core tests and exact E2E walkthroughs` aggregate succeeds only when the core
+job and every story job succeed. Serial release work advances only from that
+aggregate green result for the exact commit SHA.
+
 ## Story structure
 
 Each story lives under `tests/e2e/<number>-<name>/` and contains:
