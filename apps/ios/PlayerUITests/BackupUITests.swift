@@ -113,21 +113,18 @@ final class BackupUITests: XCTestCase {
   }
 
   private func scrollBackupToTop(_ app: XCUIApplication) {
-    let list = app.collectionViews.firstMatch
-    XCTAssertTrue(list.waitForExistence(timeout: 2))
+    let scrollView = app.scrollViews["backup-scroll"]
+    XCTAssertTrue(scrollView.waitForExistence(timeout: 2))
     let export = app.buttons["backup-export"]
-    // The E2E build anchors this List programmatically after launch and every
-    // fixture mutation. Gestures at SwiftUI's elastic boundary settle at
-    // host-dependent offsets and cannot define a canonical screenshot.
     XCTAssertTrue(export.isHittable)
     // Let the initial navigation hierarchy finish rasterizing before capture.
-    RunLoop.current.run(until: Date().addingTimeInterval(3))
+    RunLoop.current.run(until: Date().addingTimeInterval(1))
   }
 
   private func tapWalkthroughAction(_ identifier: String, in app: XCUIApplication) {
-    let list = app.collectionViews.firstMatch
-    XCTAssertTrue(list.waitForExistence(timeout: 2))
-    for _ in 0..<3 { list.swipeUp(velocity: .fast) }
+    let scrollView = app.scrollViews["backup-scroll"]
+    XCTAssertTrue(scrollView.waitForExistence(timeout: 2))
+    for _ in 0..<3 { scrollView.swipeUp(velocity: .fast) }
     let button = app.buttons[identifier]
     XCTAssertTrue(button.waitForExistence(timeout: 2))
     button.tap()
