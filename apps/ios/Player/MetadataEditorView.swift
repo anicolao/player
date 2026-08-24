@@ -1,9 +1,11 @@
 import PhotosUI
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 
 struct MetadataEditorView: View {
   @Environment(\.dismiss) private var dismiss
+  @Environment(\.dynamicTypeSize) private var dynamicTypeSize
   @Bindable var model: PlayerModel
   let target: MetadataTarget
 
@@ -26,17 +28,34 @@ struct MetadataEditorView: View {
   var body: some View {
     ZStack {
       PlayerColor.background.ignoresSafeArea()
-      ScrollView {
-        VStack(spacing: 20) {
-          coverEditor
-          identityFields
-          contributorFields
-          seriesFields
-          descriptiveFields
-          publicationFields
-          lockSummary
+      ScrollViewReader { proxy in
+        ScrollView {
+          VStack(spacing: 20) {
+            coverEditor
+            identityFields
+              .id("metadata-identity")
+            contributorFields
+            seriesFields
+            descriptiveFields
+            publicationFields
+            lockSummary
+          }
+          .padding(20)
         }
-        .padding(20)
+        #if E2E
+          .overlay(alignment: .topLeading) {
+            Button {
+              proxy.scrollTo("metadata-identity", anchor: .top)
+            } label: {
+              Color.white.opacity(0.001)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Align Metadata identity fields")
+            .accessibilityIdentifier("e2e-align-metadata-identity")
+          }
+        #endif
       }
     }
     .navigationTitle("Edit Details")
@@ -90,8 +109,8 @@ struct MetadataEditorView: View {
 
   private var coverEditor: some View {
     VStack(spacing: 14) {
-      HStack(spacing: 18) {
-        ArtworkView(data: draft.cover?.originalData, size: 126)
+      adaptiveCoverLayout {
+        ArtworkView(data: draft.cover?.originalData, size: 126, isEssential: true)
         VStack(alignment: .leading, spacing: 10) {
           Text("Cover").font(.headline)
           Text(fieldSource(.cover))
@@ -129,7 +148,12 @@ struct MetadataEditorView: View {
     metadataSection("Identity") {
       editorRow("Title", field: .title) {
         HStack {
-          TextField("Title", text: $draft.title)
+          TextField(
+            "Title",
+            text: $draft.title,
+            axis: dynamicTypeSize.isAccessibilitySize ? .vertical : .horizontal
+          )
+            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
             .textInputAutocapitalization(.words)
             .accessibilityIdentifier("metadata-title-input")
           Button("Apply") {
@@ -256,7 +280,7 @@ struct MetadataEditorView: View {
   private var cropSheet: some View {
     NavigationStack {
       VStack(spacing: 22) {
-        ArtworkView(data: draft.cover?.originalData, size: 230)
+        ArtworkView(data: draft.cover?.originalData, size: 230, isEssential: true)
         LabeledContent("Zoom") { Slider(value: $cropZoom, in: 1...2) }
         LabeledContent("Horizontal") { Slider(value: $cropX, in: 0...1) }
         LabeledContent("Vertical") { Slider(value: $cropY, in: 0...1) }
@@ -302,14 +326,14 @@ struct MetadataEditorView: View {
   ) -> some View {
     VStack(spacing: 8) {
       Divider().padding(.leading, 16)
-      HStack(alignment: .top, spacing: 12) {
+      adaptiveRowLayout {
         VStack(alignment: .leading, spacing: 4) {
           Text(title).font(.subheadline.weight(.semibold))
           Text(fieldSource(field))
             .font(.caption2)
             .foregroundStyle(PlayerColor.secondary)
         }
-        .frame(width: 88, alignment: .leading)
+        .frame(width: dynamicTypeSize.isAccessibilitySize ? nil : 88, alignment: .leading)
         VStack(alignment: .trailing, spacing: 6) {
           content()
           Button {
@@ -341,6 +365,22 @@ struct MetadataEditorView: View {
       .accessibilityValue(value)
   }
 
+  private var adaptiveRowLayout: AnyLayout {
+    if dynamicTypeSize.isAccessibilitySize {
+      AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
+    } else {
+      AnyLayout(HStackLayout(alignment: .top, spacing: 12))
+    }
+  }
+
+  private var adaptiveCoverLayout: AnyLayout {
+    if dynamicTypeSize.isAccessibilitySize {
+      AnyLayout(VStackLayout(alignment: .leading, spacing: 14))
+    } else {
+      AnyLayout(HStackLayout(spacing: 18))
+    }
+  }
+
   private func loadIfNeeded() {
     guard !loaded, let metadata = currentMetadata else { return }
     initial = MetadataEditorDraft(metadata: metadata)
@@ -356,6 +396,7 @@ struct MetadataEditorView: View {
         errorMessage = model.lastErrorMessage ?? "The metadata transaction could not be saved."
         return
       }
+      UIAccessibility.post(notification: .announcement, argument: "Audiobook details saved")
       dismiss()
     }
   }

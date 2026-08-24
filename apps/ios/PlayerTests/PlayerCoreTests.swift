@@ -342,7 +342,7 @@ final class PlayerCoreTests: XCTestCase {
     try await store.save(migrated)
     let data = try Data(contentsOf: fileURL)
     let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-    XCTAssertEqual(object["schemaVersion"] as? Int, 14)
+    XCTAssertEqual(object["schemaVersion"] as? Int, 15)
   }
 
   func testVersionedStoreMigratesSchemaTwoMetadataAndTimelineDefaults() async throws {
@@ -514,7 +514,7 @@ final class PlayerCoreTests: XCTestCase {
     let current = try XCTUnwrap(
       JSONSerialization.jsonObject(with: Data(contentsOf: fileURL)) as? [String: Any]
     )
-    XCTAssertEqual(current["schemaVersion"] as? Int, 14)
+    XCTAssertEqual(current["schemaVersion"] as? Int, 15)
   }
 
   func testAVFoundationInspectorBuildsFileChapterWithoutReadingPayload() async throws {

@@ -1838,6 +1838,27 @@ final class PlayerModel {
   }
 
   @discardableResult
+  func setAccessibilityPreferences(_ preferences: AccessibilityPreferences) async -> Bool {
+    await applyLibraryOrganizationMutation { candidate in
+      candidate.accessibilityPreferences = preferences
+    }
+  }
+
+  @discardableResult
+  func setPrefersHighContrast(_ enabled: Bool) async -> Bool {
+    await applyLibraryOrganizationMutation { candidate in
+      candidate.accessibilityPreferences.prefersHighContrast = enabled
+    }
+  }
+
+  @discardableResult
+  func setReducesDecorativeArtwork(_ enabled: Bool) async -> Bool {
+    await applyLibraryOrganizationMutation { candidate in
+      candidate.accessibilityPreferences.reducesDecorativeArtwork = enabled
+    }
+  }
+
+  @discardableResult
   func setTransportPreferenceOverride(
     _ preferenceOverride: TransportPreferenceOverride,
     for bookID: UUID

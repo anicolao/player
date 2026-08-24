@@ -582,7 +582,7 @@ final class ImportRecoveryTests: XCTestCase {
     let saved = try XCTUnwrap(
       JSONSerialization.jsonObject(with: Data(contentsOf: fileURL)) as? [String: Any]
     )
-    XCTAssertEqual(saved["schemaVersion"] as? Int, 14)
+    XCTAssertEqual(saved["schemaVersion"] as? Int, 15)
   }
 
   private func file(

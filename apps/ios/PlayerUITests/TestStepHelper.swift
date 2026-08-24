@@ -64,6 +64,29 @@ struct StepVerification {
       return false
     }
   }
+
+  static func valueContains(
+    _ element: XCUIElement,
+    _ expectedFragment: String,
+    _ specification: String
+  ) -> StepVerification {
+    StepVerification(specification: specification) {
+      let deadline = Date().addingTimeInterval(TestStepHelper.conditionTimeout)
+      var latest = ""
+      repeat {
+        if element.exists {
+          latest = element.value.map(String.init(describing:)) ?? ""
+          if latest.contains(expectedFragment) { return true }
+        }
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+      } while Date() < deadline
+      print(
+        "Value verification failed: identifier=\(element.identifier), "
+          + "expected fragment=\(expectedFragment), latest=\(latest)"
+      )
+      return false
+    }
+  }
 }
 
 @MainActor
@@ -75,7 +98,8 @@ final class TestStepHelper {
     title: "",
     narrative: "",
     fixture: "unspecified",
-    additionalPreconditions: []
+    additionalPreconditions: [],
+    deviceConfiguration: "iPhone 17 on iOS 26.5, portrait, light appearance, standard Dynamic Type"
   )
   private var steps: [Step] = []
   private var nextScreenshotIndex = 0
@@ -89,13 +113,15 @@ final class TestStepHelper {
     title: String,
     narrative: String,
     fixture: String,
-    additionalPreconditions: [String] = []
+    additionalPreconditions: [String] = [],
+    deviceConfiguration: String = "iPhone 17 on iOS 26.5, portrait, light appearance, standard Dynamic Type"
   ) {
     metadata = StoryMetadata(
       title: title,
       narrative: narrative,
       fixture: fixture,
-      additionalPreconditions: additionalPreconditions
+      additionalPreconditions: additionalPreconditions,
+      deviceConfiguration: deviceConfiguration
     )
   }
 
@@ -160,7 +186,7 @@ final class TestStepHelper {
 
       - Fixture: `\(metadata.fixture)`
       - Xcode: 26.6
-      - Device: iPhone 17 on iOS 26.5, portrait, light appearance, standard Dynamic Type
+      - Device: \(metadata.deviceConfiguration)
       - Locale and time zone: `en_CA`, `America/Toronto`
       - Status bar: fixed at 9:41 AM, full battery, and full network indicators
       - Animations: disabled by the E2E build configuration
@@ -198,6 +224,7 @@ private struct StoryMetadata {
   let narrative: String
   let fixture: String
   let additionalPreconditions: [String]
+  let deviceConfiguration: String
 }
 
 private struct Step {

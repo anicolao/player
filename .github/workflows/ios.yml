@@ -132,6 +132,9 @@ jobs:
           - story: 008-library-search
             tests: >-
               PlayerUITests/LibraryOrganizationUITests/testOrganizesDailyLibraryAndRestoresATrashedBook
+          - story: 009-accessible-core-journeys
+            tests: >-
+              PlayerUITests/AccessibilityUITests/testCoreJourneysRemainCompleteAtLargestAccessibilityText
           - story: 010-library-backup
             tests: >-
               PlayerUITests/BackupUITests/testExportsClearsAndRestoresAVerifiedPortableLibrary

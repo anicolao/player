@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct LibraryOrganizationHome: View {
+  @Environment(\.dynamicTypeSize) private var dynamicTypeSize
   @Bindable var model: PlayerModel
   let resume: (Book) -> Void
   @State private var showUpNext = false
@@ -34,32 +35,64 @@ struct LibraryOrganizationHome: View {
   private var continueListening: some View {
     VStack(alignment: .leading, spacing: 12) {
       sectionTitle("Continue Listening")
-      ScrollView(.horizontal) {
-        LazyHStack(spacing: 14) {
+      if dynamicTypeSize.isAccessibilitySize {
+        LazyVStack(spacing: 14) {
           ForEach(model.library.continueListeningBooks) { book in
-            Button { resume(book) } label: {
-              HStack(spacing: 14) {
-                ArtworkView(data: book.artworkData, size: 92)
-                VStack(alignment: .leading, spacing: 7) {
-                  Text(book.title).font(.headline).foregroundStyle(PlayerColor.ink).lineLimit(2)
-                  Text(book.authors.first ?? "Unknown Author")
-                    .font(.subheadline).foregroundStyle(PlayerColor.secondary).lineLimit(1)
-                  ProgressView(value: progress(book)).tint(PlayerColor.accent)
-                  Text("\(Int(progress(book) * 100))% · \(remaining(book)) left")
-                    .font(.caption).foregroundStyle(PlayerColor.secondary)
-                }
-                .frame(width: 190, alignment: .leading)
-              }
-              .padding(14)
-              .background(PlayerColor.card, in: RoundedRectangle(cornerRadius: 18))
+            continueListeningCard(book, stacksVertically: true)
+          }
+        }
+      } else {
+        ScrollView(.horizontal) {
+          LazyHStack(spacing: 14) {
+            ForEach(model.library.continueListeningBooks) { book in
+              continueListeningCard(book, stacksVertically: false)
             }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("resume-book-\(book.id.uuidString.lowercased())")
+          }
+        }
+        .scrollIndicators(.hidden)
+      }
+    }
+  }
+
+  @ViewBuilder
+  private func continueListeningCard(_ book: Book, stacksVertically: Bool) -> some View {
+    Button { resume(book) } label: {
+      Group {
+        if stacksVertically {
+          VStack(alignment: .leading, spacing: 12) {
+            ArtworkView(data: book.artworkData, size: 92)
+            continueListeningDetails(book, fixedWidth: false)
+          }
+          .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+          HStack(spacing: 14) {
+            ArtworkView(data: book.artworkData, size: 92)
+            continueListeningDetails(book, fixedWidth: true)
           }
         }
       }
-      .scrollIndicators(.hidden)
+      .padding(14)
+      .background(PlayerColor.card, in: RoundedRectangle(cornerRadius: 18))
+      .playerAccessibleCard(cornerRadius: 18)
     }
+    .buttonStyle(.plain)
+    .accessibilityElement(children: .combine)
+    .accessibilityLabel("Resume \(book.title)")
+    .accessibilityValue("\(Int(progress(book) * 100)) percent complete, \(remaining(book)) remaining")
+    .accessibilityHint("Starts playback from the saved position")
+    .accessibilityIdentifier("resume-book-\(book.id.uuidString.lowercased())")
+  }
+
+  private func continueListeningDetails(_ book: Book, fixedWidth: Bool) -> some View {
+    VStack(alignment: .leading, spacing: 7) {
+      Text(book.title).font(.headline).foregroundStyle(PlayerColor.ink).lineLimit(2)
+      Text(book.authors.first ?? "Unknown Author")
+        .font(.subheadline).foregroundStyle(PlayerColor.secondary).lineLimit(2)
+      ProgressView(value: progress(book)).tint(PlayerColor.accent)
+      Text("\(Int(progress(book) * 100))% · \(remaining(book)) left")
+        .font(.caption).foregroundStyle(PlayerColor.secondary)
+    }
+    .frame(width: fixedWidth ? 190 : nil, alignment: .leading)
   }
 
   private var upNext: some View {
@@ -92,7 +125,7 @@ struct LibraryOrganizationHome: View {
   private var recentlyAdded: some View {
     VStack(alignment: .leading, spacing: 12) {
       sectionTitle("Recently Added")
-      LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 18) {
+      LazyVGrid(columns: recentColumns, spacing: 18) {
         ForEach(model.library.recentlyAddedBooks.prefix(4)) { book in
           NavigationLink(value: book.id) {
             LibraryCoverCard(book: book)
@@ -102,6 +135,13 @@ struct LibraryOrganizationHome: View {
         }
       }
     }
+  }
+
+  private var recentColumns: [GridItem] {
+    Array(
+      repeating: GridItem(.flexible()),
+      count: dynamicTypeSize.isAccessibilitySize ? 1 : 2
+    )
   }
 
   private var browse: some View {
@@ -171,6 +211,7 @@ struct LibraryOrganizationHome: View {
 }
 
 struct UpNextView: View {
+  @Environment(\.dynamicTypeSize) private var dynamicTypeSize
   @Bindable var model: PlayerModel
 
   var body: some View {
@@ -178,36 +219,24 @@ struct UpNextView: View {
       PlayerColor.background.ignoresSafeArea()
       List {
         ForEach(Array(model.library.upNextBooks.enumerated()), id: \.element.id) { index, book in
-          HStack(spacing: 10) {
-            NavigationLink {
-              BookDetailView(model: model, bookID: book.id) { selectedBook, position in
-                Task { await model.play(bookID: selectedBook.id, at: position) }
-              }
-            } label: {
-              HStack(spacing: 12) {
-                Text("\(index + 1)").font(.caption.bold()).foregroundStyle(PlayerColor.accent)
-                ArtworkView(data: book.artworkData, size: 58)
-                VStack(alignment: .leading) {
-                  Text(book.title).font(.headline).foregroundStyle(PlayerColor.ink)
-                  Text(book.authors.first ?? "Unknown Author").font(.caption).foregroundStyle(PlayerColor.secondary)
+          Group {
+            if dynamicTypeSize.isAccessibilitySize {
+              VStack(alignment: .leading, spacing: 12) {
+                upNextBookLink(book, index: index)
+                HStack(spacing: 12) {
+                  moveButton(book, index: index, offset: -1)
+                  moveButton(book, index: index, offset: 1)
                 }
+                .frame(maxWidth: .infinity, alignment: .trailing)
+              }
+            } else {
+              HStack(spacing: 10) {
+                upNextBookLink(book, index: index)
+                Spacer()
+                moveButton(book, index: index, offset: -1)
+                moveButton(book, index: index, offset: 1)
               }
             }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("up-next-book-\(book.id.uuidString.lowercased())")
-            Spacer()
-            Button {
-              move(bookID: book.id, offset: -1)
-            } label: { Image(systemName: "arrow.up") }
-              .buttonStyle(.borderless)
-              .disabled(index == 0)
-              .accessibilityIdentifier("up-next-move-up-\(book.id.uuidString.lowercased())")
-            Button {
-              move(bookID: book.id, offset: 1)
-            } label: { Image(systemName: "arrow.down") }
-              .buttonStyle(.borderless)
-              .disabled(index == model.library.upNextBooks.count - 1)
-              .accessibilityIdentifier("up-next-move-down-\(book.id.uuidString.lowercased())")
           }
           .listRowBackground(PlayerColor.card)
         }
@@ -224,6 +253,51 @@ struct UpNextView: View {
     return "up-next:count=\(model.library.upNextBookIDs.count):order=\(order)"
   }
 
+  private func upNextBookLink(_ book: Book, index: Int) -> some View {
+    NavigationLink {
+      BookDetailView(model: model, bookID: book.id) { selectedBook, position in
+        Task { await model.play(bookID: selectedBook.id, at: position) }
+      }
+    } label: {
+      HStack(spacing: 12) {
+        Text("\(index + 1)").font(.caption.bold()).foregroundStyle(PlayerColor.accent)
+        ArtworkView(data: book.artworkData, size: 58)
+        VStack(alignment: .leading) {
+          Text(book.title).font(.headline).foregroundStyle(PlayerColor.ink)
+          Text(book.authors.first ?? "Unknown Author")
+            .font(.caption)
+            .foregroundStyle(PlayerColor.secondary)
+        }
+      }
+    }
+    .buttonStyle(.plain)
+    .accessibilityIdentifier("up-next-book-\(book.id.uuidString.lowercased())")
+  }
+
+  private func moveButton(_ book: Book, index: Int, offset: Int) -> some View {
+    let isEarlier = offset < 0
+    return Button {
+      move(bookID: book.id, offset: offset)
+    } label: {
+      if dynamicTypeSize.isAccessibilitySize {
+        Label(isEarlier ? "Earlier" : "Later", systemImage: isEarlier ? "arrow.up" : "arrow.down")
+      } else {
+        Image(systemName: isEarlier ? "arrow.up" : "arrow.down")
+      }
+    }
+    .buttonStyle(.borderless)
+    .disabled(isEarlier ? index == 0 : index == model.library.upNextBooks.count - 1)
+    .accessibilityLabel("Move \(book.title) \(isEarlier ? "earlier" : "later")")
+    .accessibilityHint(
+      isEarlier
+        ? "Moves this audiobook one position toward the start of Up Next"
+        : "Moves this audiobook one position toward the end of Up Next"
+    )
+    .accessibilityIdentifier(
+      "up-next-move-\(isEarlier ? "up" : "down")-\(book.id.uuidString.lowercased())"
+    )
+  }
+
   private func move(bookID: UUID, offset: Int) {
     var ids = model.library.upNextBookIDs
     guard let index = ids.firstIndex(of: bookID), ids.indices.contains(index + offset) else { return }
@@ -233,6 +307,7 @@ struct UpNextView: View {
 }
 
 struct AllBooksView: View {
+  @Environment(\.dynamicTypeSize) private var dynamicTypeSize
   @Bindable var model: PlayerModel
 
   var body: some View {
@@ -240,7 +315,7 @@ struct AllBooksView: View {
       PlayerColor.background.ignoresSafeArea()
       ScrollView {
         if model.library.allBooksViewStyle == .grid {
-          LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 20) {
+          LazyVGrid(columns: gridColumns, spacing: 20) {
             ForEach(sortedBooks) { book in bookLink(book) { LibraryCoverCard(book: book) } }
           }
           .padding(20)
@@ -284,6 +359,13 @@ struct AllBooksView: View {
       if lhs != rhs { return lhs.localizedStandardCompare(rhs) == .orderedAscending }
       return $0.id.uuidString < $1.id.uuidString
     }
+  }
+
+  private var gridColumns: [GridItem] {
+    Array(
+      repeating: GridItem(.flexible()),
+      count: dynamicTypeSize.isAccessibilitySize ? 1 : 2
+    )
   }
 
   private func bookLink<Label: View>(_ book: Book, @ViewBuilder label: () -> Label) -> some View {
@@ -672,6 +754,14 @@ struct LibraryOrganizationSettingsView: View {
             Label("Smart Rewind", systemImage: "gobackward")
           }
           .accessibilityIdentifier("smart-rewind-settings")
+        }
+        Section("Accessibility") {
+          NavigationLink {
+            AccessibilitySettingsView(model: model)
+          } label: {
+            Label("Accessibility", systemImage: "accessibility")
+          }
+          .accessibilityIdentifier("settings-accessibility")
         }
       }
       .scrollContentBackground(.hidden)
