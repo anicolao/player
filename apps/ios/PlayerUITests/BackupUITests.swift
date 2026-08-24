@@ -112,11 +112,12 @@ final class BackupUITests: XCTestCase {
     let list = app.collectionViews.firstMatch
     XCTAssertTrue(list.waitForExistence(timeout: 2))
     let export = app.buttons["backup-export"]
-    if !export.isHittable {
-      for _ in 0..<3 {
-        if export.isHittable { break }
-        list.swipeDown(velocity: .fast)
-      }
+    // Establish a real non-top scroll position first. A downward gesture made
+    // while already at the elastic boundary can settle at different content
+    // offsets on local and hosted simulators.
+    list.swipeUp(velocity: .fast)
+    for _ in 0..<3 {
+      list.swipeDown(velocity: .fast)
     }
     XCTAssertTrue(export.isHittable)
     // Let the initial navigation hierarchy finish rasterizing before capture.
