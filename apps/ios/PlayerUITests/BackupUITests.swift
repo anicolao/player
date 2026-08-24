@@ -24,7 +24,6 @@ final class BackupUITests: XCTestCase {
     )
     app.launch()
 
-    app.tabBars.buttons["Settings"].tap()
     app.buttons["settings-backup"].tap()
     let probe = anyElement(app, "backup-e2e-probe")
     scrollBackupToTop(app)
@@ -113,15 +112,12 @@ final class BackupUITests: XCTestCase {
     let list = app.collectionViews.firstMatch
     XCTAssertTrue(list.waitForExistence(timeout: 2))
     let export = app.buttons["backup-export"]
-    if !export.isHittable {
-      for _ in 0..<3 {
-        if export.isHittable { break }
-        list.swipeDown(velocity: .fast)
-      }
-    }
+    // A newly pushed SwiftUI list can settle a few points away from its true
+    // top on a busy simulator. Always drive it to the boundary so screenshots
+    // do not inherit that transient offset.
+    for _ in 0..<3 { list.swipeDown(velocity: .fast) }
     XCTAssertTrue(export.isHittable)
-    // The selected Settings tab can retain its transition raster for more than
-    // one second on a busy CI simulator even after the list is idle.
+    // Let the final overscroll rebound finish before XCTest captures the frame.
     RunLoop.current.run(until: Date().addingTimeInterval(3))
   }
 
