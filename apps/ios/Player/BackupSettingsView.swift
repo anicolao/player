@@ -25,100 +25,106 @@ struct BackupSettingsView: View {
 
   var body: some View {
     ZStack {
-      List {
-        Section("Export") {
-          Picker("Backup contents", selection: $exportKind) {
-            ForEach(PortableBackupKind.allCases, id: \.self) { kind in
-              Text(kind.displayName).tag(kind)
+      ScrollViewReader { proxy in
+        List {
+          Section("Export") {
+            Picker("Backup contents", selection: $exportKind) {
+              ForEach(PortableBackupKind.allCases, id: \.self) { kind in
+                Text(kind.displayName).tag(kind)
+              }
             }
-          }
-          Text(exportExplanation)
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-          Button {
-            Task { await prepareExport() }
-          } label: {
-            Label("Export Library Backup", systemImage: "square.and.arrow.up")
-          }
-          .disabled(isWorking)
-          .accessibilityIdentifier("backup-export")
-        }
-
-        Section("Restore") {
-          Button {
-            isChoosingRestore = true
-          } label: {
-            Label("Choose Player Backup", systemImage: "square.and.arrow.down")
-          }
-          .disabled(isWorking)
-          .accessibilityIdentifier("backup-restore")
-          Text(
-            "Player verifies the manifest, artwork, and every audio file before replacing the library. A failed restore leaves the current library untouched."
-          )
-          .font(.footnote)
-          .foregroundStyle(.secondary)
-        }
-
-        Section("Automatic database backups") {
-          if let latest = automaticBackups.first {
-            LabeledContent(
-              "Latest", value: latest.createdAt.formatted(date: .abbreviated, time: .shortened))
-            LabeledContent("Copies", value: "\(automaticBackups.count) of 3")
-            Button("Restore Latest Database Backup") {
-              confirmsAutomaticRestore = true
+            Text(exportExplanation)
+              .font(.footnote)
+              .foregroundStyle(.secondary)
+            Button {
+              Task { await prepareExport() }
+            } label: {
+              Label("Export Library Backup", systemImage: "square.and.arrow.up")
             }
             .disabled(isWorking)
-            .accessibilityIdentifier("backup-restore-automatic")
-          } else {
-            Text("A backup will appear here after the library changes.")
-              .foregroundStyle(.secondary)
+            .accessibilityIdentifier("backup-export")
           }
-          Text(
-            "Player rotates up to three local database copies. Audio stays in managed storage and is not duplicated."
-          )
-          .font(.footnote)
-          .foregroundStyle(.secondary)
-        }
+          .id("backup-scroll-top")
 
-        if isWorking {
-          Section {
-            ProgressView("Checking library integrity…")
-              .accessibilityIdentifier("backup-progress")
+          Section("Restore") {
+            Button {
+              isChoosingRestore = true
+            } label: {
+              Label("Choose Player Backup", systemImage: "square.and.arrow.down")
+            }
+            .disabled(isWorking)
+            .accessibilityIdentifier("backup-restore")
+            Text(
+              "Player verifies the manifest, artwork, and every audio file before replacing the library. A failed restore leaves the current library untouched."
+            )
+            .font(.footnote)
+            .foregroundStyle(.secondary)
           }
-        }
-        if let message {
-          Section {
-            Label(message, systemImage: "checkmark.circle.fill")
-              .foregroundStyle(.green)
-              .accessibilityIdentifier("backup-success")
+
+          Section("Automatic database backups") {
+            if let latest = automaticBackups.first {
+              LabeledContent(
+                "Latest", value: latest.createdAt.formatted(date: .abbreviated, time: .shortened))
+              LabeledContent("Copies", value: "\(automaticBackups.count) of 3")
+              Button("Restore Latest Database Backup") {
+                confirmsAutomaticRestore = true
+              }
+              .disabled(isWorking)
+              .accessibilityIdentifier("backup-restore-automatic")
+            } else {
+              Text("A backup will appear here after the library changes.")
+                .foregroundStyle(.secondary)
+            }
+            Text(
+              "Player rotates up to three local database copies. Audio stays in managed storage and is not duplicated."
+            )
+            .font(.footnote)
+            .foregroundStyle(.secondary)
           }
-        }
-        #if E2E
-          if E2EBackupBridge.shared.isConfigured {
-            Section("Deterministic walkthrough") {
-              Button("Create Verified Backup") {
-                Task {
-                  await runE2EAction { try await E2EBackupBridge.shared.export(using: model) }
-                }
-              }
-              .accessibilityIdentifier("e2e-backup-export")
-              Button("Clear Fixture Library") {
-                Task { await runE2EAction { try await E2EBackupBridge.shared.clear(using: model) } }
-              }
-              .accessibilityIdentifier("e2e-backup-clear")
-              Button("Restore Verified Backup") {
-                Task {
-                  await runE2EAction { try await E2EBackupBridge.shared.restore(using: model) }
-                }
-              }
-              .accessibilityIdentifier("e2e-backup-restore")
+
+          if isWorking {
+            Section {
+              ProgressView("Checking library integrity…")
+                .accessibilityIdentifier("backup-progress")
             }
           }
+          if let message {
+            Section {
+              Label(message, systemImage: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+                .accessibilityIdentifier("backup-success")
+            }
+          }
+          #if E2E
+            if E2EBackupBridge.shared.isConfigured {
+              Section("Deterministic walkthrough") {
+                Button("Create Verified Backup") {
+                  Task {
+                    await runE2EAction { try await E2EBackupBridge.shared.export(using: model) }
+                  }
+                }
+                .accessibilityIdentifier("e2e-backup-export")
+                Button("Clear Fixture Library") {
+                  Task {
+                    await runE2EAction { try await E2EBackupBridge.shared.clear(using: model) }
+                  }
+                }
+                .accessibilityIdentifier("e2e-backup-clear")
+                Button("Restore Verified Backup") {
+                  Task {
+                    await runE2EAction { try await E2EBackupBridge.shared.restore(using: model) }
+                  }
+                }
+                .accessibilityIdentifier("e2e-backup-restore")
+              }
+            }
+          #endif
+        }
+        #if E2E
+          .onAppear { scrollWalkthroughToTop(proxy) }
+          .onChange(of: e2eRevision) { _, _ in scrollWalkthroughToTop(proxy) }
         #endif
       }
-      #if E2E
-        .id(e2eRevision)
-      #endif
       #if E2E
         if E2EBackupBridge.shared.isConfigured {
           StateProbe(
@@ -250,6 +256,12 @@ struct BackupSettingsView: View {
   }
 
   #if E2E
+    private func scrollWalkthroughToTop(_ proxy: ScrollViewProxy) {
+      DispatchQueue.main.async {
+        proxy.scrollTo("backup-scroll-top", anchor: .top)
+      }
+    }
+
     private func runE2EAction(_ action: @escaping @MainActor () async throws -> Void) async {
       isWorking = true
       message = nil
