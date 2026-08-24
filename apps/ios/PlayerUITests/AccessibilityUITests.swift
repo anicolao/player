@@ -215,6 +215,7 @@ final class AccessibilityUITests: XCTestCase {
     let app = XCUIApplication()
     app.launchArguments = baseArguments(fixture: fixture)
     app.launchEnvironment["TZ"] = "America/Toronto"
+    app.launchEnvironment["PLAYER_E2E_DYNAMIC_TYPE"] = "accessibility5"
     return app
   }
 
@@ -225,6 +226,7 @@ final class AccessibilityUITests: XCTestCase {
         "-e2e-computer-receiver-ready", "-e2e-show-mirroring-tip",
       ]
     app.launchEnvironment["TZ"] = "America/Toronto"
+    app.launchEnvironment["PLAYER_E2E_DYNAMIC_TYPE"] = "accessibility5"
     return app
   }
 
@@ -232,6 +234,7 @@ final class AccessibilityUITests: XCTestCase {
     let app = XCUIApplication()
     app.launchArguments = baseArguments(fixture: "synthetic-populated-library")
     app.launchEnvironment["TZ"] = "America/Toronto"
+    app.launchEnvironment["PLAYER_E2E_DYNAMIC_TYPE"] = "accessibility5"
     app.launchEnvironment["PLAYER_E2E_LIBRARY_DESCRIPTOR_BASE64"] = try fixtureData(
       resource: "synthetic-populated-library-fixture", extension: "json"
     ).base64EncodedString()

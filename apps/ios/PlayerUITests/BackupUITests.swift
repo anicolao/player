@@ -11,6 +11,7 @@ final class BackupUITests: XCTestCase {
       "-e2e-start-section", "settings",
       "-e2e-start-settings-route", "backup",
     ]
+    app.launchEnvironment["PLAYER_E2E_DYNAMIC_TYPE"] = "large"
     let tester = TestStepHelper(testCase: self)
     tester.setMetadata(
       title: "A complete local library travels in one verified backup",
