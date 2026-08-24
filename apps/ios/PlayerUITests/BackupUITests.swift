@@ -42,7 +42,8 @@ final class BackupUITests: XCTestCase {
     tapWalkthroughAction("e2e-backup-export", in: app)
     try requireValue(
       probe,
-      "backup:exported:books=1:bookmarks=1:position=42000:media=1:audio=true"
+      "backup:exported:books=1:bookmarks=1:position=42000:media=1:audio=true",
+      in: app
     )
     scrollBackupToTop(app)
     try tester.step(
@@ -60,7 +61,8 @@ final class BackupUITests: XCTestCase {
     tapWalkthroughAction("e2e-backup-clear", in: app)
     try requireValue(
       probe,
-      "backup:cleared:books=0:bookmarks=0:position=-1:media=0:audio=false"
+      "backup:cleared:books=0:bookmarks=0:position=-1:media=0:audio=false",
+      in: app
     )
     scrollBackupToTop(app)
     try tester.step(
@@ -78,7 +80,8 @@ final class BackupUITests: XCTestCase {
     tapWalkthroughAction("e2e-backup-restore", in: app)
     try requireValue(
       probe,
-      "backup:restored:books=1:bookmarks=1:position=42000:media=1:audio=true"
+      "backup:restored:books=1:bookmarks=1:position=42000:media=1:audio=true",
+      in: app
     )
     scrollBackupToTop(app)
     try tester.step(
@@ -99,7 +102,8 @@ final class BackupUITests: XCTestCase {
     resume.tap()
     try requireValue(
       anyElement(app, "now-playing-screen"),
-      "player:paused:a1000000-0000-0000-0000-000000000001:0:42000"
+      "player:paused:a1000000-0000-0000-0000-000000000001:0:42000",
+      in: app
     )
     tester.generateDocs()
   }
@@ -112,13 +116,9 @@ final class BackupUITests: XCTestCase {
     let list = app.collectionViews.firstMatch
     XCTAssertTrue(list.waitForExistence(timeout: 2))
     let export = app.buttons["backup-export"]
-    // Establish a real non-top scroll position first. A downward gesture made
-    // while already at the elastic boundary can settle at different content
-    // offsets on local and hosted simulators.
-    list.swipeUp(velocity: .fast)
-    for _ in 0..<3 {
-      list.swipeDown(velocity: .fast)
-    }
+    // The E2E build anchors this List programmatically after launch and every
+    // fixture mutation. Gestures at SwiftUI's elastic boundary settle at
+    // host-dependent offsets and cannot define a canonical screenshot.
     XCTAssertTrue(export.isHittable)
     // Let the initial navigation hierarchy finish rasterizing before capture.
     RunLoop.current.run(until: Date().addingTimeInterval(3))
@@ -133,10 +133,19 @@ final class BackupUITests: XCTestCase {
     button.tap()
   }
 
-  private func requireValue(_ element: XCUIElement, _ expected: String) throws {
+  private func requireValue(
+    _ element: XCUIElement,
+    _ expected: String,
+    in app: XCUIApplication
+  ) throws {
     guard element.waitForStringValue(expected, timeout: 3) else {
+      let alert = app.alerts.firstMatch
+      let alertDiagnostic =
+        alert.exists
+        ? "; alert=\(alert.label): \(alert.staticTexts.allElementsBoundByIndex.map(\.label).joined(separator: " | "))"
+        : ""
       XCTFail(
-        "The backup journey did not reach \(expected); actual=\(String(describing: element.value))"
+        "The backup journey did not reach \(expected); actual=\(String(describing: element.value))\(alertDiagnostic)"
       )
       throw BackupUITestError.semanticStateUnavailable
     }
