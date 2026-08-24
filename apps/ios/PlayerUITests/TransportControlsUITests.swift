@@ -8,13 +8,14 @@ final class TransportControlsUITests: XCTestCase {
     continueAfterFailure = false
     XCUIDevice.shared.orientation = .portrait
 
-    let app = makeApplication(reset: true)
+    let app = makeApplication(reset: true, startInSettings: true)
     app.launch()
 
-    app.tabBars.buttons["Settings"].tap()
-    app.buttons["playback-defaults"].tap()
+    let globalPreferences = app.buttons["playback-defaults"]
+    XCTAssertTrue(globalPreferences.waitForExistence(timeout: 5))
+    globalPreferences.tap()
     let preferencesScreen = app.descendants(matching: .any)["transport-preferences-screen"]
-    XCTAssertTrue(preferencesScreen.waitForExistence(timeout: 2))
+    XCTAssertTrue(preferencesScreen.waitForExistence(timeout: 5))
     try requireValue(
       preferencesScreen,
       "transport:scope=global:rate=1.00:back=15:forward=30:seek=chapter"
@@ -116,7 +117,10 @@ final class TransportControlsUITests: XCTestCase {
     tester.generateDocs()
   }
 
-  private func makeApplication(reset: Bool) -> XCUIApplication {
+  private func makeApplication(
+    reset: Bool,
+    startInSettings: Bool = false
+  ) -> XCUIApplication {
     let app = XCUIApplication()
     app.launchArguments = [
       "-e2e", "-e2e-fixture", "metadata-rich-book",
@@ -126,6 +130,9 @@ final class TransportControlsUITests: XCTestCase {
       "-NSTreatUnknownArgumentsAsOpen", "NO",
     ]
     if reset { app.launchArguments.insert("-e2e-reset", at: 1) }
+    if startInSettings {
+      app.launchArguments.append(contentsOf: ["-e2e-start-section", "settings"])
+    }
     app.launchEnvironment["TZ"] = "America/Toronto"
     return app
   }

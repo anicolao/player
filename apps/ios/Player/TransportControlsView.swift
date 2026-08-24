@@ -24,67 +24,65 @@ struct TransportPreferencesEditor: View {
   }
 
   var body: some View {
-    NavigationStack {
-      Form {
-        if book != nil {
-          Section {
-            Button("Use Library Defaults") { clearBookOverride() }
-              .accessibilityIdentifier("transport-use-library-defaults")
-          } footer: {
-            Text("This book keeps its own settings until you switch it back to the library defaults.")
-          }
-        }
-
-        Section("Listening") {
-          Picker("Playback speed", selection: $playbackRate) {
-            ForEach(Self.playbackRates, id: \.self) { rate in
-              Text(Self.rateLabel(rate)).tag(rate)
-            }
-          }
-          .accessibilityIdentifier("transport-rate-picker")
-
-          Picker("Skip backward", selection: $backwardSkipSeconds) {
-            ForEach(Self.skipIntervals, id: \.self) { seconds in
-              Text(Self.secondsLabel(seconds)).tag(seconds)
-            }
-          }
-          .accessibilityIdentifier("transport-backward-picker")
-
-          Picker("Skip forward", selection: $forwardSkipSeconds) {
-            ForEach(Self.skipIntervals, id: \.self) { seconds in
-              Text(Self.secondsLabel(seconds)).tag(seconds)
-            }
-          }
-          .accessibilityIdentifier("transport-forward-picker")
-
-          Picker("Scrubber", selection: $seekContext) {
-            Text("Current chapter").tag(PlaybackSeekContext.chapter)
-            Text("Whole book").tag(PlaybackSeekContext.wholeBook)
-          }
-          .pickerStyle(.segmented)
-          .accessibilityIdentifier("transport-seek-context")
-        }
-
+    Form {
+      if book != nil {
         Section {
-          Text("Speed supports 0.5×–3.0× in 0.05× steps. Skip buttons and remote controls use these same intervals.")
-            .font(.footnote)
-            .foregroundStyle(PlayerColor.secondary)
+          Button("Use Library Defaults") { clearBookOverride() }
+            .accessibilityIdentifier("transport-use-library-defaults")
+        } footer: {
+          Text("This book keeps its own settings until you switch it back to the library defaults.")
         }
       }
-      .navigationTitle(book == nil ? "Playback Defaults" : "Book Playback")
-      .navigationBarTitleDisplayMode(.inline)
-      .toolbar {
-        ToolbarItem(placement: .cancellationAction) {
-          Button("Cancel") { dismiss() }
+
+      Section("Listening") {
+        Picker("Playback speed", selection: $playbackRate) {
+          ForEach(Self.playbackRates, id: \.self) { rate in
+            Text(Self.rateLabel(rate)).tag(rate)
+          }
         }
-        ToolbarItem(placement: .confirmationAction) {
-          Button("Save") { save() }
-            .accessibilityIdentifier("save-transport-preferences")
+        .accessibilityIdentifier("transport-rate-picker")
+
+        Picker("Skip backward", selection: $backwardSkipSeconds) {
+          ForEach(Self.skipIntervals, id: \.self) { seconds in
+            Text(Self.secondsLabel(seconds)).tag(seconds)
+          }
         }
+        .accessibilityIdentifier("transport-backward-picker")
+
+        Picker("Skip forward", selection: $forwardSkipSeconds) {
+          ForEach(Self.skipIntervals, id: \.self) { seconds in
+            Text(Self.secondsLabel(seconds)).tag(seconds)
+          }
+        }
+        .accessibilityIdentifier("transport-forward-picker")
+
+        Picker("Scrubber", selection: $seekContext) {
+          Text("Current chapter").tag(PlaybackSeekContext.chapter)
+          Text("Whole book").tag(PlaybackSeekContext.wholeBook)
+        }
+        .pickerStyle(.segmented)
+        .accessibilityIdentifier("transport-seek-context")
       }
-      .accessibilityIdentifier("transport-preferences-screen")
-      .accessibilityValue(preferencesValue)
+
+      Section {
+        Text("Speed supports 0.5×–3.0× in 0.05× steps. Skip buttons and remote controls use these same intervals.")
+          .font(.footnote)
+          .foregroundStyle(PlayerColor.secondary)
+      }
     }
+    .navigationTitle(book == nil ? "Playback Defaults" : "Book Playback")
+    .navigationBarTitleDisplayMode(.inline)
+    .toolbar {
+      ToolbarItem(placement: .cancellationAction) {
+        Button("Cancel") { dismiss() }
+      }
+      ToolbarItem(placement: .confirmationAction) {
+        Button("Save") { save() }
+          .accessibilityIdentifier("save-transport-preferences")
+      }
+    }
+    .accessibilityIdentifier("transport-preferences-screen")
+    .accessibilityValue(preferencesValue)
   }
 
   private var preferencesValue: String {

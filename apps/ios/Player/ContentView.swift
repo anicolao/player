@@ -1756,7 +1756,9 @@ private struct NowPlayingView: View {
         }
       #endif
       .sheet(isPresented: $showsTransportPreferences) {
-        TransportPreferencesEditor(model: model, book: currentBookFromModel ?? book)
+        NavigationStack {
+          TransportPreferencesEditor(model: model, book: currentBookFromModel ?? book)
+        }
       }
       .sheet(isPresented: $showsSleepTimer) {
         SleepTimerView(model: model)
