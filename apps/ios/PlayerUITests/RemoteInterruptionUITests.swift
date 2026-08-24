@@ -130,7 +130,11 @@ final class RemoteInterruptionUITests: XCTestCase {
     )
 
     XCUIDevice.shared.press(.home)
-    RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+    // Give the real scene-phase checkpoint task a complete scheduling window
+    // before foregrounding again. On a loaded hosted simulator, immediately
+    // activating the app can otherwise cancel the background phase before its
+    // acknowledged position is journaled.
+    RunLoop.current.run(until: Date().addingTimeInterval(1))
     app.activate()
     XCTAssertTrue(
       app.wait(for: .runningForeground, timeout: 2),
