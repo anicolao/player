@@ -257,8 +257,16 @@ struct BackupSettingsView: View {
 
   #if E2E
     private func scrollWalkthroughToTop(_ proxy: ScrollViewProxy) {
-      DispatchQueue.main.async {
-        proxy.scrollTo("backup-scroll-top", anchor: .top)
+      Task { @MainActor in
+        // A hosted simulator can deliver onAppear before List has resolved its
+        // variable-height rows. Wait for that layout pass so scrollTo never
+        // uses provisional row estimates.
+        try? await Task.sleep(for: .milliseconds(500))
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+          proxy.scrollTo("backup-scroll-top", anchor: .top)
+        }
       }
     }
 
