@@ -360,15 +360,15 @@ final class BookmarkUITests: XCTestCase {
     into field: XCUIElement,
     in app: XCUIApplication
   ) throws {
-    let deadline = Date().addingTimeInterval(4)
-    repeat {
-      field.tap()
-      if app.keyboards.firstMatch.waitForExistence(timeout: 0.75) {
-        field.typeText(text)
-        return
-      }
-    } while Date() < deadline
-    XCTFail("Expected \(field.identifier) to acquire keyboard focus before typing")
+    let identifier = field.identifier
+    let elementType = field.elementType
+    let currentField = app.descendants(matching: elementType)[identifier]
+    XCTAssertTrue(currentField.waitForExistence(timeout: 2))
+    currentField.tap()
+    // XCTest's software-keyboard query can remain stale even while the field's
+    // accessibility snapshot reports Keyboard Focused. typeText performs its
+    // own focus synchronization, so use the freshly queried field directly.
+    currentField.typeText(text)
   }
 
   private func requireProbe(

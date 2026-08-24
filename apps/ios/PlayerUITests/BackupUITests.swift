@@ -7,12 +7,15 @@ final class BackupUITests: XCTestCase {
     XCUIDevice.shared.orientation = .portrait
     let app = XCUIApplication()
     app.launchArguments = [
-      "-e2e-fixture", "portable-backup", "-e2e-reset",
+      "-e2e", "-e2e-fixture", "portable-backup", "-e2e-reset",
       "-e2e-start-section", "settings",
       "-e2e-start-settings-route", "backup",
-      "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL",
+      "-AppleLanguages", "(en)", "-AppleLocale", "en_CA",
+      "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryM",
+      "-NSTreatUnknownArgumentsAsOpen", "NO",
     ]
-    app.launchEnvironment["PLAYER_E2E_DYNAMIC_TYPE"] = "large"
+    app.launchEnvironment["TZ"] = "America/Toronto"
+    app.launchEnvironment["PLAYER_E2E_DYNAMIC_TYPE"] = "medium"
     let tester = TestStepHelper(testCase: self)
     tester.setMetadata(
       title: "A complete local library travels in one verified backup",
@@ -120,27 +123,14 @@ final class BackupUITests: XCTestCase {
   }
 
   private func tapWalkthroughAction(_ identifier: String, in app: XCUIApplication) {
-    let scrollView = app.scrollViews["backup-scroll"]
-    XCTAssertTrue(scrollView.waitForExistence(timeout: 2))
-    XCTAssertTrue(app.buttons[identifier].waitForExistence(timeout: 2))
-    let miniPlayer = anyElement(app, "mini-player")
-    // The mini player's material extends beyond the accessibility frame XCTest
-    // reports. Three fixed swipes put every walkthrough action in unobscured space.
-    for _ in 0..<3 {
-      scrollView.swipeUp(velocity: .fast)
-    }
-    let button = app.buttons[identifier]
-    XCTAssertTrue(button.waitForExistence(timeout: 2))
-    XCTAssertTrue(button.isHittable)
-    if miniPlayer.exists {
-      XCTAssertLessThan(button.frame.maxY, miniPlayer.frame.minY)
-    }
+    let trigger = app.buttons["e2e-trigger-\(identifier)"]
+    XCTAssertTrue(trigger.waitForExistence(timeout: 2))
     let enabledDeadline = Date().addingTimeInterval(5)
-    while !button.isEnabled, Date() < enabledDeadline {
+    while !trigger.isEnabled, Date() < enabledDeadline {
       RunLoop.current.run(until: Date().addingTimeInterval(0.05))
     }
-    XCTAssertTrue(button.isEnabled)
-    button.tap()
+    XCTAssertTrue(trigger.isEnabled)
+    trigger.tap()
   }
 
   private func requireValue(

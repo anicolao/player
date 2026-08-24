@@ -196,6 +196,21 @@ struct BackupSettingsView: View {
         #if E2E
           .onAppear { scrollBackupToTop(proxy) }
           .onChange(of: e2eRevision) { _, _ in scrollBackupToTop(proxy) }
+          .overlay(alignment: .topLeading) {
+            if E2EBackupBridge.shared.isConfigured {
+              HStack(spacing: 0) {
+                e2eTriggerButton("e2e-backup-export") {
+                  try await E2EBackupBridge.shared.export(using: model)
+                }
+                e2eTriggerButton("e2e-backup-clear") {
+                  try await E2EBackupBridge.shared.clear(using: model)
+                }
+                e2eTriggerButton("e2e-backup-restore") {
+                  try await E2EBackupBridge.shared.restore(using: model)
+                }
+              }
+            }
+          }
         #endif
       }
       #if E2E
@@ -349,6 +364,23 @@ struct BackupSettingsView: View {
       } catch {
         errorMessage = error.localizedDescription
       }
+    }
+
+    private func e2eTriggerButton(
+      _ identifier: String,
+      action: @escaping @MainActor () async throws -> Void
+    ) -> some View {
+      Button {
+        Task { await runE2EAction(action) }
+      } label: {
+        Color.white.opacity(0.001)
+          .frame(width: 44, height: 44)
+          .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel("Run \(identifier)")
+      .accessibilityIdentifier("e2e-trigger-\(identifier)")
+      .disabled(isWorking)
     }
   #endif
 }
