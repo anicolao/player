@@ -1168,6 +1168,15 @@ final class PlayerCoreTests: XCTestCase {
     XCTAssertEqual(activationHarness.model.lastErrorMessage, "Audio session activation failed.")
   }
 
+  func testPlaybackAudioSessionDoesNotRequestPlayAndRecordOnlyRoutingOptions() {
+    XCTAssertTrue(AVAudioSessionController.playbackCategoryOptions.isEmpty)
+  }
+
+  func testPlaybackAudioSessionConfigurationIsAcceptedBySystem() {
+    let controller = AVAudioSessionController()
+    XCTAssertNoThrow(try controller.configure())
+  }
+
   func testInterruptionWithoutResumePermissionRemainsPaused() async throws {
     let harness = makeBackgroundPlaybackHarness()
     await harness.model.restore()

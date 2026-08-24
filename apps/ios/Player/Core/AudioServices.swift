@@ -393,6 +393,11 @@ final class DeterministicPlaybackController: AudioPlaybackControlling {
 
 @MainActor
 final class AVAudioSessionController: NSObject, AudioSessionControlling {
+  // Playback sessions already route to AirPlay and Bluetooth A2DP. Apple only
+  // permits explicitly setting those options with `.playAndRecord`; combining
+  // them with `.playback` causes `setCategory` to fail with OSStatus -50.
+  static let playbackCategoryOptions: AVAudioSession.CategoryOptions = []
+
   private let session: AVAudioSession
   private var eventHandler: (@MainActor @Sendable (AudioSessionEvent) async -> Void)?
 
@@ -421,7 +426,7 @@ final class AVAudioSessionController: NSObject, AudioSessionControlling {
     try session.setCategory(
       .playback,
       mode: .spokenAudio,
-      options: [.allowAirPlay, .allowBluetoothA2DP]
+      options: Self.playbackCategoryOptions
     )
   }
 
