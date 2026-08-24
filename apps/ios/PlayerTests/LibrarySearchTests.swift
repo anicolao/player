@@ -150,6 +150,31 @@ final class LibrarySearchTests: XCTestCase {
     XCTAssertLessThan(elapsed, .milliseconds(100), "A 10,000-book indexed query must meet the MVP budget")
   }
 
+  func testActorIndexerProducesStableWindowsForTenThousandScrollableResults() async {
+    let books = (0..<10_000).map { index in
+      makeBook(
+        id: uuid(index + 1),
+        title: String(format: "Volume %05d", index),
+        author: Contributor(displayName: "Author")
+      )
+    }
+    let builder = LibrarySearchIndexBuilder()
+    let index = await builder.build(library: LibrarySnapshot(
+      books: books.reversed(), importJobs: [], currentBookID: nil
+    ))
+    let result = index.search(query: "volume", preferences: .default)
+    let completedBuildCount = await builder.completedBuildCount
+
+    XCTAssertEqual(completedBuildCount, 1)
+    XCTAssertEqual(result.window(offset: 0, limit: 3).map(\.id), books[0..<3].map(\.id))
+    XCTAssertEqual(
+      result.window(offset: 4_998, limit: 5).map(\.id),
+      books[4_998..<5_003].map(\.id)
+    )
+    XCTAssertEqual(result.window(offset: 9_998, limit: 10).map(\.id), books[9_998...].map(\.id))
+    XCTAssertTrue(result.window(offset: 10_000, limit: 1).isEmpty)
+  }
+
   private func makeBook(
     id: UUID,
     title: String,

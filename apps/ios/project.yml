@@ -87,6 +87,11 @@ targets:
     platform: iOS
     sources:
       - path: PlayerTests
+        excludes:
+          - Fixtures
+      - path: PlayerTests/Fixtures/Schemas
+        type: folder
+        buildPhase: resources
       - path: PlayerUITests/Fixtures/SyntheticAudiobook
         buildPhase: resources
       - path: PlayerUITests/Fixtures/SyntheticFormats

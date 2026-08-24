@@ -21,9 +21,7 @@ struct LibrarySearchView: View {
     .task(id: indexRevision) {
       isIndexed = false
       let snapshot = model.library
-      index = await Task.detached(priority: .userInitiated) {
-        LibrarySearchIndex(library: snapshot)
-      }.value
+      index = await LibrarySearchIndexBuilder.shared.build(library: snapshot)
       isIndexed = true
     }
   }

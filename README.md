@@ -17,7 +17,8 @@ backup format and recovery guarantees, and
 [ACCESSIBILITY_AUDIT.md](ACCESSIBILITY_AUDIT.md) records the accessibility task
 matrix and reproducible evidence. [OFFLINE_RECOVERY_AUDIT.md](OFFLINE_RECOVERY_AUDIT.md)
 records the Airplane Mode task matrix, startup quarantine contract, and support
-diagnostic data boundary.
+diagnostic data boundary. [MVP_ACCEPTANCE_MATRIX.md](MVP_ACCEPTANCE_MATRIX.md)
+maps every tracer and scale budget to executable evidence.
 
 ## The product promise
 

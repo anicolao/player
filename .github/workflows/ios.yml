@@ -14,6 +14,8 @@ on:
       - DIRECT_IMPORT_UX.md
       - BACKUP_AND_RESTORE.md
       - OFFLINE_RECOVERY_AUDIT.md
+      - MVP_ACCEPTANCE_MATRIX.md
+      - MOCKUP_COMPARISON.md
       - README.md
       - TESTFLIGHT_SETUP.md
       - UX_DESIGN.md
@@ -34,6 +36,8 @@ on:
       - DIRECT_IMPORT_UX.md
       - BACKUP_AND_RESTORE.md
       - OFFLINE_RECOVERY_AUDIT.md
+      - MVP_ACCEPTANCE_MATRIX.md
+      - MOCKUP_COMPARISON.md
       - README.md
       - TESTFLIGHT_SETUP.md
       - UX_DESIGN.md

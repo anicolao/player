@@ -61,7 +61,7 @@ final class SafeZIPImportUITests: XCTestCase {
       traversalProbe,
       "zip:traversal:cancelled:extracted=0:staging=0:source-unchanged=true:outside-writes=0"
     )
-    traversalApp.terminate()
+    terminateAndWait(traversalApp)
 
     let hostileCases: [(fixture: String, reason: String, entries: Int)] = [
       ("symlink", "symlink", 2),
@@ -87,7 +87,7 @@ final class SafeZIPImportUITests: XCTestCase {
         probe,
         "zip:\(hostileCase.fixture):cancelled:extracted=0:staging=0:source-unchanged=true:outside-writes=0"
       )
-      app.terminate()
+      terminateAndWait(app)
     }
 
     let validApp = try makeApplication(zipCase: "valid", failInspectionOnce: true)
@@ -175,6 +175,14 @@ final class SafeZIPImportUITests: XCTestCase {
 
   private func anyElement(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {
     app.descendants(matching: .any)[identifier]
+  }
+
+  private func terminateAndWait(_ app: XCUIApplication) {
+    app.terminate()
+    XCTAssertTrue(
+      app.wait(for: .notRunning, timeout: 2),
+      "A fixture process must stop before the next launch resets its isolated storage."
+    )
   }
 
   private func requireValue(_ element: XCUIElement, _ expected: String) throws {

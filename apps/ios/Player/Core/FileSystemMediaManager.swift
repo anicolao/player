@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 import OSLog
 
@@ -586,40 +585,11 @@ actor FileSystemMediaManager: MediaManaging {
   }
 
   private func copyAndHash(from source: URL, to destination: URL) throws -> String {
-    let input = try FileHandle(forReadingFrom: source)
-    let output = try FileHandle(forWritingTo: destination)
-    defer {
-      try? input.close()
-      try? output.close()
-    }
-
-    var hash = SHA256()
-    while try autoreleasepool(invoking: {
-      try Task.checkCancellation()
-      guard let chunk = try input.read(upToCount: 1_024 * 1_024), !chunk.isEmpty else {
-        return false
-      }
-      hash.update(data: chunk)
-      try output.write(contentsOf: chunk)
-      return true
-    }) {}
-    try output.synchronize()
-    return hash.finalize().map { String(format: "%02x", $0) }.joined()
+    try StreamingFileIO.copyAndHash(from: source, to: destination).checksumSHA256
   }
 
   private func hashFile(at url: URL) throws -> String {
-    let input = try FileHandle(forReadingFrom: url)
-    defer { try? input.close() }
-    var hash = SHA256()
-    while try autoreleasepool(invoking: {
-      try Task.checkCancellation()
-      guard let chunk = try input.read(upToCount: 1_024 * 1_024), !chunk.isEmpty else {
-        return false
-      }
-      hash.update(data: chunk)
-      return true
-    }) {}
-    return hash.finalize().map { String(format: "%02x", $0) }.joined()
+    try StreamingFileIO.hashFile(at: url).checksumSHA256
   }
 
   private func isComputerReceiverSource(_ sourceURL: URL) -> Bool {

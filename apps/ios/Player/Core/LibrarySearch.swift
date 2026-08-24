@@ -37,6 +37,31 @@ struct LibrarySearchPreferences: Codable, Equatable, Sendable {
 struct LibrarySearchResult: Equatable, Sendable {
   var books: [Book]
   var normalizedQuery: String
+
+  func window(offset: Int, limit: Int) -> ArraySlice<Book> {
+    guard offset >= 0, limit > 0, offset < books.count else { return [] }
+    return books[offset..<(offset + min(limit, books.count - offset))]
+  }
+}
+
+/// Serializes expensive index rebuilds on an executor that is distinct from
+/// the UI's MainActor. Views await only the completed immutable index.
+actor LibrarySearchIndexBuilder {
+  static let shared = LibrarySearchIndexBuilder()
+
+  private(set) var completedBuildCount = 0
+
+  func build(
+    library: LibrarySnapshot,
+    bookmarkNotesByBookID: [UUID: [String]] = [:]
+  ) -> LibrarySearchIndex {
+    let index = LibrarySearchIndex(
+      library: library,
+      bookmarkNotesByBookID: bookmarkNotesByBookID
+    )
+    completedBuildCount += 1
+    return index
+  }
 }
 
 /// An immutable, in-memory full-text index. It is rebuilt from the durable

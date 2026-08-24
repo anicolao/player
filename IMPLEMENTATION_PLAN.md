@@ -479,6 +479,9 @@ Verification:
 
 **Commit:** `perf: prove the complete MVP at scale`
 
+**Status:** implemented by the C05 MVP completion milestone; the executable
+acceptance map is [MVP_ACCEPTANCE_MATRIX.md](MVP_ACCEPTANCE_MATRIX.md).
+
 Listener journey:
 
 - Use a responsive library and dependable import/player across the complete representative corpus.
@@ -496,6 +499,9 @@ Verification:
 - Every canonical-pixel journey passes on the pinned CI environment.
 - All budgets in `MVP_DESIGN.md` pass or have an explicitly approved revision.
 - The opt-in local full-book run passes on a disposable simulator without exposing its content.
+- `apps/ios/scripts/run-complete-suite.sh` is the canonical serial command for
+  the core suite and Stories 001–011; CI executes its equivalent gates in
+  parallel and aggregates them at the exact release SHA.
 
 ## CI and baseline policy
 
