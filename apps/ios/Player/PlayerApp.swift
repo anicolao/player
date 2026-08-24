@@ -34,6 +34,7 @@ struct PlayerApp: App {
         }
       }
         .preferredColorScheme(.light)
+        .tint(PlayerColor.accent)
         #if E2E
           // Simulator preference propagation can lag on hosted runners. Pin the
           // app environment so canonical screenshots exercise the documented

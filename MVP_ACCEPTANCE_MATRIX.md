@@ -1,6 +1,6 @@
 # MVP acceptance evidence
 
-Status: C05 executable evidence complete; final C06 visual audit pending
+Status: C06 acceptance evidence complete; exact release verification pending
 
 This matrix maps the complete T00–T19 contract to committed, reproducible
 evidence. The canonical command is:
@@ -43,3 +43,13 @@ aggregate result for each release SHA.
 All corpus content is synthetic. The private full-book smoke test remains an
 opt-in local check and its content, title, filenames, and output are never
 committed or uploaded.
+
+## Product and visual gate
+
+The [mockup comparison](MOCKUP_COMPARISON.md) reviews all 50 stable native
+screenshots produced by Stories 001–011 against the five approved mockup
+boards. The only product correction required by that audit moves the Player
+accent tint to the scene boundary, preventing system-blue controls from leaking
+into presented playback, receiver, sleep, recovery, and mini-player surfaces.
+Every remaining difference is intentional, implemented, and covered by the
+story or nonvisual evidence linked above.
