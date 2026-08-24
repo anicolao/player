@@ -6,5 +6,6 @@ web_dir="$(cd "${script_dir}/../ReceiverWeb" && pwd)"
 
 cd "${web_dir}"
 npm ci --ignore-scripts --no-audit --no-fund
+npm test
 npm run check
 npm run build

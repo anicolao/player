@@ -237,7 +237,7 @@ the app binary is identical to the last valid C06 build.
 
 | Milestone | Commit SHA | CI run | Result | TestFlight build | App Store state |
 | --- | --- | --- | --- | --- | --- |
-| C00 contract | pending | pending | pending | — | — |
+| C00 contract | `8276a5f` | [32678084366](https://github.com/anicolao/player/actions/runs/32678084366) | green | — | — |
 | C01 direct import | pending | pending | pending | 14 | pending |
 | C02 backup | pending | pending | pending | 15 | pending |
 | C03 accessibility | pending | pending | pending | 16 | pending |
