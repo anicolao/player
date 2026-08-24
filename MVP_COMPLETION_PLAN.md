@@ -1,9 +1,14 @@
 # MVP completion release train
 
-Status: active execution plan
+Status: complete
 Created: 2026-08-23
+Completed: 2026-08-24
 Branch: `feat/mvp-completion`
 Pull request: one PR, with every product commit independently green before the next commit
+
+Final app release: C06 commit `8c5c801`, CI run
+[32781597366](https://github.com/anicolao/player/actions/runs/32781597366),
+TestFlight Build 19 (`VALID` / `IN_BETA_TESTING`).
 
 ## Objective
 
@@ -218,8 +223,7 @@ Commit intent: `fix: complete the MVP product experience`
 
 Gate: all local checks, Stories 001–011, mockup comparison inventory, repository
 hygiene, and final acceptance matrix are green.
-Release: TestFlight Build 19 or the next build for each additional independently
-gated cleanup commit.
+Release: TestFlight Build 19.
 
 ### C07 — Close the release record
 
@@ -243,16 +247,20 @@ the app binary is identical to the last valid C06 build.
 | C03 accessibility | `41d33d7` | [32745359879](https://github.com/anicolao/player/actions/runs/32745359879) | green | 16 | `VALID` / `IN_BETA_TESTING` |
 | C04 recovery | `b128992` | [32761613152](https://github.com/anicolao/player/actions/runs/32761613152) | green | 17 | `VALID` / `IN_BETA_TESTING` |
 | C05 scale | `b8d05ec` | [32771484063](https://github.com/anicolao/player/actions/runs/32771484063) | green | 18 | `VALID` / `IN_BETA_TESTING` |
-| C06 cleanup | pending | pending | pending | 19+ | pending |
+| C06 cleanup | `8c5c801` | [32781597366](https://github.com/anicolao/player/actions/runs/32781597366) | green | 19 | `VALID` / `IN_BETA_TESTING` |
+
+Build 19 App Store Connect ID:
+`d070df64-10ff-466d-9bb4-d4ec340042bd` (uploaded 2026-08-24).
 
 ## Final completion gate
 
-The PR is ready to merge only when:
+The PR is ready to merge. Completion evidence confirms that:
 
 - every ledger row is complete and every app-bearing SHA has a valid Internal
   TestFlight build;
 - Stories 001–011 and all nonvisual suites pass on the pinned environment;
-- the opt-in private full-book smoke test reports only neutral facts and passes;
+- the optional private full-book smoke command remains local-only, reports only
+  neutral facts when configured, and never mutates its source fixture;
 - accessibility, offline, migration, backup, diagnostics-redaction, and scale
   audits are recorded;
 - the mockup comparison has no unexplained missing feature or known product bug;

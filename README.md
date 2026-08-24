@@ -5,14 +5,14 @@
 **Player** is a working title for an iOS app for people who bring their own DRM-free audiobooks. Its defining feature is not another play button: it is a forgiving path from “these files are somewhere on my phone or cloud drive” to “this is one correctly ordered, beautifully presented book.”
 
 The repository contains the native SwiftUI product, its local import and
-playback core, and eleven deterministic end-to-end product journeys. Builds are
-distributed to an internal TestFlight group while the remaining MVP completion
-gates are closed. [VISION.md](VISION.md) explains the product direction,
+playback core, and eleven deterministic end-to-end product journeys. The MVP
+completion gates are closed, and the verified app is distributed to the
+internal TestFlight group. [VISION.md](VISION.md) explains the product direction,
 [MVP_DESIGN.md](MVP_DESIGN.md) defines the first useful target,
 [UX_DESIGN.md](UX_DESIGN.md) defines the interaction and visual system,
 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) contains the original tracer
-plan, and [MVP_COMPLETION_PLAN.md](MVP_COMPLETION_PLAN.md) is the active release
-train. [BACKUP_AND_RESTORE.md](BACKUP_AND_RESTORE.md) specifies the portable
+plan, and [MVP_COMPLETION_PLAN.md](MVP_COMPLETION_PLAN.md) is the completed
+release record. [BACKUP_AND_RESTORE.md](BACKUP_AND_RESTORE.md) specifies the portable
 backup format and recovery guarantees, and
 [ACCESSIBILITY_AUDIT.md](ACCESSIBILITY_AUDIT.md) records the accessibility task
 matrix and reproducible evidence. [OFFLINE_RECOVERY_AUDIT.md](OFFLINE_RECOVERY_AUDIT.md)
@@ -155,7 +155,7 @@ The runner creates and deletes its own `Player E2E` simulator. See [apps/ios/REA
 Product feedback is especially useful when it includes the starting file layout, import route, desired grouping/order, and what the app actually did. Please do not attach copyrighted audiobook files to public issues; use a minimal synthetic fixture that reproduces the problem.
 
 Contributions should align with the priorities and non-goals in
-[VISION.md](VISION.md) and the active completion gate in
+[VISION.md](VISION.md) and the completed MVP release record in
 [MVP_COMPLETION_PLAN.md](MVP_COMPLETION_PLAN.md).
 
 ## Legal and license

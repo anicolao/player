@@ -1,6 +1,8 @@
 # MVP mockup comparison
 
-Status: C06 audit complete; exact CI and TestFlight evidence pending
+Status: complete — C06 `8c5c801`, CI run
+[32781597366](https://github.com/anicolao/player/actions/runs/32781597366),
+TestFlight Build 19 (`VALID` / `IN_BETA_TESTING`)
 Audited: 2026-08-24
 
 ## Evidence reviewed

@@ -1,6 +1,8 @@
 # MVP acceptance evidence
 
-Status: C06 acceptance evidence complete; exact release verification pending
+Status: complete — C06 `8c5c801`, CI run
+[32781597366](https://github.com/anicolao/player/actions/runs/32781597366),
+TestFlight Build 19 (`VALID` / `IN_BETA_TESTING`)
 
 This matrix maps the complete T00–T19 contract to committed, reproducible
 evidence. The canonical command is:
