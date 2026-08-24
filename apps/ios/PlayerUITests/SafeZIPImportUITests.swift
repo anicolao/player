@@ -178,7 +178,10 @@ final class SafeZIPImportUITests: XCTestCase {
   }
 
   private func requireValue(_ element: XCUIElement, _ expected: String) throws {
-    let deadline = Date().addingTimeInterval(2)
+    // Archive inspection runs on production async paths. A cold hosted
+    // simulator can remain in the observable processing state for several
+    // seconds even though the same fixture completes immediately when warm.
+    let deadline = Date().addingTimeInterval(10)
     var latest: String?
     repeat {
       latest = element.value as? String
