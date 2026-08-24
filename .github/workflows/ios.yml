@@ -12,6 +12,7 @@ on:
       - MVP_DESIGN.md
       - DIRECT_IMPORT_ALTERNATIVES.md
       - DIRECT_IMPORT_UX.md
+      - BACKUP_AND_RESTORE.md
       - README.md
       - TESTFLIGHT_SETUP.md
       - UX_DESIGN.md
@@ -30,6 +31,7 @@ on:
       - MVP_DESIGN.md
       - DIRECT_IMPORT_ALTERNATIVES.md
       - DIRECT_IMPORT_UX.md
+      - BACKUP_AND_RESTORE.md
       - README.md
       - TESTFLIGHT_SETUP.md
       - UX_DESIGN.md
@@ -130,6 +132,9 @@ jobs:
           - story: 008-library-search
             tests: >-
               PlayerUITests/LibraryOrganizationUITests/testOrganizesDailyLibraryAndRestoresATrashedBook
+          - story: 010-library-backup
+            tests: >-
+              PlayerUITests/BackupUITests/testExportsClearsAndRestoresAVerifiedPortableLibrary
     defaults:
       run:
         shell: nix develop --command bash --noprofile --norc -e -o pipefail {0}

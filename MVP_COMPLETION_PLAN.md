@@ -238,7 +238,7 @@ the app binary is identical to the last valid C06 build.
 | Milestone | Commit SHA | CI run | Result | TestFlight build | App Store state |
 | --- | --- | --- | --- | --- | --- |
 | C00 contract | `8276a5f` | [32678084366](https://github.com/anicolao/player/actions/runs/32678084366) | green | — | — |
-| C01 direct import | pending | pending | pending | 14 | pending |
+| C01 direct import | `21b8d94` | [32679634232](https://github.com/anicolao/player/actions/runs/32679634232) | green | 14 | `VALID` / `IN_BETA_TESTING` |
 | C02 backup | pending | pending | pending | 15 | pending |
 | C03 accessibility | pending | pending | pending | 16 | pending |
 | C04 recovery | pending | pending | pending | 17 | pending |

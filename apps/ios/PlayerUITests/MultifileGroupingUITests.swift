@@ -229,7 +229,9 @@ final class MultifileGroupingUITests: XCTestCase {
   }
 
   private func requireValue(_ element: XCUIElement, _ expected: String) throws {
-    let deadline = Date().addingTimeInterval(2)
+    // Import acquisition performs real filesystem work. Hosted macOS runners can
+    // take several seconds longer than a warm local simulator under contention.
+    let deadline = Date().addingTimeInterval(10)
     var latest: String?
     repeat {
       if element.exists {

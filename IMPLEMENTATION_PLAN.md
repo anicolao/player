@@ -414,6 +414,9 @@ Verification:
 
 ### T16 — Take the library with you
 
+**Status:** implemented by the C02 MVP completion milestone; see
+[BACKUP_AND_RESTORE.md](BACKUP_AND_RESTORE.md) and Story 010.
+
 **Commit:** `feat: back up and restore the local library`
 
 Listener journey:
