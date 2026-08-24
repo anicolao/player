@@ -31,7 +31,8 @@ extension EnvironmentValues {
 
 struct PlayerAccessibilityRootModifier: ViewModifier {
   @Environment(\.accessibilityReduceMotion) private var systemReducesMotion
-  @Environment(\.accessibilityDifferentiateWithoutColor) private var systemDifferentiatesWithoutColor
+  @Environment(\.accessibilityDifferentiateWithoutColor) private
+    var systemDifferentiatesWithoutColor
   @Environment(\.colorSchemeContrast) private var systemContrast
 
   let preferences: AccessibilityPreferences
@@ -62,7 +63,9 @@ private struct AccessibleCardModifier: ViewModifier {
     content.overlay {
       if highContrast || differentiateWithoutColor {
         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-          .stroke(PlayerColor.ink.opacity(highContrast ? 0.58 : 0.28), lineWidth: highContrast ? 2 : 1)
+          .stroke(
+            PlayerColor.ink.opacity(highContrast ? 0.58 : 0.28), lineWidth: highContrast ? 2 : 1
+          )
           .accessibilityHidden(true)
       }
     }
@@ -94,7 +97,8 @@ private struct AccessibilityScrollModifier: ViewModifier {
 
 struct AccessibilitySettingsView: View {
   @Environment(\.accessibilityReduceMotion) private var systemReducesMotion
-  @Environment(\.accessibilityDifferentiateWithoutColor) private var systemDifferentiatesWithoutColor
+  @Environment(\.accessibilityDifferentiateWithoutColor) private
+    var systemDifferentiatesWithoutColor
   @Environment(\.colorSchemeContrast) private var systemContrast
   @Environment(\.dynamicTypeSize) private var dynamicTypeSize
   @Environment(\.legibilityWeight) private var legibilityWeight
@@ -104,41 +108,60 @@ struct AccessibilitySettingsView: View {
   @State private var reducesDecorativeArtwork = false
 
   var body: some View {
-    Form {
-      Section {
-        Toggle(
-          "Use higher contrast",
-          isOn: $prefersHighContrast
-        )
+    ScrollViewReader { proxy in
+      Form {
+        Section {
+          Toggle(
+            "Use higher contrast",
+            isOn: $prefersHighContrast
+          )
           .accessibilityIdentifier("accessibility-high-contrast")
-        Toggle(
-          "Reduce decorative artwork",
-          isOn: $reducesDecorativeArtwork
-        )
-        .accessibilityIdentifier("accessibility-reduce-artwork")
-      } header: {
-        Text("Display")
-      } footer: {
-        Text("These options can strengthen the interface beyond your iPhone settings. System accessibility settings always remain authoritative.")
-      }
-
-      Section("Active iPhone settings") {
-        systemRow("Reduce Motion", enabled: systemReducesMotion, symbol: "figure.walk.motion")
-        systemRow(
-          "Increase Contrast",
-          enabled: systemContrast == .increased,
-          symbol: "circle.lefthalf.filled"
-        )
-        systemRow(
-          "Differentiate Without Color",
-          enabled: systemDifferentiatesWithoutColor,
-          symbol: "eye"
-        )
-        systemRow("Bold Text", enabled: legibilityWeight == .bold, symbol: "bold")
-        LabeledContent("Text size") {
-          Text(dynamicTypeSize.isAccessibilitySize ? "Accessibility" : "Standard")
+          Toggle(
+            "Reduce decorative artwork",
+            isOn: $reducesDecorativeArtwork
+          )
+          .accessibilityIdentifier("accessibility-reduce-artwork")
+        } header: {
+          Text("Display")
+        } footer: {
+          Text(
+            "These options can strengthen the interface beyond your iPhone settings. System accessibility settings always remain authoritative."
+          )
         }
+
+        Section("Active iPhone settings") {
+          systemRow("Reduce Motion", enabled: systemReducesMotion, symbol: "figure.walk.motion")
+          systemRow(
+            "Increase Contrast",
+            enabled: systemContrast == .increased,
+            symbol: "circle.lefthalf.filled"
+          )
+          systemRow(
+            "Differentiate Without Color",
+            enabled: systemDifferentiatesWithoutColor,
+            symbol: "eye"
+          )
+          systemRow("Bold Text", enabled: legibilityWeight == .bold, symbol: "bold")
+          LabeledContent("Text size") {
+            Text(dynamicTypeSize.isAccessibilitySize ? "Accessibility" : "Standard")
+          }
+        }
+        .id("active-iphone-settings")
       }
+      #if E2E
+        .overlay(alignment: .topLeading) {
+          Button {
+            proxy.scrollTo("active-iphone-settings", anchor: .top)
+          } label: {
+            Color.white.opacity(0.001)
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
+          }
+          .buttonStyle(.plain)
+          .accessibilityLabel("Align active iPhone settings")
+          .accessibilityIdentifier("e2e-align-active-iphone-settings")
+        }
+      #endif
     }
     .scrollContentBackground(.hidden)
     .background(PlayerColor.background)
@@ -194,6 +217,7 @@ struct AccessibilitySettingsView: View {
 
   private var modelPreferencesValue: String {
     let preferences = model.library.accessibilityPreferences
-    return "high-contrast=\(preferences.prefersHighContrast):reduce-artwork=\(preferences.reducesDecorativeArtwork)"
+    return
+      "high-contrast=\(preferences.prefersHighContrast):reduce-artwork=\(preferences.reducesDecorativeArtwork)"
   }
 }
