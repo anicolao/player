@@ -24,10 +24,11 @@ final class AccessibilityUITests: XCTestCase {
     XCTAssertTrue(reduceArtwork.waitForStringValue("1", timeout: 2))
 
     let preferences = anyElement(app, "accessibility-preferences-state")
-    XCTAssertTrue(preferences.waitForStringValue(
-      "high-contrast=true:reduce-artwork=true",
-      timeout: 2
-    ))
+    XCTAssertTrue(
+      preferences.waitForStringValue(
+        "high-contrast=true:reduce-artwork=true",
+        timeout: 2
+      ))
   }
 
   func testCoreJourneysRemainCompleteAtLargestAccessibilityText() throws {
@@ -38,14 +39,16 @@ final class AccessibilityUITests: XCTestCase {
       title: "Core listening journeys remain accessible at the largest text size",
       narrative:
         "As a listener using accessibility features, I can import, repair, organize, and listen without losing a primary action.",
-      fixture: "single-audiobook-ready, metadata-rich-book, synthetic-populated-library, and deterministic receiver states",
+      fixture:
+        "single-audiobook-ready, metadata-rich-book, synthetic-populated-library, and deterministic receiver states",
       additionalPreconditions: [
         "The simulator uses Accessibility XXXL text and Increase Contrast",
         "Every asserted control has a unique human-readable accessibility label",
         "Ordering is verified through non-drag buttons, and the native playback slider remains adjustable",
         "Reduce Motion, Differentiate Without Color, and Bold Text are audited through SwiftUI environment adaptation and the Settings status summary",
       ],
-      deviceConfiguration: "iPhone 17 on iOS 26.5, portrait, light appearance, Accessibility XXXL Dynamic Type, Increase Contrast"
+      deviceConfiguration:
+        "iPhone 17 on iOS 26.5, portrait, light appearance, Accessibility XXXL Dynamic Type, Increase Contrast"
     )
 
     var app = makeApplication(fixture: "single-audiobook-ready")
@@ -57,10 +60,16 @@ final class AccessibilityUITests: XCTestCase {
       "large-text-import-review",
       description: "Import review keeps its title and pinned primary action at Accessibility XXXL",
       verifications: [
-        .exists(anyElement(app, "review-import-screen"), "The review screen exposes one named semantic container"),
-        .exists(app.staticTexts["The Lighthouse Signal"], "The full audiobook title remains readable"),
-        .valueEquals(add, "ready:enabled", "Add to Library exposes its ready state without color alone"),
-        visibleControl(add, in: app, label: "Add to Library", specification: "Add to Library is visible, enabled, named, and tappable"),
+        .exists(
+          anyElement(app, "review-import-screen"),
+          "The review screen exposes one named semantic container"),
+        .exists(
+          app.staticTexts["The Lighthouse Signal"], "The full audiobook title remains readable"),
+        .valueEquals(
+          add, "ready:enabled", "Add to Library exposes its ready state without color alone"),
+        visibleControl(
+          add, in: app, label: "Add to Library",
+          specification: "Add to Library is visible, enabled, named, and tappable"),
       ]
     )
 
@@ -75,7 +84,9 @@ final class AccessibilityUITests: XCTestCase {
       "large-text-metadata-repair",
       description: "Metadata fields reflow vertically instead of compressing their labels",
       verifications: [
-        .exists(anyElement(app, "metadata-editor-screen"), "The metadata editor has a stable semantic screen identity"),
+        .exists(
+          anyElement(app, "metadata-editor-screen"),
+          "The metadata editor has a stable semantic screen identity"),
         .exists(titleField, "The full Title field remains reachable"),
         .exists(app.buttons["metadata-apply-title"], "The explicit Apply action remains available"),
         .exists(app.buttons["save-metadata-repair"], "Save remains in the navigation bar"),
@@ -94,9 +105,12 @@ final class AccessibilityUITests: XCTestCase {
       "large-text-book-detail",
       description: "Book Detail stacks identity and primary actions at the largest text size",
       verifications: [
-        .exists(anyElement(app, "book-detail-screen"), "Book Detail exposes its exact semantic state"),
+        .exists(
+          anyElement(app, "book-detail-screen"), "Book Detail exposes its exact semantic state"),
         .exists(app.staticTexts["Harbor at Dawn"], "The title is not truncated"),
-        visibleControl(playBook, in: app, label: "Play", specification: "Play remains reachable and directly tappable"),
+        visibleControl(
+          playBook, in: app, label: "Play",
+          specification: "Play remains reachable and directly tappable"),
       ]
     )
 
@@ -111,8 +125,11 @@ final class AccessibilityUITests: XCTestCase {
       verifications: [
         .exists(anyElement(app, "now-playing-screen"), "Now Playing exposes its playback state"),
         .exists(slider, "The listening timeline remains a native adjustable control"),
-        .valueContains(slider, "remaining", "The timeline names elapsed and remaining listening time"),
-        visibleControl(playPause, in: app, label: "Pause", specification: "Play or Pause remains visible and tappable"),
+        .valueContains(
+          slider, "remaining", "The timeline names elapsed and remaining listening time"),
+        visibleControl(
+          playPause, in: app, label: "Pause",
+          specification: "Play or Pause remains visible and tappable"),
         .exists(app.buttons["player-skip-backward"], "Skip Back has a named VoiceOver action"),
         .exists(app.buttons["player-skip-forward"], "Skip Forward has a named VoiceOver action"),
       ]
@@ -154,13 +171,20 @@ final class AccessibilityUITests: XCTestCase {
     let reduceArtwork = app.switches["accessibility-reduce-artwork"]
     tapSwitchControl(reduceArtwork)
     let activeSettings = app.staticTexts["Active iPhone settings"]
-    scrollTo(activeSettings, in: app)
+    app.buttons["e2e-align-active-iphone-settings"].tap()
+    XCTAssertTrue(activeSettings.waitForExistence(timeout: 2))
+    RunLoop.current.run(until: Date().addingTimeInterval(0.8))
     try tester.step(
       "accessibility-preferences",
       description: "Settings distinguishes app preferences from authoritative iPhone settings",
       verifications: [
-        .valueEquals(anyElement(app, "accessibility-preferences-state"), "high-contrast=true:reduce-artwork=true", "Both app-specific display preferences persist in the model"),
-        .valueContains(anyElement(app, "accessibility-settings-screen"), "system-increase-contrast=true", "The active system Increase Contrast setting is reported"),
+        .valueEquals(
+          anyElement(app, "accessibility-preferences-state"),
+          "high-contrast=true:reduce-artwork=true",
+          "Both app-specific display preferences persist in the model"),
+        .valueContains(
+          anyElement(app, "accessibility-settings-screen"), "system-increase-contrast=true",
+          "The active system Increase Contrast setting is reported"),
         .exists(activeSettings, "System accessibility settings are presented separately"),
       ]
     )
@@ -173,9 +197,14 @@ final class AccessibilityUITests: XCTestCase {
       "large-text-computer-receiver",
       description: "The direct-import receiver remains scrollable and exposes its pairing details",
       verifications: [
-        .valueEquals(app.scrollViews["computer-receiver-screen"], "receiver:ready", "The receiver reports a ready state without relying on color"),
-        .exists(app.staticTexts["computer-receiver-address"], "The local address remains discoverable"),
-        .exists(app.staticTexts["computer-receiver-pairing-code"], "The pairing code remains discoverable"),
+        .valueEquals(
+          app.scrollViews["computer-receiver-screen"], "receiver:ready",
+          "The receiver reports a ready state without relying on color"),
+        .exists(
+          app.staticTexts["computer-receiver-address"], "The local address remains discoverable"),
+        .exists(
+          app.staticTexts["computer-receiver-pairing-code"], "The pairing code remains discoverable"
+        ),
       ]
     )
 
@@ -191,9 +220,10 @@ final class AccessibilityUITests: XCTestCase {
 
   private func makeReceiverApplication() -> XCUIApplication {
     let app = XCUIApplication()
-    app.launchArguments = baseArguments(fixture: "empty-library") + [
-      "-e2e-computer-receiver-ready", "-e2e-show-mirroring-tip",
-    ]
+    app.launchArguments =
+      baseArguments(fixture: "empty-library") + [
+        "-e2e-computer-receiver-ready", "-e2e-show-mirroring-tip",
+      ]
     app.launchEnvironment["TZ"] = "America/Toronto"
     return app
   }
