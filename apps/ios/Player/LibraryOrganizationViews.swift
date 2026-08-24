@@ -709,11 +709,34 @@ struct LibraryTrashView: View {
   }
 }
 
+private enum LibrarySettingsDestination: Hashable {
+  case trash
+  case storage
+  case backup
+  case playbackDefaults
+  case smartRewind
+  case accessibility
+}
+
 struct LibraryOrganizationSettingsView: View {
   @Bindable var model: PlayerModel
+  @State private var path: [LibrarySettingsDestination] = []
+
+  init(model: PlayerModel) {
+    self.model = model
+    #if E2E
+      let arguments = ProcessInfo.processInfo.arguments
+      if let option = arguments.firstIndex(of: "-e2e-start-settings-route"),
+        arguments.indices.contains(option + 1),
+        arguments[option + 1] == "backup"
+      {
+        _path = State(initialValue: [.backup])
+      }
+    #endif
+  }
 
   var body: some View {
-    NavigationStack {
+    NavigationStack(path: $path) {
       List {
         Section("Library") {
           Picker("All Books layout", selection: Binding(
@@ -723,42 +746,30 @@ struct LibraryOrganizationSettingsView: View {
             Text("Grid").tag(LibraryViewStyle.grid)
             Text("List").tag(LibraryViewStyle.list)
           }
-          NavigationLink {
-            LibraryTrashView(model: model)
-          } label: {
+          NavigationLink(value: LibrarySettingsDestination.trash) {
             Label("Trash", systemImage: "trash")
           }
-          NavigationLink {
-            StorageSettingsView(model: model)
-          } label: {
+          NavigationLink(value: LibrarySettingsDestination.storage) {
             Label("Storage", systemImage: "internaldrive")
           }
           .accessibilityIdentifier("settings-storage")
-          NavigationLink {
-            BackupSettingsView(model: model)
-          } label: {
+          NavigationLink(value: LibrarySettingsDestination.backup) {
             Label("Backup", systemImage: "externaldrive.badge.timemachine")
           }
           .accessibilityIdentifier("settings-backup")
         }
         Section("Playback") {
-          NavigationLink {
-            TransportPreferencesEditor(model: model)
-          } label: {
+          NavigationLink(value: LibrarySettingsDestination.playbackDefaults) {
             Label("Playback defaults", systemImage: "gauge.with.dots.needle.50percent")
           }
           .accessibilityIdentifier("playback-defaults")
-          NavigationLink {
-            SmartRewindSettingsView(model: model)
-          } label: {
+          NavigationLink(value: LibrarySettingsDestination.smartRewind) {
             Label("Smart Rewind", systemImage: "gobackward")
           }
           .accessibilityIdentifier("smart-rewind-settings")
         }
         Section("Accessibility") {
-          NavigationLink {
-            AccessibilitySettingsView(model: model)
-          } label: {
+          NavigationLink(value: LibrarySettingsDestination.accessibility) {
             Label("Accessibility", systemImage: "accessibility")
           }
           .accessibilityIdentifier("settings-accessibility")
@@ -767,6 +778,16 @@ struct LibraryOrganizationSettingsView: View {
       .scrollContentBackground(.hidden)
       .background(PlayerColor.background)
       .navigationTitle("Settings")
+      .navigationDestination(for: LibrarySettingsDestination.self) { destination in
+        switch destination {
+        case .trash: LibraryTrashView(model: model)
+        case .storage: StorageSettingsView(model: model)
+        case .backup: BackupSettingsView(model: model)
+        case .playbackDefaults: TransportPreferencesEditor(model: model)
+        case .smartRewind: SmartRewindSettingsView(model: model)
+        case .accessibility: AccessibilitySettingsView(model: model)
+        }
+      }
     }
   }
 }
