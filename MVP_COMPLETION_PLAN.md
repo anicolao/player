@@ -241,7 +241,7 @@ the app binary is identical to the last valid C06 build.
 | C01 direct import | `21b8d94` | [32679634232](https://github.com/anicolao/player/actions/runs/32679634232) | green | 14 | `VALID` / `IN_BETA_TESTING` |
 | C02 backup | `94e5f14` | [32692128621](https://github.com/anicolao/player/actions/runs/32692128621) | green | 15 | `VALID` / `IN_BETA_TESTING` |
 | C03 accessibility | `41d33d7` | [32745359879](https://github.com/anicolao/player/actions/runs/32745359879) | green | 16 | `VALID` / `IN_BETA_TESTING` |
-| C04 recovery | pending | pending | pending | 17 | pending |
+| C04 recovery | `b128992` | [32761613152](https://github.com/anicolao/player/actions/runs/32761613152) | green | 17 | `VALID` / `IN_BETA_TESTING` |
 | C05 scale | pending | pending | pending | 18 | pending |
 | C06 cleanup | pending | pending | pending | 19+ | pending |
 

@@ -77,7 +77,12 @@ See [E2E_GUIDE.md](../../E2E_GUIDE.md) for the complete contract.
 - Versioned `.playerbackup` export/restore with streamed media checksums and
   rotating automatic database copies (Build 15 candidate)
 - Explicit startup recovery with preserved corrupt-store evidence, UUID-owned
-  orphan quarantine, offline task audit, and sanitized support export (Build 17 candidate)
+  orphan quarantine, offline task audit, and sanitized support export (Build 17)
+- Durable 1,000/10,000-record startup budgets, actor-isolated search indexing,
+  bounded-memory multi-gig import/backup proof, and schema 1–15 fixtures (Build
+  18 candidate)
 
-Scale evidence and the final mockup comparison remain in the serial
-[MVP completion release train](../../MVP_COMPLETION_PLAN.md).
+Run `apps/ios/scripts/run-complete-suite.sh` for all unit/integration checks and
+Stories 001–011. The remaining final mockup comparison is tracked in the serial
+[MVP completion release train](../../MVP_COMPLETION_PLAN.md), with executable
+coverage mapped in [MVP_ACCEPTANCE_MATRIX.md](../../MVP_ACCEPTANCE_MATRIX.md).

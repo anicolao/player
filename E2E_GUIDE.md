@@ -64,6 +64,16 @@ parallel jobs. Every story uploads its own diagnostics artifact, and the
 job and every story job succeed. Serial release work advances only from that
 aggregate green result for the exact commit SHA.
 
+To run the complete serial acceptance suite locally—fixture verification, all
+unit/integration tests, and Stories 001–011—use:
+
+```bash
+apps/ios/scripts/run-complete-suite.sh
+```
+
+The performance, migration, and tracer mapping is maintained in
+[MVP_ACCEPTANCE_MATRIX.md](MVP_ACCEPTANCE_MATRIX.md).
+
 ## Story structure
 
 Each story lives under `tests/e2e/<number>-<name>/` and contains:

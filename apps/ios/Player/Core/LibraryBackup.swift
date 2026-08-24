@@ -377,43 +377,13 @@ actor FileSystemLibraryBackupManager: LibraryBackupManaging {
       throw LibraryBackupError.missingPayload(source.lastPathComponent)
     }
     fileManager.createFile(atPath: destination.path, contents: nil)
-    let input = try FileHandle(forReadingFrom: source)
-    let output = try FileHandle(forWritingTo: destination)
-    defer {
-      try? input.close()
-      try? output.close()
-    }
-    var hash = SHA256()
-    var count: Int64 = 0
-    while try autoreleasepool(invoking: {
-      try Task.checkCancellation()
-      guard let data = try input.read(upToCount: 1_024 * 1_024), !data.isEmpty else {
-        return false
-      }
-      hash.update(data: data)
-      try output.write(contentsOf: data)
-      count += Int64(data.count)
-      return true
-    }) {}
-    try output.synchronize()
-    return (count, hash.finalize().map { String(format: "%02x", $0) }.joined())
+    let digest = try StreamingFileIO.copyAndHash(from: source, to: destination)
+    return (digest.byteCount, digest.checksumSHA256)
   }
 
   private func hashFile(at url: URL) throws -> (byteCount: Int64, checksumSHA256: String) {
-    let input = try FileHandle(forReadingFrom: url)
-    defer { try? input.close() }
-    var hash = SHA256()
-    var count: Int64 = 0
-    while try autoreleasepool(invoking: {
-      try Task.checkCancellation()
-      guard let data = try input.read(upToCount: 1_024 * 1_024), !data.isEmpty else {
-        return false
-      }
-      hash.update(data: data)
-      count += Int64(data.count)
-      return true
-    }) {}
-    return (count, hash.finalize().map { String(format: "%02x", $0) }.joined())
+    let digest = try StreamingFileIO.hashFile(at: url)
+    return (digest.byteCount, digest.checksumSHA256)
   }
 
   private static func hash(_ data: Data) -> String {
