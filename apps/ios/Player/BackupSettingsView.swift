@@ -119,6 +119,10 @@ struct BackupSettingsView: View {
       #if E2E
         .id(e2eRevision)
       #endif
+      // Pin the grouped list's top inset. Without an explicit value,
+      // NavigationStack can settle this screen at one of two top offsets after
+      // a push, which also creates a small visible jump for listeners.
+      .contentMargins(.top, 8, for: .scrollContent)
       #if E2E
         if E2EBackupBridge.shared.isConfigured {
           StateProbe(
