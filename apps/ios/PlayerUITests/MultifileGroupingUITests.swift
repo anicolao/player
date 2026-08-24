@@ -174,17 +174,18 @@ final class MultifileGroupingUITests: XCTestCase {
 
     app.buttons["save-order"].tap()
     try requireValue(
-      reviewImport,
+      anyElement(app, "review-import-screen"),
       "proposal:ready:1-book:8-tracks:0-warnings:revision-7"
     )
-    try requireValue(addToLibrary, "ready:enabled")
-    XCTAssertTrue(addToLibrary.isEnabled)
+    let readyAddToLibrary = app.buttons["add-import-to-library"]
+    try requireValue(readyAddToLibrary, "ready:enabled")
+    XCTAssertTrue(readyAddToLibrary.isEnabled)
     let commitProbe = anyElement(app, "commit-probe")
     try requireValue(
       commitProbe,
       "transaction:pending:books=0:assets=0:staging=8:source-unchanged=true"
     )
-    addToLibrary.tap()
+    readyAddToLibrary.tap()
 
     let library = anyElement(app, "library-screen")
     let committedBook = anyElement(app, "recent-book-\(finalBookID)")
@@ -199,7 +200,7 @@ final class MultifileGroupingUITests: XCTestCase {
         ),
         .exists(committedBook, "The populated Library exposes the stable corrected book"),
         .valueEquals(
-          commitProbe,
+          anyElement(app, "commit-probe"),
           "transaction:committed:books=1:assets=8:staging=0:source-unchanged=true:rollback=available",
           "All eight assets committed together, staging cleared, and rollback remains available"
         ),

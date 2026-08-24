@@ -10,6 +10,7 @@ final class BackupUITests: XCTestCase {
       "-e2e-fixture", "portable-backup", "-e2e-reset",
       "-e2e-start-section", "settings",
       "-e2e-start-settings-route", "backup",
+      "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL",
     ]
     app.launchEnvironment["PLAYER_E2E_DYNAMIC_TYPE"] = "large"
     let tester = TestStepHelper(testCase: self)
@@ -26,7 +27,6 @@ final class BackupUITests: XCTestCase {
     )
     app.launch()
 
-    let probe = anyElement(app, "backup-e2e-probe")
     scrollBackupToTop(app)
     try tester.step(
       "backup-settings",
@@ -41,8 +41,7 @@ final class BackupUITests: XCTestCase {
     )
 
     tapWalkthroughAction("e2e-backup-export", in: app)
-    try requireValue(
-      probe,
+    try requireProbeValue(
       "backup:exported:books=1:bookmarks=1:position=42000:media=1:audio=true",
       in: app
     )
@@ -52,7 +51,7 @@ final class BackupUITests: XCTestCase {
       description: "A media-inclusive package preserves one checksum-verified audio payload",
       verifications: [
         .valueEquals(
-          probe,
+          anyElement(app, "backup-e2e-probe"),
           "backup:exported:books=1:bookmarks=1:position=42000:media=1:audio=true",
           "The prepared package retains the complete catalog and exactly one managed audio file"
         )
@@ -60,8 +59,7 @@ final class BackupUITests: XCTestCase {
     )
 
     tapWalkthroughAction("e2e-backup-clear", in: app)
-    try requireValue(
-      probe,
+    try requireProbeValue(
       "backup:cleared:books=0:bookmarks=0:position=-1:media=0:audio=false",
       in: app
     )
@@ -71,7 +69,7 @@ final class BackupUITests: XCTestCase {
       description: "The fixture library and managed media are absent before restore",
       verifications: [
         .valueEquals(
-          probe,
+          anyElement(app, "backup-e2e-probe"),
           "backup:cleared:books=0:bookmarks=0:position=-1:media=0:audio=false",
           "No catalog record or managed audio copy remains"
         )
@@ -79,8 +77,7 @@ final class BackupUITests: XCTestCase {
     )
 
     tapWalkthroughAction("e2e-backup-restore", in: app)
-    try requireValue(
-      probe,
+    try requireProbeValue(
       "backup:restored:books=1:bookmarks=1:position=42000:media=1:audio=true",
       in: app
     )
@@ -90,7 +87,7 @@ final class BackupUITests: XCTestCase {
       description: "Restore returns the identical library only after integrity verification",
       verifications: [
         .valueEquals(
-          probe,
+          anyElement(app, "backup-e2e-probe"),
           "backup:restored:books=1:bookmarks=1:position=42000:media=1:audio=true",
           "Book, bookmark, listening position, and exactly one audio file are restored"
         )
@@ -125,9 +122,24 @@ final class BackupUITests: XCTestCase {
   private func tapWalkthroughAction(_ identifier: String, in app: XCUIApplication) {
     let scrollView = app.scrollViews["backup-scroll"]
     XCTAssertTrue(scrollView.waitForExistence(timeout: 2))
-    for _ in 0..<3 { scrollView.swipeUp(velocity: .fast) }
+    XCTAssertTrue(app.buttons[identifier].waitForExistence(timeout: 2))
+    let miniPlayer = anyElement(app, "mini-player")
+    // The mini player's material extends beyond the accessibility frame XCTest
+    // reports. Three fixed swipes put every walkthrough action in unobscured space.
+    for _ in 0..<3 {
+      scrollView.swipeUp(velocity: .fast)
+    }
     let button = app.buttons[identifier]
     XCTAssertTrue(button.waitForExistence(timeout: 2))
+    XCTAssertTrue(button.isHittable)
+    if miniPlayer.exists {
+      XCTAssertLessThan(button.frame.maxY, miniPlayer.frame.minY)
+    }
+    let enabledDeadline = Date().addingTimeInterval(5)
+    while !button.isEnabled, Date() < enabledDeadline {
+      RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+    }
+    XCTAssertTrue(button.isEnabled)
     button.tap()
   }
 
@@ -147,6 +159,24 @@ final class BackupUITests: XCTestCase {
       )
       throw BackupUITestError.semanticStateUnavailable
     }
+  }
+
+  private func requireProbeValue(_ expected: String, in app: XCUIApplication) throws {
+    let deadline = Date().addingTimeInterval(5)
+    var latest: String?
+    repeat {
+      let probe = anyElement(app, "backup-e2e-probe")
+      if probe.exists {
+        latest = probe.value as? String
+        if latest == expected { return }
+      }
+      RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+    } while Date() < deadline
+
+    XCTFail(
+      "The backup journey did not reach \(expected); actual=\(String(describing: latest))"
+    )
+    throw BackupUITestError.semanticStateUnavailable
   }
 }
 
