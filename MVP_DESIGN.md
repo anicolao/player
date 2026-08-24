@@ -6,7 +6,7 @@
 - **Target:** Native iPhone MVP
 - **Minimum OS:** iOS 17
 - **Design baseline:** iPhone 17, portrait
-- **Last updated:** August 18, 2026
+- **Last updated:** August 23, 2026
 - **Companion documents:** [README.md](README.md), [VISION.md](VISION.md), [E2E_GUIDE.md](E2E_GUIDE.md)
 
 This document defines a buildable MVP, not the eventual full product. It is the source of truth for what the first useful test cohort receives, how the experience behaves, and what must be proven before the target is called complete.
@@ -36,13 +36,15 @@ The MVP succeeds when a cohort can replace its current local-file player for fou
 - Durable position history and recovery from accidental seek or stale state
 - Offline operation and portable library backup/export
 - VoiceOver, Dynamic Type, Reduce Motion, and sufficient contrast
-- Deterministic E2E walkthroughs with exact pixel baselines
+- Deterministic E2E walkthroughs with canonical pixel baselines (8/255 maximum
+  per-channel decoder allowance, with no spatial tolerance)
 
 ### Deliberately excluded
 
 - DRM removal or commercial-account extraction
 - Metadata lookup from an online catalog
-- Audiobookshelf, Plex, Jellyfin, WebDAV, SMB, or Wi-Fi upload
+- Audiobookshelf, Plex, Jellyfin, WebDAV, SMB, hosted upload, or an always-on
+  receiver (the explicit, foreground-only local receiver is included)
 - iCloud synchronization or any account system
 - CarPlay, Apple Watch, widgets, Siri, and Shortcuts
 - Silence shortening, equalizer, waveform editing, transcription, or read-along
@@ -490,7 +492,9 @@ These are measured budgets, not reasons to add longer UI-test timeouts. Work exc
 
 ## Privacy and security
 
-- No account, analytics SDK, advertising SDK, or network call in the MVP.
+- No account, analytics SDK, advertising SDK, Internet request, or remote
+  service in the MVP. The receiver makes a listener-initiated local-network
+  connection only while its screen is open.
 - Document-picker access is limited to items the listener selects.
 - Security-scoped access is held only as long as acquisition requires.
 - Support bundles exclude titles, contributor names, notes, filenames, paths, and listening history by default.

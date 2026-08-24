@@ -7,9 +7,13 @@ on:
       - apps/ios/**
       - tests/e2e/**
       - E2E_GUIDE.md
+      - MVP_COMPLETION_PLAN.md
       - IMPLEMENTATION_PLAN.md
       - MVP_DESIGN.md
+      - DIRECT_IMPORT_ALTERNATIVES.md
+      - DIRECT_IMPORT_UX.md
       - README.md
+      - TESTFLIGHT_SETUP.md
       - UX_DESIGN.md
       - VISION.md
       - .github/workflows/ios.yml
@@ -21,9 +25,13 @@ on:
       - apps/ios/**
       - tests/e2e/**
       - E2E_GUIDE.md
+      - MVP_COMPLETION_PLAN.md
       - IMPLEMENTATION_PLAN.md
       - MVP_DESIGN.md
+      - DIRECT_IMPORT_ALTERNATIVES.md
+      - DIRECT_IMPORT_UX.md
       - README.md
+      - TESTFLIGHT_SETUP.md
       - UX_DESIGN.md
       - VISION.md
       - .github/workflows/ios.yml
@@ -34,10 +42,10 @@ permissions:
   contents: read
 
 jobs:
-  ios-tests:
-    name: Core tests and exact E2E walkthroughs
+  core-tests:
+    name: Core tests
     runs-on: macos-26
-    timeout-minutes: 120
+    timeout-minutes: 30
     defaults:
       run:
         shell: nix develop --command bash --noprofile --norc -e -o pipefail {0}
@@ -81,92 +89,96 @@ jobs:
             test \
             CODE_SIGNING_ALLOWED=NO
 
-      - name: Run exact-pixel launch story
-        run: >-
-          apps/ios/scripts/run-e2e.sh
-          001-ios-launch
-          PlayerUITests/LaunchUITests/testLaunchesIntoEmptyLibrary
+  e2e:
+    name: E2E ${{ matrix.story }}
+    runs-on: macos-26
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - story: 001-ios-launch
+            tests: >-
+              PlayerUITests/LaunchUITests/testLaunchesIntoEmptyLibrary
+          - story: 002-import-and-play
+            tests: >-
+              PlayerUITests/ImportPlaybackUITests/testAbandonsReadyImportAndClearsInbox
+              PlayerUITests/ImportPlaybackUITests/testReviewsCommitsAndPlaysOneAudiobook
+              PlayerUITests/MetadataChapterUITests/testShowsEmbeddedMetadataAndStartsAChapter
+              PlayerUITests/ImportIngressResilienceUITests/testDocumentOpenResumesOneImportAcrossAcquireAndInspectRestarts
+              PlayerUITests/ImportIngressResilienceUITests/testConsumesAndDeduplicatesShareExtensionAppGroupHandoff
+          - story: 003-multifile-grouping
+            tests: >-
+              PlayerUITests/MultifileGroupingUITests/testRepairsMessyMultifileGroupingAndCommitsOneBookAtomically
+          - story: 004-metadata-repair
+            tests: >-
+              PlayerUITests/MetadataRepairUITests/testRepairsLocksCommitsAndUndoesMetadataWithoutChangingAudio
+          - story: 005-play-and-restore
+            tests: >-
+              PlayerUITests/PositionRestoreUITests/testRestoresAnAcknowledgedPausedPositionAfterTermination
+              PlayerUITests/RemoteInterruptionUITests/testRemoteInterruptionAndBackgroundEventsJournalAcknowledgedPositions
+              PlayerUITests/TransportControlsUITests/testCustomizesAndRestoresListeningControls
+              PlayerUITests/SmartRewindUITests/testSmartRewindAdaptsClampsPersistsAndUndoesExactly
+          - story: 006-safe-zip-import
+            tests: >-
+              PlayerUITests/SafeZIPImportUITests/testRejectsHostileZIPsThenCancelsAndRetriesAValidArchive
+              PlayerUITests/ImportRecoveryStorageUITests/testRecoversMixedImportsAndExplainsStorageWithoutTouchingSources
+          - story: 007-sleep-timer
+            tests: >-
+              PlayerUITests/SleepTimerUITests/testSleepTimerPersistsFadesStopsAndResumesWithContextExactly
+              PlayerUITests/BookmarkUITests/testBookmarksCaptureOrganizeSearchJumpDeleteAndUndoExactly
+          - story: 008-library-search
+            tests: >-
+              PlayerUITests/LibraryOrganizationUITests/testOrganizesDailyLibraryAndRestoresATrashedBook
+    defaults:
+      run:
+        shell: nix develop --command bash --noprofile --norc -e -o pipefail {0}
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      PLAYER_SKIP_SIMULATOR_LAUNCH: "1"
 
-      - name: Run exact-pixel import and playback story
-        run: >-
-          apps/ios/scripts/run-e2e.sh
-          002-import-and-play
-          PlayerUITests/ImportPlaybackUITests/testAbandonsReadyImportAndClearsInbox
-          PlayerUITests/ImportPlaybackUITests/testReviewsCommitsAndPlaysOneAudiobook
-          PlayerUITests/MetadataChapterUITests/testShowsEmbeddedMetadataAndStartsAChapter
-          PlayerUITests/ImportIngressResilienceUITests/testDocumentOpenResumesOneImportAcrossAcquireAndInspectRestarts
-          PlayerUITests/ImportIngressResilienceUITests/testConsumesAndDeduplicatesShareExtensionAppGroupHandoff
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Run exact-pixel multifile grouping story
-        run: >-
-          apps/ios/scripts/run-e2e.sh
-          003-multifile-grouping
-          PlayerUITests/MultifileGroupingUITests/testRepairsMessyMultifileGroupingAndCommitsOneBookAtomically
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
 
-      - name: Run exact-pixel metadata repair story
-        run: >-
-          apps/ios/scripts/run-e2e.sh
-          004-metadata-repair
-          PlayerUITests/MetadataRepairUITests/testRepairsLocksCommitsAndUndoesMetadataWithoutChangingAudio
+      - name: Verify pinned environment
+        run: apps/ios/scripts/verify-e2e-environment.sh
 
-      - name: Run exact-pixel safe ZIP story
-        run: >-
-          apps/ios/scripts/run-e2e.sh
-          006-safe-zip-import
-          PlayerUITests/SafeZIPImportUITests/testRejectsHostileZIPsThenCancelsAndRetriesAValidArchive
-          PlayerUITests/ImportRecoveryStorageUITests/testRecoversMixedImportsAndExplainsStorageWithoutTouchingSources
+      - name: Generate Xcode project
+        run: apps/ios/scripts/generate-project.sh
 
-      - name: Run exact-pixel library organization story
-        run: >-
-          apps/ios/scripts/run-e2e.sh
-          008-library-search
-          PlayerUITests/LibraryOrganizationUITests/testOrganizesDailyLibraryAndRestoresATrashedBook
+      - name: Require reproducible project generation
+        run: git diff --exit-code -- apps/ios/Player.xcodeproj
 
-      - name: Run exact-pixel position restoration story
+      - name: Run canonical-pixel story
         run: >-
           apps/ios/scripts/run-e2e.sh
-          005-play-and-restore
-          PlayerUITests/PositionRestoreUITests/testRestoresAnAcknowledgedPausedPositionAfterTermination
-          PlayerUITests/RemoteInterruptionUITests/testRemoteInterruptionAndBackgroundEventsJournalAcknowledgedPositions
-          PlayerUITests/TransportControlsUITests/testCustomizesAndRestoresListeningControls
-          PlayerUITests/SmartRewindUITests/testSmartRewindAdaptsClampsPersistsAndUndoesExactly
-
-      - name: Run exact-pixel sleep timer story
-        run: >-
-          apps/ios/scripts/run-e2e.sh
-          007-sleep-timer
-          PlayerUITests/SleepTimerUITests/testSleepTimerPersistsFadesStopsAndResumesWithContextExactly
-          PlayerUITests/BookmarkUITests/testBookmarksCaptureOrganizeSearchJumpDeleteAndUndoExactly
+          ${{ matrix.story }}
+          ${{ matrix.tests }}
 
       - name: Upload reviewable diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ios-e2e-walkthroughs
+          name: ios-e2e-${{ matrix.story }}
           path: |
-            apps/ios/DerivedData/E2E/001-ios-launch/ActualWalkthrough/
-            apps/ios/DerivedData/E2E/001-ios-launch/Attachments/
-            apps/ios/DerivedData/E2E/001-ios-launch/Results/Story.xcresult/
-            apps/ios/DerivedData/E2E/002-import-and-play/ActualWalkthrough/
-            apps/ios/DerivedData/E2E/002-import-and-play/Attachments/
-            apps/ios/DerivedData/E2E/002-import-and-play/Results/Story.xcresult/
-            apps/ios/DerivedData/E2E/003-multifile-grouping/ActualWalkthrough/
-            apps/ios/DerivedData/E2E/003-multifile-grouping/Attachments/
-            apps/ios/DerivedData/E2E/003-multifile-grouping/Results/Story.xcresult/
-            apps/ios/DerivedData/E2E/004-metadata-repair/ActualWalkthrough/
-            apps/ios/DerivedData/E2E/004-metadata-repair/Attachments/
-            apps/ios/DerivedData/E2E/004-metadata-repair/Results/Story.xcresult/
-            apps/ios/DerivedData/E2E/006-safe-zip-import/ActualWalkthrough/
-            apps/ios/DerivedData/E2E/006-safe-zip-import/Attachments/
-            apps/ios/DerivedData/E2E/006-safe-zip-import/Results/Story.xcresult/
-            apps/ios/DerivedData/E2E/008-library-search/ActualWalkthrough/
-            apps/ios/DerivedData/E2E/008-library-search/Attachments/
-            apps/ios/DerivedData/E2E/008-library-search/Results/Story.xcresult/
-            apps/ios/DerivedData/E2E/005-play-and-restore/ActualWalkthrough/
-            apps/ios/DerivedData/E2E/005-play-and-restore/Attachments/
-            apps/ios/DerivedData/E2E/005-play-and-restore/Results/Story.xcresult/
-            apps/ios/DerivedData/E2E/007-sleep-timer/ActualWalkthrough/
-            apps/ios/DerivedData/E2E/007-sleep-timer/Attachments/
-            apps/ios/DerivedData/E2E/007-sleep-timer/Results/Story.xcresult/
+            apps/ios/DerivedData/E2E/${{ matrix.story }}/ActualWalkthrough/
+            apps/ios/DerivedData/E2E/${{ matrix.story }}/Attachments/
+            apps/ios/DerivedData/E2E/${{ matrix.story }}/Results/Story.xcresult/
           if-no-files-found: warn
           retention-days: 7
+
+  ios-tests:
+    name: Core tests and exact E2E walkthroughs
+    if: always()
+    needs: [core-tests, e2e]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every parallel iOS gate
+        env:
+          CORE_RESULT: ${{ needs.core-tests.result }}
+          E2E_RESULT: ${{ needs.e2e.result }}
+        run: test "$CORE_RESULT" = success && test "$E2E_RESULT" = success

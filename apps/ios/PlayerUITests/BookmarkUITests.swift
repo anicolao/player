@@ -87,8 +87,7 @@ final class BookmarkUITests: XCTestCase {
     try assertEverySort(app)
     let search = app.textFields["bookmark-search"]
     XCTAssertTrue(search.waitForExistence(timeout: 2))
-    search.tap()
-    search.typeText("echo cafe")
+    try focusAndType("echo cafe", into: search, in: app)
     try requireBookmarksScreen(
       app,
       "bookmarks:query=echo cafe:sort=label:count=1:order=\(secondBookmarkID)"
@@ -187,8 +186,7 @@ final class BookmarkUITests: XCTestCase {
     openSearch.tap()
     let librarySearch = restored.textFields["library-search-input"]
     XCTAssertTrue(librarySearch.waitForExistence(timeout: 2))
-    librarySearch.tap()
-    librarySearch.typeText("cafe clue")
+    try focusAndType("cafe clue", into: librarySearch, in: restored)
     try requireValue(
       restored.descendants(matching: .any)["library-search-probe"],
       "search:query=cafe clue:count=1:sort=title:direction=ascending:status=any:formats=any:missing=false:empty=none:order=\(bookID)"
@@ -214,13 +212,11 @@ final class BookmarkUITests: XCTestCase {
       object: save
     )
     XCTAssertEqual(XCTWaiter.wait(for: [disabled], timeout: 2), .completed)
-    label.tap()
-    label.typeText("Écho marker")
+    try focusAndType("Écho marker", into: label, in: app)
 
     let note = app.textViews["bookmark-note-editor"]
     XCTAssertTrue(note.waitForExistence(timeout: 2))
-    note.tap()
-    note.typeText("Return to the café clue")
+    try focusAndType("Return to the café clue", into: note, in: app)
     XCTAssertTrue(save.isEnabled)
     save.tap()
     XCTAssertFalse(app.descendants(matching: .any)["bookmark-editor"].waitForExistence(timeout: 1))
@@ -357,6 +353,22 @@ final class BookmarkUITests: XCTestCase {
     }
     XCTAssertTrue(element.isHittable)
     element.tap()
+  }
+
+  private func focusAndType(
+    _ text: String,
+    into field: XCUIElement,
+    in app: XCUIApplication
+  ) throws {
+    let deadline = Date().addingTimeInterval(4)
+    repeat {
+      field.tap()
+      if app.keyboards.firstMatch.waitForExistence(timeout: 0.75) {
+        field.typeText(text)
+        return
+      }
+    } while Date() < deadline
+    XCTFail("Expected \(field.identifier) to acquire keyboard focus before typing")
   }
 
   private func requireProbe(

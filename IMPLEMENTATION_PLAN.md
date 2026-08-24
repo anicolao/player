@@ -2,11 +2,17 @@
 
 ## Objective
 
-Deliver the complete iPhone MVP defined by [MVP_DESIGN.md](MVP_DESIGN.md) as a sequence of small vertical slices. Every product commit must connect visible UI to production implementation and persistence, include programmatic verification of nonvisual behavior, and add or extend an exact-pixel E2E journey.
+Deliver the complete iPhone MVP defined by [MVP_DESIGN.md](MVP_DESIGN.md) as a sequence of small vertical slices. Every product commit must connect visible UI to production implementation and persistence, include programmatic verification of nonvisual behavior, and add or extend a canonical-pixel E2E journey.
 
 The sequence deliberately avoids horizontal “build all models, then all screens” phases. A tracer is only complete when a listener can perform its narrow journey through the real app.
 
 ## Delivery model
+
+> **Execution status (2026-08-23):** T00–T15 and Stories 001–008 are on
+> `main`. The original stacked-PR model below is retained as implementation
+> history. The remaining completion work is being delivered as independently
+> green serial commits in one PR, as requested in
+> [MVP_COMPLETION_PLAN.md](MVP_COMPLETION_PLAN.md).
 
 ### Stacked commits and pull requests
 
@@ -42,7 +48,9 @@ Do not push `Tn+1` onto the `Tn` branch merely to replace an in-progress CI run.
 - The new journey uses production services behind injected boundaries; views do not branch on fixture names.
 - Unit/integration tests cover parsers, transactions, clocks, filesystem changes, or playback events that screenshots cannot prove.
 - The E2E step helper programmatically verifies the intended state before every capture.
-- All prior E2E stories still pass semantic and exact-pixel comparison.
+- All prior E2E stories still pass semantic and canonical-pixel comparison:
+  after sRGB decoding, every corresponding channel is within 8/255 and no
+  spatial tolerance, masking, or mismatch ratio is permitted.
 - The new story’s README and reviewed PNG baselines are committed.
 - IDs, dates, playback positions, progress, locale, appearance, and system chrome are deterministic.
 - Schema changes include a forward migration and a fixture for the previous schema.
@@ -482,7 +490,7 @@ Production slice:
 
 Verification:
 
-- Every exact-pixel journey passes on the pinned CI environment.
+- Every canonical-pixel journey passes on the pinned CI environment.
 - All budgets in `MVP_DESIGN.md` pass or have an explicitly approved revision.
 - The opt-in local full-book run passes on a disposable simulator without exposing its content.
 
@@ -508,5 +516,9 @@ Verification:
 
 ## MVP completion gate
 
-The MVP is complete only when T00–T19 are merged in order, Stories 001–011 and all nonvisual suites are green on the pinned environment, the opt-in local sample run passes, the accessibility and offline audits are recorded, and every acceptance item in `MVP_DESIGN.md` has evidence or an explicitly documented product decision.
-
+The MVP is complete only when T00–T19 are represented in the final history,
+Stories 001–011 and all nonvisual suites are green on the pinned environment,
+the opt-in local sample run passes, the accessibility and offline audits are
+recorded, and every acceptance item in `MVP_DESIGN.md` has evidence or an
+explicitly documented product decision. The active ledger and release gate are
+maintained in [MVP_COMPLETION_PLAN.md](MVP_COMPLETION_PLAN.md).

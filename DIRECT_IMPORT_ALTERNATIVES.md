@@ -1,18 +1,18 @@
 # Direct Import Alternatives
 
 Status: design proposal
-Last updated: 2026-08-22
+Last updated: 2026-08-23
 
 ## Decision summary
 
-Player should offer three complementary direct-import routes, all feeding the
-existing durable import pipeline:
+The architecture considers three complementary direct-import routes, all
+feeding the existing durable import pipeline:
 
 1. **Receive from Computer**, a local web uploader hosted by Player while the
    app is open, is the primary global experience for Mac, Windows, and Linux.
-2. **Player Import Drop Box**, exposed through Finder/Apple Devices file
-   sharing, for large wired transfers and imports that should be waiting the
-   next time Player opens.
+2. **Player Import Drop Box**, a deferred Finder/Apple Devices file-sharing
+   route for large wired transfers and imports that should be waiting the next
+   time Player opens.
 3. **Drag directly onto Player through iPhone Mirroring** as an optional shortcut
    advertised on the receiver screen only in regions where Apple makes iPhone
    Mirroring available.
@@ -94,8 +94,9 @@ The unavoidable tradeoff is therefore:
 
 ## Current foundation
 
-Player already has the import core and Build 8 includes the direct transport,
-single-storage receiver ingestion, and reliable same-session retry:
+Player already has the import core. Build 13 includes the direct transport,
+single-storage receiver ingestion, and the physically verified iPhone
+Mirroring provider path:
 
 - The document picker accepts M4B, M4A, MP3, ZIP, folders, and multiple items.
 - registered document types route single audio files and ZIPs through
@@ -119,6 +120,12 @@ does not enable `UIFileSharingEnabled`, so the wired drop-box alternative is
 still future work. The web receiver reuses the analyzer, safe ZIP extractor,
 grouping, metadata evidence, and managed media store rather than creating a
 second importer.
+
+Build 13 does not yet resume an interrupted web file from an acknowledged byte
+offset. A browser transport failure discards the active unsealed transfer and
+its partial file. Resumable offsets, reconnect ownership, and matching browser
+and phone completion evidence are MVP completion work tracked as C01 in
+[MVP_COMPLETION_PLAN.md](MVP_COMPLETION_PLAN.md).
 
 ## Common direct-import contract
 
@@ -227,9 +234,10 @@ apps through iPhone Mirroring.
   `UIDropInteraction` on the active app window, backed by raw
   `NSItemProvider` objects.
 - It accepts audio types, ZIPs, file URLs, and folder representations.
-- `MirroringDropAdapter` owns in-place/fallback provider loading, safe recursive
-  folder traversal, path preservation, no-extra-copy adoption, cancellation,
-  and cleanup.
+- `MirroringDropAdapter` starts every provider request synchronously inside
+  `UIDropInteraction.performDrop`, retains the cross-device drop session while
+  Finder materializes it, tries URL/in-place/temporary representations, and
+  owns safe recursive traversal, path preservation, cancellation, and cleanup.
 - It exposes only a fully materialized selection after every provider has
   completed, then feeds that selection to the same automatic importer as the
   web receiver.
@@ -629,9 +637,9 @@ Finder/Apple Devices file sharing provides the supported USB path.
 
 | Route | Recurring action | Tree support | Player active for receipt? | Extra remote copy | Platforms | Priority |
 | --- | --- | --- | --- | --- | --- | --- |
-| Local web receiver | Start receiver, then drag | Yes | Yes | No | Any modern desktop | P0 |
-| Finder/Apple Devices drop box | One drag | Validate clients | No; imports next launch | No after cleanup | Mac/Windows | P1 |
-| iPhone Mirroring drop | One drag | Implemented; physical validation pending | Yes | No | Supported Mac regions | P1 enhancement |
+| Local web receiver | Start receiver, then drag | Implemented; interruption recovery pending | Yes | No | Any modern desktop | Shipped P0 |
+| Finder/Apple Devices drop box | One drag | Deferred; validate clients | No; imports next launch | No after cleanup | Mac/Windows | Post-MVP |
+| iPhone Mirroring drop | One drag | Implemented; one Finder folder physically verified | Yes | No | Supported Mac regions | Shipped enhancement |
 | AirDrop | Share/AirDrop | Weak for trees | Destination-dependent | No | Apple | Maintain as fallback |
 | Watched provider folder | One drag after setup | Yes | Scans when scheduled/active | Provider-dependent | Provider-dependent | P2 |
 | Mac companion | One drag after pairing | Yes | Yes unless queued | No | Mac | P2 |

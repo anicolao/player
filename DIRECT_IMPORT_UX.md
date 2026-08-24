@@ -1,7 +1,7 @@
 # Direct Import UX
 
 Status: interaction specification
-Last updated: 2026-08-22
+Last updated: 2026-08-23
 Related architecture: [DIRECT_IMPORT_ALTERNATIVES.md](DIRECT_IMPORT_ALTERNATIVES.md)
 
 ## Product decision
@@ -95,6 +95,38 @@ duration was temporarily unavailable. Now Playing always gives SwiftUI a
 finite slider range, a step no larger than that range, and a clamped position.
 Unit coverage exercises zero, negative, non-finite, short, and normal values;
 the UI release gate opens Now Playing with a zero-duration imported book.
+
+## Builds 12 and 13 physical Mirroring follow-up
+
+Build 12 expands Finder provider negotiation to URL-object, folder, audio,
+archive, file, data, and item representations instead of assuming the first
+advertised representation is readable. Build 13 fixes the remaining physical
+transport lifetime issue: every provider request begins synchronously inside
+`UIDropInteraction.performDrop`, and Player retains the `UIDropSession` until
+materialization ends. A real mirrored iPhone and Finder folder drag verified
+the route after Simulator coverage passed. The temporary provider URL is copied
+or linked during its callback because Finder does not promise that URL remains
+valid after the callback returns.
+
+This physical validation closes the Mirroring transport stub question; it does
+not prove every input shape or remove the local web receiver as the primary,
+cross-platform route. Single M4B, multi-file, ZIP, large-tree, cancellation,
+and storage-pressure drags remain explicit hardware regression cases.
+
+## How to read the remaining specification
+
+The sections below define the complete target experience. They are not all
+claims about Build 13. In particular, Handoff discovery, Finder/Apple Devices
+Import Drop Box, trusted computers, resumable byte offsets, remote region
+policy/kill switch, the automatic-add preference, and their associated rows and
+test cases are deferred unless the active completion plan promotes them. The
+shipped source sheet exposes only working receiver and Files actions.
+
+For the shipped web route, a sealed import survives the browser and receiver
+view, but an interrupted unsealed file currently restarts rather than resuming
+from an acknowledged offset. C01 in
+[MVP_COMPLETION_PLAN.md](MVP_COMPLETION_PLAN.md) closes that reliability and
+evidence gap.
 
 The listener must never be told to:
 

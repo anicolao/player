@@ -4,7 +4,15 @@
 
 **Player** is a working title for an iOS app for people who bring their own DRM-free audiobooks. Its defining feature is not another play button: it is a forgiving path from “these files are somewhere on my phone or cloud drive” to “this is one correctly ordered, beautifully presented book.”
 
-The repository now contains an initial runnable SwiftUI scaffold and a deterministic launch-story test. [VISION.md](VISION.md) explains the product direction, [MVP_DESIGN.md](MVP_DESIGN.md) defines the first buildable target, [UX_DESIGN.md](UX_DESIGN.md) turns it into an implementation-facing interaction and visual system, and [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) sequences the MVP as tested tracer-bullet commits.
+The repository contains the native SwiftUI product, its local import and
+playback core, and eight deterministic end-to-end product journeys. Builds are
+distributed to an internal TestFlight group while the remaining MVP completion
+gates are closed. [VISION.md](VISION.md) explains the product direction,
+[MVP_DESIGN.md](MVP_DESIGN.md) defines the first useful target,
+[UX_DESIGN.md](UX_DESIGN.md) defines the interaction and visual system,
+[IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) contains the original tracer
+plan, and [MVP_COMPLETION_PLAN.md](MVP_COMPLETION_PLAN.md) is the active release
+train.
 
 ## The product promise
 
@@ -14,18 +22,20 @@ The repository now contains an initial runnable SwiftUI scaffold and a determini
 4. **Playback never loses the listener’s place.** Position, bookmarks, settings, and sleep history are durable. Downloads remain useful without a network connection.
 5. **The listener stays in control.** Originals are preserved, metadata changes are reversible, broad cloud-drive access is unnecessary, and core local playback does not require an account or subscription.
 
-## Planned experience
+## Product experience and active MVP target
 
 ### Import without ceremony
 
-- Files picker, share sheet, AirDrop, drag and drop, and Finder/iTunes File Sharing
+- Files picker, share sheet, AirDrop/document open, a private local web
+  receiver, and iPhone Mirroring drag and drop where Apple supports it
 - Single-file books and multi-file folders
 - ZIP archives with safe extraction and useful progress reporting
 - Initial support for DRM-free M4B, M4A, and MP3; additional formats will be added only when they can be handled reliably
-- A persistent import queue that can resume after interruption
+- A persistent, inspectable import queue with cancellation and retry
 - Duplicate and partial-import detection
 - Clear, actionable errors that identify the affected file
-- Optional Wi-Fi upload and Audiobookshelf integration after the local workflow is solid
+- Explicit local-network receiving while its on-device screen is open; no
+  Internet upload or account is required
 
 Files selected through Apple’s document picker are copied into Player’s managed storage. The source is never modified. A future export flow may write cleaned metadata or produce a consolidated M4B, but only as an explicit action.
 
@@ -62,11 +72,13 @@ The listener can accept the proposal, correct just the uncertain fields, split o
 - Smart rewind based on time away
 - Sleep timer by duration, end of chapter, or end of track, with extend/reset controls
 - Bookmarks with optional notes and a short captured context window
-- Lock Screen, Control Center, Bluetooth/headset, and Siri/Shortcuts support
-- CarPlay designed around safe resumption and chapter navigation
+- Lock Screen, Control Center, Bluetooth, and headset remote commands
 - VoiceOver, Dynamic Type, sufficient contrast, and controls that do not rely on color alone
 
-Later releases may add silence shortening, Apple Watch offline playback, widgets, listening statistics, iCloud progress sync, and read-along support. These are not allowed to compromise position integrity or offline reliability.
+Later releases may add CarPlay, Siri/Shortcuts, silence shortening, Apple Watch
+offline playback, widgets, listening statistics, iCloud progress sync, and
+read-along support. These are not allowed to compromise position integrity or
+offline reliability.
 
 ## Scope by release
 
@@ -74,8 +86,8 @@ Later releases may add silence shortening, Apple Watch offline playback, widgets
 | --- | --- | --- |
 | **Foundation** | One book imports and plays reliably | M4B/M4A/MP3, managed local storage, embedded metadata and chapters, durable position, background and remote controls |
 | **MVP** | A listener can build and maintain a useful library entirely on iPhone | Multi-file/ZIP import, import inbox, manual metadata and cover editing, grouping and ordering, search/filter/series, bookmarks, sleep timer, speed, smart rewind, backup/export |
-| **1.0** | The app is dependable in daily life | CarPlay, VoiceOver audit, robust interrupted imports, storage tools, batch editing, diagnostics, performance validation with large libraries |
-| **Later** | The library follows the listener | Opt-in iCloud sync, Audiobookshelf and other source adapters, Wi-Fi upload, Apple Watch, advanced audio, metadata-provider plugins, cleaned-file/M4B export |
+| **MVP completion** | The app is dependable in daily life | Portable backup/restore, VoiceOver and largest-text audit, robust interrupted receiver imports, recovery diagnostics, and performance validation with large libraries |
+| **Later** | The library follows the listener | CarPlay, opt-in iCloud sync, Audiobookshelf and other source adapters, Apple Watch, advanced audio, metadata-provider plugins, cleaned-file/M4B export |
 
 The roadmap is capability-based, not a release-date promise. Reliability gates are defined in [VISION.md](VISION.md#roadmap-and-release-gates).
 
@@ -101,7 +113,7 @@ The roadmap is capability-based, not a release-date promise. Reliability gates a
 
 ## Development
 
-The iPhone scaffold lives in `apps/ios/` and is generated reproducibly with XcodeGen. The pinned local setup is Xcode 26.6, iOS 26.5, iPhone 17, and XcodeGen 2.46.0.
+The iPhone app lives in `apps/ios/` and is generated reproducibly with XcodeGen. The pinned local setup is Xcode 26.6, iOS 26.5, iPhone 17, and XcodeGen 2.46.0.
 
 With Nix installed, generate the project, build the app, boot a persistent development simulator, install Player, and launch it with one command:
 
@@ -122,7 +134,9 @@ Generate the Xcode project:
 apps/ios/scripts/generate-project.sh
 ```
 
-Run the launch E2E story and require an exact match against the committed screenshot:
+Run the launch E2E story and require a canonical match against the committed
+screenshot. Canonical sRGB channels may differ by at most 8/255 for decoder
+rounding; no pixel may move, be masked, or exceed that channel allowance:
 
 ```bash
 apps/ios/scripts/run-e2e.sh
@@ -134,7 +148,9 @@ The runner creates and deletes its own `Player E2E` simulator. See [apps/ios/REA
 
 Product feedback is especially useful when it includes the starting file layout, import route, desired grouping/order, and what the app actually did. Please do not attach copyrighted audiobook files to public issues; use a minimal synthetic fixture that reproduces the problem.
 
-Before implementation begins, contributions should align with the priorities and non-goals in [VISION.md](VISION.md). An issue template and contribution guide will be added with the initial code scaffold.
+Contributions should align with the priorities and non-goals in
+[VISION.md](VISION.md) and the active completion gate in
+[MVP_COMPLETION_PLAN.md](MVP_COMPLETION_PLAN.md).
 
 ## Legal and license
 
