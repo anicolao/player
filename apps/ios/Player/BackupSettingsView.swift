@@ -259,9 +259,12 @@ struct BackupSettingsView: View {
     private func scrollWalkthroughToTop(_ proxy: ScrollViewProxy) {
       Task { @MainActor in
         // A hosted simulator can deliver onAppear before List has resolved its
-        // variable-height rows. Wait for that layout pass so scrollTo never
-        // uses provisional row estimates.
-        try? await Task.sleep(for: .milliseconds(500))
+        // variable-height rows. Scrolling while those provisional heights are
+        // active permanently compacts this List for the current presentation,
+        // even when the screenshot is captured several seconds later. Leave a
+        // full layout window before applying the canonical, animation-free
+        // anchor; the UI test already waits for this same window.
+        try? await Task.sleep(for: .seconds(2))
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) {
