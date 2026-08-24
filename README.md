@@ -13,7 +13,9 @@ gates are closed. [VISION.md](VISION.md) explains the product direction,
 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) contains the original tracer
 plan, and [MVP_COMPLETION_PLAN.md](MVP_COMPLETION_PLAN.md) is the active release
 train. [BACKUP_AND_RESTORE.md](BACKUP_AND_RESTORE.md) specifies the portable
-backup format and recovery guarantees.
+backup format and recovery guarantees, and
+[ACCESSIBILITY_AUDIT.md](ACCESSIBILITY_AUDIT.md) records the accessibility task
+matrix and reproducible evidence.
 
 ## The product promise
 

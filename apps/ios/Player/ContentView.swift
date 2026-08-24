@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 
 struct ContentView: View {
@@ -34,6 +35,11 @@ struct ContentView: View {
       .tabItem { Label("Settings", systemImage: "gearshape") }
     }
     .tint(PlayerColor.accent)
+    .modifier(
+      PlayerAccessibilityRootModifier(
+        preferences: model.library.accessibilityPreferences
+      )
+    )
     .fileImporter(
       isPresented: $isImporting,
       allowedContentTypes: importTypes,
@@ -111,8 +117,10 @@ struct ContentView: View {
       }
     #endif
     .task {
-      await model.restore()
-      model.configurePlaybackIntegrations()
+      if !model.isRestored {
+        await model.restore()
+        model.configurePlaybackIntegrations()
+      }
       await drainPendingDocumentURLs()
       await drainSharedImports()
     }
@@ -618,6 +626,7 @@ private struct ImportErrorView: View {
 
 struct ReviewImportView: View {
   @Environment(\.dismiss) private var dismiss
+  @Environment(\.dynamicTypeSize) private var dynamicTypeSize
   @Bindable var model: PlayerModel
   let jobID: UUID
   let didCommit: () -> Void
@@ -705,7 +714,10 @@ struct ReviewImportView: View {
   }
 
   private func isCompactReview(job: ImportJob, proposal: BookProposal) -> Bool {
-    job.proposals.count == 1 && proposal.assets.count == 1 && proposal.warnings.isEmpty
+    !dynamicTypeSize.isAccessibilitySize
+      && job.proposals.count == 1
+      && proposal.assets.count == 1
+      && proposal.warnings.isEmpty
   }
 
   private func reviewContent(job: ImportJob, proposal: BookProposal) -> some View {
@@ -787,7 +799,13 @@ struct ReviewImportView: View {
     return VStack(spacing: 7) {
       Button {
         Task {
-          if await model.addImportToLibrary(jobID: jobID) != nil { didCommit() }
+          if await model.addImportToLibrary(jobID: jobID) != nil {
+            UIAccessibility.post(
+              notification: .announcement,
+              argument: "Audiobook added to Library"
+            )
+            didCommit()
+          }
         }
       } label: {
         Label("Add to Library", systemImage: "plus.circle.fill")
@@ -829,7 +847,12 @@ struct ReviewImportView: View {
   }
 
   private func evidence(_ symbol: String, value: String) -> some View {
-    HStack { Image(systemName: symbol); Text(value).lineLimit(1); Spacer() }.padding(14)
+    HStack {
+      Image(systemName: symbol)
+      Text(value).lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+      Spacer()
+    }
+    .padding(14)
   }
 
   private func reviewStatus(_ proposal: BookProposal) -> String {
@@ -1223,6 +1246,7 @@ private enum BookDetailContent: String { case chapters, bookmarks }
 
 struct BookDetailView: View {
   @Environment(\.dismiss) private var dismiss
+  @Environment(\.dynamicTypeSize) private var dynamicTypeSize
   @Bindable var model: PlayerModel
   let bookID: UUID
   let play: (Book, Double?) -> Void
@@ -1234,8 +1258,9 @@ struct BookDetailView: View {
     ZStack {
       PlayerColor.background.ignoresSafeArea()
       if let book {
-        ScrollView {
-          VStack(spacing: 18) {
+        ScrollViewReader { proxy in
+          ScrollView {
+            VStack(spacing: 18) {
             ArtworkView(data: book.artworkData, size: 210)
             VStack(spacing: 6) {
               Text(book.title).font(.title.bold()).multilineTextAlignment(.center)
@@ -1258,8 +1283,9 @@ struct BookDetailView: View {
             }
             .buttonStyle(.borderedProminent).controlSize(.large).tint(PlayerColor.accent)
             .accessibilityIdentifier("play-book")
+            .id("book-detail-play")
 
-            HStack(spacing: 12) {
+            adaptiveActionLayout {
               NavigationLink {
                 MetadataEditorView(model: model, target: .book(book.id))
               } label: {
@@ -1280,7 +1306,7 @@ struct BookDetailView: View {
               }
             }
 
-            HStack(spacing: 12) {
+            adaptiveActionLayout {
               Button {
                 Task {
                   if model.library.upNextBookIDs.contains(book.id) {
@@ -1323,7 +1349,7 @@ struct BookDetailView: View {
             .accessibilityIdentifier("remove-book")
 
             if !book.chapters.isEmpty || !model.bookmarks(for: book.id).isEmpty {
-              HStack(spacing: 8) {
+              adaptiveActionLayout {
                 contentButton("Chapters", value: .chapters, id: "chapters-segment")
                 contentButton("Bookmarks", value: .bookmarks, id: "bookmarks-segment")
               }
@@ -1368,9 +1394,24 @@ struct BookDetailView: View {
               }
               .frame(maxWidth: .infinity, alignment: .leading)
             }
+            }
+            .padding(24)
+            .padding(.bottom, 72)
           }
-          .padding(24)
-          .padding(.bottom, 72)
+          #if E2E
+            .overlay(alignment: .topLeading) {
+              Button {
+                proxy.scrollTo("book-detail-play", anchor: .center)
+              } label: {
+                Color.white.opacity(0.001)
+                  .frame(width: 44, height: 44)
+                  .contentShape(Rectangle())
+              }
+              .buttonStyle(.plain)
+              .accessibilityLabel("Align Book Detail actions")
+              .accessibilityIdentifier("e2e-align-book-detail-play")
+            }
+          #endif
         }
         metadataProbe(id: "book-metadata-probe", value: bookMetadataValue(book))
         metadataProbe(id: "book-metadata-provenance-probe", value: bookProvenanceValue(book))
@@ -1419,6 +1460,14 @@ struct BookDetailView: View {
 
   private var book: Book? {
     model.library.books.first(where: { $0.id == bookID })
+  }
+
+  private var adaptiveActionLayout: AnyLayout {
+    if dynamicTypeSize.isAccessibilitySize {
+      AnyLayout(VStackLayout(spacing: 12))
+    } else {
+      AnyLayout(HStackLayout(spacing: 12))
+    }
   }
 
   private func contentButton(
@@ -1534,6 +1583,7 @@ struct PlaybackSliderConfiguration: Equatable {
 
 private struct NowPlayingView: View {
   @Environment(\.dismiss) private var dismiss
+  @Environment(\.dynamicTypeSize) private var dynamicTypeSize
   @Bindable var model: PlayerModel
   let book: Book
   @State private var requestedPosition: Double?
@@ -1593,6 +1643,8 @@ private struct NowPlayingView: View {
           )
           .tint(PlayerColor.accent)
           .accessibilityLabel("Listening position")
+          .accessibilityValue(positionAccessibilityValue)
+          .accessibilityHint("Swipe up or down to move through this listening timeline")
           .accessibilityIdentifier("player-position-slider")
           HStack(spacing: 13) {
             transportButton(
@@ -1649,6 +1701,7 @@ private struct NowPlayingView: View {
           Spacer()
         }
         .padding(24)
+        .accessibilityScrollsIfNeeded(dynamicTypeSize.isAccessibilitySize)
       }
       .toolbar {
         ToolbarItem(placement: .topBarLeading) { Button("Done") { dismiss() } }
@@ -1846,6 +1899,24 @@ private struct NowPlayingView: View {
     return "rate=\(TransportPreferencesEditor.rateToken(preferences.playbackRate)):back=\(Int(preferences.backwardSkipSeconds)):forward=\(Int(preferences.forwardSkipSeconds)):seek=\(seek):source=\(source)"
   }
 
+  private var positionAccessibilityValue: String {
+    let elapsed = sliderAccessibilityTime(displayedPosition)
+    let remaining = sliderAccessibilityTime(max(displayedDuration - displayedPosition, 0))
+    let percent = displayedDuration > 0
+      ? Int((displayedPosition / displayedDuration * 100).rounded()) : 0
+    if let chapter = currentChapter {
+      return "\(chapter.title), \(elapsed) elapsed, \(remaining) remaining, \(percent) percent"
+    }
+    return "\(elapsed) elapsed, \(remaining) remaining, \(percent) percent"
+  }
+
+  private func sliderAccessibilityTime(_ seconds: Double) -> String {
+    let value = max(0, Int(seconds.rounded()))
+    let minutes = value / 60
+    let remainder = value % 60
+    return "\(minutes) minutes \(remainder) seconds"
+  }
+
   private func skipSymbol(_ seconds: Double) -> String {
     let supported = [10, 15, 30, 45, 60]
     let value = Int(seconds.rounded())
@@ -1931,6 +2002,8 @@ private struct NowPlayingView: View {
 }
 
 private struct MiniPlayerView: View {
+  @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+  @Environment(\.playerReducesDecorativeArtwork) private var reducesDecorativeArtwork
   @Bindable var model: PlayerModel
   let book: Book
   let open: () -> Void
@@ -1939,9 +2012,13 @@ private struct MiniPlayerView: View {
     HStack(spacing: 12) {
       Button(action: open) {
         HStack(spacing: 12) {
-          ArtworkView(data: book.artworkData, size: 44)
+          if !dynamicTypeSize.isAccessibilitySize && !reducesDecorativeArtwork {
+            ArtworkView(data: book.artworkData, size: 44)
+          }
           VStack(alignment: .leading, spacing: 2) {
-            Text(book.title).font(.subheadline.weight(.semibold)).lineLimit(1)
+            Text(book.title)
+              .font(.subheadline.weight(.semibold))
+              .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
             HStack(spacing: 6) {
               Text(positionLabel)
               if let projection = model.activeSleepTimerProjection {
@@ -2015,11 +2092,21 @@ private struct MiniPlayerView: View {
 }
 
 struct ArtworkView: View {
+  @Environment(\.playerReducesDecorativeArtwork) private var reducesDecorativeArtwork
   let data: Data?
   let size: CGFloat
+  var isEssential = false
+
   var body: some View {
     Group {
-      if let data, let image = UIImage(data: data) {
+      if reducesDecorativeArtwork && !isEssential {
+        ZStack {
+          PlayerColor.card
+          Image(systemName: "book.closed.fill")
+            .font(.title2)
+            .foregroundStyle(PlayerColor.ink)
+        }
+      } else if let data, let image = UIImage(data: data) {
         Image(uiImage: image).resizable().scaledToFill()
       } else {
         ZStack {
@@ -2030,10 +2117,24 @@ struct ArtworkView: View {
     }
     .frame(width: size, height: size)
     .clipShape(RoundedRectangle(cornerRadius: max(12, size * 0.07)))
-    .shadow(color: PlayerColor.ink.opacity(0.15), radius: 18, y: 10)
+    .shadow(
+      color: PlayerColor.ink.opacity(reducesDecorativeArtwork && !isEssential ? 0 : 0.15),
+      radius: reducesDecorativeArtwork && !isEssential ? 0 : 18,
+      y: reducesDecorativeArtwork && !isEssential ? 0 : 10
+    )
     .accessibilityElement()
-    .accessibilityLabel(data == nil ? "Artwork placeholder" : "Embedded cover artwork")
-    .accessibilityIdentifier(data == nil ? "placeholder-artwork" : "embedded-cover-artwork")
+    .accessibilityLabel(artworkLabel)
+    .accessibilityIdentifier(artworkIdentifier)
+  }
+
+  private var artworkLabel: String {
+    if reducesDecorativeArtwork && !isEssential { return "Decorative artwork reduced" }
+    return data == nil ? "Artwork placeholder" : "Embedded cover artwork"
+  }
+
+  private var artworkIdentifier: String {
+    if reducesDecorativeArtwork && !isEssential { return "reduced-decorative-artwork" }
+    return data == nil ? "placeholder-artwork" : "embedded-cover-artwork"
   }
 }
 

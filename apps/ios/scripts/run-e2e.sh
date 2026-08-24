@@ -132,6 +132,10 @@ simulator_id="$(xcrun simctl create "${simulator_name}" "${device_type}" "${runt
 xcrun simctl boot "${simulator_id}"
 xcrun simctl bootstatus "${simulator_id}" -b
 xcrun simctl ui "${simulator_id}" appearance light
+if [[ "${story_id}" == "009-accessible-core-journeys" ]]; then
+  xcrun simctl ui "${simulator_id}" content_size accessibility-extra-extra-extra-large
+  xcrun simctl ui "${simulator_id}" increase_contrast enabled
+fi
 xcrun simctl status_bar "${simulator_id}" override \
   --time '9:41' \
   --batteryState charged \

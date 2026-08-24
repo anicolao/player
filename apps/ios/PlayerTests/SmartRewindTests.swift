@@ -273,7 +273,7 @@ final class SmartRewindTests: XCTestCase {
     let current = try XCTUnwrap(
       JSONSerialization.jsonObject(with: Data(contentsOf: fileURL)) as? [String: Any]
     )
-    XCTAssertEqual(current["schemaVersion"] as? Int, 14)
+    XCTAssertEqual(current["schemaVersion"] as? Int, 15)
   }
 
   private func plan(

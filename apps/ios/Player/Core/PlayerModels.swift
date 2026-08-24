@@ -587,6 +587,7 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
   var bookmarks: [Bookmark]
   var bookmarkDeletionTransactions: [BookmarkDeletionTransaction]
   var storageManifests: [StorageManifest]
+  var accessibilityPreferences: AccessibilityPreferences
 
   init(
     books: [Book],
@@ -608,7 +609,8 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
     sleepTimerHistory: [SleepTimerHistoryEntry] = [],
     bookmarks: [Bookmark] = [],
     bookmarkDeletionTransactions: [BookmarkDeletionTransaction] = [],
-    storageManifests: [StorageManifest] = []
+    storageManifests: [StorageManifest] = [],
+    accessibilityPreferences: AccessibilityPreferences = .default
   ) {
     self.books = books
     self.importJobs = importJobs
@@ -630,6 +632,7 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
     self.bookmarks = bookmarks
     self.bookmarkDeletionTransactions = bookmarkDeletionTransactions
     self.storageManifests = storageManifests
+    self.accessibilityPreferences = accessibilityPreferences
   }
 
 
@@ -642,6 +645,7 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
     case activeSleepTimer, sleepTimerHistory
     case bookmarks, bookmarkDeletionTransactions
     case storageManifests
+    case accessibilityPreferences
   }
 
   init(from decoder: any Decoder) throws {
@@ -702,6 +706,10 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
       [StorageManifest].self,
       forKey: .storageManifests
     ) ?? []
+    accessibilityPreferences = try values.decodeIfPresent(
+      AccessibilityPreferences.self,
+      forKey: .accessibilityPreferences
+    ) ?? .default
   }
 
   static let empty = LibrarySnapshot(books: [], importJobs: [], currentBookID: nil)
