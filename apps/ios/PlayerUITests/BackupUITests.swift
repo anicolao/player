@@ -9,6 +9,7 @@ final class BackupUITests: XCTestCase {
     app.launchArguments = [
       "-e2e-fixture", "portable-backup", "-e2e-reset",
       "-e2e-start-section", "settings",
+      "-e2e-start-settings-route", "backup",
     ]
     let tester = TestStepHelper(testCase: self)
     tester.setMetadata(
@@ -24,7 +25,6 @@ final class BackupUITests: XCTestCase {
     )
     app.launch()
 
-    app.buttons["settings-backup"].tap()
     let probe = anyElement(app, "backup-e2e-probe")
     scrollBackupToTop(app)
     try tester.step(
@@ -112,12 +112,14 @@ final class BackupUITests: XCTestCase {
     let list = app.collectionViews.firstMatch
     XCTAssertTrue(list.waitForExistence(timeout: 2))
     let export = app.buttons["backup-export"]
-    // A newly pushed SwiftUI list can settle a few points away from its true
-    // top on a busy simulator. Always drive it to the boundary so screenshots
-    // do not inherit that transient offset.
-    for _ in 0..<3 { list.swipeDown(velocity: .fast) }
+    if !export.isHittable {
+      for _ in 0..<3 {
+        if export.isHittable { break }
+        list.swipeDown(velocity: .fast)
+      }
+    }
     XCTAssertTrue(export.isHittable)
-    // Let the final overscroll rebound finish before XCTest captures the frame.
+    // Let the initial navigation hierarchy finish rasterizing before capture.
     RunLoop.current.run(until: Date().addingTimeInterval(3))
   }
 
