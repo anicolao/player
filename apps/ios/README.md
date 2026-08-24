@@ -76,7 +76,8 @@ See [E2E_GUIDE.md](../../E2E_GUIDE.md) for the complete contract.
   the local computer receiver (Build 14 candidate)
 - Versioned `.playerbackup` export/restore with streamed media checksums and
   rotating automatic database copies (Build 15 candidate)
+- Explicit startup recovery with preserved corrupt-store evidence, UUID-owned
+  orphan quarantine, offline task audit, and sanitized support export (Build 17 candidate)
 
-Accessibility audit evidence, launch recovery/diagnostics, scale evidence, and
-the final mockup comparison remain in the serial
+Scale evidence and the final mockup comparison remain in the serial
 [MVP completion release train](../../MVP_COMPLETION_PLAN.md).

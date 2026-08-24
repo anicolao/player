@@ -63,6 +63,23 @@
                 </array>
             </dict>
         </dict>
+        <dict>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.json</string>
+            </array>
+            <key>UTTypeDescription</key>
+            <string>Player Sanitized Support Bundle</string>
+            <key>UTTypeIdentifier</key>
+            <string>com.spnss.player.support-bundle</string>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array>
+                    <string>playersupport</string>
+                </array>
+            </dict>
+        </dict>
     </array>
     <key>LSSupportsOpeningDocumentsInPlace</key>
     <false/>

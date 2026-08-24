@@ -10,6 +10,8 @@ final class PlayerModel {
   private(set) var isRestored = false
   private(set) var lastErrorMessage: String?
   private(set) var storageSummary: StorageSummary?
+  private(set) var startupRecoveryStatus: StartupRecoveryStatus?
+  private(set) var startupReconciliation: StartupStorageReconciliation?
 
   @ObservationIgnored private let environment: PlayerEnvironment
   @ObservationIgnored private var playbackIntegrationsConfigured = false
@@ -31,7 +33,12 @@ final class PlayerModel {
 
   func restore() async {
     do {
-      library = try await environment.persistence.load()
+      let loadedLibrary = try await environment.persistence.load()
+      let reconciliation = try await environment.media.reconcileStartupStorage(
+        with: loadedLibrary
+      )
+      library = reconciliation.library
+      startupReconciliation = reconciliation
       storageSummary = library.storageManifests.isEmpty ? nil : StorageSummaryPlanner.summarize(
         manifests: library.storageManifests,
         availableBytes: nil
@@ -65,10 +72,13 @@ final class PlayerModel {
       if library.currentBookID != nil {
         try await loadCurrentBookIntoPlayback()
       }
-      if storedPosition != recoveredPosition || recoveredInterruptedImports || recoveredSleepTimer {
+      if loadedLibrary != library || storedPosition != recoveredPosition
+        || recoveredInterruptedImports || recoveredSleepTimer
+      {
         try await persist()
       }
       isRestored = true
+      startupRecoveryStatus = nil
       lastErrorMessage = nil
       applyCurrentTransportConfiguration()
       publishNowPlaying()
@@ -84,9 +94,46 @@ final class PlayerModel {
       }
     } catch {
       isRestored = false
-      lastErrorMessage = error.localizedDescription
+      startupRecoveryStatus = await environment.persistence.startupRecoveryStatus()
+      lastErrorMessage = nil
       environment.nowPlaying.clear()
     }
+  }
+
+  func retryStartupRestore() async {
+    await restore()
+  }
+
+  func recoverFromLatestAutomaticBackup() async throws {
+    _ = try await environment.persistence.recoverLatestAutomaticBackupPreservingPrimary()
+    await restore()
+    guard isRestored else {
+      throw PlayerCoreError.fileOperation(
+        "The recovered automatic backup could not be opened safely."
+      )
+    }
+  }
+
+  func beginFreshLibraryAfterRecovery() async throws {
+    _ = try await environment.persistence.beginFreshLibraryPreservingPrimary()
+    await restore()
+    guard isRestored else {
+      throw PlayerCoreError.fileOperation("A fresh local library could not be created.")
+    }
+  }
+
+  func prepareSupportBundle() async throws -> PreparedSupportBundle {
+    let automaticBackupCount = await environment.persistence.automaticBackups().count
+    return try await environment.diagnostics.prepareBundle(
+      library: library,
+      recovery: startupRecoveryStatus,
+      reconciliation: startupReconciliation,
+      automaticBackupCount: automaticBackupCount
+    )
+  }
+
+  func discardPreparedSupportBundle(_ bundle: PreparedSupportBundle) async {
+    await environment.diagnostics.discardPreparedBundle(bundle)
   }
 
   func prepareLibraryBackup(kind: PortableBackupKind) async throws -> PreparedLibraryBackup {

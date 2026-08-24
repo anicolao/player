@@ -436,6 +436,80 @@ actor FileSystemMediaManager: MediaManaging {
     )
   }
 
+  func reconcileStartupStorage(with library: LibrarySnapshot) async throws
+    -> StartupStorageReconciliation
+  {
+    try prepareDirectories()
+    let knownBooks = Set(library.books.map(\.id))
+    let knownJobs = Set(library.importJobs.map(\.id))
+    let knownTrash = Set(
+      library.trashTransactions.filter { $0.status == .recoverable }.map(\.id)
+    )
+    let managed = try quarantineUnknownDirectories(
+      in: mediaURL,
+      category: "managed",
+      expected: knownBooks
+    )
+    let staging = try quarantineUnknownDirectories(
+      in: stagingURL,
+      category: "staging",
+      expected: knownJobs
+    )
+    let trash = try quarantineUnknownDirectories(
+      in: trashURL,
+      category: "trash",
+      expected: knownTrash
+    )
+    let inventory = try await storageInventory()
+    var reconciled = library
+    reconciled.storageManifests = inventory.manifests
+    return StartupStorageReconciliation(
+      library: reconciled,
+      quarantinedManagedBookCount: managed,
+      quarantinedStagingJobCount: staging,
+      quarantinedTrashTransactionCount: trash
+    )
+  }
+
+  private func quarantineUnknownDirectories(
+    in categoryDirectory: URL,
+    category: String,
+    expected: Set<UUID>
+  ) throws -> Int {
+    let children = try fileManager.contentsOfDirectory(
+      at: categoryDirectory,
+      includingPropertiesForKeys: [.isDirectoryKey],
+      options: [.skipsHiddenFiles]
+    )
+    let quarantine = rootURL.appending(
+      path: "Recovery/Orphans",
+      directoryHint: .isDirectory
+    )
+    var count = 0
+    for child in children {
+      let values = try child.resourceValues(forKeys: [.isDirectoryKey])
+      guard values.isDirectory == true,
+        let identifier = UUID(uuidString: child.lastPathComponent),
+        !expected.contains(identifier)
+      else { continue }
+      try fileManager.createDirectory(at: quarantine, withIntermediateDirectories: true)
+      var destination = quarantine.appending(
+        path: "\(category)-\(identifier.uuidString.lowercased())",
+        directoryHint: .isDirectory
+      )
+      if fileManager.fileExists(atPath: destination.path) {
+        destination = quarantine.appending(
+          path: "\(category)-\(identifier.uuidString.lowercased())-"
+            + UUID().uuidString.lowercased(),
+          directoryHint: .isDirectory
+        )
+      }
+      try fileManager.moveItem(at: child, to: destination)
+      count += 1
+    }
+    return count
+  }
+
   private func prepareDirectories() throws {
     try fileManager.createDirectory(at: rootURL, withIntermediateDirectories: true)
     try fileManager.createDirectory(at: stagingURL, withIntermediateDirectories: true)

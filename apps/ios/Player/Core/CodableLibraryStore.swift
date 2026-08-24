@@ -201,12 +201,49 @@ actor CodableLibraryStore: LibraryPersisting {
   }
 
   func restoreLatestAutomaticBackup() async throws -> LibrarySnapshot {
+    try await recoverLatestAutomaticBackupPreservingPrimary()
+  }
+
+  func startupRecoveryStatus() async -> StartupRecoveryStatus {
+    let issue: StartupRecoveryIssue
+    if let data = try? Data(contentsOf: fileURL),
+      let header = try? JSONDecoder.playerDecoder.decode(SchemaHeader.self, from: data)
+    {
+      issue = header.schemaVersion > Self.currentSchemaVersion
+        ? .newerLibraryVersion : .unreadableLibrary
+    } else if fileManager.fileExists(atPath: fileURL.path) {
+      issue = .unreadableLibrary
+    } else {
+      issue = .storageUnavailable
+    }
+    let candidates = automaticBackupCandidates()
+    let valid = await automaticBackups()
+    return StartupRecoveryStatus(
+      issue: issue,
+      validAutomaticBackupCount: valid.count,
+      invalidAutomaticBackupCount: max(0, candidates.count - valid.count)
+    )
+  }
+
+  func recoverLatestAutomaticBackupPreservingPrimary() async throws -> LibrarySnapshot {
     guard let backup = await automaticBackups().first else {
       throw PlayerCoreError.fileOperation("No valid automatic library backup is available.")
     }
     let snapshot = try await CodableLibraryStore(fileURL: backup.url).load()
-    try save(snapshot)
+    _ = try quarantinePrimaryStore()
+    let data = try Data(contentsOf: backup.url)
+    try fileManager.createDirectory(
+      at: fileURL.deletingLastPathComponent(),
+      withIntermediateDirectories: true
+    )
+    try data.write(to: fileURL, options: [.atomic, .completeFileProtectionUnlessOpen])
     return snapshot
+  }
+
+  func beginFreshLibraryPreservingPrimary() async throws -> LibrarySnapshot {
+    _ = try quarantinePrimaryStore()
+    try save(.empty)
+    return .empty
   }
 
   private var automaticBackupDirectory: URL {
@@ -214,6 +251,35 @@ actor CodableLibraryStore: LibraryPersisting {
       path: "AutomaticBackups",
       directoryHint: .isDirectory
     )
+  }
+
+  private var quarantineDirectory: URL {
+    fileURL.deletingLastPathComponent().appending(
+      path: "Recovery/Quarantine",
+      directoryHint: .isDirectory
+    )
+  }
+
+  private func automaticBackupCandidates() -> [URL] {
+    ((try? fileManager.contentsOfDirectory(
+      at: automaticBackupDirectory,
+      includingPropertiesForKeys: [.isRegularFileKey],
+      options: [.skipsHiddenFiles]
+    )) ?? []).filter {
+      (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
+    }
+  }
+
+  @discardableResult
+  private func quarantinePrimaryStore() throws -> URL? {
+    guard fileManager.fileExists(atPath: fileURL.path) else { return nil }
+    try fileManager.createDirectory(at: quarantineDirectory, withIntermediateDirectories: true)
+    let destination = quarantineDirectory.appending(
+      path: "library-\(Int(Date().timeIntervalSince1970 * 1_000))-"
+        + "\(UUID().uuidString.lowercased()).json"
+    )
+    try fileManager.moveItem(at: fileURL, to: destination)
+    return destination
   }
 
   private func createAutomaticBackup(of source: URL, prefix: String) throws {

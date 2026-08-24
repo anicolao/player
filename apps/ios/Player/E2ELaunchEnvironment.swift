@@ -49,6 +49,8 @@ extension PlayerEnvironment {
           return try bookmarksEnvironment(reset: arguments.contains("-e2e-reset"))
         case "portable-backup":
           return try portableBackupEnvironment()
+        case "offline-recovery":
+          return try offlineRecoveryEnvironment(reset: arguments.contains("-e2e-reset"))
         default:
           break
         }
@@ -1131,6 +1133,117 @@ extension PlayerEnvironment {
       )
     }
 
+    private static func offlineRecoveryEnvironment(reset: Bool) throws -> PlayerEnvironment {
+      let root = FileManager.default.temporaryDirectory.appending(
+        path: "PlayerE2EOfflineRecovery",
+        directoryHint: .isDirectory
+      )
+      if reset { try? FileManager.default.removeItem(at: root) }
+      try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+      let date = Date(timeIntervalSince1970: 1_750_000_000)
+      let bookID = UUID(uuidString: "d1000000-0000-0000-0000-000000000001")!
+      let assetID = UUID(uuidString: "d1000000-0000-0000-0000-000000000002")!
+      let forbidden = [
+        "Private Recovery Book",
+        "Private Recovery Author",
+        "private-recovery-source.m4b",
+        "private-recovery-checksum",
+        "Private recovery note",
+        "private-pairing-secret",
+      ]
+      let mediaPath =
+        "Media/\(bookID.uuidString.lowercased())/\(assetID.uuidString.lowercased()).m4b"
+      let mediaURL = root.appending(path: mediaPath)
+      try FileManager.default.createDirectory(
+        at: mediaURL.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+      )
+      try Data("deterministic recovered audio".utf8).write(to: mediaURL)
+      let asset = AudioAsset(
+        id: assetID,
+        originalFilename: forbidden[2],
+        managedRelativePath: mediaPath,
+        checksumSHA256: forbidden[3],
+        byteCount: 29,
+        durationSeconds: 180,
+        container: "M4B"
+      )
+      let book = Book(
+        id: bookID,
+        title: forbidden[0],
+        authors: [forbidden[1]],
+        durationSeconds: 180,
+        artworkData: nil,
+        assets: [asset],
+        dateAdded: date
+      )
+      let snapshot = LibrarySnapshot(
+        books: [book],
+        importJobs: [],
+        currentBookID: nil,
+        bookmarks: [Bookmark(
+          id: UUID(uuidString: "d1000000-0000-0000-0000-000000000003")!,
+          bookID: bookID,
+          bookPositionMilliseconds: 48_000,
+          assetID: assetID,
+          assetPositionMilliseconds: 48_000,
+          chapterID: nil,
+          chapterTitleSnapshot: nil,
+          label: "Private recovery bookmark",
+          note: forbidden[4],
+          createdAt: date,
+          updatedAt: date
+        )]
+      )
+      let backupDirectory = root.appending(
+        path: "AutomaticBackups",
+        directoryHint: .isDirectory
+      )
+      try FileManager.default.createDirectory(
+        at: backupDirectory,
+        withIntermediateDirectories: true
+      )
+      let envelope = E2EOfflineRecoveryEnvelope(
+        schemaVersion: CodableLibraryStore.currentSchemaVersion,
+        library: snapshot
+      )
+      try JSONEncoder.playerEncoder.encode(envelope).write(
+        to: backupDirectory.appending(path: "library-safe-copy.json"),
+        options: .atomic
+      )
+      try Data("corrupt primary with private catalog bytes".utf8).write(
+        to: root.appending(path: "Library.json"),
+        options: .atomic
+      )
+      let orphans: [(String, String)] = [
+        ("Media/d2000000-0000-0000-0000-000000000001/private-orphan.m4b", "media"),
+        ("Staging/d2000000-0000-0000-0000-000000000002/private.partial", "staging"),
+        ("Trash/d2000000-0000-0000-0000-000000000003/private-trash.m4b", "trash"),
+      ]
+      for (path, contents) in orphans {
+        let url = root.appending(path: path)
+        try FileManager.default.createDirectory(
+          at: url.deletingLastPathComponent(),
+          withIntermediateDirectories: true
+        )
+        try Data(contents.utf8).write(to: url)
+      }
+      E2EOfflineRecoveryBridge.shared.configure(forbiddenValues: forbidden)
+      return PlayerEnvironment(
+        persistence: CodableLibraryStore(fileURL: root.appending(path: "Library.json")),
+        media: FileSystemMediaManager(rootURL: root),
+        inspector: DeterministicAudioInspector(result: .failure(.unreadableAudio("unused"))),
+        playback: DeterministicPlaybackController(),
+        clock: FixedPlayerClock(value: date),
+        diagnostics: FileSystemSupportDiagnosticsManager(
+          rootURL: root,
+          clock: FixedPlayerClock(value: date),
+          appVersion: "0.1.0",
+          appBuild: "17"
+        )
+      )
+    }
+
     private static func portableBackupEnvironment() throws -> PlayerEnvironment {
       let root = FileManager.default.temporaryDirectory.appending(
         path: "PlayerE2EPortableBackup",
@@ -1696,5 +1809,10 @@ extension PlayerEnvironment {
     func save(_ snapshot: LibrarySnapshot) async throws {
       try await base.save(snapshot)
     }
+  }
+
+  private struct E2EOfflineRecoveryEnvelope: Codable {
+    var schemaVersion: Int
+    var library: LibrarySnapshot
   }
 #endif
