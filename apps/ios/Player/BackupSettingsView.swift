@@ -189,7 +189,7 @@ struct BackupSettingsView: View {
           }
           .padding(.horizontal, 16)
           .padding(.top, 16)
-          .padding(.bottom, 48)
+          .padding(.bottom, model.library.currentBookID == nil ? 48 : 240)
         }
         .accessibilityIdentifier("backup-scroll")
         .background(Color(uiColor: .systemGroupedBackground))
