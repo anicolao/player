@@ -76,10 +76,7 @@ final class MetadataRepairUITests: XCTestCase {
 
     let titleInput = app.textFields["metadata-title-input"]
     XCTAssertTrue(titleInput.waitForExistence(timeout: 2))
-    titleInput.tap()
-    titleInput.typeKey("a", modifierFlags: .command)
-    titleInput.typeText("The Amber Signal")
-    try requireValue(titleInput, "The Amber Signal")
+    try replaceText(in: titleInput, with: "The Amber Signal", app: app)
     app.buttons["metadata-apply-title"].tap()
     try requireValue(
       title,
@@ -111,8 +108,13 @@ final class MetadataRepairUITests: XCTestCase {
     let review = anyElement(app, "review-import-screen")
     try requireValue(review, "proposal:ready:1-book:1-tracks:0-warnings:revision-5")
     app.buttons["add-import-to-library"].tap()
-    XCTAssertTrue(app.staticTexts["The Amber Signal"].waitForExistence(timeout: 2))
-    app.staticTexts["The Amber Signal"].tap()
+    // The repaired title already exists on the review screen. Wait for the
+    // asynchronous commit to leave that screen before resolving the matching
+    // title in Library; otherwise a fast host can tap the stale review label.
+    XCTAssertTrue(review.waitForNonExistence(timeout: 10))
+    let repairedBook = app.staticTexts["The Amber Signal"]
+    XCTAssertTrue(repairedBook.waitForExistence(timeout: 5))
+    repairedBook.tap()
 
     let bookMetadata = anyElement(app, "book-metadata-probe")
     let bookProvenance = anyElement(app, "book-metadata-provenance-probe")
@@ -201,6 +203,21 @@ final class MetadataRepairUITests: XCTestCase {
 
   private func anyElement(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {
     app.descendants(matching: .any)[identifier]
+  }
+
+  private func replaceText(
+    in field: XCUIElement,
+    with replacement: String,
+    app: XCUIApplication
+  ) throws {
+    for _ in 0..<3 {
+      field.tap()
+      XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 2))
+      field.typeKey("a", modifierFlags: .command)
+      field.typeText(replacement)
+      if field.waitForStringValue(replacement, timeout: 1) { return }
+    }
+    try requireValue(field, replacement)
   }
 
   private func requireValue(_ element: XCUIElement, _ expected: String) throws {
