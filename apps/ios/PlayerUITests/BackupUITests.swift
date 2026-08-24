@@ -6,7 +6,10 @@ final class BackupUITests: XCTestCase {
     continueAfterFailure = false
     XCUIDevice.shared.orientation = .portrait
     let app = XCUIApplication()
-    app.launchArguments = ["-e2e-fixture", "portable-backup", "-e2e-reset"]
+    app.launchArguments = [
+      "-e2e-fixture", "portable-backup", "-e2e-reset",
+      "-e2e-start-section", "settings",
+    ]
     let tester = TestStepHelper(testCase: self)
     tester.setMetadata(
       title: "A complete local library travels in one verified backup",

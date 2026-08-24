@@ -14,6 +14,22 @@ struct ContentView: View {
   @State private var pendingDocumentURLs: [URL] = []
   @State private var presentedPlayerBook: Book?
 
+  init(model: PlayerModel) {
+    self.model = model
+    #if E2E
+      let arguments = ProcessInfo.processInfo.arguments
+      if let option = arguments.firstIndex(of: "-e2e-start-section"),
+        arguments.indices.contains(option + 1)
+      {
+        switch arguments[option + 1] {
+        case "inbox": _selection = State(initialValue: .inbox)
+        case "settings": _selection = State(initialValue: .settings)
+        default: break
+        }
+      }
+    #endif
+  }
+
   var body: some View {
     TabView(selection: $selection) {
       LibraryView(
