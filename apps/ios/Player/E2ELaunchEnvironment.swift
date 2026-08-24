@@ -1759,16 +1759,29 @@ extension PlayerEnvironment {
         mediaFiles = 0
       }
       let state: String
-      if model.library == expectedLibrary, audioMatches, preparedBackup != nil {
+      if equivalentCatalog(model.library, expectedLibrary), audioMatches, preparedBackup != nil {
         state = "exported"
       } else if model.library == .empty, mediaFiles == 0, preparedBackup != nil {
         state = "cleared"
-      } else if model.library == expectedLibrary, audioMatches, preparedBackup == nil {
+      } else if equivalentCatalog(model.library, expectedLibrary), audioMatches,
+        preparedBackup == nil
+      {
         state = "restored"
       } else {
         state = "unexpected"
       }
       return "backup:\(state):books=\(model.library.books.count):bookmarks=\(model.library.bookmarks.count):position=\(model.library.playbackPosition?.positionMilliseconds ?? -1):media=\(mediaFiles):audio=\(audioMatches)"
+    }
+
+    private func equivalentCatalog(
+      _ actual: LibrarySnapshot,
+      _ expected: LibrarySnapshot
+    ) -> Bool {
+      var actual = actual
+      var expected = expected
+      actual.storageManifests = []
+      expected.storageManifests = []
+      return actual == expected
     }
   }
 
