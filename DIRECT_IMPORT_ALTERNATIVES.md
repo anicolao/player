@@ -94,9 +94,9 @@ The unavoidable tradeoff is therefore:
 
 ## Current foundation
 
-Player already has the import core. Build 13 includes the direct transport,
-single-storage receiver ingestion, and the physically verified iPhone
-Mirroring provider path:
+Player already has the import core. Build 14 includes the direct transport,
+single-storage receiver ingestion, resumable web uploads, and the physically
+verified iPhone Mirroring provider path:
 
 - The document picker accepts M4B, M4A, MP3, ZIP, folders, and multiple items.
 - registered document types route single audio files and ZIPs through
@@ -121,11 +121,12 @@ still future work. The web receiver reuses the analyzer, safe ZIP extractor,
 grouping, metadata evidence, and managed media store rather than creating a
 second importer.
 
-Build 13 does not yet resume an interrupted web file from an acknowledged byte
-offset. A browser transport failure discards the active unsealed transfer and
-its partial file. Resumable offsets, reconnect ownership, and matching browser
-and phone completion evidence are MVP completion work tracked as C01 in
-[MVP_COMPLETION_PLAN.md](MVP_COMPLETION_PLAN.md).
+Build 14 preserves partial files while the receiver session remains active,
+reports a durable byte offset for every selected file, and accepts only a retry
+that begins at the server-confirmed offset. Temporary connection failures leave
+the selection in a retryable browser state; explicit cancellation removes the
+partial session. The browser and phone both offer a deliberate “another book”
+path after completion, so repeated imports do not require restarting Player.
 
 ## Common direct-import contract
 

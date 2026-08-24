@@ -96,6 +96,74 @@ final class LaunchUITests: XCTestCase {
       ]
     )
 
+    receivingApp.terminate()
+    let pausedApp = makeApplication(additionalArguments: ["-e2e-computer-receiver-paused"])
+    pausedApp.launch()
+    pausedApp.buttons["receive-from-computer-empty-library"].tap()
+    try tester.step(
+      "computer-receiver-paused",
+      description: "Interrupted web transfer progress agrees with the server-confirmed bytes",
+      verifications: [
+        .valueEquals(
+          pausedApp.scrollViews["computer-receiver-screen"],
+          "receiver:paused",
+          "The receiver identifies the paused, resumable state"
+        ),
+        .valueEquals(
+          pausedApp.descendants(matching: .any)["computer-receiver-transfer"],
+          "receiving:734003200-of-1468006400",
+          "The iPhone reports the exact confirmed byte count"
+        ),
+        .exists(
+          pausedApp.staticTexts[
+            "The computer can retry from the confirmed progress shown here."
+          ],
+          "The listener is told that retry continues from confirmed progress"
+        ),
+      ]
+    )
+
+    pausedApp.terminate()
+    let completedApp = makeApplication(additionalArguments: ["-e2e-computer-receiver-completed"])
+    completedApp.launch()
+    completedApp.buttons["receive-from-computer-empty-library"].tap()
+    try tester.step(
+      "computer-receiver-completed",
+      description: "A completed transfer remains actionable for repeated imports",
+      verifications: [
+        .valueEquals(
+          completedApp.scrollViews["computer-receiver-screen"],
+          "receiver:completed:1",
+          "The receiver reports one completed book without dismissing itself"
+        ),
+        .exists(
+          completedApp.buttons["receive-another-audiobook"],
+          "The listener can keep the receiver open for another book"
+        ),
+        .exists(
+          completedApp.buttons["finish-computer-receiver"],
+          "The listener explicitly decides when receiving is finished"
+        ),
+      ]
+    )
+
+    completedApp.buttons["receive-another-audiobook"].tap()
+    try tester.step(
+      "computer-receiver-repeat-ready",
+      description: "Receive Another returns to the same paired receiver",
+      verifications: [
+        .valueEquals(
+          completedApp.scrollViews["computer-receiver-screen"],
+          "receiver:ready",
+          "The existing receiver is immediately ready for the next book"
+        ),
+        .exists(
+          completedApp.staticTexts["computer-receiver-pairing-code"],
+          "The active receiver keeps its discoverable pairing details"
+        ),
+      ]
+    )
+
     tester.generateDocs()
   }
 

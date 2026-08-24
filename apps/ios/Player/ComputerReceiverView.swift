@@ -14,6 +14,7 @@ final class ComputerReceiverController {
     case ready
     case connected(String)
     case receiving(name: String, completedBytes: Int64, totalBytes: Int64)
+    case paused(name: String, completedBytes: Int64, totalBytes: Int64)
     case preparingDrop(name: String, completedItems: Int, totalItems: Int)
     case importing(String)
     case completed(message: String, addedBookCount: Int)
@@ -29,6 +30,8 @@ final class ComputerReceiverController {
   @ObservationIgnored private let mirroringDropAdapter: MirroringDropAdapter
   @ObservationIgnored private let usesSimulatedReadyState: Bool
   @ObservationIgnored private let usesSimulatedDropProgress: Bool
+  @ObservationIgnored private let usesSimulatedCompletion: Bool
+  @ObservationIgnored private let usesSimulatedPause: Bool
   @ObservationIgnored private var startTask: Task<Void, Never>?
   @ObservationIgnored private var dropTask: Task<Void, Never>?
   @ObservationIgnored private var dropOperation: MirroringDropMaterializationOperation?
@@ -40,6 +43,12 @@ final class ComputerReceiverController {
     )
     usesSimulatedDropProgress = ProcessInfo.processInfo.arguments.contains(
       "-e2e-mirroring-drop-progress"
+    )
+    usesSimulatedCompletion = ProcessInfo.processInfo.arguments.contains(
+      "-e2e-computer-receiver-completed"
+    )
+    usesSimulatedPause = ProcessInfo.processInfo.arguments.contains(
+      "-e2e-computer-receiver-paused"
     )
     let support = (try? fileManager.url(
       for: .applicationSupportDirectory,
@@ -68,9 +77,19 @@ final class ComputerReceiverController {
       address = "http://192.168.1.42:49152"
       pairingCode = "482731"
       receiverIsRunning = true
-      phase = usesSimulatedDropProgress
-        ? .preparingDrop(name: "Project Hail Mary", completedItems: 1, totalItems: 3)
-        : .ready
+      if usesSimulatedCompletion {
+        phase = .completed(message: "Project Hail Mary added", addedBookCount: 1)
+      } else if usesSimulatedPause {
+        phase = .paused(
+          name: "Project Hail Mary",
+          completedBytes: 734_003_200,
+          totalBytes: 1_468_006_400
+        )
+      } else if usesSimulatedDropProgress {
+        phase = .preparingDrop(name: "Project Hail Mary", completedItems: 1, totalItems: 3)
+      } else {
+        phase = .ready
+      }
       return
     }
     phase = .starting
@@ -126,6 +145,11 @@ final class ComputerReceiverController {
         phase = .failed(error.localizedDescription)
       }
     }
+  }
+
+  func receiveAnother() {
+    guard receiverIsRunning else { return }
+    phase = .ready
   }
 
   @discardableResult
@@ -193,6 +217,8 @@ final class ComputerReceiverController {
       phase = .connected(clientName)
     case .receiving(let name, let completedBytes, let totalBytes):
       phase = .receiving(name: name, completedBytes: completedBytes, totalBytes: totalBytes)
+    case .paused(let name, let completedBytes, let totalBytes):
+      phase = .paused(name: name, completedBytes: completedBytes, totalBytes: totalBytes)
     case .importing(let name):
       phase = .importing(name)
     case .completed(let message, let addedBookCount):
@@ -246,12 +272,6 @@ struct ComputerReceiverView: View {
       }
       .onChange(of: controller.phase) { _, phase in
         UIApplication.shared.isIdleTimerDisabled = phase.isActivelyReceiving
-        guard case .completed = phase else { return }
-        Task {
-          try? await Task.sleep(for: .seconds(1.2))
-          didFinish(false)
-          dismiss()
-        }
       }
       .background {
         MirroringWindowDropInteraction(
@@ -298,6 +318,10 @@ struct ComputerReceiverView: View {
       Label("Receiving audiobook", systemImage: "arrow.down.circle.fill")
         .font(.headline)
         .foregroundStyle(PlayerColor.accent)
+    case .paused:
+      Label("Transfer paused", systemImage: "pause.circle.fill")
+        .font(.headline)
+        .foregroundStyle(PlayerColor.accent)
     case .preparingDrop:
       Label("Receiving mirrored drop", systemImage: "arrow.down.doc.fill")
         .font(.headline)
@@ -334,6 +358,13 @@ struct ComputerReceiverView: View {
       readyContent
     case .receiving(let name, let completedBytes, let totalBytes):
       transferCard(name: name, completedBytes: completedBytes, totalBytes: totalBytes)
+    case .paused(let name, let completedBytes, let totalBytes):
+      VStack(spacing: 16) {
+        transferCard(name: name, completedBytes: completedBytes, totalBytes: totalBytes)
+        Text("The computer can retry from the confirmed progress shown here.")
+          .multilineTextAlignment(.center)
+          .foregroundStyle(PlayerColor.secondary)
+      }
     case .preparingDrop(let name, let completedItems, let totalItems):
       VStack(spacing: 18) {
         ProgressView(value: Double(completedItems), total: Double(max(1, totalItems)))
@@ -361,6 +392,17 @@ struct ComputerReceiverView: View {
           .foregroundStyle(Color.green)
         Text(message).font(.title2.bold()).foregroundStyle(PlayerColor.ink)
         Text("Ready to play").foregroundStyle(PlayerColor.secondary)
+        Button("Receive Another") { controller.receiveAnother() }
+          .buttonStyle(.borderedProminent)
+          .tint(PlayerColor.accent)
+          .accessibilityIdentifier("receive-another-audiobook")
+        Button("Done") {
+          didFinish(false)
+          dismiss()
+        }
+        .buttonStyle(.bordered)
+        .tint(PlayerColor.accent)
+        .accessibilityIdentifier("finish-computer-receiver")
       }
       .padding(.vertical, 44)
     case .needsReview(let message):
@@ -478,8 +520,11 @@ struct ComputerReceiverView: View {
     }
     .padding(20)
     .background(PlayerColor.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    .accessibilityElement(children: .contain)
     .accessibilityIdentifier("computer-receiver-transfer")
-    .accessibilityValue("receiving:\(completedBytes)-of-\(totalBytes)")
+    .accessibilityValue(
+      Text(verbatim: "receiving:\(completedBytes)-of-\(totalBytes)")
+    )
   }
 
   private var dropOverlay: some View {
@@ -510,6 +555,7 @@ struct ComputerReceiverView: View {
     case .ready: "receiver:ready"
     case .connected: "receiver:connected"
     case .receiving: "receiver:receiving"
+    case .paused: "receiver:paused"
     case .preparingDrop: "receiver:preparing-mirrored-drop"
     case .importing: "receiver:importing"
     case .completed(_, let count): "receiver:completed:\(count)"
@@ -651,7 +697,7 @@ final class MirroringWindowProbeView: UIView {
 private extension ComputerReceiverController.Phase {
   var isActivelyReceiving: Bool {
     switch self {
-    case .connected, .receiving, .preparingDrop, .importing: true
+    case .connected, .receiving, .paused, .preparingDrop, .importing: true
     default: false
     }
   }

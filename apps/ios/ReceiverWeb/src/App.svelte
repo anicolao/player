@@ -1,4 +1,6 @@
 <script>
+  import { buildUploadPlan, canResumeImport } from './upload-plan.js';
+
   let phase = 'pairing';
   let code = '';
   let token = '';
@@ -13,6 +15,7 @@
   let totalBytes = 0;
   let statusMessage = '';
   let activeRequest = null;
+  let cancelling = false;
 
   const supportedExtensions = new Set(['m4a', 'm4b', 'mp3', 'zip']);
 
@@ -154,39 +157,102 @@
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.message || 'Player rejected this selection.');
       importID = payload.id;
-      let confirmedBytes = 0;
-      for (let index = 0; index < selection.length; index += 1) {
-        statusMessage = `Sending ${index + 1} of ${selection.length} files · waiting for Player to confirm each file`;
-        await uploadFile(importID, index, selection[index].file);
-        confirmedBytes += selection[index].file.size;
-        completedBytes = confirmedBytes;
-      }
-      statusMessage = 'Player is checking your files…';
-      const complete = await fetch(`/api/imports/${importID}/complete`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const completePayload = await complete.json();
-      if (!complete.ok) throw new Error(completePayload.message || 'The upload could not be completed.');
-      await pollResult();
+      await transferActiveImport();
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : 'The transfer failed.';
-      await discardImport();
-      selection = [];
-      completedBytes = 0;
-      totalBytes = 0;
-      if (/not paired|no longer has|failed to fetch|load failed|network|could not be reached/i.test(message)) {
-        token = '';
-        code = '';
-        error = 'This receiver session ended. Enter the new code shown in Player.';
-        phase = 'pairing';
-      } else {
-        error = message;
-        phase = 'ready';
-      }
+      await handleTransferFailure(caught);
     } finally {
       activeRequest = null;
     }
+  }
+
+  async function transferActiveImport() {
+    cancelling = false;
+    phase = 'uploading';
+    error = '';
+    const status = await fetchImportStatus();
+    const plan = buildUploadPlan(selection, status.fileOffsets);
+    for (const { index, item, offset, body } of plan) {
+      statusMessage = offset > 0
+        ? `Resuming ${index + 1} of ${selection.length} files at ${formatBytes(offset)}`
+        : `Sending ${index + 1} of ${selection.length} files · waiting for Player to confirm each file`;
+      await uploadFile(importID, index, item.file, offset, body);
+      await fetchImportStatus();
+    }
+    statusMessage = 'Player is checking your files…';
+    const complete = await fetch(`/api/imports/${importID}/complete`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const completePayload = await complete.json();
+    if (!complete.ok) throw new Error(completePayload.message || 'The upload could not be completed.');
+    activeRequest = null;
+    phase = 'importing';
+    await pollResult();
+  }
+
+  async function retryTransfer() {
+    try {
+      await transferActiveImport();
+    } catch (caught) {
+      await handleTransferFailure(caught);
+    } finally {
+      activeRequest = null;
+    }
+  }
+
+  async function handleTransferFailure(caught) {
+    if (cancelling) return;
+    const message = caught instanceof Error ? caught.message : 'The transfer was interrupted.';
+    if (importID && selection.length) {
+      try {
+        const status = await fetchImportStatus();
+        if (canResumeImport(status, selection)) {
+          error = `${message} Player kept the confirmed bytes; retry to continue.`;
+          statusMessage = 'Transfer paused safely.';
+          phase = 'retry';
+          return;
+        }
+        if (status.state === 'importing') {
+          statusMessage = status.message || 'Player is checking your files…';
+          activeRequest = null;
+          phase = 'importing';
+          await pollResult();
+          return;
+        }
+        if (status.state === 'completed' || status.state === 'needsReview') {
+          statusMessage = status.message || 'Your audiobook is ready in Player.';
+          importID = '';
+          selection = [];
+          phase = 'completed';
+          return;
+        }
+      } catch {
+        // The receiver itself is unavailable; reconnect and start again.
+      }
+    }
+    importID = '';
+    completedBytes = 0;
+    totalBytes = selection.reduce((total, item) => total + item.file.size, 0);
+    if (/not paired|no longer has|failed to fetch|load failed|network|connection|could not be reached/i.test(message)) {
+      token = '';
+      code = '';
+      error = 'This receiver session ended. Enter the new code shown in Player, then choose the book again.';
+      phase = 'pairing';
+    } else {
+      error = message;
+      phase = 'ready';
+    }
+  }
+
+  async function fetchImportStatus() {
+    const response = await fetch(`/api/imports/${importID}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.message || 'Player lost this import.');
+    if (Number.isFinite(payload.completedBytes)) completedBytes = payload.completedBytes;
+    if (Number.isFinite(payload.totalBytes)) totalBytes = payload.totalBytes;
+    return payload;
   }
 
   async function discardImport() {
@@ -199,7 +265,7 @@
     }).catch(() => {});
   }
 
-  function uploadFile(id, index, file) {
+  function uploadFile(id, index, file, offset, body) {
     return new Promise((resolve, reject) => {
       const request = new XMLHttpRequest();
       let polling = false;
@@ -229,6 +295,7 @@
       request.open('PUT', `/api/imports/${id}/files/${index}`);
       request.setRequestHeader('Authorization', `Bearer ${token}`);
       request.setRequestHeader('Content-Type', 'application/octet-stream');
+      request.setRequestHeader('X-Player-Upload-Offset', String(offset));
       request.onload = () => {
         if (request.status >= 200 && request.status < 300) finish(resolve);
         else {
@@ -243,7 +310,7 @@
       };
       request.onerror = () => finish(() => reject(new Error(`Connection lost while sending ${file.name}.`)));
       request.onabort = () => finish(() => reject(new Error('Transfer cancelled.')));
-      request.send(file);
+      request.send(body);
     });
   }
 
@@ -273,6 +340,7 @@
   }
 
   async function cancelTransfer() {
+    cancelling = true;
     activeRequest?.abort();
     await discardImport();
     selection = [];
@@ -280,6 +348,17 @@
     totalBytes = 0;
     phase = 'ready';
     error = 'Transfer cancelled. Partial files were removed.';
+    cancelling = false;
+  }
+
+  function sendAnother() {
+    selection = [];
+    importID = '';
+    completedBytes = 0;
+    totalBytes = 0;
+    statusMessage = '';
+    error = '';
+    phase = 'ready';
   }
 
   function formatBytes(bytes) {
@@ -345,7 +424,7 @@
       {#if error}<p class="error" role="alert">{error}</p>{/if}
       <p class="privacy">⌾ Your originals stay on this computer.</p>
     </section>
-  {:else if phase === 'uploading'}
+  {:else if phase === 'uploading' || phase === 'retry' || phase === 'importing'}
     <section class="panel" aria-labelledby="upload-title">
       <p class="connected">✓ Connected to {deviceName}</p>
       <h1 id="upload-title">Sending {selection.length === 1 ? '1 book' : `${selection.length} files`}</h1>
@@ -355,7 +434,17 @@
         <progress value={progress} max="100">{progress}%</progress>
         <div class="progress-copy"><span>{formatBytes(completedBytes)} of {formatBytes(totalBytes)}</span><strong>{progress}%</strong></div>
         <p>{statusMessage}</p>
-        <button class="secondary" onclick={cancelTransfer}>Cancel</button>
+        {#if phase === 'retry'}
+          <div class="transfer-actions">
+            <button class="primary compact" onclick={retryTransfer}>Retry transfer</button>
+            <button class="secondary" onclick={cancelTransfer}>Cancel and clean up</button>
+          </div>
+          {#if error}<p class="error" role="alert">{error}</p>{/if}
+        {:else if phase === 'uploading'}
+          <button class="secondary" onclick={cancelTransfer}>Cancel</button>
+        {:else}
+          <p class="privacy">The transfer is sealed; Player will finish even if this page closes.</p>
+        {/if}
       </article>
       <p class="success-note">✓ Valid books appear automatically in your Library.</p>
     </section>
@@ -364,7 +453,8 @@
       <div class="complete-icon" aria-hidden="true">✓</div>
       <h1 id="complete-title">Sent to Player</h1>
       <p>{statusMessage || 'Your audiobook is ready in Library.'}</p>
-      <p class="privacy">You can close this page.</p>
+      <button class="primary compact" onclick={sendAnother}>Send another book</button>
+      <p class="privacy">Or close this page when you are finished.</p>
     </section>
   {/if}
 </main>
@@ -402,6 +492,9 @@
   progress::-moz-progress-bar { background: #b0442a; }
   .progress-copy { display: flex; justify-content: space-between; color: #595f62; }
   .transfer-card button { float: right; }
+  .transfer-actions { display: flex; justify-content: flex-end; gap: 12px; flex-wrap: wrap; }
+  .transfer-actions button { float: none; }
+  .compact { width: auto; }
   .success-note { margin-top: 28px; padding: 17px; border: 1px solid #bdd6ba; border-radius: 12px; color: #246834; background: #eef6eb; }
   .completed { width: min(520px, 100%); margin-inline: auto; padding: 48px 26px; border: 1px solid #d5ddce; border-radius: 20px; background: #fffdf8; }
   .complete-icon { display: grid; place-items: center; width: 64px; height: 64px; margin: 0 auto 20px; border-radius: 50%; color: white; background: #347845; font-size: 34px; }

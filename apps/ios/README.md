@@ -72,6 +72,8 @@ See [E2E_GUIDE.md](../../E2E_GUIDE.md) for the complete contract.
 - Stories 001–008 covering launch/import, grouping, metadata, ZIP, Library,
   position restoration, sleep timer, and bookmarks
 - Native sRGB RGBA screenshot comparator that rejects any channel delta above 8/255
+- Server-confirmed byte-offset resume and explicit repeat-import controls for
+  the local computer receiver (Build 14 candidate)
 
 Backup/restore, accessibility audit evidence, launch recovery/diagnostics, scale
 evidence, and the final mockup comparison remain in the serial

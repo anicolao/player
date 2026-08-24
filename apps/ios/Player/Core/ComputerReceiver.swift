@@ -19,6 +19,7 @@ enum ComputerReceiverEvent: Sendable, Equatable {
   case ready(address: String, pairingCode: String)
   case connected(clientName: String)
   case receiving(name: String, completedBytes: Int64, totalBytes: Int64)
+  case paused(name: String, completedBytes: Int64, totalBytes: Int64)
   case importing(name: String)
   case completed(message: String, addedBookCount: Int)
   case needsReview(message: String)
@@ -53,6 +54,7 @@ actor ComputerImportStore {
     var partialURL: URL
     var finalURL: URL
     var expectedBytes: Int64
+    var startingOffset: Int64
     var displayName: String
     var completedBefore: Int64
     var totalBytes: Int64
@@ -65,6 +67,7 @@ actor ComputerImportStore {
     var addedBookCount: Int
     var completedBytes: Int64
     var totalBytes: Int64
+    var fileOffsets: [Int64]
   }
 
   private struct StoredEntry: Sendable {
@@ -93,6 +96,7 @@ actor ComputerImportStore {
   private let rootURL: URL
   private let fileManager: FileManager
   private var sessions: [UUID: Session] = [:]
+  private var activeWrites: Set<String> = []
 
   init(rootURL: URL, fileManager: FileManager = .default) {
     self.rootURL = rootURL.standardizedFileURL
@@ -206,42 +210,66 @@ actor ComputerImportStore {
     return Created(id: id, displayName: displayName, totalBytes: totalBytes)
   }
 
-  func writeTarget(sessionID: UUID, index: Int) throws -> WriteTarget {
+  func writeTarget(sessionID: UUID, index: Int, requestedOffset: Int64 = 0) throws -> WriteTarget {
     guard let session = sessions[sessionID] else { throw ComputerReceiverError.importNotFound }
     guard session.state == "receiving" else { throw ComputerReceiverError.importAlreadySealed }
     guard session.entries.indices.contains(index) else { throw ComputerReceiverError.fileNotFound }
     let entry = session.entries[index]
     guard !entry.isComplete else { throw ComputerReceiverError.fileAlreadyReceived }
+    let writeKey = writeKey(sessionID: sessionID, index: index)
+    guard activeWrites.insert(writeKey).inserted else {
+      throw ComputerReceiverError.fileWriteInProgress
+    }
+    var acquiredWrite = true
+    defer {
+      if acquiredWrite { activeWrites.remove(writeKey) }
+    }
     let partialURL = entry.finalURL.appendingPathExtension("partial")
     try fileManager.createDirectory(
       at: entry.finalURL.deletingLastPathComponent(),
       withIntermediateDirectories: true
     )
-    if fileManager.fileExists(atPath: partialURL.path) { try fileManager.removeItem(at: partialURL) }
-    let completedBefore = session.entries.reduce(Int64(0)) {
-      $0 + ($1.isComplete ? $1.manifest.byteCount : 0)
+    let currentOffset = try persistedOffset(for: entry)
+    guard currentOffset <= entry.manifest.byteCount else {
+      try? fileManager.removeItem(at: partialURL)
+      throw ComputerReceiverError.byteCountMismatch(
+        expected: entry.manifest.byteCount,
+        received: currentOffset
+      )
     }
+    guard requestedOffset == currentOffset else {
+      throw ComputerReceiverError.invalidUploadOffset(
+        expected: currentOffset,
+        received: requestedOffset
+      )
+    }
+    let persistedBytes = try session.entries.reduce(Int64(0)) { result, storedEntry in
+      result + (try persistedOffset(for: storedEntry))
+    }
+    let completedBefore = persistedBytes - currentOffset
     let totalBytes = session.entries.reduce(Int64(0)) { $0 + $1.manifest.byteCount }
+    acquiredWrite = false
     return WriteTarget(
       partialURL: partialURL,
       finalURL: entry.finalURL,
       expectedBytes: entry.manifest.byteCount,
+      startingOffset: currentOffset,
       displayName: session.displayName,
       completedBefore: completedBefore,
       totalBytes: totalBytes
     )
   }
 
-  func finishWrite(sessionID: UUID, index: Int, receivedBytes: Int64) throws {
+  func finishWrite(sessionID: UUID, index: Int, finalBytes: Int64) throws {
+    defer { activeWrites.remove(writeKey(sessionID: sessionID, index: index)) }
     guard var session = sessions[sessionID] else { throw ComputerReceiverError.importNotFound }
     guard session.entries.indices.contains(index) else { throw ComputerReceiverError.fileNotFound }
     var entry = session.entries[index]
     let partialURL = entry.finalURL.appendingPathExtension("partial")
-    guard receivedBytes == entry.manifest.byteCount else {
-      try? fileManager.removeItem(at: partialURL)
+    guard finalBytes == entry.manifest.byteCount else {
       throw ComputerReceiverError.byteCountMismatch(
         expected: entry.manifest.byteCount,
-        received: receivedBytes
+        received: finalBytes
       )
     }
     if fileManager.fileExists(atPath: entry.finalURL.path) { try fileManager.removeItem(at: entry.finalURL) }
@@ -254,6 +282,18 @@ actor ComputerImportStore {
     }
     session.message = "Received \(completedCount) of \(session.entries.count) files"
     sessions[sessionID] = session
+  }
+
+  @discardableResult
+  func abandonWrite(sessionID: UUID, index: Int) -> Status? {
+    activeWrites.remove(writeKey(sessionID: sessionID, index: index))
+    guard var session = sessions[sessionID], session.state == "receiving" else { return nil }
+    session.receivedBytes = (try? session.entries.reduce(Int64(0)) { result, entry in
+      result + (try persistedOffset(for: entry))
+    }) ?? session.receivedBytes
+    session.message = "Transfer paused. Ready to resume."
+    sessions[sessionID] = session
+    return try? status(sessionID: sessionID)
   }
 
   func updateProgress(sessionID: UUID, fileBytes: Int64, completedBefore: Int64) {
@@ -291,13 +331,15 @@ actor ComputerImportStore {
 
   func status(sessionID: UUID) throws -> Status {
     guard let session = sessions[sessionID] else { throw ComputerReceiverError.importNotFound }
+    let offsets = try session.entries.map { try persistedOffset(for: $0) }
     return Status(
       state: session.state,
       message: session.message,
       displayName: session.displayName,
       addedBookCount: session.addedBookCount,
-      completedBytes: session.receivedBytes,
-      totalBytes: session.entries.reduce(Int64(0)) { $0 + $1.manifest.byteCount }
+      completedBytes: offsets.reduce(0, +),
+      totalBytes: session.entries.reduce(Int64(0)) { $0 + $1.manifest.byteCount },
+      fileOffsets: offsets
     )
   }
 
@@ -305,6 +347,7 @@ actor ComputerImportStore {
     guard let session = sessions[sessionID] else { throw ComputerReceiverError.importNotFound }
     guard session.state != "importing" else { throw ComputerReceiverError.importAlreadySealed }
     sessions[sessionID] = nil
+    activeWrites = activeWrites.filter { !$0.hasPrefix(sessionID.uuidString.lowercased() + ":") }
     try? fileManager.removeItem(at: session.rootURL)
   }
 
@@ -313,7 +356,19 @@ actor ComputerImportStore {
     for session in receiving {
       try? fileManager.removeItem(at: session.rootURL)
       sessions[session.id] = nil
+      activeWrites = activeWrites.filter { !$0.hasPrefix(session.id.uuidString.lowercased() + ":") }
     }
+  }
+
+  private func persistedOffset(for entry: StoredEntry) throws -> Int64 {
+    if entry.isComplete { return entry.manifest.byteCount }
+    let partialURL = entry.finalURL.appendingPathExtension("partial")
+    guard fileManager.fileExists(atPath: partialURL.path) else { return 0 }
+    return Int64(try partialURL.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0)
+  }
+
+  private func writeKey(sessionID: UUID, index: Int) -> String {
+    "\(sessionID.uuidString.lowercased()):\(index)"
   }
 
   private func validatedRelativePath(_ path: String) throws -> String {
@@ -501,33 +556,62 @@ actor ComputerReceiverServer {
     if request.method == "PUT", components.count == 5, components[3] == "files",
       let index = Int(components[4])
     {
-      let target = try await store.writeTarget(sessionID: sessionID, index: index)
-      guard request.contentLength == target.expectedBytes else {
+      guard let requestedOffset = Int64(request.headers["x-player-upload-offset"] ?? "0"),
+        requestedOffset >= 0
+      else { throw ComputerReceiverError.invalidRequest }
+      let target = try await store.writeTarget(
+        sessionID: sessionID,
+        index: index,
+        requestedOffset: requestedOffset
+      )
+      let expectedRemaining = target.expectedBytes - target.startingOffset
+      guard request.contentLength == expectedRemaining else {
+        if let status = await store.abandonWrite(sessionID: sessionID, index: index) {
+          await publish(.paused(
+            name: status.displayName,
+            completedBytes: status.completedBytes,
+            totalBytes: status.totalBytes
+          ))
+        }
         throw ComputerReceiverError.byteCountMismatch(
-          expected: target.expectedBytes,
+          expected: expectedRemaining,
           received: request.contentLength
         )
       }
-      let received = try await request.streamBody(
-        from: connection,
-        to: target.partialURL,
-        progress: { [weak self] fileBytes in
-          guard let self else { return }
-          let completed = target.completedBefore + fileBytes
-          await self.store.updateProgress(
-            sessionID: sessionID,
-            fileBytes: fileBytes,
-            completedBefore: target.completedBefore
-          )
-          await self.publish(.receiving(
-            name: target.displayName,
-            completedBytes: completed,
-            totalBytes: target.totalBytes
+      do {
+        let received = try await request.streamBody(
+          from: connection,
+          to: target.partialURL,
+          startingOffset: target.startingOffset,
+          progress: { [weak self] requestBytes in
+            guard let self else { return }
+            let fileBytes = target.startingOffset + requestBytes
+            let completed = target.completedBefore + fileBytes
+            await self.store.updateProgress(
+              sessionID: sessionID,
+              fileBytes: fileBytes,
+              completedBefore: target.completedBefore
+            )
+            await self.publish(.receiving(
+              name: target.displayName,
+              completedBytes: completed,
+              totalBytes: target.totalBytes
+            ))
+          }
+        )
+        let finalBytes = target.startingOffset + received
+        try await store.finishWrite(sessionID: sessionID, index: index, finalBytes: finalBytes)
+        return .json(status: 200, object: ["received": finalBytes])
+      } catch {
+        if let status = await store.abandonWrite(sessionID: sessionID, index: index) {
+          await publish(.paused(
+            name: status.displayName,
+            completedBytes: status.completedBytes,
+            totalBytes: status.totalBytes
           ))
         }
-      )
-      try await store.finishWrite(sessionID: sessionID, index: index, receivedBytes: received)
-      return .json(status: 200, object: ["received": received])
+        throw error
+      }
     }
 
     if request.method == "POST", components.count == 4, components[3] == "complete" {
@@ -552,6 +636,7 @@ actor ComputerReceiverServer {
         "addedBookCount": status.addedBookCount,
         "completedBytes": status.completedBytes,
         "totalBytes": status.totalBytes,
+        "fileOffsets": status.fileOffsets,
       ])
     }
 
@@ -718,11 +803,21 @@ private struct HTTPRequest {
   func streamBody(
     from connection: NWConnection,
     to url: URL,
+    startingOffset: Int64 = 0,
     progress: @escaping @Sendable (Int64) async -> Void
   ) async throws -> Int64 {
-    FileManager.default.createFile(atPath: url.path, contents: nil)
+    if !FileManager.default.fileExists(atPath: url.path) {
+      FileManager.default.createFile(atPath: url.path, contents: nil)
+    }
     let handle = try FileHandle(forWritingTo: url)
     defer { try? handle.close() }
+    let actualOffset = try handle.seekToEnd()
+    guard actualOffset == UInt64(startingOffset) else {
+      throw ComputerReceiverError.invalidUploadOffset(
+        expected: Int64(actualOffset),
+        received: startingOffset
+      )
+    }
     var received: Int64 = 0
     if !initialBody.isEmpty {
       let prefix = initialBody.prefix(Int(min(Int64(initialBody.count), contentLength)))
@@ -821,6 +916,8 @@ enum ComputerReceiverError: LocalizedError {
   case importAlreadySealed
   case fileNotFound
   case fileAlreadyReceived
+  case fileWriteInProgress
+  case invalidUploadOffset(expected: Int64, received: Int64)
   case byteCountMismatch(expected: Int64, received: Int64)
   case connectionInterrupted
 
@@ -840,6 +937,9 @@ enum ComputerReceiverError: LocalizedError {
     case .importAlreadySealed: "This transfer has already been sent to Player."
     case .fileNotFound: "Player could not match this uploaded file."
     case .fileAlreadyReceived: "Player already received this file."
+    case .fileWriteInProgress: "Player is already receiving this file."
+    case .invalidUploadOffset(let expected, let received):
+      "The transfer must resume at byte \(expected), not byte \(received)."
     case .byteCountMismatch(let expected, let received):
       "The file was incomplete (expected \(expected) bytes, received \(received))."
     case .connectionInterrupted: "The connection ended before the file finished."
@@ -850,7 +950,8 @@ enum ComputerReceiverError: LocalizedError {
     switch self {
     case .invalidPairingCode, .unauthorized: 401
     case .routeNotFound, .importNotFound, .fileNotFound: 404
-    case .alreadyRunning, .listenerStopped, .importAlreadySealed, .fileAlreadyReceived: 409
+    case .alreadyRunning, .listenerStopped, .importAlreadySealed, .fileAlreadyReceived,
+      .fileWriteInProgress, .invalidUploadOffset: 409
     case .headerTooLarge, .bodyTooLarge: 413
     case .listenerFailed: 500
     default: 400

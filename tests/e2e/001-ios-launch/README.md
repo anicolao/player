@@ -49,3 +49,32 @@
 - [x] The receiver reports the native mirrored-drop state
 - [x] The listener sees progress while the dropped folder is materialized
 - [x] The progress view identifies the book currently being received
+
+## Interrupted web transfer progress agrees with the server-confirmed bytes
+
+![Interrupted web transfer progress agrees with the server-confirmed bytes](./screenshots/ios/003-computer-receiver-paused.png)
+
+**Verifications:**
+
+- [x] The receiver identifies the paused, resumable state
+- [x] The iPhone reports the exact confirmed byte count
+- [x] The listener is told that retry continues from confirmed progress
+
+## A completed transfer remains actionable for repeated imports
+
+![A completed transfer remains actionable for repeated imports](./screenshots/ios/004-computer-receiver-completed.png)
+
+**Verifications:**
+
+- [x] The receiver reports one completed book without dismissing itself
+- [x] The listener can keep the receiver open for another book
+- [x] The listener explicitly decides when receiving is finished
+
+## Receive Another returns to the same paired receiver
+
+![Receive Another returns to the same paired receiver](./screenshots/ios/005-computer-receiver-repeat-ready.png)
+
+**Verifications:**
+
+- [x] The existing receiver is immediately ready for the next book
+- [x] The active receiver keeps its discoverable pairing details

@@ -1,4 +1,5 @@
 import XCTest
+import Network
 @testable import Player
 
 @MainActor
@@ -29,7 +30,7 @@ final class ComputerReceiverTests: XCTestCase {
       try await store.finishWrite(
         sessionID: created.id,
         index: index,
-        receivedBytes: Int64(data.count)
+        finalBytes: Int64(data.count)
       )
     }
 
@@ -136,7 +137,7 @@ final class ComputerReceiverTests: XCTestCase {
     try await firstStore.finishWrite(
       sessionID: created.id,
       index: 0,
-      receivedBytes: Int64(payload.count)
+      finalBytes: Int64(payload.count)
     )
     _ = try await firstStore.seal(sessionID: created.id)
     let acceptedFile = target.finalURL
@@ -151,6 +152,77 @@ final class ComputerReceiverTests: XCTestCase {
       cleanupIncomingFiles: true
     ))
     XCTAssertFalse(FileManager.default.fileExists(atPath: acceptedFile.path))
+  }
+
+  func testInterruptedFileResumesAtServerConfirmedOffsetWithoutDuplicatingBytes() async throws {
+    let root = temporaryRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = ComputerImportStore(rootURL: root)
+    let payload = Data("0123456789abcdef".utf8)
+    let firstChunk = payload.prefix(6)
+    let created = try await store.create(.init(
+      entries: [.init(path: "Book.m4b", byteCount: Int64(payload.count))],
+      selectionKind: "files",
+      selectionName: "Book"
+    ))
+
+    let firstTarget = try await store.writeTarget(sessionID: created.id, index: 0)
+    try Data(firstChunk).write(to: firstTarget.partialURL)
+    await store.abandonWrite(sessionID: created.id, index: 0)
+
+    let paused = try await store.status(sessionID: created.id)
+    XCTAssertEqual(paused.fileOffsets, [Int64(firstChunk.count)])
+    XCTAssertEqual(paused.completedBytes, Int64(firstChunk.count))
+
+    let resumed = try await store.writeTarget(
+      sessionID: created.id,
+      index: 0,
+      requestedOffset: Int64(firstChunk.count)
+    )
+    XCTAssertEqual(resumed.startingOffset, Int64(firstChunk.count))
+    let handle = try FileHandle(forWritingTo: resumed.partialURL)
+    try handle.seekToEnd()
+    try handle.write(contentsOf: payload.dropFirst(firstChunk.count))
+    try handle.close()
+    try await store.finishWrite(
+      sessionID: created.id,
+      index: 0,
+      finalBytes: Int64(payload.count)
+    )
+
+    let sealed = try await store.seal(sessionID: created.id)
+    XCTAssertEqual(try Data(contentsOf: sealed.urls[0]), payload)
+  }
+
+  func testResumeOffsetMustMatchDurableBytesAndFailedClaimsReleaseTheWriter() async throws {
+    let root = temporaryRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = ComputerImportStore(rootURL: root)
+    let created = try await store.create(.init(
+      entries: [.init(path: "Book.m4b", byteCount: 8)],
+      selectionKind: "files",
+      selectionName: "Book"
+    ))
+
+    do {
+      _ = try await store.writeTarget(sessionID: created.id, index: 0, requestedOffset: 3)
+      XCTFail("A browser-only offset must not be trusted")
+    } catch let error as ComputerReceiverError {
+      XCTAssertEqual(error.httpStatus, 409)
+      XCTAssertTrue(error.localizedDescription.contains("byte 0"))
+    }
+
+    let target = try await store.writeTarget(sessionID: created.id, index: 0)
+    do {
+      _ = try await store.writeTarget(sessionID: created.id, index: 0)
+      XCTFail("Two requests must not write the same partial file")
+    } catch let error as ComputerReceiverError {
+      XCTAssertEqual(error.httpStatus, 409)
+    }
+    await store.abandonWrite(sessionID: created.id, index: 0)
+    XCTAssertEqual(target.startingOffset, 0)
+    _ = try await store.writeTarget(sessionID: created.id, index: 0)
+    await store.abandonWrite(sessionID: created.id, index: 0)
   }
 
   func testLocalHTTPFlowServesSveltePairsUploadsAndCompletes() async throws {
@@ -227,7 +299,99 @@ final class ComputerReceiverTests: XCTestCase {
       headers: auth
     )
     XCTAssertEqual(statusResponse.statusCode, 200)
-    XCTAssertEqual(try JSONDecoder().decode(StatusResponse.self, from: statusData).state, "completed")
+    let status = try JSONDecoder().decode(StatusResponse.self, from: statusData)
+    XCTAssertEqual(status.state, "completed")
+    XCTAssertEqual(status.completedBytes, Int64(audio.count))
+    XCTAssertEqual(status.totalBytes, Int64(audio.count))
+    XCTAssertEqual(status.fileOffsets, [Int64(audio.count)])
+  }
+
+  func testInterruptedHTTPRequestResumesFromDurableServerOffset() async throws {
+    let root = temporaryRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let capture = ReceiverImportCapture()
+    let server = ComputerReceiverServer(rootURL: root, bundle: .main)
+    let ready = try await server.start(
+      importHandler: { urls in await capture.importURLs(urls) },
+      eventHandler: { _ in }
+    )
+    defer { Task { await server.stop() } }
+    let port = try XCTUnwrap(URL(string: ready.address)?.port)
+    let baseURL = try XCTUnwrap(URL(string: "http://127.0.0.1:\(port)"))
+    let pairBody = try JSONEncoder().encode(["code": ready.pairingCode])
+    let (pairData, _) = try await request(
+      baseURL.appending(path: "api/pair"),
+      method: "POST",
+      body: pairBody,
+      headers: ["Content-Type": "application/json"]
+    )
+    let pair = try JSONDecoder().decode(PairResponse.self, from: pairData)
+    let auth = ["Authorization": "Bearer \(pair.token)"]
+    let audio = Data("synthetic direct receiver audio".utf8)
+    let manifest = try JSONEncoder().encode(ComputerImportStore.CreateRequest(
+      entries: [.init(path: "Chapter 01.mp3", byteCount: Int64(audio.count))],
+      selectionKind: "folder",
+      selectionName: "HTTP Test Book"
+    ))
+    let (createData, _) = try await request(
+      baseURL.appending(path: "api/imports"),
+      method: "POST",
+      body: manifest,
+      headers: auth.merging(["Content-Type": "application/json"]) { current, _ in current }
+    )
+    let created = try JSONDecoder().decode(CreateResponse.self, from: createData)
+    let prefix = Data(audio.prefix(11))
+
+    try await sendInterruptedUpload(
+      port: UInt16(port),
+      path: "/api/imports/\(created.id)/files/0",
+      token: pair.token,
+      advertisedLength: audio.count,
+      bodyPrefix: prefix
+    )
+
+    var pausedStatus: StatusResponse?
+    for _ in 0..<80 {
+      let (data, response) = try await request(
+        baseURL.appending(path: "api/imports/\(created.id)"),
+        method: "GET",
+        body: nil,
+        headers: auth
+      )
+      if response.statusCode == 200 {
+        let status = try JSONDecoder().decode(StatusResponse.self, from: data)
+        if status.fileOffsets == [Int64(prefix.count)] {
+          pausedStatus = status
+          break
+        }
+      }
+      try await Task.sleep(for: .milliseconds(25))
+    }
+    XCTAssertEqual(pausedStatus?.completedBytes, Int64(prefix.count))
+
+    let remainder = Data(audio.dropFirst(prefix.count))
+    let (_, resumedResponse) = try await request(
+      baseURL.appending(path: "api/imports/\(created.id)/files/0"),
+      method: "PUT",
+      body: remainder,
+      headers: auth.merging([
+        "Content-Type": "application/octet-stream",
+        "X-Player-Upload-Offset": String(prefix.count),
+      ]) { current, _ in current }
+    )
+    XCTAssertEqual(resumedResponse.statusCode, 200)
+    _ = try await request(
+      baseURL.appending(path: "api/imports/\(created.id)/complete"),
+      method: "POST",
+      body: nil,
+      headers: auth
+    )
+    for _ in 0..<40 {
+      if await capture.receivedData != nil { break }
+      try await Task.sleep(for: .milliseconds(25))
+    }
+    let receivedData = await capture.receivedData
+    XCTAssertEqual(receivedData, audio)
   }
 
   func testAcceptedHTTPImportSurvivesReceiverStop() async throws {
@@ -308,11 +472,53 @@ final class ComputerReceiverTests: XCTestCase {
     let (data, response) = try await URLSession.shared.data(for: request)
     return (data, try XCTUnwrap(response as? HTTPURLResponse))
   }
+
+  private func sendInterruptedUpload(
+    port: UInt16,
+    path: String,
+    token: String,
+    advertisedLength: Int,
+    bodyPrefix: Data
+  ) async throws {
+    let connection = NWConnection(
+      host: NWEndpoint.Host("127.0.0.1"),
+      port: try XCTUnwrap(NWEndpoint.Port(rawValue: port)),
+      using: .tcp
+    )
+    connection.start(queue: DispatchQueue(label: "ComputerReceiverTests.interrupted-upload"))
+    let headers = """
+      PUT \(path) HTTP/1.1\r
+      Host: 127.0.0.1:\(port)\r
+      Authorization: Bearer \(token)\r
+      Content-Type: application/octet-stream\r
+      X-Player-Upload-Offset: 0\r
+      Content-Length: \(advertisedLength)\r
+      Connection: close\r
+      \r
+
+      """
+    var requestData = Data(headers.utf8)
+    requestData.append(bodyPrefix)
+    try await withCheckedThrowingContinuation {
+      (continuation: CheckedContinuation<Void, any Error>) in
+      connection.send(content: requestData, isComplete: false, completion: .contentProcessed {
+        error in
+        if let error { continuation.resume(throwing: error) }
+        else { continuation.resume() }
+      })
+    }
+    connection.cancel()
+  }
 }
 
 private struct PairResponse: Decodable { var token: String }
 private struct CreateResponse: Decodable { var id: String }
-private struct StatusResponse: Decodable { var state: String }
+private struct StatusResponse: Decodable {
+  var state: String
+  var completedBytes: Int64
+  var totalBytes: Int64
+  var fileOffsets: [Int64]
+}
 
 private actor ReceiverImportCapture {
   var receivedData: Data?

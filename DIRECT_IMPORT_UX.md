@@ -116,17 +116,17 @@ and storage-pressure drags remain explicit hardware regression cases.
 ## How to read the remaining specification
 
 The sections below define the complete target experience. They are not all
-claims about Build 13. In particular, Handoff discovery, Finder/Apple Devices
-Import Drop Box, trusted computers, resumable byte offsets, remote region
+claims about Build 14. In particular, Handoff discovery, Finder/Apple Devices
+Import Drop Box, trusted computers, remote region
 policy/kill switch, the automatic-add preference, and their associated rows and
 test cases are deferred unless the active completion plan promotes them. The
 shipped source sheet exposes only working receiver and Files actions.
 
-For the shipped web route, a sealed import survives the browser and receiver
-view, but an interrupted unsealed file currently restarts rather than resuming
-from an acknowledged offset. C01 in
-[MVP_COMPLETION_PLAN.md](MVP_COMPLETION_PLAN.md) closes that reliability and
-evidence gap.
+For the shipped web route, Build 14 keeps acknowledged partial bytes while the
+receiver remains active. The browser asks Player for per-file offsets, sends
+only each remaining `Blob.slice`, and exposes Retry plus Cancel and Clean Up
+instead of silently discarding a multi-gigabyte transfer. Sealed imports remain
+owned by the durable importer if the browser or receiver view closes.
 
 The listener must never be told to:
 
