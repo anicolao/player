@@ -716,6 +716,7 @@ private enum LibrarySettingsDestination: Hashable {
   case playbackDefaults
   case smartRewind
   case accessibility
+  case diagnostics
 }
 
 struct LibraryOrganizationSettingsView: View {
@@ -727,10 +728,13 @@ struct LibraryOrganizationSettingsView: View {
     #if E2E
       let arguments = ProcessInfo.processInfo.arguments
       if let option = arguments.firstIndex(of: "-e2e-start-settings-route"),
-        arguments.indices.contains(option + 1),
-        arguments[option + 1] == "backup"
+        arguments.indices.contains(option + 1)
       {
-        _path = State(initialValue: [.backup])
+        switch arguments[option + 1] {
+        case "backup": _path = State(initialValue: [.backup])
+        case "diagnostics": _path = State(initialValue: [.diagnostics])
+        default: break
+        }
       }
     #endif
   }
@@ -774,6 +778,12 @@ struct LibraryOrganizationSettingsView: View {
           }
           .accessibilityIdentifier("settings-accessibility")
         }
+        Section("Privacy & Support") {
+          NavigationLink(value: LibrarySettingsDestination.diagnostics) {
+            Label("Offline & Support", systemImage: "checkmark.shield")
+          }
+          .accessibilityIdentifier("settings-diagnostics")
+        }
       }
       .scrollContentBackground(.hidden)
       .background(PlayerColor.background)
@@ -786,6 +796,7 @@ struct LibraryOrganizationSettingsView: View {
         case .playbackDefaults: TransportPreferencesEditor(model: model)
         case .smartRewind: SmartRewindSettingsView(model: model)
         case .accessibility: AccessibilitySettingsView(model: model)
+        case .diagnostics: SupportDiagnosticsView(model: model)
         }
       }
     }

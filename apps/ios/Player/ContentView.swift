@@ -31,6 +31,14 @@ struct ContentView: View {
   }
 
   var body: some View {
+    if let recovery = model.startupRecoveryStatus {
+      StartupRecoveryView(model: model, status: recovery)
+    } else {
+      operationalContent
+    }
+  }
+
+  private var operationalContent: some View {
     TabView(selection: $selection) {
       LibraryView(
         model: model,

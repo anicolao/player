@@ -5,6 +5,9 @@ protocol LibraryPersisting: Sendable {
   func save(_ snapshot: LibrarySnapshot) async throws
   func automaticBackups() async -> [AutomaticLibraryBackup]
   func restoreLatestAutomaticBackup() async throws -> LibrarySnapshot
+  func startupRecoveryStatus() async -> StartupRecoveryStatus
+  func recoverLatestAutomaticBackupPreservingPrimary() async throws -> LibrarySnapshot
+  func beginFreshLibraryPreservingPrimary() async throws -> LibrarySnapshot
 }
 
 extension LibraryPersisting {
@@ -12,6 +15,23 @@ extension LibraryPersisting {
 
   func restoreLatestAutomaticBackup() async throws -> LibrarySnapshot {
     throw PlayerCoreError.fileOperation("No valid automatic library backup is available.")
+  }
+
+  func startupRecoveryStatus() async -> StartupRecoveryStatus {
+    StartupRecoveryStatus(
+      issue: .storageUnavailable,
+      validAutomaticBackupCount: 0,
+      invalidAutomaticBackupCount: 0
+    )
+  }
+
+  func recoverLatestAutomaticBackupPreservingPrimary() async throws -> LibrarySnapshot {
+    try await restoreLatestAutomaticBackup()
+  }
+
+  func beginFreshLibraryPreservingPrimary() async throws -> LibrarySnapshot {
+    try await save(.empty)
+    return .empty
   }
 }
 
@@ -42,6 +62,8 @@ protocol MediaManaging: Sendable {
   func storageInventory() async throws -> StorageInventorySnapshot
   func discardStagedFile(relativePath: String) async throws
   func discardStorage(scope: StorageScope) async throws
+  func reconcileStartupStorage(with library: LibrarySnapshot) async throws
+    -> StartupStorageReconciliation
 }
 
 extension MediaManaging {
@@ -86,6 +108,12 @@ extension MediaManaging {
 
   func discardStorage(scope: StorageScope) async throws {
     throw PlayerCoreError.fileOperation("This media source cannot clear recoverable storage.")
+  }
+
+  func reconcileStartupStorage(with library: LibrarySnapshot) async throws
+    -> StartupStorageReconciliation
+  {
+    .unchanged(library)
   }
 }
 
@@ -192,6 +220,7 @@ struct PlayerEnvironment {
   let ids: any PlayerIDGenerating
   let zipExtractor: any ZipExtracting
   let backups: any LibraryBackupManaging
+  let diagnostics: any SupportDiagnosticsManaging
 
   init(
     persistence: any LibraryPersisting,
@@ -204,7 +233,8 @@ struct PlayerEnvironment {
     clock: any PlayerClock = SystemPlayerClock(),
     ids: any PlayerIDGenerating = SystemPlayerIDGenerator(),
     zipExtractor: any ZipExtracting = SafeZipExtractor(),
-    backups: any LibraryBackupManaging = DisabledLibraryBackupManager()
+    backups: any LibraryBackupManaging = DisabledLibraryBackupManager(),
+    diagnostics: any SupportDiagnosticsManaging = DisabledSupportDiagnosticsManager()
   ) {
     self.persistence = persistence
     self.media = media
@@ -217,6 +247,7 @@ struct PlayerEnvironment {
     self.ids = ids
     self.zipExtractor = zipExtractor
     self.backups = backups
+    self.diagnostics = diagnostics
   }
 
   static func production(rootURL: URL? = nil) throws -> PlayerEnvironment {
@@ -229,7 +260,8 @@ struct PlayerEnvironment {
       audioSession: AVAudioSessionController(),
       remoteCommands: MPRemoteCommandController(),
       nowPlaying: MPNowPlayingPublisher(),
-      backups: FileSystemLibraryBackupManager(rootURL: root)
+      backups: FileSystemLibraryBackupManager(rootURL: root),
+      diagnostics: FileSystemSupportDiagnosticsManager(rootURL: root)
     )
   }
 

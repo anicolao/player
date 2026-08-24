@@ -13,6 +13,7 @@ on:
       - DIRECT_IMPORT_ALTERNATIVES.md
       - DIRECT_IMPORT_UX.md
       - BACKUP_AND_RESTORE.md
+      - OFFLINE_RECOVERY_AUDIT.md
       - README.md
       - TESTFLIGHT_SETUP.md
       - UX_DESIGN.md
@@ -32,6 +33,7 @@ on:
       - DIRECT_IMPORT_ALTERNATIVES.md
       - DIRECT_IMPORT_UX.md
       - BACKUP_AND_RESTORE.md
+      - OFFLINE_RECOVERY_AUDIT.md
       - README.md
       - TESTFLIGHT_SETUP.md
       - UX_DESIGN.md
@@ -138,6 +140,9 @@ jobs:
           - story: 010-library-backup
             tests: >-
               PlayerUITests/BackupUITests/testExportsClearsAndRestoresAVerifiedPortableLibrary
+          - story: 011-offline-recovery
+            tests: >-
+              PlayerUITests/OfflineRecoveryUITests/testRecoversStartupAndExportsOnlySanitizedOfflineDiagnostics
     defaults:
       run:
         shell: nix develop --command bash --noprofile --norc -e -o pipefail {0}

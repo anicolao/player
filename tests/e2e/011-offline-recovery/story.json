@@ -1,0 +1,11 @@
+{
+  "id": "011-offline-recovery",
+  "platform": "ios",
+  "test": "PlayerUITests/OfflineRecoveryUITests/testRecoversStartupAndExportsOnlySanitizedOfflineDiagnostics",
+  "fixture": "offline-recovery",
+  "screenshots": [
+    "000-startup-recovery.png",
+    "001-reconciled-offline-library.png",
+    "002-sanitized-support-bundle.png"
+  ]
+}
