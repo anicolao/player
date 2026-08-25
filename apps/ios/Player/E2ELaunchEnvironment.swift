@@ -1100,7 +1100,7 @@ extension PlayerEnvironment {
         ),
         positionJournal: [seedEvent],
         upNextBookIDs: descriptor.upNext.compactMap(UUID.init(uuidString:)),
-        allBooksViewStyle: LibraryViewStyle(rawValue: descriptor.viewPreference) ?? .grid
+        allBooksViewStyle: LibraryViewStyle(rawValue: descriptor.viewPreference) ?? .shelf
       )
       E2ELibraryOrganizationBridge.shared.configure(
         rootURL: root,

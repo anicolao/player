@@ -74,7 +74,7 @@ guard
   ],
   fixture.currentBookID == id(1),
   fixture.upNext == [id(2), id(5), id(3)],
-  fixture.viewPreference == "grid",
+  fixture.viewPreference == "shelf",
   fixture.generatedIDs.collection == id(501),
   fixture.generatedIDs.trashTransaction == id(601)
 else { throw ValidationError.invalidContract }

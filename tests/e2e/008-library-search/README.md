@@ -26,6 +26,7 @@
 - [x] Every populated shelf exposes its exact production-model order
 - [x] The current book can resume from Continue Listening
 - [x] The ordered Up Next shelf is available
+- [x] Recently Added uses the reusable square-cover shelf
 - [x] Recently Added begins with the newest book
 - [x] Series browsing is available
 - [x] Author browsing is available

@@ -37,7 +37,7 @@ final class LibraryOrganizationUITests: XCTestCase {
       finished: [books[3]],
       collections: 0,
       trash: 0,
-      view: "grid"
+      view: "shelf"
     )
     let addAudiobook = app.tabBars.buttons["Add"]
     try tester.step(
@@ -47,6 +47,10 @@ final class LibraryOrganizationUITests: XCTestCase {
         .valueEquals(organizer, initialOrganizer, "Every populated shelf exposes its exact production-model order"),
         .exists(app.buttons["resume-book-\(books[0])"], "The current book can resume from Continue Listening"),
         .exists(app.buttons["open-up-next"], "The ordered Up Next shelf is available"),
+        .exists(
+          anyElement(app, "library-home-recently-added-shelf"),
+          "Recently Added uses the reusable square-cover shelf"
+        ),
         .exists(anyElement(app, "recent-book-\(books[4])"), "Recently Added begins with the newest book"),
         .exists(app.buttons["browse-series"], "Series browsing is available"),
         .exists(app.buttons["browse-authors"], "Author browsing is available"),
@@ -96,7 +100,7 @@ final class LibraryOrganizationUITests: XCTestCase {
         finished: [books[2], books[3]],
         collections: 0,
         trash: 0,
-        view: "grid"
+        view: "shelf"
       )
     )
 
@@ -160,7 +164,7 @@ final class LibraryOrganizationUITests: XCTestCase {
     app.buttons["browse-all-books"].tap()
     let allBooks = anyElement(app, "all-books-probe")
     let allBookOrder = [books[3], books[0], books[4], books[2], books[1]]
-    try requireValue(allBooks, allBooksValue(view: "grid", order: allBookOrder))
+    try requireValue(allBooks, allBooksValue(view: "shelf", order: allBookOrder))
     try tester.step(
       "square-cover-bookshelves",
       description: "All Books presents square audiobook artwork on burnt-orange wooden shelves",

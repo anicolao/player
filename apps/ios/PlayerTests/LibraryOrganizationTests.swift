@@ -3,6 +3,15 @@ import XCTest
 
 @MainActor
 final class LibraryOrganizationTests: XCTestCase {
+  func testShelfViewStyleDecodesTheLegacyGridValueAndEncodesItsCurrentName() throws {
+    let decoded = try JSONDecoder().decode(LibraryViewStyle.self, from: Data("\"grid\"".utf8))
+    XCTAssertEqual(decoded, .shelf)
+    XCTAssertEqual(
+      String(decoding: try JSONEncoder().encode(LibraryViewStyle.shelf), as: UTF8.self),
+      "\"shelf\""
+    )
+  }
+
   func testFinishingBookAtomicallyStoresDurationAndRemovesDailyQueues() async throws {
     let now = Date(timeIntervalSince1970: 1_800_000_000)
     let book = makeBook(
@@ -261,7 +270,7 @@ final class LibraryOrganizationTests: XCTestCase {
     XCTAssertEqual(migrated.books.first?.listeningState.lastListenedAt, position.updatedAt)
     XCTAssertTrue(migrated.upNextBookIDs.isEmpty)
     XCTAssertTrue(migrated.collections.isEmpty)
-    XCTAssertEqual(migrated.allBooksViewStyle, .grid)
+    XCTAssertEqual(migrated.allBooksViewStyle, .shelf)
     XCTAssertTrue(migrated.trashTransactions.isEmpty)
 
     try await store.save(migrated)

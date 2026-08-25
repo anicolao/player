@@ -163,6 +163,12 @@ final class AccessibilityUITests: XCTestCase {
     app = makeApplication(fixture: "single-audiobook-ready")
     app.launch()
     app.tabBars.buttons["Settings"].tap()
+    let layoutPicker = anyElement(app, "all-books-layout-picker")
+    XCTAssertTrue(layoutPicker.waitForExistence(timeout: 2))
+    XCTAssertTrue(
+      "\(layoutPicker.label) \(layoutPicker.value as? String ?? "")".contains("Shelf"),
+      "The Settings layout picker should name Shelf as the active book layout"
+    )
     let accessibility = app.buttons["settings-accessibility"]
     scrollTo(accessibility, in: app)
     accessibility.tap()

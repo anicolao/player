@@ -158,7 +158,7 @@ final class LibraryBackupTests: XCTestCase {
     let store = CodableLibraryStore(fileURL: root.appending(path: "Library.json"))
     for index in 0..<5 {
       var snapshot = LibrarySnapshot.empty
-      snapshot.allBooksViewStyle = index.isMultiple(of: 2) ? .grid : .list
+      snapshot.allBooksViewStyle = index.isMultiple(of: 2) ? .shelf : .list
       snapshot.collections = [
         BookCollection(
           id: uuid(index + 20),

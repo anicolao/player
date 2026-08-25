@@ -72,7 +72,7 @@ and must not reseed or overwrite listener changes.
 `library-organizer-probe` derives directly from persisted production state:
 
 ```text
-library:books=5:continue=90000000-0000-0000-0000-000000000001,90000000-0000-0000-0000-000000000003:up-next=90000000-0000-0000-0000-000000000002,90000000-0000-0000-0000-000000000005,90000000-0000-0000-0000-000000000003:finished=90000000-0000-0000-0000-000000000004:collections=0:trash=0:view=grid:current=90000000-0000-0000-0000-000000000001:position=45000
+library:books=5:continue=90000000-0000-0000-0000-000000000001,90000000-0000-0000-0000-000000000003:up-next=90000000-0000-0000-0000-000000000002,90000000-0000-0000-0000-000000000005,90000000-0000-0000-0000-000000000003:finished=90000000-0000-0000-0000-000000000004:collections=0:trash=0:view=shelf:current=90000000-0000-0000-0000-000000000001:position=45000
 ```
 
 Continue Listening contains progress greater than zero and unfinished books in
@@ -172,15 +172,16 @@ counter, so the probe does not invent one.
 ## Shelf/list persistence
 
 `all-books-screen` contains `all-books-probe`, rows
-`all-books-book-<book UUID>`, and `library-view-shelves` / `library-view-list`.
-The stored `grid` value is retained for schema compatibility but now renders the
-square-cover bookshelf. The shelf container is `all-books-bookshelf`; duplicate
+`all-books-book-<book UUID>`, and `library-view-shelf` / `library-view-list`.
+The stored value is now `shelf`; legacy snapshots containing `grid` decode as
+`shelf` and are rewritten with the current name. The shelf container is
+`all-books-bookshelf`; duplicate
 curated appearances use `bookshelf-continue-book-<book UUID>` and
 `bookshelf-recent-book-<book UUID>`, while A–Z retains the canonical row ID.
 Pinned title order is:
 
 ```text
-all-books:count=5:view=grid:order=90000000-0000-0000-0000-000000000004,90000000-0000-0000-0000-000000000001,90000000-0000-0000-0000-000000000005,90000000-0000-0000-0000-000000000003,90000000-0000-0000-0000-000000000002
+all-books:count=5:view=shelf:order=90000000-0000-0000-0000-000000000004,90000000-0000-0000-0000-000000000001,90000000-0000-0000-0000-000000000005,90000000-0000-0000-0000-000000000003,90000000-0000-0000-0000-000000000002
 ```
 
 After `library-view-list`, `view=list`. A process termination and relaunch
