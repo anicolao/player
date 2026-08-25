@@ -103,14 +103,34 @@ Risks:
   VoiceOver ordering.
 - The ledge must remain quiet enough that it does not compete with cover art.
 
+## Concept E — burnt-orange wood shelves
+
+![Square audiobook covers on burnt-orange wooden shelves](docs/ux/mockups/bookshelf/05-burnt-orange-wood-shelves.png)
+
+This revision keeps Concept D's implementation-friendly structure while making
+the physical metaphor more intentional. Strictly square audiobook cases rest on
+a reddish walnut ledge derived from Player's burnt-orange accent. A darker front
+lip, fine grain, and restrained top highlight give the shelf depth without
+turning it into decorative furniture. Soft contact and right-edge shadows make
+each cover feel like a thin case sitting on the shelf rather than a flat image
+floating above a divider.
+
+Production uses a purpose-built, true-alpha reddish-walnut image asset for the
+ledge so that its fine grain, highlight, bevel, and contact shadow survive the
+translation from mockup to the native app. Three Retina resolutions keep the
+material crisp, while the asset remains horizontally resizable for different
+screen widths. Cover gloss, edge depth, and case shadows remain native effects
+so they can respond to accessibility settings.
+
 ## Recommended direction
 
-Prototype Concept D first. It preserves the shelf idea while using Player's real
-square audiobook artwork and existing collection components. Concept A and B
+Prototype Concept E first. It preserves Concept D's practical square-cover
+geometry while tying the shelf material directly to Player's visual language.
+Concept A and B
 remain useful long-term explorations for a more literal personal-bookcase mode;
 they should not block the practical square-cover prototype. Concept C supplies
-the strongest shelf styling reference, while Concept D defines production
-geometry.
+the strongest original shelf styling reference, Concept D defines production
+geometry, and Concept E defines the production color and depth treatment.
 
 The first prototype should use these rules:
 
@@ -128,6 +148,9 @@ The first prototype should use these rules:
 6. The mini-player and bottom navigation remain floating system surfaces. The
    scroll view must reserve enough bottom runway to raise the final shelf fully
    above both.
+7. Continue Listening and Recently Added show about 3.5 square cases in one
+   viewport. The denser A–Z shelf shows about 4.8. Case corners are deliberately
+   tight, with a narrow gloss and right edge that reads as physical depth.
 
 ## Accessibility and fallback
 

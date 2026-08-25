@@ -169,10 +169,14 @@ collection:90000000-0000-0000-0000-000000000501:name=Quiet Evenings:count=2:orde
 The model has deterministic order and timestamps but no product revision
 counter, so the probe does not invent one.
 
-## Grid/list persistence
+## Shelf/list persistence
 
 `all-books-screen` contains `all-books-probe`, rows
-`all-books-book-<book UUID>`, and `library-view-grid` / `library-view-list`.
+`all-books-book-<book UUID>`, and `library-view-shelves` / `library-view-list`.
+The stored `grid` value is retained for schema compatibility but now renders the
+square-cover bookshelf. The shelf container is `all-books-bookshelf`; duplicate
+curated appearances use `bookshelf-continue-book-<book UUID>` and
+`bookshelf-recent-book-<book UUID>`, while A–Z retains the canonical row ID.
 Pinned title order is:
 
 ```text

@@ -30,6 +30,8 @@
 - [x] Series browsing is available
 - [x] Author browsing is available
 - [x] Narrator browsing is available
+- [x] The tab pill includes the Add Audiobook action
+- [x] The pill-integrated Add Audiobook action is directly tappable
 
 ## A custom collection retains the listener's manual book order
 
@@ -41,9 +43,20 @@
 - [x] The first ordered collection book is visible
 - [x] The second ordered collection book is visible
 
+## All Books presents square audiobook artwork on burnt-orange wooden shelves
+
+![All Books presents square audiobook artwork on burnt-orange wooden shelves](./screenshots/ios/002-square-cover-bookshelves.png)
+
+**Verifications:**
+
+- [x] The shelf presentation is visible
+- [x] Continue Listening exposes the resumable square cover
+- [x] Recently Added exposes the newest square cover
+- [x] The complete A–Z shelf exposes its first sorted audiobook
+
 ## The final Library control scrolls completely above the persistent player
 
-![The final Library control scrolls completely above the persistent player](./screenshots/ios/002-trash-clear-of-player.png)
+![The final Library control scrolls completely above the persistent player](./screenshots/ios/003-trash-clear-of-player.png)
 
 **Verifications:**
 
@@ -52,7 +65,7 @@
 
 ## Removing a book creates an exact recoverable Trash transaction
 
-![Removing a book creates an exact recoverable Trash transaction](./screenshots/ios/003-recoverable-trash.png)
+![Removing a book creates an exact recoverable Trash transaction](./screenshots/ios/004-recoverable-trash.png)
 
 **Verifications:**
 
@@ -63,7 +76,7 @@
 
 ## Restore returns the book and its organization while list preference persists
 
-![Restore returns the book and its organization while list preference persists](./screenshots/ios/004-restored-library-list.png)
+![Restore returns the book and its organization while list preference persists](./screenshots/ios/005-restored-library-list.png)
 
 **Verifications:**
 
@@ -73,7 +86,7 @@
 
 ## Local search finds contributor metadata without a network
 
-![Local search finds contributor metadata without a network](./screenshots/ios/005-metadata-search.png)
+![Local search finds contributor metadata without a network](./screenshots/ios/006-metadata-search.png)
 
 **Verifications:**
 
@@ -83,7 +96,7 @@
 
 ## Search combines a listening-state filter with a meaningful sort
 
-![Search combines a listening-state filter with a meaningful sort](./screenshots/ios/006-filtered-search.png)
+![Search combines a listening-state filter with a meaningful sort](./screenshots/ios/007-filtered-search.png)
 
 **Verifications:**
 
@@ -93,7 +106,7 @@
 
 ## No search matches is distinct from an empty library
 
-![No search matches is distinct from an empty library](./screenshots/ios/007-no-search-matches.png)
+![No search matches is distinct from an empty library](./screenshots/ios/008-no-search-matches.png)
 
 **Verifications:**
 

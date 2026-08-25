@@ -318,20 +318,26 @@ struct AllBooksView: View {
   var body: some View {
     ZStack {
       PlayerColor.background.ignoresSafeArea()
-      ScrollView {
-        if model.library.allBooksViewStyle == .grid {
-          LazyVGrid(columns: gridColumns, spacing: 20) {
-            ForEach(sortedBooks) { book in bookLink(book) { LibraryCoverCard(book: book) } }
+      GeometryReader { geometry in
+        ScrollView {
+          if model.library.allBooksViewStyle == .grid {
+            if dynamicTypeSize.isAccessibilitySize {
+              LazyVStack(spacing: 14) {
+                ForEach(sortedBooks) { book in bookLink(book) { BookRow(book: book) } }
+              }
+              .padding(20)
+            } else {
+              bookshelf(availableWidth: geometry.size.width)
+            }
+          } else {
+            LazyVStack(spacing: 14) {
+              ForEach(sortedBooks) { book in bookLink(book) { BookRow(book: book) } }
+            }
+            .padding(20)
           }
-          .padding(20)
-        } else {
-          LazyVStack(spacing: 14) {
-            ForEach(sortedBooks) { book in bookLink(book) { BookRow(book: book) } }
-          }
-          .padding(20)
         }
+        .playerMiniPlayerScrollRunway()
       }
-      .playerMiniPlayerScrollRunway()
       StateProbe(id: "all-books-probe", value: allBooksValue)
       StateProbe(id: "all-books-screen", value: "ready")
       LibraryOrganizerStateProbe(model: model)
@@ -345,8 +351,8 @@ struct AllBooksView: View {
         } label: {
           Image(systemName: model.library.allBooksViewStyle == .grid ? "list.bullet" : "square.grid.2x2")
         }
-        .accessibilityLabel(model.library.allBooksViewStyle == .grid ? "Use list" : "Use grid")
-        .accessibilityIdentifier(model.library.allBooksViewStyle == .grid ? "library-view-list" : "library-view-grid")
+        .accessibilityLabel(model.library.allBooksViewStyle == .grid ? "Use list" : "Use shelves")
+        .accessibilityIdentifier(model.library.allBooksViewStyle == .grid ? "library-view-list" : "library-view-shelves")
       }
       ToolbarItem(placement: .topBarTrailing) {
         NavigationLink {
@@ -367,14 +373,99 @@ struct AllBooksView: View {
     }
   }
 
-  private var gridColumns: [GridItem] {
-    Array(
-      repeating: GridItem(.flexible()),
-      count: dynamicTypeSize.isAccessibilitySize ? 1 : 2
-    )
+  private func bookshelf(availableWidth: CGFloat) -> some View {
+    LazyVStack(alignment: .leading, spacing: 30) {
+      if !continueListeningBooks.isEmpty {
+        bookshelfSection(
+          "Continue Listening",
+          books: continueListeningBooks,
+          identifierPrefix: "continue",
+          scale: .feature,
+          availableWidth: availableWidth
+        )
+      }
+      bookshelfSection(
+        "Recently Added",
+        books: recentlyAddedBooks,
+        identifierPrefix: "recent",
+        scale: .feature,
+        availableWidth: availableWidth
+      )
+      bookshelfSection(
+        "A–Z",
+        books: sortedBooks,
+        identifierPrefix: nil,
+        scale: .compact,
+        availableWidth: availableWidth
+      )
+    }
+    .padding(.vertical, 18)
+    .accessibilityIdentifier("all-books-bookshelf")
   }
 
-  private func bookLink<Label: View>(_ book: Book, @ViewBuilder label: () -> Label) -> some View {
+  private var continueListeningBooks: [Book] {
+    let available = Set(sortedBooks.map(\.id))
+    return model.library.continueListeningBooks.filter { available.contains($0.id) }
+  }
+
+  private var recentlyAddedBooks: [Book] {
+    let available = Set(sortedBooks.map(\.id))
+    let recent = model.library.recentlyAddedBooks.filter { available.contains($0.id) }
+    return recent.isEmpty ? sortedBooks : recent
+  }
+
+  private func bookshelfSection(
+    _ title: String,
+    books: [Book],
+    identifierPrefix: String?,
+    scale: BookshelfScale,
+    availableWidth: CGFloat
+  ) -> some View {
+    let metrics = BookshelfMetrics(scale: scale, availableWidth: availableWidth)
+
+    return VStack(alignment: .leading, spacing: 12) {
+      Text(title)
+        .font(.title3.bold())
+        .foregroundStyle(PlayerColor.ink)
+        .padding(.horizontal, 20)
+
+      ZStack(alignment: .top) {
+        ScrollView(.horizontal) {
+          LazyHStack(alignment: .top, spacing: metrics.spacing) {
+            ForEach(books) { book in
+              bookLink(
+                book,
+                identifier: identifierPrefix.map {
+                  "bookshelf-\($0)-book-\(book.id.uuidString.lowercased())"
+                }
+              ) {
+                BookshelfCoverCard(book: book, metrics: metrics)
+              }
+            }
+          }
+          .padding(.horizontal, 20)
+          .padding(.top, metrics.topInset)
+        }
+        .scrollIndicators(.hidden)
+
+        Image("BurntOrangeShelf")
+          .resizable()
+          .interpolation(.high)
+          .frame(width: availableWidth, height: metrics.shelfHeight)
+          .offset(y: metrics.shelfOffset)
+          .allowsHitTesting(false)
+          .accessibilityHidden(true)
+          .zIndex(2)
+      }
+      .frame(height: metrics.rowHeight)
+    }
+  }
+
+  private func bookLink<Label: View>(
+    _ book: Book,
+    identifier: String? = nil,
+    @ViewBuilder label: () -> Label
+  ) -> some View {
     NavigationLink {
       BookDetailView(model: model, bookID: book.id) { selectedBook, position in
         Task { await model.play(bookID: selectedBook.id, at: position) }
@@ -383,12 +474,138 @@ struct AllBooksView: View {
       label()
     }
       .buttonStyle(.plain)
-      .accessibilityIdentifier("all-books-book-\(book.id.uuidString.lowercased())")
+      .accessibilityElement(children: .combine)
+      .accessibilityLabel("\(book.title), \(book.authors.first ?? "Unknown Author")")
+      .accessibilityHint("Opens audiobook details")
+      .accessibilityIdentifier(
+        identifier ?? "all-books-book-\(book.id.uuidString.lowercased())"
+      )
   }
 
   private var allBooksValue: String {
     let order = sortedBooks.map { $0.id.uuidString.lowercased() }.joined(separator: ",")
     return "all-books:count=\(sortedBooks.count):view=\(model.library.allBooksViewStyle.rawValue):order=\(order)"
+  }
+}
+
+private enum BookshelfScale: Equatable {
+  case feature
+  case compact
+}
+
+private struct BookshelfMetrics {
+  let scale: BookshelfScale
+  let coverSize: CGFloat
+  let spacing: CGFloat
+  let shelfHeight: CGFloat = 32
+  let topInset: CGFloat = 8
+
+  init(scale: BookshelfScale, availableWidth: CGFloat) {
+    self.scale = scale
+    switch scale {
+    case .feature:
+      spacing = 12
+      coverSize = min(max((availableWidth - 20 - (spacing * 3)) / 3.5, 88), 108)
+    case .compact:
+      spacing = 9
+      coverSize = min(max((availableWidth - 20 - (spacing * 4)) / 4.8, 64), 78)
+    }
+  }
+
+  var shelfOffset: CGFloat { topInset + coverSize - 5 }
+  var metadataHeight: CGFloat { scale == .feature ? 54 : 47 }
+  var rowHeight: CGFloat { topInset + coverSize + shelfHeight + 8 + metadataHeight }
+  var cornerRadius: CGFloat { scale == .feature ? 3.5 : 2.5 }
+}
+
+private struct BookshelfCoverCard: View {
+  let book: Book
+  let metrics: BookshelfMetrics
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      ArtworkView(
+        data: book.artworkData,
+        size: metrics.coverSize,
+        cornerRadius: metrics.cornerRadius,
+        shadowRadius: 0,
+        shadowY: 0
+      )
+        .overlay(alignment: .top) {
+          LinearGradient(
+            colors: [Color.white.opacity(0.42), Color.white.opacity(0.12), .clear],
+            startPoint: .top,
+            endPoint: .bottom
+          )
+          .frame(height: max(4, metrics.coverSize * 0.055))
+          .clipShape(
+            UnevenRoundedRectangle(
+              topLeadingRadius: metrics.cornerRadius,
+              topTrailingRadius: metrics.cornerRadius
+            )
+          )
+          .accessibilityHidden(true)
+        }
+        .overlay(alignment: .leading) {
+          LinearGradient(
+            colors: [Color.white.opacity(0.30), Color.white.opacity(0.08), .clear],
+            startPoint: .leading,
+            endPoint: .trailing
+          )
+          .frame(width: max(3, metrics.coverSize * 0.045))
+          .clipShape(
+            UnevenRoundedRectangle(
+              topLeadingRadius: metrics.cornerRadius,
+              bottomLeadingRadius: metrics.cornerRadius
+            )
+          )
+          .accessibilityHidden(true)
+        }
+        .overlay(alignment: .trailing) {
+          LinearGradient(
+            colors: [PlayerColor.ink.opacity(0.26), Color.white.opacity(0.23)],
+            startPoint: .leading,
+            endPoint: .trailing
+          )
+          .frame(width: max(3, metrics.coverSize * 0.04))
+          .clipShape(
+            UnevenRoundedRectangle(
+              bottomTrailingRadius: metrics.cornerRadius,
+              topTrailingRadius: metrics.cornerRadius
+            )
+          )
+          .accessibilityHidden(true)
+        }
+        .overlay {
+          RoundedRectangle(cornerRadius: metrics.cornerRadius)
+            .strokeBorder(
+              LinearGradient(
+                colors: [Color.white.opacity(0.38), PlayerColor.ink.opacity(0.30)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+              ),
+              lineWidth: 0.75
+            )
+            .accessibilityHidden(true)
+        }
+        .shadow(color: PlayerColor.ink.opacity(0.30), radius: 3, x: 2, y: 4)
+        .shadow(color: PlayerColor.ink.opacity(0.16), radius: 7, x: 1, y: 7)
+
+      Color.clear.frame(height: metrics.shelfHeight + 8)
+
+      VStack(alignment: .leading, spacing: 4) {
+        Text(book.title)
+          .font(metrics.scale == .feature ? .caption.weight(.semibold) : .caption2.weight(.semibold))
+          .foregroundStyle(PlayerColor.ink)
+          .lineLimit(2)
+        Text(book.authors.first ?? "Unknown Author")
+          .font(metrics.scale == .feature ? .caption2 : .system(size: 9.5))
+          .foregroundStyle(PlayerColor.secondary)
+          .lineLimit(1)
+      }
+      .frame(height: metrics.metadataHeight, alignment: .top)
+    }
+    .frame(width: metrics.coverSize, alignment: .leading)
   }
 }
 
@@ -759,7 +976,7 @@ struct LibraryOrganizationSettingsView: View {
             get: { model.library.allBooksViewStyle },
             set: { style in Task { _ = await model.setAllBooksViewStyle(style) } }
           )) {
-            Text("Grid").tag(LibraryViewStyle.grid)
+            Text("Shelves").tag(LibraryViewStyle.grid)
             Text("List").tag(LibraryViewStyle.list)
           }
           NavigationLink(value: LibrarySettingsDestination.trash) {
