@@ -190,7 +190,8 @@ Each selected top-level item creates an import job with a stable identifier. Inb
 - **In Progress**
 - **Ready to Add** when review is optional
 - **Failed**
-- **Recently Added**, retained for undo during the current retention window
+
+Inbox is a triage surface, so successfully committed and cancelled jobs are omitted. Their durable records remain available to recovery and diagnostics without cluttering the queue.
 
 An import card displays source name, detected book count, stage, determinate byte progress when known, and the next available action. The app never uses one indefinite spinner for the entire pipeline.
 
@@ -206,7 +207,7 @@ An import card displays source name, detected book count, stage, determinate byt
 | `needsReview` | Warning count and confidence summary | Review, Cancel |
 | `ready` | Book count and storage cost | Add, Review, Cancel |
 | `committing` | Items committed/total | No destructive action |
-| `committed` | Destination book links and Undo | View, Undo |
+| `committed` | Destination book links and commit record | Hidden from Inbox; open the book from Library |
 | `failedRecoverable` | Plain-language cause and affected file | Retry, Change Selection, Cancel |
 | `failedTerminal` | Why the content is unsafe or unsupported | View Details, Remove |
 

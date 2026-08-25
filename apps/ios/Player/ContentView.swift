@@ -13,6 +13,7 @@ struct ContentView: View {
   @State private var sharedImportQueueRevision = 0
   @State private var pendingDocumentURLs: [URL] = []
   @State private var presentedPlayerBook: Book?
+  @State private var isLibraryRootVisible = true
 
   init(model: PlayerModel) {
     self.model = model
@@ -43,9 +44,9 @@ struct ContentView: View {
       playerTabContent {
         LibraryView(
           model: model,
-          startImport: beginImport,
           startComputerReceiver: { isReceivingFromComputer = true },
-          startFileImport: beginFileImport
+          startFileImport: beginFileImport,
+          setAddButtonVisible: { isLibraryRootVisible = $0 }
         ) { presentedPlayerBook = $0 }
       }
         .tag(AppSection.library)
@@ -65,6 +66,23 @@ struct ContentView: View {
         .tabItem { Label("Settings", systemImage: "gearshape") }
     }
     .tint(PlayerColor.accent)
+    .overlay(alignment: .bottomTrailing) {
+      if selection == .library && isLibraryRootVisible && !model.library.books.isEmpty {
+        Button { beginImport() } label: {
+          Image(systemName: "plus")
+            .font(.title2.weight(.semibold))
+            .frame(width: 56, height: 56)
+            .background(PlayerColor.card, in: Circle())
+            .shadow(color: PlayerColor.ink.opacity(0.14), radius: 16, y: 8)
+        }
+        .buttonStyle(.plain)
+        .padding(.trailing, 8)
+        .padding(.bottom, 14)
+        .offset(y: 24)
+        .accessibilityLabel("Add Audiobook")
+        .accessibilityIdentifier("add-audiobook-toolbar")
+      }
+    }
     .modifier(
       PlayerAccessibilityRootModifier(
         preferences: model.library.accessibilityPreferences
@@ -286,11 +304,10 @@ private enum AppSection: Hashable { case library, inbox, settings }
 
 private struct LibraryView: View {
   @Bindable var model: PlayerModel
-  let startImport: () -> Void
   let startComputerReceiver: () -> Void
   let startFileImport: () -> Void
+  let setAddButtonVisible: (Bool) -> Void
   @State private var path = NavigationPath()
-  @State private var isRootVisible = true
   let presentPlayer: (Book) -> Void
 
   var body: some View {
@@ -326,23 +343,9 @@ private struct LibraryView: View {
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("library-screen")
       .accessibilityValue(libraryState)
-      .onAppear { isRootVisible = true }
-      .onDisappear { isRootVisible = false }
-    }
-    .overlay(alignment: .topTrailing) {
-      if path.isEmpty && isRootVisible && !model.library.books.isEmpty {
-        Button { startImport() } label: {
-          Image(systemName: "plus")
-            .font(.title3.weight(.semibold))
-            .frame(width: 44, height: 44)
-            .background(PlayerColor.card, in: Circle())
-        }
-        .buttonStyle(.plain)
-        .padding(.top, 44)
-        .padding(.trailing, 20)
-        .accessibilityLabel("Add Audiobook")
-        .accessibilityIdentifier("add-audiobook-toolbar")
-      }
+      .onAppear { setAddButtonVisible(path.isEmpty) }
+      .onDisappear { setAddButtonVisible(false) }
+      .onChange(of: path) { _, path in setAddButtonVisible(path.isEmpty) }
     }
   }
 
@@ -398,22 +401,21 @@ private struct InboxView: View {
   let startImport: () -> Void
   let didCommit: () -> Void
   @State private var pendingAbandonment: ImportJob?
+  @State private var path = NavigationPath()
 
   var body: some View {
-    NavigationStack {
+    NavigationStack(path: $path) {
       ZStack {
         PlayerColor.background.ignoresSafeArea()
-        if model.library.importJobs.isEmpty {
+        if inboxJobs.isEmpty {
           ContentUnavailableView(
             "Inbox is clear",
             systemImage: "tray",
             description: Text("New imports will wait here for review.")
           )
         } else {
-          List(model.library.importJobs) { job in
-            NavigationLink {
-              destination(for: job)
-            } label: { ImportJobRow(job: job) }
+          List(inboxJobs) { job in
+            NavigationLink(value: job.id) { ImportJobRow(job: job) }
               .listRowBackground(PlayerColor.card)
               .accessibilityIdentifier(
                 job.phase == .failed
@@ -433,6 +435,11 @@ private struct InboxView: View {
         }
       }
       .navigationTitle("Inbox")
+      .navigationDestination(for: UUID.self) { jobID in
+        if let job = model.library.importJobs.first(where: { $0.id == jobID }) {
+          destination(for: job)
+        }
+      }
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("inbox-screen")
       .accessibilityValue(inboxState)
@@ -456,22 +463,28 @@ private struct InboxView: View {
     }
   }
 
+  private var inboxJobs: [ImportJob] {
+    model.library.importJobs.filter { ![.committed, .cancelled].contains($0.phase) }
+  }
+
   private var abandonmentMessage: String {
-    guard let job = pendingAbandonment else { return "" }
-    if job.phase == .committed {
-      return "This removes the Inbox history only. The audiobook stays in your Library."
-    }
+    guard pendingAbandonment != nil else { return "" }
     return "This removes the Inbox entry and its temporary copied files. Your original files stay untouched."
   }
 
   private var inboxState: String {
-    let ready = model.library.importJobs.filter {
+    let ready = inboxJobs.filter {
       $0.phase == .ready || $0.phase == .needsReview
     }.count
-    let processing = model.library.importJobs.filter {
+    let processing = inboxJobs.filter {
       [.queued, .acquiring, .extracting, .inspecting, .committing].contains($0.phase)
     }.count
-    return "import:\(model.library.importJobs.count)-review:\(ready)-processing:\(processing)"
+    return "import:\(inboxJobs.count)-review:\(ready)-processing:\(processing)"
+  }
+
+  private func finishImport() {
+    path = NavigationPath()
+    didCommit()
   }
 
   @ViewBuilder
@@ -481,12 +494,12 @@ private struct InboxView: View {
         model: model,
         jobID: job.id,
         startImport: startImport,
-        didCommit: didCommit
+        didCommit: finishImport
       )
     } else if job.phase == .failed {
       ImportErrorView(model: model, jobID: job.id, startImport: startImport)
     } else {
-      ReviewImportView(model: model, jobID: job.id, didCommit: didCommit)
+      ReviewImportView(model: model, jobID: job.id, didCommit: finishImport)
     }
   }
 }
