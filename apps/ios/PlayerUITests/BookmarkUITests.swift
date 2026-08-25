@@ -64,10 +64,12 @@ final class BookmarkUITests: XCTestCase {
 
     let boundaryRow = app.descendants(matching: .any)["bookmark-row-\(boundaryBookmarkID)"]
     let secondRow = app.descendants(matching: .any)["bookmark-row-\(secondBookmarkID)"]
+    try revealBookmarkRow(boundaryRow, in: app)
     try requireValue(
       boundaryRow,
       "book=\(bookID)|asset=\(secondAssetID)|chapter=crossing|bookMs=60000|assetMs=0|label=The Crossing · 1:00|note=none"
     )
+    try revealBookmarkRow(secondRow, in: app)
     try requireValue(
       secondRow,
       "book=\(bookID)|asset=\(firstAssetID)|chapter=opening|bookMs=15000|assetMs=15000|label=Opening Signal · 0:15|note=none"
@@ -333,6 +335,15 @@ final class BookmarkUITests: XCTestCase {
       "Both complete bookmark cards must sit above the mini-player before capture"
     )
     XCTAssertTrue(segment.isHittable, "The selected Chapters/Bookmarks control must remain visible")
+  }
+
+  private func revealBookmarkRow(_ row: XCUIElement, in app: XCUIApplication) throws {
+    let scrollView = app.scrollViews.firstMatch
+    XCTAssertTrue(scrollView.exists)
+    for _ in 0..<5 where !row.exists || !row.isHittable {
+      scrollView.swipeUp(velocity: .slow)
+    }
+    XCTAssertTrue(row.waitForExistence(timeout: 2), "Expected the bookmark row to be reachable by scrolling")
   }
 
   private func bookmarkFrameIsUnobscured(

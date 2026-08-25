@@ -162,7 +162,22 @@ final class LibraryOrganizationUITests: XCTestCase {
     restoredApp.buttons["all-books-book-\(books[4])"].tap()
     restoredApp.buttons["move-book-to-trash-toolbar"].tap()
     restoredApp.buttons["remove-book-to-trash"].firstMatch.tap()
-    restoredApp.buttons["open-trash"].tap()
+    let openTrash = restoredApp.buttons["open-trash"].firstMatch
+    let miniPlayer = restoredApp.otherElements["mini-player"]
+    let libraryScroll = restoredApp.scrollViews.firstMatch
+    XCTAssertTrue(openTrash.waitForExistence(timeout: 2))
+    XCTAssertTrue(miniPlayer.waitForExistence(timeout: 2))
+    for _ in 0..<5
+    where !openTrash.isHittable || openTrash.frame.maxY > miniPlayer.frame.minY - 4 {
+      libraryScroll.swipeUp(velocity: .slow)
+    }
+    XCTAssertTrue(openTrash.isHittable, "Trash must remain tappable above the mini-player")
+    XCTAssertLessThanOrEqual(
+      openTrash.frame.maxY,
+      miniPlayer.frame.minY - 4,
+      "Library content must have enough bottom runway to scroll Trash fully above the mini-player"
+    )
+    openTrash.tap()
     let trash = anyElement(restoredApp, "trash-probe")
     try tester.step(
       "recoverable-trash",
