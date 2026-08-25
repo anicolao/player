@@ -180,6 +180,37 @@ final class SmartRewindTests: XCTestCase {
     XCTAssertEqual(durable.smartRewindPreferences.maximumRewindSeconds, 12)
   }
 
+  func testRewindUndoNoticeDismissesDurablyAfterFiveSecondsOfListening() async throws {
+    let clock = MutableSmartRewindClock(Date(timeIntervalSince1970: 1_800_000_000))
+    let book = makeBook()
+    let store = InMemoryLibraryStore(snapshot: LibrarySnapshot(
+      books: [book],
+      importJobs: [],
+      currentBookID: nil
+    ))
+    let playback = DeterministicPlaybackController()
+    let model = makeModel(store: store, playback: playback, clock: clock)
+    await model.restore()
+    await model.play(bookID: book.id, at: 110)
+    await model.pause()
+    clock.advance(by: 600)
+    await model.play(bookID: book.id)
+    XCTAssertNotNil(model.pendingResumeRewind)
+
+    await playback.seek(to: 104.9)
+    await model.synchronizePlaybackProgress()
+    XCTAssertNotNil(model.pendingResumeRewind)
+
+    clock.advance(by: 5)
+    await playback.seek(to: 105)
+    await model.synchronizePlaybackProgress()
+
+    XCTAssertNil(model.pendingResumeRewind)
+    let durable = await store.load()
+    XCTAssertEqual(durable.resumeRewindTransactions.last?.status, .dismissed)
+    XCTAssertEqual(durable.resumeRewindTransactions.last?.dismissedAt, clock.now())
+  }
+
   func testFailedAtomicRewindSaveRollsEngineBackWithoutOrphanTransaction() async throws {
     let pauseDate = Date(timeIntervalSince1970: 1_800_000_000)
     let clock = MutableSmartRewindClock(pauseDate.addingTimeInterval(600))

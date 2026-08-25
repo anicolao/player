@@ -41,9 +41,18 @@
 - [x] The first ordered collection book is visible
 - [x] The second ordered collection book is visible
 
+## The final Library control scrolls completely above the persistent player
+
+![The final Library control scrolls completely above the persistent player](./screenshots/ios/002-trash-clear-of-player.png)
+
+**Verifications:**
+
+- [x] Trash remains visible and tappable above the mini-player
+- [x] The persistent player remains available below Library content
+
 ## Removing a book creates an exact recoverable Trash transaction
 
-![Removing a book creates an exact recoverable Trash transaction](./screenshots/ios/002-recoverable-trash.png)
+![Removing a book creates an exact recoverable Trash transaction](./screenshots/ios/003-recoverable-trash.png)
 
 **Verifications:**
 
@@ -54,7 +63,7 @@
 
 ## Restore returns the book and its organization while list preference persists
 
-![Restore returns the book and its organization while list preference persists](./screenshots/ios/003-restored-library-list.png)
+![Restore returns the book and its organization while list preference persists](./screenshots/ios/004-restored-library-list.png)
 
 **Verifications:**
 
@@ -64,7 +73,7 @@
 
 ## Local search finds contributor metadata without a network
 
-![Local search finds contributor metadata without a network](./screenshots/ios/004-metadata-search.png)
+![Local search finds contributor metadata without a network](./screenshots/ios/005-metadata-search.png)
 
 **Verifications:**
 
@@ -74,7 +83,7 @@
 
 ## Search combines a listening-state filter with a meaningful sort
 
-![Search combines a listening-state filter with a meaningful sort](./screenshots/ios/005-filtered-search.png)
+![Search combines a listening-state filter with a meaningful sort](./screenshots/ios/006-filtered-search.png)
 
 **Verifications:**
 
@@ -84,7 +93,7 @@
 
 ## No search matches is distinct from an empty library
 
-![No search matches is distinct from an empty library](./screenshots/ios/006-no-search-matches.png)
+![No search matches is distinct from an empty library](./screenshots/ios/007-no-search-matches.png)
 
 **Verifications:**
 

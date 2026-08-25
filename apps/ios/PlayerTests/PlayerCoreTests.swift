@@ -1,4 +1,5 @@
 import CryptoKit
+import MediaPlayer
 import XCTest
 @testable import Player
 
@@ -70,12 +71,22 @@ final class PlayerCoreTests: XCTestCase {
       narrators: [],
       seriesName: nil,
       chapterTitle: nil,
+      chapterIndex: nil,
+      chapterCount: 0,
       durationSeconds: 60,
       elapsedSeconds: 5,
       playbackRate: 1,
+      defaultPlaybackRate: 1,
       artworkData: artworkData
     ))
 
+    let center = MPNowPlayingInfoCenter.default()
+    XCTAssertEqual(center.playbackState, .playing)
+    XCTAssertEqual(
+      center.nowPlayingInfo?[MPNowPlayingInfoPropertyExternalContentIdentifier] as? String,
+      "a9000000-0000-0000-0000-000000000001"
+    )
+    XCTAssertEqual(center.nowPlayingInfo?[MPNowPlayingInfoPropertyIsLiveStream] as? Bool, false)
     try await Task.sleep(for: .milliseconds(500))
   }
 
@@ -1145,6 +1156,23 @@ final class PlayerCoreTests: XCTestCase {
     let paused = try XCTUnwrap(harness.nowPlaying.latest)
     XCTAssertEqual(paused.elapsedSeconds, 42.25)
     XCTAssertEqual(paused.playbackRate, 0)
+  }
+
+  func testLiveEngineProgressSynchronizesObservablePlayheadWithoutCreatingJournalNoise() async throws {
+    let harness = makeBackgroundPlaybackHarness()
+    await harness.model.restore()
+    harness.model.configurePlaybackIntegrations()
+    await harness.model.play(bookID: harness.book.id)
+    let journalCount = harness.model.library.positionJournal.count
+
+    await harness.playback.seek(to: 7.5)
+    let deadline = ContinuousClock.now + .seconds(1)
+    while harness.model.playbackState.elapsedSeconds < 7.5, ContinuousClock.now < deadline {
+      try await Task.sleep(for: .milliseconds(50))
+    }
+
+    XCTAssertEqual(harness.model.playbackState.elapsedSeconds, 7.5, accuracy: 0.001)
+    XCTAssertEqual(harness.model.library.positionJournal.count, journalCount)
   }
 
   func testAudioSessionConfigurationAndActivationFailuresAreObservable() async throws {

@@ -31,6 +31,12 @@ final class PositionRestoreUITests: XCTestCase {
 
     let positionSlider = app.sliders["player-position-slider"]
     XCTAssertTrue(positionSlider.waitForExistence(timeout: 2))
+    let elapsedTime = app.staticTexts["player-elapsed-time"]
+    let remainingTime = app.staticTexts["player-remaining-time"]
+    XCTAssertTrue(elapsedTime.waitForExistence(timeout: 2))
+    XCTAssertTrue(remainingTime.waitForExistence(timeout: 2))
+    XCTAssertEqual(elapsedTime.value as? String, "0m12s")
+    XCTAssertEqual(remainingTime.value as? String, "1m48s")
     let seekedState = try adjustSliderUntilAcknowledged(
       positionSlider,
       to: 0.5,
@@ -39,6 +45,8 @@ final class PositionRestoreUITests: XCTestCase {
     )
     XCTAssertEqual(seekedState.bookID, fixtureBookID)
     XCTAssertEqual(seekedState.chapterIndex, 0)
+    XCTAssertTrue(elapsedTime.waitForStringValue("1m00s", timeout: 2))
+    XCTAssertTrue(remainingTime.waitForStringValue("1m00s", timeout: 2))
 
     let playPause = app.buttons["player-play-pause"]
     playPause.tap()

@@ -754,9 +754,12 @@ struct NowPlayingSnapshot: Equatable, Sendable {
   var narrators: [String]
   var seriesName: String?
   var chapterTitle: String?
+  var chapterIndex: Int?
+  var chapterCount: Int
   var durationSeconds: Double
   var elapsedSeconds: Double
   var playbackRate: Double
+  var defaultPlaybackRate: Double
   var artworkData: Data?
 }
 

@@ -18,6 +18,7 @@ final class PlayerModel {
   @ObservationIgnored private var wasPlayingBeforeInterruption = false
   @ObservationIgnored private var importTasks: [UUID: Task<Void, Never>] = [:]
   @ObservationIgnored private var sleepTimerMonitorTask: Task<Void, Never>?
+  @ObservationIgnored private var playbackProgressMonitorTask: Task<Void, Never>?
   @ObservationIgnored private var sleepTimerEvaluationInProgress = false
   @ObservationIgnored private var loadedAssetID: UUID?
   @ObservationIgnored private var loadedAssetTimelineStartSeconds = 0.0
@@ -219,6 +220,7 @@ final class PlayerModel {
 
   func configurePlaybackIntegrations() {
     guard !playbackIntegrationsConfigured else { return }
+    schedulePlaybackProgressMonitor()
     do {
       try environment.audioSession.configure()
       environment.audioSession.installEventHandler { [weak self] event in
@@ -1974,6 +1976,17 @@ final class PlayerModel {
     })
   }
 
+  /// Copies the engine's live playhead into observable UI state. Durable
+  /// checkpoints remain event-based; this synchronization is intentionally
+  /// lightweight and runs frequently while audio is playing.
+  func synchronizePlaybackProgress() async {
+    guard playbackState.status == .playing else { return }
+    let position = currentBookPositionSeconds
+    guard position.isFinite else { return }
+    playbackState.elapsedSeconds = position
+    await dismissResumeRewindNoticeIfNeeded(at: position)
+  }
+
   var activeSleepTimer: ActiveSleepTimer? { library.activeSleepTimer }
 
   var activeSleepTimerProjection: SleepTimerProjection? {
@@ -2492,6 +2505,36 @@ final class PlayerModel {
     }
   }
 
+  private func schedulePlaybackProgressMonitor() {
+    playbackProgressMonitorTask?.cancel()
+    playbackProgressMonitorTask = Task { @MainActor [weak self] in
+      while !Task.isCancelled {
+        try? await Task.sleep(for: .milliseconds(250))
+        guard !Task.isCancelled, let self else { return }
+        await self.synchronizePlaybackProgress()
+      }
+    }
+  }
+
+  private func dismissResumeRewindNoticeIfNeeded(at position: Double) async {
+    guard let transaction = pendingResumeRewind,
+      position >= transaction.plan.targetSeconds + 5,
+      let index = library.resumeRewindTransactions.firstIndex(where: {
+        $0.id == transaction.id && $0.status == .applied
+      })
+    else { return }
+    let previousLibrary = library
+    library.resumeRewindTransactions[index].status = .dismissed
+    library.resumeRewindTransactions[index].dismissedAt = environment.clock.now()
+    do {
+      try await persist()
+      lastErrorMessage = nil
+    } catch {
+      library = previousLibrary
+      lastErrorMessage = error.localizedDescription
+    }
+  }
+
   private func load(book: Book, at bookSeconds: Double) async throws {
     guard let location = PlaybackTimeline.location(in: book, at: bookSeconds) else {
       throw TransportPreferencesError.missingPlaybackTimeline(book.id)
@@ -2765,6 +2808,10 @@ final class PlayerModel {
     let chapter = book.chapters
       .filter { $0.startSeconds <= elapsed }
       .max(by: { $0.startSeconds < $1.startSeconds })
+    let chapterIndex = chapter.flatMap { current in
+      book.chapters.firstIndex(where: { $0.id == current.id })
+    }
+    let configuredRate = transportPreferences(for: book.id).playbackRate
     environment.nowPlaying.publish(
       NowPlayingSnapshot(
         bookID: book.id,
@@ -2773,10 +2820,13 @@ final class PlayerModel {
         narrators: book.narrators,
         seriesName: book.seriesName,
         chapterTitle: chapter?.title,
+        chapterIndex: chapterIndex,
+        chapterCount: book.chapters.count,
         durationSeconds: book.durationSeconds,
         elapsedSeconds: elapsed,
         playbackRate: playbackState.status == .playing
-          ? transportPreferences(for: book.id).playbackRate : 0,
+          ? configuredRate : 0,
+        defaultPlaybackRate: configuredRate,
         artworkData: book.artworkData
       )
     )
