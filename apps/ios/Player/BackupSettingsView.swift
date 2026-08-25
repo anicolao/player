@@ -126,6 +126,7 @@ struct BackupSettingsView: View {
                 )
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+                .accessibilityIdentifier("backup-automatic-explanation")
               }
             }
 
@@ -189,8 +190,9 @@ struct BackupSettingsView: View {
           }
           .padding(.horizontal, 16)
           .padding(.top, 16)
-          .padding(.bottom, model.library.currentBookID == nil ? 48 : 240)
+          .padding(.bottom, 48)
         }
+        .playerMiniPlayerScrollRunway()
         .accessibilityIdentifier("backup-scroll")
         .background(Color(uiColor: .systemGroupedBackground))
         #if E2E

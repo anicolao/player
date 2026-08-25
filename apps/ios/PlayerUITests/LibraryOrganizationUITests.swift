@@ -156,6 +156,8 @@ final class LibraryOrganizationUITests: XCTestCase {
 
     let restoredApp = try makeApplication(reset: false)
     restoredApp.launch()
+    verifyNonLibraryRunways(restoredApp)
+    restoredApp.tabBars.buttons["Library"].tap()
     restoredApp.buttons["browse-all-books"].tap()
     let restoredAllBooks = anyElement(restoredApp, "all-books-probe")
     try requireValue(restoredAllBooks, allBooksValue(view: "list", order: allBookOrder))
@@ -367,6 +369,52 @@ final class LibraryOrganizationUITests: XCTestCase {
     let back = app.navigationBars.buttons.element(boundBy: 0)
     XCTAssertTrue(back.waitForExistence(timeout: 2))
     back.tap()
+  }
+
+  private func verifyNonLibraryRunways(_ app: XCUIApplication) {
+    let miniPlayer = app.otherElements["mini-player"]
+    XCTAssertTrue(miniPlayer.waitForExistence(timeout: 2))
+
+    app.tabBars.buttons["Settings"].tap()
+    assertScrollsAboveMiniPlayer(
+      app.buttons["settings-diagnostics"], miniPlayer: miniPlayer, in: app,
+      message: "The final Settings row must scroll above the mini-player"
+    )
+
+    app.buttons["settings-backup"].tap()
+    assertScrollsAboveMiniPlayer(
+      anyElement(app, "backup-automatic-explanation"), miniPlayer: miniPlayer, in: app,
+      message: "The final Backup content must scroll above the mini-player"
+    )
+    navigateBack(app)
+
+    app.buttons["playback-defaults"].tap()
+    assertScrollsAboveMiniPlayer(
+      anyElement(app, "transport-seek-context"), miniPlayer: miniPlayer, in: app,
+      message: "The final Playback Defaults control must scroll above the mini-player"
+    )
+    navigateBack(app)
+  }
+
+  private func assertScrollsAboveMiniPlayer(
+    _ element: XCUIElement,
+    miniPlayer: XCUIElement,
+    in app: XCUIApplication,
+    message: String
+  ) {
+    XCTAssertTrue(element.waitForExistence(timeout: 2), message)
+    for _ in 0..<8
+    where !element.isHittable || element.frame.maxY > miniPlayer.frame.minY - 4 {
+      app.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.72))
+        .press(
+          forDuration: 0.05,
+          thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.28)),
+          withVelocity: .slow,
+          thenHoldForDuration: 0
+        )
+    }
+    XCTAssertTrue(element.isHittable, message)
+    XCTAssertLessThanOrEqual(element.frame.maxY, miniPlayer.frame.minY - 4, message)
   }
 
   private func verifyBrowseAxis(

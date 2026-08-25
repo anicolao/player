@@ -181,6 +181,10 @@ struct ContentView: View {
     @ViewBuilder content: () -> Content
   ) -> some View {
     content()
+      .environment(
+        \.playerMiniPlayerScrollRunway,
+        currentBook == nil ? 0 : PlayerLayout.miniPlayerScrollRunway
+      )
       .safeAreaInset(edge: .bottom, spacing: 0) {
         if let currentBook, presentedPlayerBook == nil {
           MiniPlayerView(model: model, book: currentBook) {
@@ -424,6 +428,7 @@ private struct InboxView: View {
                 .accessibilityIdentifier("abandon-import-\(job.id.uuidString.lowercased())")
               }
           }
+          .playerMiniPlayerScrollRunway()
           .scrollContentBackground(.hidden)
         }
       }
@@ -683,6 +688,7 @@ struct ReviewImportView: View {
             reviewContent(job: job, proposal: proposal)
               .padding(20)
           }
+          .playerMiniPlayerScrollRunway()
         }
       } else {
         ProgressView("Preparing review…")
@@ -947,6 +953,7 @@ private struct ReviewOrderView: View {
             }
           }
         }
+        .playerMiniPlayerScrollRunway()
         .scrollContentBackground(.hidden)
         .environment(\.editMode, .constant(.active))
         .safeAreaInset(edge: .bottom) { actionBar(job) }
@@ -1435,6 +1442,7 @@ struct BookDetailView: View {
             .padding(24)
             .padding(.bottom, 72)
           }
+          .playerMiniPlayerScrollRunway()
           #if E2E
             .overlay(alignment: .topLeading) {
               Button {
@@ -2251,9 +2259,41 @@ enum PlayerColor {
 }
 
 enum PlayerLayout {
-  /// The tab-level inset places the mini-player. Nested scroll views also need
-  /// actual content length so their final control can move fully above it.
+  /// Every vertical scroll container under the tab player reserves this much
+  /// real content length so its final control can move fully above the player.
   static let miniPlayerScrollRunway: CGFloat = 104
+}
+
+private struct PlayerMiniPlayerScrollRunwayKey: EnvironmentKey {
+  static let defaultValue: CGFloat = 0
+}
+
+extension EnvironmentValues {
+  var playerMiniPlayerScrollRunway: CGFloat {
+    get { self[PlayerMiniPlayerScrollRunwayKey.self] }
+    set { self[PlayerMiniPlayerScrollRunwayKey.self] = newValue }
+  }
+}
+
+private struct PlayerMiniPlayerScrollRunwayModifier: ViewModifier {
+  @Environment(\.playerMiniPlayerScrollRunway) private var runway
+
+  @ViewBuilder
+  func body(content: Content) -> some View {
+    if runway > 0 {
+      content.contentMargins(.bottom, runway, for: .scrollContent)
+    } else {
+      content
+    }
+  }
+}
+
+extension View {
+  /// Apply to every vertical ScrollView, List, and Form that can be presented
+  /// beneath the persistent mini-player. The environment is zero elsewhere.
+  func playerMiniPlayerScrollRunway() -> some View {
+    modifier(PlayerMiniPlayerScrollRunwayModifier())
+  }
 }
 
 private func duration(_ seconds: Double) -> String {

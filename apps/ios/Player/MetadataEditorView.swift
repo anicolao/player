@@ -42,6 +42,7 @@ struct MetadataEditorView: View {
           }
           .padding(20)
         }
+        .playerMiniPlayerScrollRunway()
         #if E2E
           .overlay(alignment: .topLeading) {
             Button {

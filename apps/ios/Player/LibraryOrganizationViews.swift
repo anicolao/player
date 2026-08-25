@@ -15,14 +15,9 @@ struct LibraryOrganizationHome: View {
         browse
       }
       .padding(.horizontal, 20)
-      .padding(.top, 18)
-      .padding(
-        .bottom,
-        model.library.currentBookID == nil
-          ? 18
-          : 18 + PlayerLayout.miniPlayerScrollRunway
-      )
+      .padding(.vertical, 18)
     }
+    .playerMiniPlayerScrollRunway()
     .accessibilityIdentifier("library-root-scroll")
     .navigationDestination(isPresented: $showUpNext) { UpNextView(model: model) }
     .toolbar {
@@ -248,6 +243,7 @@ struct UpNextView: View {
           .listRowBackground(PlayerColor.card)
         }
       }
+      .playerMiniPlayerScrollRunway()
       .scrollContentBackground(.hidden)
       StateProbe(id: "up-next-probe", value: upNextValue)
       StateProbe(id: "up-next-screen", value: "ready")
@@ -333,6 +329,7 @@ struct AllBooksView: View {
           .padding(20)
         }
       }
+      .playerMiniPlayerScrollRunway()
       StateProbe(id: "all-books-probe", value: allBooksValue)
       StateProbe(id: "all-books-screen", value: "ready")
       LibraryOrganizerStateProbe(model: model)
@@ -416,6 +413,7 @@ struct LibraryFacetBrowser: View {
         .listRowBackground(PlayerColor.card)
         .accessibilityIdentifier("\(rowPrefix)-\(group.id.lowercased())")
       }
+      .playerMiniPlayerScrollRunway()
       .scrollContentBackground(.hidden)
       StateProbe(id: "\(facet.rawValue)-browser-probe", value: probeValue)
       StateProbe(id: "\(facet.rawValue)-browser-screen", value: "ready")
@@ -455,6 +453,7 @@ private struct LibraryBrowseGroupView: View {
         }
         .padding(20)
       }
+      .playerMiniPlayerScrollRunway()
     }
     .navigationTitle(group.displayName)
   }
@@ -512,6 +511,7 @@ struct CollectionsView: View {
           .accessibilityIdentifier("collection-\(collection.id.uuidString.lowercased())")
         }
       }
+      .playerMiniPlayerScrollRunway()
       .scrollContentBackground(.hidden)
     }
     .navigationTitle("Collections")
@@ -553,6 +553,7 @@ struct CollectionDetailView: View {
             .accessibilityIdentifier("collection-book-\(book.id.uuidString.lowercased())")
           }
         }
+        .playerMiniPlayerScrollRunway()
         .scrollContentBackground(.hidden)
         StateProbe(id: "collection-probe", value: collectionValue(collection))
       }
@@ -614,6 +615,7 @@ private struct CollectionBookPicker: View {
         .listRowBackground(PlayerColor.card)
         .accessibilityIdentifier("collection-select-book-\(book.id.uuidString.lowercased())")
       }
+      .playerMiniPlayerScrollRunway()
       .scrollContentBackground(.hidden)
     }
     .navigationTitle("Add Books")
@@ -667,6 +669,7 @@ struct LibraryTrashView: View {
           .listRowBackground(PlayerColor.card)
           .accessibilityIdentifier("trash-book-\(transaction.book.id.uuidString.lowercased())")
         }
+        .playerMiniPlayerScrollRunway()
         .scrollContentBackground(.hidden)
       }
       StateProbe(id: "trash-probe", value: trashValue)
@@ -792,6 +795,7 @@ struct LibraryOrganizationSettingsView: View {
           .accessibilityIdentifier("settings-diagnostics")
         }
       }
+      .playerMiniPlayerScrollRunway()
       .scrollContentBackground(.hidden)
       .background(PlayerColor.background)
       .navigationTitle("Settings")
