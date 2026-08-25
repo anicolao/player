@@ -161,6 +161,25 @@ final class LibraryOrganizationUITests: XCTestCase {
     let allBooks = anyElement(app, "all-books-probe")
     let allBookOrder = [books[3], books[0], books[4], books[2], books[1]]
     try requireValue(allBooks, allBooksValue(view: "grid", order: allBookOrder))
+    try tester.step(
+      "square-cover-bookshelves",
+      description: "All Books presents square audiobook artwork on burnt-orange wooden shelves",
+      verifications: [
+        .exists(anyElement(app, "all-books-bookshelf"), "The shelf presentation is visible"),
+        .exists(
+          anyElement(app, "bookshelf-continue-book-\(books[0])"),
+          "Continue Listening exposes the resumable square cover"
+        ),
+        .exists(
+          anyElement(app, "bookshelf-recent-book-\(books[4])"),
+          "Recently Added exposes the newest square cover"
+        ),
+        .exists(
+          anyElement(app, "all-books-book-\(books[3])"),
+          "The complete A–Z shelf exposes its first sorted audiobook"
+        ),
+      ]
+    )
     app.buttons["library-view-list"].tap()
     try requireValue(allBooks, allBooksValue(view: "list", order: allBookOrder))
     app.terminate()

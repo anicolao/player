@@ -2200,6 +2200,9 @@ struct ArtworkView: View {
   let data: Data?
   let size: CGFloat
   var isEssential = false
+  var cornerRadius: CGFloat? = nil
+  var shadowRadius: CGFloat? = nil
+  var shadowY: CGFloat? = nil
 
   var body: some View {
     Group {
@@ -2220,11 +2223,11 @@ struct ArtworkView: View {
       }
     }
     .frame(width: size, height: size)
-    .clipShape(RoundedRectangle(cornerRadius: max(12, size * 0.07)))
+    .clipShape(RoundedRectangle(cornerRadius: cornerRadius ?? max(12, size * 0.07)))
     .shadow(
       color: PlayerColor.ink.opacity(reducesDecorativeArtwork && !isEssential ? 0 : 0.15),
-      radius: reducesDecorativeArtwork && !isEssential ? 0 : 18,
-      y: reducesDecorativeArtwork && !isEssential ? 0 : 10
+      radius: reducesDecorativeArtwork && !isEssential ? 0 : shadowRadius ?? 18,
+      y: reducesDecorativeArtwork && !isEssential ? 0 : shadowY ?? 10
     )
     .accessibilityElement()
     .accessibilityLabel(artworkLabel)
