@@ -306,6 +306,63 @@ final class ComputerReceiverTests: XCTestCase {
     XCTAssertEqual(status.fileOffsets, [Int64(audio.count)])
   }
 
+  func testReceiverReusesItsLastBoundPortWhenAvailable() async throws {
+    let suiteName = "ComputerReceiverPortPreference-\(UUID().uuidString)"
+    let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let preference = ComputerReceiverPortPreference(
+      userDefaults: defaults,
+      key: "preferredPort",
+      defaultPort: nil
+    )
+    let firstRoot = temporaryRoot()
+    let secondRoot = temporaryRoot()
+    defer {
+      try? FileManager.default.removeItem(at: firstRoot)
+      try? FileManager.default.removeItem(at: secondRoot)
+    }
+
+    let firstServer = ComputerReceiverServer(
+      rootURL: firstRoot,
+      bundle: .main,
+      portPreference: preference
+    )
+    let firstReady = try await firstServer.start(
+      importHandler: { _ in
+        DirectImportOutcome(
+          state: .completed,
+          message: "Imported",
+          addedBookCount: 1,
+          cleanupIncomingFiles: true
+        )
+      },
+      eventHandler: { _ in }
+    )
+    let firstPort = try XCTUnwrap(URL(string: firstReady.address)?.port)
+    await firstServer.stop()
+
+    let secondServer = ComputerReceiverServer(
+      rootURL: secondRoot,
+      bundle: .main,
+      portPreference: preference
+    )
+    let secondReady = try await secondServer.start(
+      importHandler: { _ in
+        DirectImportOutcome(
+          state: .completed,
+          message: "Imported",
+          addedBookCount: 1,
+          cleanupIncomingFiles: true
+        )
+      },
+      eventHandler: { _ in }
+    )
+    let secondPort = try XCTUnwrap(URL(string: secondReady.address)?.port)
+    await secondServer.stop()
+
+    XCTAssertEqual(secondPort, firstPort)
+  }
+
   func testInterruptedHTTPRequestResumesFromDurableServerOffset() async throws {
     let root = temporaryRoot()
     defer { try? FileManager.default.removeItem(at: root) }

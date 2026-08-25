@@ -32,6 +32,39 @@ struct ComputerReceiverReady: Sendable, Equatable {
   var pairingCode: String
 }
 
+final class ComputerReceiverPortPreference: @unchecked Sendable {
+  static let shared = ComputerReceiverPortPreference(
+    userDefaults: .standard,
+    key: "computerReceiver.preferredPort",
+    defaultPort: 49_152
+  )
+
+  private let lock = NSLock()
+  private let userDefaults: UserDefaults
+  private let key: String
+  private let defaultPort: UInt16?
+
+  init(userDefaults: UserDefaults, key: String, defaultPort: UInt16?) {
+    self.userDefaults = userDefaults
+    self.key = key
+    self.defaultPort = defaultPort
+  }
+
+  func preferredPort() -> UInt16? {
+    lock.lock()
+    defer { lock.unlock() }
+    let value = userDefaults.integer(forKey: key)
+    guard value > 0, value <= Int(UInt16.max) else { return defaultPort }
+    return UInt16(value)
+  }
+
+  func recordBoundPort(_ port: UInt16) {
+    lock.lock()
+    defer { lock.unlock() }
+    userDefaults.set(Int(port), forKey: key)
+  }
+}
+
 actor ComputerImportStore {
   struct Entry: Codable, Sendable, Equatable {
     var path: String
@@ -411,20 +444,27 @@ actor ComputerReceiverServer {
   private let logger = Logger(subsystem: "com.spnss.player", category: "ComputerReceiver")
   private let store: ComputerImportStore
   private let bundle: Bundle
+  private let portPreference: ComputerReceiverPortPreference
   private var listener: NWListener?
   private var pairingCode = ""
   private var bearerToken = ""
   private var importHandler: ImportHandler?
   private var eventHandler: EventHandler?
   private var startContinuation: CheckedContinuation<UInt16, any Error>?
+  private var stopContinuation: CheckedContinuation<Void, Never>?
   private var connections: [ObjectIdentifier: NWConnection] = [:]
   private var activeImports: [UUID: Task<Void, Never>] = [:]
   private var failedPairingAttempts = 0
   private var pairedClientName = "Computer"
 
-  init(rootURL: URL, bundle: Bundle = .main) {
+  init(
+    rootURL: URL,
+    bundle: Bundle = .main,
+    portPreference: ComputerReceiverPortPreference = .shared
+  ) {
     store = ComputerImportStore(rootURL: rootURL)
     self.bundle = bundle
+    self.portPreference = portPreference
   }
 
   func start(importHandler: @escaping ImportHandler, eventHandler: @escaping EventHandler) async throws -> ComputerReceiverReady {
@@ -435,28 +475,23 @@ actor ComputerReceiverServer {
     bearerToken = Self.randomToken()
     failedPairingAttempts = 0
 
-    let listener = try NWListener(using: .tcp, on: .any)
-    listener.service = NWListener.Service(name: "Player", type: "_player-import._tcp")
-    listener.newConnectionHandler = { [weak self] connection in
-      Task { await self?.accept(connection) }
-    }
-    listener.stateUpdateHandler = { [weak self, weak listener] state in
-      switch state {
-      case .ready:
-        guard let port = listener?.port?.rawValue else { return }
-        Task { await self?.listenerReady(port: port) }
-      case .failed(let error):
-        Task { await self?.listenerFailed(message: error.localizedDescription) }
-      default:
-        break
+    let port: UInt16
+    if let preferredPort = portPreference.preferredPort() {
+      do {
+        port = try await startListener(on: NWEndpoint.Port(rawValue: preferredPort) ?? .any)
+      } catch {
+        logger.notice(
+          "Preferred receiver port \(preferredPort, privacy: .public) was unavailable; selecting another port"
+        )
+        listener?.cancel()
+        listener = nil
+        startContinuation = nil
+        port = try await startListener(on: .any)
       }
+    } else {
+      port = try await startListener(on: .any)
     }
-    self.listener = listener
-    let port = try await withCheckedThrowingContinuation {
-      (continuation: CheckedContinuation<UInt16, any Error>) in
-      startContinuation = continuation
-      listener.start(queue: queue)
-    }
+    portPreference.recordBoundPort(port)
     let host = Self.localAddress() ?? ProcessInfo.processInfo.hostName
     let formattedHost = host.contains(":") ? "[\(host)]" : host
     let address = "http://\(formattedHost):\(port)"
@@ -465,11 +500,52 @@ actor ComputerReceiverServer {
     return ready
   }
 
+  private func startListener(on port: NWEndpoint.Port) async throws -> UInt16 {
+    let listener = try NWListener(using: .tcp, on: port)
+    listener.service = NWListener.Service(name: "Player", type: "_player-import._tcp")
+    listener.newConnectionHandler = { [weak self] connection in
+      Task { await self?.accept(connection) }
+    }
+    listener.stateUpdateHandler = { [weak self, weak listener] state in
+      switch state {
+      case .ready:
+        guard let port = listener?.port?.rawValue else { return }
+        Task {
+          guard let listener else { return }
+          await self?.listenerReady(listener: listener, port: port)
+        }
+      case .failed(let error):
+        Task {
+          guard let listener else { return }
+          await self?.listenerFailed(listener: listener, message: error.localizedDescription)
+        }
+      case .cancelled:
+        Task {
+          guard let listener else { return }
+          await self?.listenerCancelled(listener: listener)
+        }
+      default:
+        break
+      }
+    }
+    self.listener = listener
+    return try await withCheckedThrowingContinuation {
+      (continuation: CheckedContinuation<UInt16, any Error>) in
+      startContinuation = continuation
+      listener.start(queue: queue)
+    }
+  }
+
   func stop() async {
-    listener?.cancel()
-    listener = nil
     for connection in connections.values { connection.cancel() }
     connections.removeAll()
+    if let listener {
+      await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+        stopContinuation = continuation
+        listener.cancel()
+      }
+    }
+    listener = nil
     await store.cleanupReceivingSessions()
     importHandler = nil
     startContinuation = nil
@@ -477,15 +553,26 @@ actor ComputerReceiverServer {
     eventHandler = nil
   }
 
-  private func listenerReady(port: UInt16) {
+  private func listenerReady(listener: NWListener, port: UInt16) {
+    guard self.listener === listener else { return }
     startContinuation?.resume(returning: port)
     startContinuation = nil
   }
 
-  private func listenerFailed(message: String) {
-    listener = nil
+  private func listenerFailed(listener: NWListener, message: String) {
+    guard self.listener === listener else { return }
+    self.listener = nil
     startContinuation?.resume(throwing: ComputerReceiverError.listenerFailed(message))
     startContinuation = nil
+    stopContinuation?.resume()
+    stopContinuation = nil
+  }
+
+  private func listenerCancelled(listener: NWListener) {
+    guard self.listener === listener else { return }
+    self.listener = nil
+    stopContinuation?.resume()
+    stopContinuation = nil
   }
 
   private func accept(_ connection: NWConnection) async {

@@ -241,6 +241,7 @@ struct ComputerReceiverView: View {
   @State private var isDropTargeted = ProcessInfo.processInfo.arguments.contains(
     "-e2e-mirroring-drop-targeted"
   )
+  let chooseFromFiles: () -> Void
   let didFinish: (_ needsInbox: Bool) -> Void
 
   var body: some View {
@@ -491,6 +492,13 @@ struct ComputerReceiverView: View {
         }
         .accessibilityIdentifier("mirroring-import-tip")
       }
+
+      Button("Choose from Files", systemImage: "folder") { chooseFromFiles() }
+        .buttonStyle(.bordered)
+        .controlSize(.large)
+        .tint(PlayerColor.accent)
+        .frame(maxWidth: .infinity)
+        .accessibilityIdentifier("choose-from-files-computer-receiver")
 
       Button("Stop Receiving", role: .destructive) { showStopConfirmation = true }
         .buttonStyle(.borderedProminent)

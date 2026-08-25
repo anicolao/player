@@ -39,7 +39,7 @@ final class LibraryOrganizationUITests: XCTestCase {
       trash: 0,
       view: "grid"
     )
-    let addAudiobook = app.buttons["add-audiobook-toolbar"]
+    let addAudiobook = app.tabBars.buttons["Add"]
     try tester.step(
       "populated-library",
       description: "Library opens with deterministic Continue Listening and Up Next shelves",
@@ -51,12 +51,18 @@ final class LibraryOrganizationUITests: XCTestCase {
         .exists(app.buttons["browse-series"], "Series browsing is available"),
         .exists(app.buttons["browse-authors"], "Author browsing is available"),
         .exists(app.buttons["browse-narrators"], "Narrator browsing is available"),
-        .exists(addAudiobook, "The bottom Add Audiobook action is present"),
-        StepVerification(specification: "The bottom Add Audiobook action is directly tappable") {
+        .exists(addAudiobook, "The tab pill includes the Add Audiobook action"),
+        StepVerification(specification: "The pill-integrated Add Audiobook action is directly tappable") {
           addAudiobook.isHittable
         },
       ]
     )
+
+    addAudiobook.tap()
+    XCTAssertTrue(anyElement(app, "computer-receiver-screen").waitForExistence(timeout: 2))
+    XCTAssertTrue(app.buttons["choose-from-files-computer-receiver"].exists)
+    app.buttons["Close"].tap()
+    XCTAssertTrue(anyElement(app, "library-screen").waitForExistence(timeout: 2))
 
     app.buttons["resume-book-\(books[0])"].tap()
     try requireValue(anyElement(app, "now-playing-screen"), "player:paused:\(books[0]):0:45000")
@@ -341,6 +347,7 @@ final class LibraryOrganizationUITests: XCTestCase {
       "-AppleLanguages", "(en)", "-AppleLocale", "en_CA",
       "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryM",
       "-NSTreatUnknownArgumentsAsOpen", "NO",
+      "-e2e-computer-receiver-ready",
     ]
     if reset { app.launchArguments.insert("-e2e-reset", at: 1) }
     app.launchEnvironment["TZ"] = "America/Toronto"
