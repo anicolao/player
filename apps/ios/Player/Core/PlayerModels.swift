@@ -599,7 +599,7 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
     metadataTransactions: [MetadataTransaction] = [],
     upNextBookIDs: [UUID] = [],
     collections: [BookCollection] = [],
-    allBooksViewStyle: LibraryViewStyle = .grid,
+    allBooksViewStyle: LibraryViewStyle = .shelf,
     trashTransactions: [LibraryTrashTransaction] = [],
     searchPreferences: LibrarySearchPreferences = .default,
     globalTransportPreferences: TransportPreferences = .default,
@@ -668,7 +668,7 @@ struct LibrarySnapshot: Codable, Equatable, Sendable {
     allBooksViewStyle = try values.decodeIfPresent(
       LibraryViewStyle.self,
       forKey: .allBooksViewStyle
-    ) ?? .grid
+    ) ?? .shelf
     trashTransactions = try values.decodeIfPresent(
       [LibraryTrashTransaction].self,
       forKey: .trashTransactions

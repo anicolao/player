@@ -23,8 +23,27 @@ struct BookListeningState: Codable, Equatable, Sendable {
 }
 
 enum LibraryViewStyle: String, Codable, Equatable, Sendable {
-  case grid
+  case shelf
   case list
+
+  init(from decoder: any Decoder) throws {
+    let container = try decoder.singleValueContainer()
+    let value = try container.decode(String.self)
+    switch value {
+    case Self.shelf.rawValue, "grid": self = .shelf
+    case Self.list.rawValue: self = .list
+    default:
+      throw DecodingError.dataCorruptedError(
+        in: container,
+        debugDescription: "Unknown library view style: \(value)"
+      )
+    }
+  }
+
+  func encode(to encoder: any Encoder) throws {
+    var container = encoder.singleValueContainer()
+    try container.encode(rawValue)
+  }
 }
 
 struct BookCollection: Codable, Equatable, Identifiable, Sendable {
