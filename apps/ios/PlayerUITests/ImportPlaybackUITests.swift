@@ -110,6 +110,14 @@ final class ImportPlaybackUITests: XCTestCase {
         .exists(app.staticTexts["Mara Vale"], "The committed author is visible"),
       ]
     )
+    let addAudiobook = app.buttons["add-audiobook-toolbar"]
+    XCTAssertTrue(addAudiobook.waitForExistence(timeout: 2))
+    XCTAssertTrue(addAudiobook.isHittable)
+
+    app.tabBars.buttons["Inbox"].tap()
+    XCTAssertTrue(app.staticTexts["Inbox is clear"].waitForExistence(timeout: 2))
+    XCTAssertFalse(app.buttons["review-import-job-\(jobID)"].exists)
+    app.tabBars.buttons["Library"].tap()
 
     app.staticTexts["The Lighthouse Signal"].tap()
     try tester.step(

@@ -39,6 +39,7 @@ final class LibraryOrganizationUITests: XCTestCase {
       trash: 0,
       view: "grid"
     )
+    let addAudiobook = app.buttons["add-audiobook-toolbar"]
     try tester.step(
       "populated-library",
       description: "Library opens with deterministic Continue Listening and Up Next shelves",
@@ -50,6 +51,10 @@ final class LibraryOrganizationUITests: XCTestCase {
         .exists(app.buttons["browse-series"], "Series browsing is available"),
         .exists(app.buttons["browse-authors"], "Author browsing is available"),
         .exists(app.buttons["browse-narrators"], "Narrator browsing is available"),
+        .exists(addAudiobook, "The bottom Add Audiobook action is present"),
+        StepVerification(specification: "The bottom Add Audiobook action is directly tappable") {
+          addAudiobook.isHittable
+        },
       ]
     )
 

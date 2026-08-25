@@ -26,6 +26,8 @@ struct LibraryOrganizationHome: View {
           LibrarySearchView(model: model)
         } label: {
           Image(systemName: "magnifyingglass")
+            .font(.system(size: 21, weight: .semibold))
+            .frame(width: 48, height: 48)
         }
         .accessibilityLabel("Search Library")
         .accessibilityIdentifier("open-library-search")

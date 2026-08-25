@@ -35,6 +35,8 @@
 - [x] The Library reports exactly one committed book
 - [x] The committed title is visible
 - [x] The committed author is visible
+- [x] The completed import is absent from Inbox and its triage state is clear
+- [x] The larger Add Audiobook action is available beside the tab switcher
 
 ## Book Detail exposes the playable managed audiobook
 
