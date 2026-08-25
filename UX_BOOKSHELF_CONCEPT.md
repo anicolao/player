@@ -6,7 +6,7 @@ Scope: the **All Books** destination only
 
 ## Intent
 
-All Books currently offers efficient grid and list presentations, but both make
+All Books offers efficient shelf and list presentations, but both make
 the collection feel like a database of square cover images. This concept tests a
 more spatial library metaphor: audiobooks stand upright on shelves, primarily as
 spines, so browsing feels like looking across a personal bookcase.
@@ -23,7 +23,7 @@ browsing mode for the complete collection.
 This version groups volumes into meaningful shelves such as **Recently Added**,
 **In Progress**, and **Finished**. Most books appear spine-out while one book on
 each shelf may face forward as an endcap. The endcap gives cover art a role
-without returning to a cover grid.
+without returning to a flat cover grid.
 
 Strengths:
 
@@ -52,7 +52,7 @@ progress, and the next action.
 
 Strengths:
 
-- More books fit on screen than in a cover grid.
+- More books fit on screen than in a conventional cover grid.
 - Alphabet ranges and the scrubber make the arrangement predictable.
 - The pulled-forward card provides readable details without navigating away.
 - Selection is explicit, leaving room for a larger second tap target such as
@@ -94,7 +94,7 @@ Strengths:
 - Can be built from native stacks, lazy containers, and scroll views without
   synthesizing spine art or rotating text.
 - Keeps titles readable and preserves familiar artwork recognition.
-- Shelf grouping remains visually distinct from a conventional cover grid.
+- Shelf grouping remains visually distinct from a conventional flat cover grid.
 
 Risks:
 
@@ -169,7 +169,7 @@ selected-state outlines.
 
 ## Validation questions
 
-- Can listeners identify a known book faster than in the current cover grid?
+- Can listeners identify a known book faster than in a conventional cover grid?
 - Does a shelf remain useful with 3, 30, 300, and 3,000 books?
 - Are duplicate appearances across curated shelves helpful or confusing?
 - Is one-tap selection plus an explicit action preferable to opening immediately?
