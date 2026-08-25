@@ -205,6 +205,10 @@ final class AccessibilityUITests: XCTestCase {
         .exists(
           app.staticTexts["computer-receiver-pairing-code"], "The pairing code remains discoverable"
         ),
+        .exists(
+          app.buttons["choose-from-files-computer-receiver"],
+          "Files remains available as the receiver's secondary import route"
+        ),
       ]
     )
 

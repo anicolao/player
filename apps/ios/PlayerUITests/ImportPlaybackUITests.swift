@@ -110,7 +110,7 @@ final class ImportPlaybackUITests: XCTestCase {
         .exists(app.staticTexts["Mara Vale"], "The committed author is visible"),
       ]
     )
-    let addAudiobook = app.buttons["add-audiobook-toolbar"]
+    let addAudiobook = app.tabBars.buttons["Add"]
     XCTAssertTrue(addAudiobook.waitForExistence(timeout: 2))
     XCTAssertTrue(addAudiobook.isHittable)
 

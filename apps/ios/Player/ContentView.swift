@@ -7,13 +7,12 @@ struct ContentView: View {
   @Bindable var model: PlayerModel
   @State private var selection: AppSection = .library
   @State private var isImporting = false
-  @State private var isChoosingImportSource = false
   @State private var isReceivingFromComputer = false
+  @State private var chooseFilesAfterReceiverDismisses = false
   @State private var isDrainingSharedImports = false
   @State private var sharedImportQueueRevision = 0
   @State private var pendingDocumentURLs: [URL] = []
   @State private var presentedPlayerBook: Book?
-  @State private var isLibraryRootVisible = true
 
   init(model: PlayerModel) {
     self.model = model
@@ -40,13 +39,12 @@ struct ContentView: View {
   }
 
   private var operationalContent: some View {
-    TabView(selection: $selection) {
+    TabView(selection: tabSelection) {
       playerTabContent {
         LibraryView(
           model: model,
           startComputerReceiver: { isReceivingFromComputer = true },
-          startFileImport: beginFileImport,
-          setAddButtonVisible: { isLibraryRootVisible = $0 }
+          startFileImport: beginFileImport
         ) { presentedPlayerBook = $0 }
       }
         .tag(AppSection.library)
@@ -64,25 +62,12 @@ struct ContentView: View {
       }
         .tag(AppSection.settings)
         .tabItem { Label("Settings", systemImage: "gearshape") }
+
+      Color.clear
+        .tag(AppSection.add)
+        .tabItem { Label("Add", systemImage: "plus") }
     }
     .tint(PlayerColor.accent)
-    .overlay(alignment: .bottomTrailing) {
-      if selection == .library && isLibraryRootVisible && !model.library.books.isEmpty {
-        Button { beginImport() } label: {
-          Image(systemName: "plus")
-            .font(.title2.weight(.semibold))
-            .frame(width: 56, height: 56)
-            .background(PlayerColor.card, in: Circle())
-            .shadow(color: PlayerColor.ink.opacity(0.14), radius: 16, y: 8)
-        }
-        .buttonStyle(.plain)
-        .padding(.trailing, 8)
-        .padding(.bottom, 14)
-        .offset(y: 24)
-        .accessibilityLabel("Add Audiobook")
-        .accessibilityIdentifier("add-audiobook-toolbar")
-      }
-    }
     .modifier(
       PlayerAccessibilityRootModifier(
         preferences: model.library.accessibilityPreferences
@@ -97,21 +82,21 @@ struct ContentView: View {
       selection = .inbox
       Task { await model.importAudioSelection(from: urls) }
     }
-    .confirmationDialog(
-      "Add Audiobooks",
-      isPresented: $isChoosingImportSource,
-      titleVisibility: .visible
-    ) {
-      Button("Receive from Computer", systemImage: "laptopcomputer.and.iphone") {
-        isReceivingFromComputer = true
+    .sheet(
+      isPresented: $isReceivingFromComputer,
+      onDismiss: {
+        guard chooseFilesAfterReceiverDismisses else { return }
+        chooseFilesAfterReceiverDismisses = false
+        beginFileImport()
       }
-      Button("Choose from Files", systemImage: "folder") { beginFileImport() }
-      Button("Cancel", role: .cancel) {}
-    } message: {
-      Text("Receive a folder tree over your local network or choose files already on this iPhone.")
-    }
-    .sheet(isPresented: $isReceivingFromComputer) {
-      ComputerReceiverView(model: model) { needsInbox in
+    ) {
+      ComputerReceiverView(
+        model: model,
+        chooseFromFiles: {
+          chooseFilesAfterReceiverDismisses = true
+          isReceivingFromComputer = false
+        }
+      ) { needsInbox in
         selection = needsInbox ? .inbox : .library
       }
     }
@@ -195,6 +180,19 @@ struct ContentView: View {
     return model.library.books.first(where: { $0.id == id })
   }
 
+  private var tabSelection: Binding<AppSection> {
+    Binding(
+      get: { selection },
+      set: { destination in
+        if destination == .add {
+          isReceivingFromComputer = true
+        } else {
+          selection = destination
+        }
+      }
+    )
+  }
+
   private func playerTabContent<Content: View>(
     @ViewBuilder content: () -> Content
   ) -> some View {
@@ -231,7 +229,7 @@ struct ContentView: View {
         return
       }
     #endif
-    isChoosingImportSource = true
+    isReceivingFromComputer = true
   }
 
   private func beginFileImport() {
@@ -300,13 +298,12 @@ struct ContentView: View {
   }
 }
 
-private enum AppSection: Hashable { case library, inbox, settings }
+private enum AppSection: Hashable { case library, inbox, settings, add }
 
 private struct LibraryView: View {
   @Bindable var model: PlayerModel
   let startComputerReceiver: () -> Void
   let startFileImport: () -> Void
-  let setAddButtonVisible: (Bool) -> Void
   @State private var path = NavigationPath()
   let presentPlayer: (Book) -> Void
 
@@ -343,9 +340,6 @@ private struct LibraryView: View {
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("library-screen")
       .accessibilityValue(libraryState)
-      .onAppear { setAddButtonVisible(path.isEmpty) }
-      .onDisappear { setAddButtonVisible(false) }
-      .onChange(of: path) { _, path in setAddButtonVisible(path.isEmpty) }
     }
   }
 
