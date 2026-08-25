@@ -114,6 +114,7 @@ final class PositionRestoreUITests: XCTestCase {
     restoredMiniPlayer.tap()
 
     let restoredNowPlaying = restoredApp.otherElements["now-playing-screen"]
+    dismissAppleIntelligenceNotificationIfPresent()
     try tester.step(
       "restored-now-playing",
       description: "Now Playing opens paused at the safely restored position",
@@ -163,6 +164,17 @@ final class PositionRestoreUITests: XCTestCase {
     }
     app.launchEnvironment["TZ"] = "America/Toronto"
     return app
+  }
+
+  private func dismissAppleIntelligenceNotificationIfPresent() {
+    let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+    let notificationTitle = springboard.staticTexts["Ready for Apple Intelligence"]
+    guard notificationTitle.waitForExistence(timeout: 0.5) else { return }
+    notificationTitle.swipeUp()
+    XCTAssertFalse(
+      notificationTitle.waitForExistence(timeout: 1),
+      "The simulator's Apple Intelligence notification should not obscure the walkthrough"
+    )
   }
 
   private func requirePlaybackState(
