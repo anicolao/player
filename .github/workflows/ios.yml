@@ -127,6 +127,7 @@ jobs:
               PlayerUITests/RemoteInterruptionUITests/testRemoteInterruptionAndBackgroundEventsJournalAcknowledgedPositions
               PlayerUITests/TransportControlsUITests/testCustomizesAndRestoresListeningControls
               PlayerUITests/SmartRewindUITests/testSmartRewindAdaptsClampsPersistsAndUndoesExactly
+              PlayerUITests/SmartRewindUITests/testSmartRewindNoticeDismissesAfterFiveSecondsOfPlaybackProgress
           - story: 006-safe-zip-import
             tests: >-
               PlayerUITests/SafeZIPImportUITests/testRejectsHostileZIPsThenCancelsAndRetriesAValidArchive
