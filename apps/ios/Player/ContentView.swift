@@ -141,8 +141,8 @@ struct ContentView: View {
     .task {
       if !model.isRestored {
         await model.restore()
-        model.configurePlaybackIntegrations()
       }
+      model.configurePlaybackIntegrations()
       await drainPendingDocumentURLs()
       await drainSharedImports()
     }
@@ -1683,6 +1683,19 @@ private struct NowPlayingView: View {
           .accessibilityValue(positionAccessibilityValue)
           .accessibilityHint("Swipe up or down to move through this listening timeline")
           .accessibilityIdentifier("player-position-slider")
+          HStack {
+            Text(visibleElapsedLabel)
+              .accessibilityLabel("Elapsed time")
+              .accessibilityValue(visibleElapsedLabel)
+              .accessibilityIdentifier("player-elapsed-time")
+            Spacer()
+            Text(visibleRemainingLabel)
+              .accessibilityLabel("Remaining time")
+              .accessibilityValue(visibleRemainingLabel)
+              .accessibilityIdentifier("player-remaining-time")
+          }
+          .font(.caption.monospacedDigit())
+          .foregroundStyle(PlayerColor.secondary)
           HStack(spacing: 13) {
             transportButton(
               "Previous chapter",
@@ -1761,6 +1774,7 @@ private struct NowPlayingView: View {
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("now-playing-screen")
       .accessibilityValue(playerValue)
+      .animation(.easeOut(duration: 0.3), value: model.pendingResumeRewind?.id)
       #if E2E
         .overlay { smartRewindStateProbe }
         .overlay(alignment: .topTrailing) {
@@ -1773,6 +1787,17 @@ private struct NowPlayingView: View {
             E2EBookmarkControlSurface(model: model)
               .padding(.leading, 4)
               .padding(.bottom, 72)
+          }
+        }
+        .overlay(alignment: .topLeading) {
+          if ProcessInfo.processInfo.arguments.contains("-e2e-rewind-expiry-control") {
+            Button("Advance five seconds") {
+              Task {
+                await model.seek(to: model.playbackState.elapsedSeconds + 5)
+                await model.synchronizePlaybackProgress()
+              }
+            }
+            .accessibilityIdentifier("e2e-advance-rewind-expiry")
           }
         }
       #endif
@@ -1913,6 +1938,7 @@ private struct NowPlayingView: View {
       "clamped=\(plan.wasClampedToChapterStart)",
       "status=\(transaction.status.rawValue)",
     ].joined(separator: "|"))
+    .transition(.opacity.combined(with: .scale(scale: 0.98)))
   }
 
   private func smartRewindDuration(_ milliseconds: Int64) -> String {
@@ -1930,6 +1956,18 @@ private struct NowPlayingView: View {
 
   private var displayedDuration: Double {
     preferences.seekContext == .chapter ? (currentChapter?.durationSeconds ?? book.durationSeconds) : book.durationSeconds
+  }
+
+  private var visibleTimelinePosition: Double {
+    min(max(0, requestedPosition ?? displayedPosition), max(0, displayedDuration))
+  }
+
+  private var visibleElapsedLabel: String {
+    compactPlaybackTime(visibleTimelinePosition)
+  }
+
+  private var visibleRemainingLabel: String {
+    compactPlaybackTime(max(displayedDuration - visibleTimelinePosition, 0))
   }
 
   private var transportValue: String {
@@ -2210,6 +2248,12 @@ enum PlayerColor {
   static let ink = Color(red: 0.118, green: 0.137, blue: 0.153)
   static let secondary = Color(red: 0.350, green: 0.372, blue: 0.384)
   static let accent = Color(red: 0.690, green: 0.267, blue: 0.165)
+}
+
+enum PlayerLayout {
+  /// The tab-level inset places the mini-player. Nested scroll views also need
+  /// actual content length so their final control can move fully above it.
+  static let miniPlayerScrollRunway: CGFloat = 104
 }
 
 private func duration(_ seconds: Double) -> String {

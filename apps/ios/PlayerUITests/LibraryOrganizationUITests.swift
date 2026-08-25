@@ -162,20 +162,36 @@ final class LibraryOrganizationUITests: XCTestCase {
     restoredApp.buttons["all-books-book-\(books[4])"].tap()
     restoredApp.buttons["move-book-to-trash-toolbar"].tap()
     restoredApp.buttons["remove-book-to-trash"].firstMatch.tap()
+    navigateBack(restoredApp)
     let openTrash = restoredApp.buttons["open-trash"].firstMatch
     let miniPlayer = restoredApp.otherElements["mini-player"]
-    let libraryScroll = restoredApp.scrollViews.firstMatch
     XCTAssertTrue(openTrash.waitForExistence(timeout: 2))
     XCTAssertTrue(miniPlayer.waitForExistence(timeout: 2))
     for _ in 0..<5
     where !openTrash.isHittable || openTrash.frame.maxY > miniPlayer.frame.minY - 4 {
-      libraryScroll.swipeUp(velocity: .slow)
+      restoredApp.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.72))
+        .press(
+          forDuration: 0.05,
+          thenDragTo: restoredApp.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.92, dy: 0.28)
+          ),
+          withVelocity: .slow,
+          thenHoldForDuration: 0
+        )
     }
     XCTAssertTrue(openTrash.isHittable, "Trash must remain tappable above the mini-player")
     XCTAssertLessThanOrEqual(
       openTrash.frame.maxY,
       miniPlayer.frame.minY - 4,
       "Library content must have enough bottom runway to scroll Trash fully above the mini-player"
+    )
+    try tester.step(
+      "trash-clear-of-player",
+      description: "The final Library control scrolls completely above the persistent player",
+      verifications: [
+        .exists(openTrash, "Trash remains visible and tappable above the mini-player"),
+        .exists(miniPlayer, "The persistent player remains available below Library content"),
+      ]
     )
     openTrash.tap()
     let trash = anyElement(restoredApp, "trash-probe")
@@ -199,6 +215,7 @@ final class LibraryOrganizationUITests: XCTestCase {
       "trash:transactions=0:books=none:assets=0:bytes=0:restorable=false:managed-checksum-preserved=true"
     )
     navigateBack(restoredApp)
+    restoredApp.buttons["browse-all-books"].tap()
     let restoredOrganizer = anyElement(restoredApp, "library-organizer-probe")
     try tester.step(
       "restored-library-list",

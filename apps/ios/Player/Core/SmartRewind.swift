@@ -68,6 +68,7 @@ enum ResumeRewindTransactionStatus: String, Codable, Equatable, Sendable {
   case applied
   case undone
   case superseded
+  case dismissed
 }
 
 struct ResumeRewindTransaction: Codable, Equatable, Identifiable, Sendable {
@@ -78,6 +79,7 @@ struct ResumeRewindTransaction: Codable, Equatable, Identifiable, Sendable {
   var status: ResumeRewindTransactionStatus
   var undoneAt: Date?
   var undoEventID: UUID?
+  var dismissedAt: Date? = nil
 
   var bookID: UUID { plan.bookID }
 }

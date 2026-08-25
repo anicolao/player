@@ -15,8 +15,15 @@ struct LibraryOrganizationHome: View {
         browse
       }
       .padding(.horizontal, 20)
-      .padding(.vertical, 18)
+      .padding(.top, 18)
+      .padding(
+        .bottom,
+        model.library.currentBookID == nil
+          ? 18
+          : 18 + PlayerLayout.miniPlayerScrollRunway
+      )
     }
+    .accessibilityIdentifier("library-root-scroll")
     .navigationDestination(isPresented: $showUpNext) { UpNextView(model: model) }
     .toolbar {
       ToolbarItem(placement: .topBarTrailing) {

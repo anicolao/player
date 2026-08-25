@@ -128,6 +128,27 @@ final class SmartRewindUITests: XCTestCase {
     tester.generateDocs()
   }
 
+  func testSmartRewindNoticeDismissesAfterFiveSecondsOfPlaybackProgress() throws {
+    continueAfterFailure = false
+    XCUIDevice.shared.orientation = .portrait
+    let scenario = Scenario(
+      name: "chapter-clamp", away: 600, original: 110_000,
+      target: 100_000, rewind: 10_000, maximum: 30_000, enabled: true, clamped: true
+    )
+    let app = makeApplication(scenario: scenario.name, reset: true)
+    app.launchArguments.append("-e2e-rewind-expiry-control")
+    app.launch()
+    _ = try openAndResume(app, scenario: scenario)
+    let banner = app.descendants(matching: .any)["smart-rewind-banner"]
+    XCTAssertTrue(banner.waitForExistence(timeout: 2))
+
+    app.buttons["e2e-advance-rewind-expiry"].tap()
+
+    XCTAssertTrue(banner.waitForNonExistence(timeout: 2))
+    XCTAssertFalse(app.buttons["undo-smart-rewind"].exists)
+    _ = try requireProbe(app, latest: "dismissed", position: 105_000)
+  }
+
   private func assertScenario(_ scenario: Scenario) throws {
     let app = makeApplication(scenario: scenario.name, reset: true)
     app.launch()

@@ -489,6 +489,7 @@ final class MPRemoteCommandController: RemoteCommandControlling {
   func installCommandHandler(
     _ handler: @escaping @MainActor @Sendable (RemotePlaybackCommand) async -> Void
   ) {
+    UIApplication.shared.beginReceivingRemoteControlEvents()
     removeInstalledTargets()
     install(center.playCommand, event: .play, handler: handler)
     install(center.pauseCommand, event: .pause, handler: handler)
@@ -497,6 +498,7 @@ final class MPRemoteCommandController: RemoteCommandControlling {
     install(center.nextTrackCommand, event: .nextChapter, handler: handler)
 
     updateTransportConfiguration(transportPreferences)
+    center.skipForwardCommand.isEnabled = true
     let forwardTarget = center.skipForwardCommand.addTarget { event in
       let seconds = (event as? MPSkipIntervalCommandEvent)?.interval
         ?? self.transportPreferences.forwardSkipSeconds
@@ -504,6 +506,7 @@ final class MPRemoteCommandController: RemoteCommandControlling {
       return .success
     }
     installedTargets.append((center.skipForwardCommand, forwardTarget))
+    center.skipBackwardCommand.isEnabled = true
     let backwardTarget = center.skipBackwardCommand.addTarget { event in
       let seconds = (event as? MPSkipIntervalCommandEvent)?.interval
         ?? self.transportPreferences.backwardSkipSeconds
@@ -511,6 +514,7 @@ final class MPRemoteCommandController: RemoteCommandControlling {
       return .success
     }
     installedTargets.append((center.skipBackwardCommand, backwardTarget))
+    center.changePlaybackPositionCommand.isEnabled = true
     let positionTarget = center.changePlaybackPositionCommand.addTarget { event in
       guard let seconds = (event as? MPChangePlaybackPositionCommandEvent)?.positionTime else {
         return .commandFailed
@@ -519,6 +523,7 @@ final class MPRemoteCommandController: RemoteCommandControlling {
       return .success
     }
     installedTargets.append((center.changePlaybackPositionCommand, positionTarget))
+    center.changePlaybackRateCommand.isEnabled = true
     let rateTarget = center.changePlaybackRateCommand.addTarget { event in
       guard let rate = (event as? MPChangePlaybackRateCommandEvent)?.playbackRate else {
         return .commandFailed
@@ -546,6 +551,7 @@ final class MPRemoteCommandController: RemoteCommandControlling {
     event: RemotePlaybackCommand,
     handler: @escaping @MainActor @Sendable (RemotePlaybackCommand) async -> Void
   ) {
+    command.isEnabled = true
     let target = command.addTarget { _ in
       Task { @MainActor in await handler(event) }
       return .success
@@ -576,7 +582,12 @@ final class MPNowPlayingPublisher: NowPlayingPublishing {
       MPMediaItemPropertyPlaybackDuration: snapshot.durationSeconds,
       MPNowPlayingInfoPropertyElapsedPlaybackTime: snapshot.elapsedSeconds,
       MPNowPlayingInfoPropertyPlaybackRate: snapshot.playbackRate,
+      MPNowPlayingInfoPropertyDefaultPlaybackRate: snapshot.defaultPlaybackRate,
+      MPNowPlayingInfoPropertyPlaybackProgress: snapshot.durationSeconds > 0
+        ? min(max(snapshot.elapsedSeconds / snapshot.durationSeconds, 0), 1) : 0,
       MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
+      MPNowPlayingInfoPropertyIsLiveStream: false,
+      MPNowPlayingInfoPropertyExternalContentIdentifier: snapshot.bookID.uuidString.lowercased(),
     ]
     if !snapshot.narrators.isEmpty {
       information[MPMediaItemPropertyComposer] = snapshot.narrators.joined(separator: ", ")
@@ -584,14 +595,20 @@ final class MPNowPlayingPublisher: NowPlayingPublishing {
     if let seriesName = snapshot.seriesName {
       information[MPMediaItemPropertyAlbumTitle] = seriesName
     }
+    if let chapterIndex = snapshot.chapterIndex {
+      information[MPNowPlayingInfoPropertyChapterNumber] = chapterIndex
+      information[MPNowPlayingInfoPropertyChapterCount] = snapshot.chapterCount
+    }
     if let data = snapshot.artworkData, let artwork = MPNowPlayingArtworkFactory.make(from: data) {
       information[MPMediaItemPropertyArtwork] = artwork
     }
     center.nowPlayingInfo = information
+    center.playbackState = snapshot.playbackRate > 0 ? .playing : .paused
   }
 
   func clear() {
     center.nowPlayingInfo = nil
+    center.playbackState = .stopped
   }
 }
 
