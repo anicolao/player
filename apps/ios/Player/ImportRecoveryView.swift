@@ -66,6 +66,7 @@ struct ImportRecoveryView: View {
         recoveryActions(job: job, plan: plan)
       }
     }
+    .playerMiniPlayerScrollRunway()
     .scrollContentBackground(.hidden)
     .background(PlayerColor.background)
     .navigationTitle("Review Import")
@@ -334,6 +335,7 @@ struct StorageSettingsView: View {
         ProgressView("Calculating storage…")
       }
     }
+    .playerMiniPlayerScrollRunway()
     .scrollContentBackground(.hidden)
     .background(PlayerColor.background)
     .navigationTitle("Storage")

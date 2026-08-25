@@ -89,6 +89,7 @@ private struct AccessibilityScrollModifier: ViewModifier {
   func body(content: Content) -> some View {
     if enabled {
       ScrollView { content }
+        .playerMiniPlayerScrollRunway()
     } else {
       content
     }
@@ -148,6 +149,7 @@ struct AccessibilitySettingsView: View {
         }
         .id("active-iphone-settings")
       }
+      .playerMiniPlayerScrollRunway()
       #if E2E
         .overlay(alignment: .topLeading) {
           Button {

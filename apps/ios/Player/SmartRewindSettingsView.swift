@@ -55,6 +55,7 @@ struct SmartRewindSettingsView: View {
           .foregroundStyle(PlayerColor.secondary)
       }
     }
+    .playerMiniPlayerScrollRunway()
     .scrollContentBackground(.hidden)
     .background(PlayerColor.background)
     .navigationTitle("Smart Rewind")

@@ -106,6 +106,7 @@ struct SleepTimerView: View {
           }
         }
       }
+      .playerMiniPlayerScrollRunway()
       .scrollContentBackground(.hidden)
       .background(PlayerColor.background)
       .navigationTitle("Sleep Timer")

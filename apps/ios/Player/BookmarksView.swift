@@ -306,6 +306,7 @@ private struct BookmarkEditorView: View {
           Text("Leave the note empty to clear it.")
         }
       }
+      .playerMiniPlayerScrollRunway()
       .navigationTitle("Edit Bookmark")
       .navigationBarTitleDisplayMode(.inline)
       .toolbar {

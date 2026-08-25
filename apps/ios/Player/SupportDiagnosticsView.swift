@@ -85,6 +85,7 @@ struct StartupRecoveryView: View {
         }
         .padding(24)
       }
+      .playerMiniPlayerScrollRunway()
       .background(Color(uiColor: .systemGroupedBackground))
       .navigationTitle("Library Recovery")
       .navigationBarTitleDisplayMode(.inline)
@@ -232,6 +233,7 @@ struct SupportDiagnosticsView: View {
           Section { ProgressView("Preparing sanitized report…") }
         }
       }
+      .playerMiniPlayerScrollRunway()
       StateProbe(id: "diagnostics-probe", value: diagnosticsProbeValue)
       #if E2E
         if E2EOfflineRecoveryBridge.shared.isConfigured {

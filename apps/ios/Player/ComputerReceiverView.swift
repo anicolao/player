@@ -256,6 +256,7 @@ struct ComputerReceiverView: View {
           .padding(.horizontal, 24)
           .padding(.vertical, 28)
         }
+        .playerMiniPlayerScrollRunway()
         if isDropTargeted { dropOverlay }
       }
       .navigationTitle("Receive from Computer")

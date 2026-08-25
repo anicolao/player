@@ -70,6 +70,7 @@ struct TransportPreferencesEditor: View {
           .foregroundStyle(PlayerColor.secondary)
       }
     }
+    .playerMiniPlayerScrollRunway()
     .navigationTitle(book == nil ? "Playback Defaults" : "Book Playback")
     .navigationBarTitleDisplayMode(.inline)
     .toolbar {
