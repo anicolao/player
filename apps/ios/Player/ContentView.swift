@@ -40,23 +40,29 @@ struct ContentView: View {
 
   private var operationalContent: some View {
     TabView(selection: $selection) {
-      LibraryView(
-        model: model,
-        startImport: beginImport,
-        startComputerReceiver: { isReceivingFromComputer = true },
-        startFileImport: beginFileImport
-      ) { presentedPlayerBook = $0 }
+      playerTabContent {
+        LibraryView(
+          model: model,
+          startImport: beginImport,
+          startComputerReceiver: { isReceivingFromComputer = true },
+          startFileImport: beginFileImport
+        ) { presentedPlayerBook = $0 }
+      }
         .tag(AppSection.library)
         .tabItem { Label("Library", systemImage: "books.vertical") }
 
-      InboxView(model: model, startImport: beginImport) { selection = .library }
+      playerTabContent {
+        InboxView(model: model, startImport: beginImport) { selection = .library }
+      }
         .tag(AppSection.inbox)
         .tabItem { Label("Inbox", systemImage: "tray.full") }
         .badge(reviewCount)
 
-      LibraryOrganizationSettingsView(model: model)
-      .tag(AppSection.settings)
-      .tabItem { Label("Settings", systemImage: "gearshape") }
+      playerTabContent {
+        LibraryOrganizationSettingsView(model: model)
+      }
+        .tag(AppSection.settings)
+        .tabItem { Label("Settings", systemImage: "gearshape") }
     }
     .tint(PlayerColor.accent)
     .modifier(
@@ -93,14 +99,6 @@ struct ContentView: View {
     }
     .fullScreenCover(item: $presentedPlayerBook) { book in
       NowPlayingView(model: model, book: book)
-    }
-    .overlay(alignment: .bottom) {
-      if let currentBook, presentedPlayerBook == nil {
-        MiniPlayerView(model: model, book: currentBook) {
-          presentedPlayerBook = currentBook
-        }
-        .padding(.bottom, 83)
-      }
     }
     #if E2E
       .overlay(alignment: .topLeading) {
@@ -177,6 +175,21 @@ struct ContentView: View {
   private var currentBook: Book? {
     guard let id = model.library.currentBookID else { return nil }
     return model.library.books.first(where: { $0.id == id })
+  }
+
+  private func playerTabContent<Content: View>(
+    @ViewBuilder content: () -> Content
+  ) -> some View {
+    content()
+      .safeAreaInset(edge: .bottom, spacing: 0) {
+        if let currentBook, presentedPlayerBook == nil {
+          MiniPlayerView(model: model, book: currentBook) {
+            presentedPlayerBook = currentBook
+          }
+          .padding(.horizontal, 10)
+          .padding(.bottom, 5)
+        }
+      }
   }
 
   private var reviewCount: Int {
@@ -2046,7 +2059,11 @@ private struct MiniPlayerView: View {
               .font(.subheadline.weight(.semibold))
               .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
             HStack(spacing: 6) {
-              Text(positionLabel)
+              Text(timelineLabel)
+                .monospacedDigit()
+                .accessibilityLabel("Playback time")
+                .accessibilityValue("\(elapsedLabel) of \(durationLabel)")
+                .accessibilityIdentifier("mini-player-timeline")
               if let projection = model.activeSleepTimerProjection {
                 Text("·")
                 Label(sleepTimerLabel(projection), systemImage: "moon.zzz.fill")
@@ -2077,8 +2094,13 @@ private struct MiniPlayerView: View {
     }
     .padding(.horizontal, 12)
     .padding(.vertical, 8)
-    .background(.regularMaterial)
-    .contentShape(Rectangle())
+    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    .overlay {
+      RoundedRectangle(cornerRadius: 18, style: .continuous)
+        .stroke(PlayerColor.ink.opacity(0.06), lineWidth: 1)
+    }
+    .shadow(color: PlayerColor.ink.opacity(0.10), radius: 14, y: 6)
+    .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     .onTapGesture(perform: open)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("mini-player")
@@ -2111,10 +2133,13 @@ private struct MiniPlayerView: View {
     }
   }
 
-  private var positionLabel: String {
-    let seconds = max(0, Int(model.playbackState.elapsedSeconds.rounded()))
-    return String(format: "%d:%02d", seconds / 60, seconds % 60)
+  private var elapsedLabel: String {
+    compactPlaybackTime(min(model.playbackState.elapsedSeconds, max(0, book.durationSeconds)))
   }
+
+  private var durationLabel: String { compactPlaybackTime(book.durationSeconds) }
+
+  private var timelineLabel: String { "\(elapsedLabel) / \(durationLabel)" }
 }
 
 struct ArtworkView: View {
@@ -2195,6 +2220,17 @@ private func duration(_ seconds: Double) -> String {
 private func timecode(_ seconds: Double) -> String {
   let wholeSeconds = max(0, Int(seconds.rounded()))
   return String(format: "%d:%02d", wholeSeconds / 60, wholeSeconds % 60)
+}
+
+func compactPlaybackTime(_ seconds: Double) -> String {
+  let wholeSeconds = seconds.isFinite ? max(0, Int(seconds.rounded())) : 0
+  let hours = wholeSeconds / 3_600
+  let minutes = (wholeSeconds % 3_600) / 60
+  let remainder = wholeSeconds % 60
+  if hours > 0 {
+    return String(format: "%dh%02dm%02ds", hours, minutes, remainder)
+  }
+  return String(format: "%dm%02ds", minutes, remainder)
 }
 
 #if E2E

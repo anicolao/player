@@ -20,6 +20,9 @@ final class PositionRestoreUITests: XCTestCase {
     XCTAssertEqual(initialState.bookID, fixtureBookID)
     XCTAssertEqual(initialState.chapterIndex, 0)
     XCTAssertEqual(initialState.positionMilliseconds, initialPositionMilliseconds)
+    let initialTimeline = app.staticTexts["mini-player-timeline"]
+    XCTAssertTrue(initialTimeline.waitForExistence(timeout: 2))
+    XCTAssertEqual(initialTimeline.value as? String, "0m12s of 2m00s")
 
     initialMiniPlayer.tap()
     let nowPlaying = app.otherElements["now-playing-screen"]

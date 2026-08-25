@@ -4,6 +4,15 @@ import XCTest
 
 @MainActor
 final class PlayerCoreTests: XCTestCase {
+  func testCompactPlaybackTimeShowsElapsedAndTotalFriendlyUnits() {
+    XCTAssertEqual(compactPlaybackTime(0), "0m00s")
+    XCTAssertEqual(compactPlaybackTime(62), "1m02s")
+    XCTAssertEqual(compactPlaybackTime(3_723), "1h02m03s")
+    XCTAssertEqual(compactPlaybackTime(-1), "0m00s")
+    XCTAssertEqual(compactPlaybackTime(.nan), "0m00s")
+    XCTAssertEqual(compactPlaybackTime(.infinity), "0m00s")
+  }
+
   func testPlaybackSliderConfigurationNormalizesUnavailableAndShortDurations() {
     for duration: Double in [0, -1, .nan, .infinity, -Double.infinity] {
       let configuration = PlaybackSliderConfiguration(durationSeconds: duration)
