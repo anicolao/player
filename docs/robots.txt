@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://anicolao.github.io/player/sitemap.xml

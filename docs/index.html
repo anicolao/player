@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#b9472b">
+    <meta name="description" content="Bookshelf is a private, offline audiobook player for the MP3 and M4B files you own. Import from your Mac with a simple drag and drop through iPhone Mirroring.">
+    <meta property="og:title" content="Bookshelf — Your audiobooks, beautifully offline">
+    <meta property="og:description" content="A private iPhone audiobook player with effortless drag-and-drop import from your Mac.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://anicolao.github.io/player/">
+    <meta property="og:image" content="https://anicolao.github.io/player/community-assets/player-reddit-banner.png">
+    <meta property="og:image:alt" content="Warm orange and charcoal books arranged along a waveform">
+    <meta name="twitter:card" content="summary_large_image">
+    <link rel="canonical" href="https://anicolao.github.io/player/">
+    <link rel="icon" href="assets/bookshelf-icon.png" type="image/png">
+    <link rel="apple-touch-icon" href="assets/bookshelf-icon.png">
+    <link rel="stylesheet" href="styles.css">
+    <title>Bookshelf — Offline Audiobook Player for iPhone</title>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="site-header">
+      <nav class="nav shell" aria-label="Primary navigation">
+        <a class="brand" href="#top" aria-label="Bookshelf home">
+          <img src="assets/bookshelf-icon.png" width="44" height="44" alt="">
+          <span>Bookshelf</span>
+        </a>
+        <div class="nav-links">
+          <a href="#import">Easy import</a>
+          <a href="#features">Features</a>
+          <a href="#find-books">Find books</a>
+          <a class="nav-support" href="https://www.reddit.com/r/BookshelfAudiobooks/">Support</a>
+        </div>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="hero shell" id="top">
+        <div class="hero-copy">
+          <p class="eyebrow">Your books. Your files. Your place.</p>
+          <h1>A quiet home for the audiobooks you own.</h1>
+          <p class="hero-lede">
+            Bookshelf is an offline audiobook player for iPhone, designed around your
+            MP3 and M4B files—not a store, a subscription, or somebody else’s library.
+          </p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#import">See the easiest way to import</a>
+            <a class="button button-secondary" href="https://github.com/anicolao/player">View the source</a>
+          </div>
+          <ul class="proof-list">
+            <li>Works offline</li>
+            <li>Plays in the background</li>
+            <li>No subscription</li>
+          </ul>
+        </div>
+
+        <div class="hero-visual">
+          <div class="sun-disc" aria-hidden="true"></div>
+          <figure class="phone phone-hero">
+            <span class="phone-speaker" aria-hidden="true"></span>
+            <img src="assets/bookshelf-library.png" width="1206" height="2622" alt="Bookshelf library displaying square audiobook covers on warm wooden shelves">
+          </figure>
+          <div class="hero-note hero-note-top" aria-hidden="true">
+            <span class="note-icon">⌁</span>
+            <span><strong>Offline</strong> by design</span>
+          </div>
+          <div class="hero-note hero-note-bottom" aria-hidden="true">
+            <span class="note-icon">1×</span>
+            <span><strong>Your pace</strong> remembered</span>
+          </div>
+        </div>
+      </section>
+
+      <div class="books-ribbon" aria-hidden="true"></div>
+
+      <section class="import-section" id="import">
+        <div class="shell import-grid">
+          <div class="section-copy import-copy">
+            <p class="eyebrow eyebrow-light">The wonderfully short import process</p>
+            <h2>Drop a book.<br>Pick up your iPhone.</h2>
+            <p>
+              On a Mac, iPhone Mirroring turns import into a direct handoff. Open
+              Bookshelf’s receiver, then drag an audiobook from Finder straight onto
+              the mirrored app window. Bookshelf takes it from there.
+            </p>
+
+            <ol class="steps">
+              <li>
+                <span class="step-number">1</span>
+                <div><strong>Open Add in Bookshelf</strong><span>Choose Receive from Computer.</span></div>
+              </li>
+              <li>
+                <span class="step-number">2</span>
+                <div><strong>Open iPhone Mirroring</strong><span>Keep Bookshelf visible in the mirrored window.</span></div>
+              </li>
+              <li>
+                <span class="step-number">3</span>
+                <div><strong>Drag in your book</strong><span>Drop an MP3 or M4B from Finder and watch it arrive.</span></div>
+              </li>
+            </ol>
+
+            <p class="compatibility-note">
+              iPhone Mirroring requires supported Apple hardware and software and is
+              not available in every region.
+              <a href="https://support.apple.com/en-us/120421">Check Apple’s requirements <span aria-hidden="true">↗</span></a>
+            </p>
+          </div>
+
+          <div class="import-visuals" aria-label="The Bookshelf import process" role="group">
+            <figure class="phone phone-import phone-back">
+              <span class="phone-speaker" aria-hidden="true"></span>
+              <img loading="lazy" src="assets/receive-from-computer.png" width="1206" height="2622" alt="Receive from Computer screen with a local address, pairing code, and iPhone Mirroring instructions">
+              <figcaption>Ready to receive</figcaption>
+            </figure>
+            <figure class="phone phone-import phone-front">
+              <span class="phone-speaker" aria-hidden="true"></span>
+              <img loading="lazy" src="assets/mirroring-drop-progress.png" width="1206" height="2622" alt="Bookshelf receiving an audiobook dropped through iPhone Mirroring">
+              <figcaption>Transfer in progress</figcaption>
+            </figure>
+            <div class="drop-badge" aria-hidden="true">
+              <span>↓</span>
+              Drop from Finder
+            </div>
+          </div>
+        </div>
+
+        <div class="shell import-alternatives">
+          <p><strong>Not using iPhone Mirroring?</strong> Choose from Files on iPhone, or use Bookshelf’s private receiver page over your local network.</p>
+        </div>
+      </section>
+
+      <section class="features-section shell" id="features">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Made for long listens</p>
+            <h2>Everything your own library needs.</h2>
+          </div>
+          <p>
+            Bookshelf keeps the practical controls close and the interface calm—so
+            getting back into a story never feels like work.
+          </p>
+        </div>
+
+        <div class="feature-showcase">
+          <article class="feature-card feature-card-large">
+            <div class="feature-card-copy">
+              <span class="feature-kicker">A library that feels like one</span>
+              <h3>See your books on the shelf.</h3>
+              <p>Browse cover art on warm wooden shelves, switch to a compact list, and search a growing collection quickly.</p>
+            </div>
+            <figure class="phone phone-feature">
+              <span class="phone-speaker" aria-hidden="true"></span>
+              <img loading="lazy" src="assets/bookshelf-library.png" width="1206" height="2622" alt="Audiobook covers arranged on Bookshelf’s wooden shelf view">
+            </figure>
+          </article>
+
+          <article class="feature-card feature-card-player">
+            <div class="feature-card-copy">
+              <span class="feature-kicker">Your place, protected</span>
+              <h3>Resume without hunting.</h3>
+              <p>Playback position, speed, chapter, and sleep timer stay ready for the next listening session.</p>
+            </div>
+            <figure class="phone phone-feature">
+              <span class="phone-speaker" aria-hidden="true"></span>
+              <img loading="lazy" src="assets/now-playing.png" width="1206" height="2622" alt="Bookshelf now-playing screen with timeline and playback controls">
+            </figure>
+          </article>
+
+          <article class="feature-card feature-card-review">
+            <div class="feature-card-copy">
+              <span class="feature-kicker">You stay in control</span>
+              <h3>Review before it lands.</h3>
+              <p>Confirm imported metadata, adjust details when needed, and keep your library tidy from the start.</p>
+            </div>
+            <figure class="phone phone-feature">
+              <span class="phone-speaker" aria-hidden="true"></span>
+              <img loading="lazy" src="assets/review-import.png" width="1206" height="2622" alt="Bookshelf import review screen showing book metadata before adding it to the library">
+            </figure>
+          </article>
+        </div>
+
+        <ul class="feature-pills">
+          <li>Sleep timer</li>
+          <li>Playback speed</li>
+          <li>Chapter navigation</li>
+          <li>Lock Screen controls</li>
+          <li>Bluetooth controls</li>
+          <li>Library backup</li>
+        </ul>
+      </section>
+
+      <section class="sources-section" id="find-books">
+        <div class="shell">
+          <div class="section-heading source-heading">
+            <div>
+              <p class="eyebrow">Bring books you have the right to enjoy</p>
+              <h2>Looking for your next listen?</h2>
+            </div>
+            <p>
+              Start with public-domain recordings or stores that provide downloadable,
+              DRM-free files. Availability and copyright status can vary by country.
+            </p>
+          </div>
+
+          <div class="source-grid">
+            <a class="source-card" href="https://librivox.org/">
+              <span class="source-type">Volunteer-read · Free</span>
+              <h3>LibriVox</h3>
+              <p>Public-domain audiobooks read by volunteers around the world, with downloadable MP3 files.</p>
+              <span class="source-link">Browse LibriVox <span aria-hidden="true">↗</span></span>
+            </a>
+            <a class="source-card" href="https://www.gutenberg.org/ebooks/results/?author=&amp;category=1&amp;filetype=index&amp;lang=en&amp;locc=&amp;subject=&amp;title=">
+              <span class="source-type">Public domain · Free</span>
+              <h3>Project Gutenberg</h3>
+              <p>Explore its collection of human-read audio books and classic literature available in audio formats.</p>
+              <span class="source-link">Explore audio books <span aria-hidden="true">↗</span></span>
+            </a>
+            <a class="source-card" href="https://libro.fm/">
+              <span class="source-type">Independent stores · Paid</span>
+              <h3>Libro.fm</h3>
+              <p>Purchase audiobooks while supporting an independent bookshop, then download DRM-free MP3 or M4B files.</p>
+              <span class="source-link">Visit Libro.fm <span aria-hidden="true">↗</span></span>
+            </a>
+          </div>
+          <p class="rights-note">Only import recordings you are legally permitted to use. Public-domain status depends on where you live.</p>
+        </div>
+      </section>
+
+      <section class="support-section shell" id="support">
+        <div class="support-card">
+          <img src="assets/bookshelf-icon.png" width="112" height="112" alt="Bookshelf app icon">
+          <div>
+            <p class="eyebrow eyebrow-light">A human place for help</p>
+            <h2>Questions, ideas, or a stubborn file?</h2>
+            <p>Join fellow listeners and talk directly with the Bookshelf community on Reddit.</p>
+          </div>
+          <a class="button button-cream" href="https://www.reddit.com/r/BookshelfAudiobooks/">Visit r/BookshelfAudiobooks <span aria-hidden="true">↗</span></a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="books-ribbon books-ribbon-footer" aria-hidden="true"></div>
+      <div class="shell footer-content">
+        <div class="footer-brand">
+          <img src="assets/bookshelf-icon.png" width="42" height="42" alt="">
+          <div><strong>Bookshelf</strong><span>Offline Audio Player</span></div>
+        </div>
+        <p>Made for listening to the books you own.</p>
+        <div class="footer-links">
+          <a href="https://github.com/anicolao/player">Source</a>
+          <a href="https://www.reddit.com/r/BookshelfAudiobooks/">Support</a>
+          <a href="#top">Back to top ↑</a>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>
