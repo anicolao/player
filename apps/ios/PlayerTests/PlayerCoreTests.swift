@@ -47,19 +47,21 @@ final class PlayerCoreTests: XCTestCase {
     }
     let provider = MPNowPlayingArtworkProvider(image: image)
 
-    let requestedSize = await Task.detached {
-      provider.image(for: CGSize(width: 200, height: 300)).size
+    let requestedProperties = await Task.detached {
+      let requestedImage = provider.image(for: CGSize(width: 200, height: 300))
+      return (requestedImage.size, requestedImage.scale)
     }.value
 
-    XCTAssertEqual(requestedSize, image.size)
+    XCTAssertEqual(requestedProperties.0, CGSize(width: 200, height: 300))
+    XCTAssertEqual(requestedProperties.1, 1)
     XCTAssertNotNil(MPNowPlayingArtworkFactory.make(from: image.pngData() ?? Data()))
   }
 
   func testRealNowPlayingPublisherSurvivesArtworkConsumption() async throws {
-    let renderer = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 12))
+    let renderer = UIGraphicsImageRenderer(size: CGSize(width: 512, height: 512))
     let artworkData = renderer.pngData { context in
       UIColor.systemOrange.setFill()
-      context.fill(CGRect(x: 0, y: 0, width: 8, height: 12))
+      context.fill(CGRect(x: 0, y: 0, width: 512, height: 512))
     }
     let publisher = MPNowPlayingPublisher()
     defer { publisher.clear() }
@@ -87,6 +89,24 @@ final class PlayerCoreTests: XCTestCase {
       "a9000000-0000-0000-0000-000000000001"
     )
     XCTAssertEqual(center.nowPlayingInfo?[MPNowPlayingInfoPropertyIsLiveStream] as? Bool, false)
+    XCTAssertEqual(
+      center.nowPlayingInfo?[MPMediaItemPropertyAlbumTitle] as? String,
+      "Artwork concurrency regression"
+    )
+    XCTAssertEqual(
+      (center.nowPlayingInfo?[MPMediaItemPropertyMediaType] as? NSNumber)?.uintValue,
+      MPMediaType.audioBook.rawValue
+    )
+    let artwork = try XCTUnwrap(
+      center.nowPlayingInfo?[MPMediaItemPropertyArtwork] as? MPMediaItemArtwork
+    )
+    let transferredArtwork = try XCTUnwrap(
+      artwork.image(at: CGSize(width: 128, height: 128))
+    )
+    XCTAssertEqual(
+      transferredArtwork.size,
+      CGSize(width: 128, height: 128)
+    )
     try await Task.sleep(for: .milliseconds(500))
   }
 

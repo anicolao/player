@@ -597,6 +597,8 @@ final class MPNowPlayingPublisher: NowPlayingPublishing {
     var information: [String: Any] = [
       MPMediaItemPropertyTitle: snapshot.title,
       MPMediaItemPropertyArtist: snapshot.authors.joined(separator: ", "),
+      MPMediaItemPropertyAlbumTitle: snapshot.seriesName ?? snapshot.title,
+      MPMediaItemPropertyMediaType: MPMediaType.audioBook.rawValue,
       MPMediaItemPropertyPlaybackDuration: snapshot.durationSeconds,
       MPNowPlayingInfoPropertyElapsedPlaybackTime: snapshot.elapsedSeconds,
       MPNowPlayingInfoPropertyPlaybackRate: snapshot.playbackRate,
@@ -609,9 +611,6 @@ final class MPNowPlayingPublisher: NowPlayingPublishing {
     ]
     if !snapshot.narrators.isEmpty {
       information[MPMediaItemPropertyComposer] = snapshot.narrators.joined(separator: ", ")
-    }
-    if let seriesName = snapshot.seriesName {
-      information[MPMediaItemPropertyAlbumTitle] = seriesName
     }
     if let chapterIndex = snapshot.chapterIndex {
       information[MPNowPlayingInfoPropertyChapterNumber] = chapterIndex
@@ -640,21 +639,60 @@ enum MPNowPlayingArtworkFactory {
     guard let image = UIImage(data: data) else { return nil }
     let provider = MPNowPlayingArtworkProvider(image: image)
     return MPMediaItemArtwork(
-      boundsSize: image.size,
+      boundsSize: provider.boundsSize,
       requestHandler: provider.image(for:)
     )
   }
 }
 
 final class MPNowPlayingArtworkProvider: @unchecked Sendable {
+  private static let maximumDimension: CGFloat = 1_024
   private let storedImage: UIImage
+  let boundsSize: CGSize
 
   nonisolated init(image: UIImage) {
     storedImage = image
+    let sourceSize = image.size
+    let scale = min(
+      1,
+      Self.maximumDimension / max(sourceSize.width, sourceSize.height)
+    )
+    boundsSize = CGSize(
+      width: max(1, (sourceSize.width * scale).rounded(.down)),
+      height: max(1, (sourceSize.height * scale).rounded(.down))
+    )
   }
 
-  nonisolated func image(for _: CGSize) -> UIImage {
-    storedImage
+  /// MediaPlayer asks for receiver-appropriate artwork dimensions. Return an
+  /// exact-size bitmap so Bluetooth and in-car displays do not have to decode
+  /// or resize an arbitrarily large embedded cover themselves.
+  nonisolated func image(for requestedSize: CGSize) -> UIImage {
+    guard requestedSize.width.isFinite, requestedSize.height.isFinite,
+      requestedSize.width > 0, requestedSize.height > 0
+    else { return storedImage }
+
+    let targetSize = CGSize(
+      width: min(Self.maximumDimension, max(1, requestedSize.width.rounded(.up))),
+      height: min(Self.maximumDimension, max(1, requestedSize.height.rounded(.up)))
+    )
+    let sourceSize = storedImage.size
+    guard sourceSize.width > 0, sourceSize.height > 0 else { return storedImage }
+
+    let scale = max(
+      targetSize.width / sourceSize.width,
+      targetSize.height / sourceSize.height
+    )
+    let drawSize = CGSize(width: sourceSize.width * scale, height: sourceSize.height * scale)
+    let drawOrigin = CGPoint(
+      x: (targetSize.width - drawSize.width) / 2,
+      y: (targetSize.height - drawSize.height) / 2
+    )
+    let format = UIGraphicsImageRendererFormat()
+    format.scale = 1
+    format.opaque = false
+    return UIGraphicsImageRenderer(size: targetSize, format: format).image { _ in
+      storedImage.draw(in: CGRect(origin: drawOrigin, size: drawSize))
+    }
   }
 }
 
