@@ -23,8 +23,9 @@ record for `com.spnss.player`.
 - Subtitle: `Local MP3 & M4B Audiobook App`
 - A 99-character keyword set documented in `APP_STORE_LISTING.md`
 - App Store version record: `1.0`, state `PREPARE_FOR_SUBMISSION`
-- Valid uploaded TestFlight builds through build 29; build 29 contains the
-  monetization implementation and is assigned to the internal testing group
+- Valid uploaded TestFlight builds through build 30; build 30 contains the
+  monetization implementation, playback refinements, and scrolling bookshelf,
+  and is assigned to the internal testing group
 - Public TestFlight group and public invitation link
 - A 1024×1024 RGB app icon without transparency
 - `ITSAppUsesNonExemptEncryption = false`
@@ -119,7 +120,7 @@ The App Store version record is `1.0`, but the current build configuration is
 marketing version, so the final candidate must use version `1.0`.
 
 - [ ] Set `MARKETING_VERSION = 1.0` in `apps/ios/Config/Shared.xcconfig`.
-- [ ] Increment `CURRENT_PROJECT_VERSION` beyond build 29.
+- [ ] Increment `CURRENT_PROJECT_VERSION` beyond build 30.
 - [ ] Generate the Xcode project reproducibly.
 - [ ] Build and test the Release configuration.
 - [ ] Archive with distribution signing.
