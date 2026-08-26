@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://anicolao.github.io/player/sitemap.xml
+Sitemap: https://bookshelf.spnss.com/sitemap.xml
