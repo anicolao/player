@@ -4,8 +4,8 @@ Status: implemented for MVP in TestFlight Build 15
 
 ## Listener flow
 
-Open **Settings → Backup**. Choose either **Metadata and audio** (the portable
-default) or **Metadata only**, then tap **Export Library Backup** and choose a
+Open **Settings → Backup**. Choose either **With audio** (the portable default)
+or **Metadata only**, then tap **Export Library Backup** and choose a
 destination in the system document picker. Player prepares a
 `.playerbackup` package and removes its temporary working copy when the picker
 closes.
@@ -17,7 +17,7 @@ checks.
 
 A metadata-only restore succeeds only when the corresponding managed audio is
 already present on the same device and matches every recorded checksum. For a
-new or erased device, use **Metadata and audio**.
+new or erased device, use **With audio**.
 
 ## Portable format v1
 

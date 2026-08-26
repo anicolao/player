@@ -1052,7 +1052,16 @@ struct LibraryOrganizationSettingsView: View {
           }
           .accessibilityIdentifier("settings-storage")
           NavigationLink(value: LibrarySettingsDestination.backup) {
-            Label("Backup", systemImage: "externaldrive.badge.timemachine")
+            Label {
+              VStack(alignment: .leading, spacing: 2) {
+                Text("Backup")
+                Text("Protect or move your library")
+                  .font(.caption)
+                  .foregroundStyle(PlayerColor.secondary)
+              }
+            } icon: {
+              Image(systemName: "externaldrive.badge.timemachine")
+            }
           }
           .accessibilityIdentifier("settings-backup")
         }
