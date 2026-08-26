@@ -44,9 +44,10 @@ PLAYER_E2E_METADATA_REPLACEMENT_COVER_BASE64
 The bootstrap writes the audio into the isolated source root and seeds the
 production proposal/revision model with deterministic inspection evidence. It
 must not implement editing, locking, commit, undo, checksum, or view state.
-Replacement-cover injection substitutes only for the system picker; tapping the
-production replacement action must call the same production setter as a normal
-picked image.
+Replacement-cover injection substitutes only after the production source
+chooser is shown and `Choose Photo` is tapped. `Replace Cover` may not bypass
+that chooser in E2E. The injected bytes call the same production setter as a
+normal picked image and retain photo-library provenance.
 
 ## Initial proposal and provenance
 
@@ -97,8 +98,9 @@ The test stages five field operations in one editor draft:
    its embedded provenance.
 4. Tap `metadata-remove-cover`, producing
    `cover=none|source=user-clear|locked=true`.
-5. Tap `metadata-replace-cover`, consuming the injected synthetic PNG through
-   the normal cover setter and producing
+5. Tap `metadata-replace-cover`, require the source chooser again, then tap
+   `Choose Photo`. This consumes the injected synthetic PNG through the normal
+   photo-library cover setter and produces
    `cover=replacement|source=user|locked=true`.
 
 The final changed fields are:

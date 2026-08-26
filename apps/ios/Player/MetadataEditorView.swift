@@ -17,6 +17,7 @@ struct MetadataEditorView: View {
   @State private var coverWasRemoved = false
   @State private var lockOverrides: [MetadataField: Bool] = [:]
   @State private var selectedPhoto: PhotosPickerItem?
+  @State private var isChoosingCoverPhoto = false
   @State private var isChoosingCoverFile = false
   @State private var isChoosingCoverSource = false
   @State private var isCroppingCover = false
@@ -77,13 +78,16 @@ struct MetadataEditorView: View {
       Text(errorMessage ?? "Try again.")
     }
     .confirmationDialog("Change Cover", isPresented: $isChoosingCoverSource) {
-      PhotosPicker(selection: $selectedPhoto, matching: .images) {
-        Text("Choose Photo")
-      }
+      Button("Choose Photo") { chooseCoverPhoto() }
       Button("Choose File") { isChoosingCoverFile = true }
       if draft.cover != nil { Button("Crop") { isCroppingCover = true } }
       Button("Remove", role: .destructive) { removeCover() }
     }
+    .photosPicker(
+      isPresented: $isChoosingCoverPhoto,
+      selection: $selectedPhoto,
+      matching: .images
+    )
     .fileImporter(
       isPresented: $isChoosingCoverFile,
       allowedContentTypes: [.image],
@@ -95,11 +99,15 @@ struct MetadataEditorView: View {
     .sheet(isPresented: $isCroppingCover) { cropSheet }
     .task(id: selectedPhoto) {
       guard let selectedPhoto else { return }
+      defer { self.selectedPhoto = nil }
       do {
-        guard let data = try await selectedPhoto.loadTransferable(type: Data.self) else { return }
+        guard let data = try await selectedPhoto.loadTransferable(type: Data.self), !data.isEmpty else {
+          errorMessage = "The selected photo did not contain a readable image. Choose another photo."
+          return
+        }
         setCover(data: data, mediaType: imageMediaType(data), source: .photoLibrary)
       } catch {
-        errorMessage = "The selected photo could not be read."
+        errorMessage = "The selected photo could not be read. Download it in Photos, then try again."
       }
     }
     .onAppear { loadIfNeeded() }
@@ -118,12 +126,6 @@ struct MetadataEditorView: View {
             .font(.caption)
             .foregroundStyle(PlayerColor.secondary)
           Button("Replace Cover") {
-            #if E2E
-              if let data = E2EMetadataReplacementCover.data {
-                setCover(data: data, mediaType: "image/png", source: .file)
-                return
-              }
-            #endif
             isChoosingCoverSource = true
           }
           .buttonStyle(.bordered)
@@ -511,6 +513,18 @@ struct MetadataEditorView: View {
     } catch {
       errorMessage = "The selected cover file could not be read."
     }
+  }
+
+  private func chooseCoverPhoto() {
+    #if E2E
+      guard let data = E2EMetadataReplacementCover.data else {
+        errorMessage = "The deterministic replacement photo is unavailable."
+        return
+      }
+      setCover(data: data, mediaType: "image/png", source: .photoLibrary)
+    #else
+      isChoosingCoverPhoto = true
+    #endif
   }
 
   private func setCover(data: Data, mediaType: String, source: CoverSource) {
