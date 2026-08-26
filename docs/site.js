@@ -4,10 +4,11 @@
   const mobileNavigation = document.querySelector("#mobile-navigation");
   const closeButton = document.querySelector("[data-menu-close]");
   const sectionLinks = [...document.querySelectorAll("[data-nav-section]")];
-  const sections = [...new Set(sectionLinks.map((link) => link.dataset.navSection))]
-    .map((id) => document.getElementById(id))
-    .filter(Boolean);
+  const linkedSectionIds = new Set(sectionLinks.map((link) => link.dataset.navSection));
+  const sections = [...document.querySelectorAll("main section[id]")]
+    .filter((section) => linkedSectionIds.has(section.id));
   let sectionUpdateQueued = false;
+  let scrollSettledTimer;
 
   const setMenuOpen = (open, restoreFocus = false) => {
     document.body.classList.toggle("mobile-nav-open", open);
@@ -86,7 +87,12 @@
     }
   });
 
-  window.addEventListener("scroll", queueSectionUpdate, { passive: true });
+  window.addEventListener("scroll", () => {
+    queueSectionUpdate();
+    window.clearTimeout(scrollSettledTimer);
+    scrollSettledTimer = window.setTimeout(queueSectionUpdate, 120);
+  }, { passive: true });
+  window.addEventListener("scrollend", queueSectionUpdate);
   window.addEventListener("resize", () => {
     if (window.innerWidth > 700 && menuToggle.getAttribute("aria-expanded") === "true") {
       setMenuOpen(false);
