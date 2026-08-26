@@ -90,3 +90,4 @@
 - [x] The receiver reports a ready state without relying on color
 - [x] The local address remains discoverable
 - [x] The pairing code remains discoverable
+- [x] Files remains available as the receiver's secondary import route
