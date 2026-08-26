@@ -103,6 +103,16 @@ struct ContentView: View {
     .fullScreenCover(item: $presentedPlayerBook) { book in
       NowPlayingView(model: model, book: book)
     }
+    .sheet(isPresented: $model.isFullUnlockPresented) {
+      NavigationStack {
+        FullUnlockView(model: model)
+          .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+              Button("Close") { model.isFullUnlockPresented = false }
+            }
+          }
+      }
+    }
     #if E2E
       .overlay(alignment: .topLeading) {
         if ProcessInfo.processInfo.arguments.contains("-e2e-event-controls") {
@@ -145,6 +155,7 @@ struct ContentView: View {
       if !model.isRestored {
         await model.restore()
       }
+      await model.prepareMonetization()
       model.configurePlaybackIntegrations()
       await drainPendingDocumentURLs()
       await drainSharedImports()
@@ -155,7 +166,10 @@ struct ContentView: View {
     .onChange(of: scenePhase) { _, phase in
       switch phase {
       case .active:
-        Task { await drainSharedImports() }
+        Task {
+          await model.refreshMonetization()
+          await drainSharedImports()
+        }
       case .background:
         Task { await model.checkpointForBackground() }
       default:
@@ -172,6 +186,21 @@ struct ContentView: View {
       Button("OK") { model.clearLastError() }
     } message: {
       Text(model.lastErrorMessage ?? "The audiobook could not be imported.")
+    }
+    .alert(
+      "Included Listening",
+      isPresented: Binding(
+        get: { model.monetizationNotice != nil },
+        set: { if !$0 { model.dismissMonetizationNotice() } }
+      )
+    ) {
+      Button("OK") { model.dismissMonetizationNotice() }
+      Button("View Full Unlock") {
+        model.dismissMonetizationNotice()
+        model.showFullUnlock()
+      }
+    } message: {
+      Text(model.monetizationNotice ?? "")
     }
   }
 

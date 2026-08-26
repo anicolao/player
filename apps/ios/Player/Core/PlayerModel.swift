@@ -12,6 +12,9 @@ final class PlayerModel {
   private(set) var storageSummary: StorageSummary?
   private(set) var startupRecoveryStatus: StartupRecoveryStatus?
   private(set) var startupReconciliation: StartupStorageReconciliation?
+  private(set) var monetization: MonetizationSnapshot
+  var isFullUnlockPresented = false
+  private(set) var monetizationNotice: String?
 
   @ObservationIgnored private let environment: PlayerEnvironment
   @ObservationIgnored private var playbackIntegrationsConfigured = false
@@ -22,6 +25,8 @@ final class PlayerModel {
   @ObservationIgnored private var sleepTimerEvaluationInProgress = false
   @ObservationIgnored private var loadedAssetID: UUID?
   @ObservationIgnored private var loadedAssetTimelineStartSeconds = 0.0
+  @ObservationIgnored private var playbackMeterLastUptime: TimeInterval?
+  @ObservationIgnored private var pendingPlaybackMeterSeconds: TimeInterval = 0
   @ObservationIgnored private let logger = Logger(
     subsystem: "com.spnss.player",
     category: "ImportPipeline"
@@ -30,6 +35,7 @@ final class PlayerModel {
   init(environment: PlayerEnvironment) {
     self.environment = environment
     self.playbackState = environment.playback.state
+    self.monetization = environment.monetization.snapshot
   }
 
   func restore() async {
@@ -146,7 +152,9 @@ final class PlayerModel {
   }
 
   func restoreLibraryBackup(from url: URL) async throws {
+    await checkpointPlaybackMeter(force: true)
     environment.playback.pause()
+    playbackMeterLastUptime = nil
     let restored = try await environment.backups.restore(from: url)
     try await environment.persistence.save(restored)
     await restore()
@@ -162,7 +170,9 @@ final class PlayerModel {
   }
 
   func restoreLatestAutomaticLibraryBackup() async throws {
+    await checkpointPlaybackMeter(force: true)
     environment.playback.pause()
+    playbackMeterLastUptime = nil
     _ = try await environment.persistence.restoreLatestAutomaticBackup()
     await restore()
     guard isRestored else {
@@ -236,6 +246,89 @@ final class PlayerModel {
     } catch {
       lastErrorMessage = error.localizedDescription
     }
+  }
+
+  func prepareMonetization() async {
+    await environment.monetization.prepare()
+    synchronizeMonetizationSnapshot()
+  }
+
+  func refreshMonetization() async {
+    await environment.monetization.refreshEntitlement()
+    synchronizeMonetizationSnapshot()
+  }
+
+  func purchaseFullUnlock() async {
+    await environment.monetization.purchaseFullUnlock()
+    synchronizeMonetizationSnapshot()
+    if monetization.isUnlocked { isFullUnlockPresented = false }
+  }
+
+  func restorePurchases() async {
+    await environment.monetization.restorePurchases()
+    synchronizeMonetizationSnapshot()
+    if monetization.isUnlocked { isFullUnlockPresented = false }
+  }
+
+  func showFullUnlock() {
+    isFullUnlockPresented = true
+  }
+
+  func dismissMonetizationNotice() {
+    monetizationNotice = nil
+  }
+
+  private func synchronizeMonetizationSnapshot() {
+    let previous = monetization
+    let next = environment.monetization.snapshot
+    monetization = next
+    guard !next.isUnlocked else { return }
+    let thresholds: [(seconds: TimeInterval, message: String)] = [
+      (25 * 60 * 60, "25 hours of included listening remain."),
+      (10 * 60 * 60, "10 hours of included listening remain."),
+      (2 * 60 * 60, "2 hours of included listening remain. You can unlock Bookshelf forever at any time."),
+    ]
+    if let crossed = thresholds.last(where: {
+      previous.remainingPlaybackSeconds > $0.seconds
+        && next.remainingPlaybackSeconds <= $0.seconds
+    }) {
+      monetizationNotice = crossed.message
+    }
+  }
+
+  private func allowNewPlaybackSession() -> Bool {
+    synchronizeMonetizationSnapshot()
+    guard monetization.canStartPlayback else {
+      isFullUnlockPresented = true
+      return false
+    }
+    return true
+  }
+
+  private func beginPlaybackMetering() {
+    playbackMeterLastUptime = environment.playbackUptime.now()
+  }
+
+  private func checkpointPlaybackMeter(force: Bool) async {
+    guard playbackState.status == .playing else {
+      playbackMeterLastUptime = nil
+      return
+    }
+    guard environment.playback.isPlaybackAdvancing else {
+      playbackMeterLastUptime = nil
+      return
+    }
+    let now = environment.playbackUptime.now()
+    defer { playbackMeterLastUptime = now }
+    guard let previous = playbackMeterLastUptime else { return }
+    let elapsed = now - previous
+    guard elapsed.isFinite, elapsed > 0 else { return }
+    pendingPlaybackMeterSeconds += elapsed
+    guard force || pendingPlaybackMeterSeconds >= 5 else { return }
+    let seconds = pendingPlaybackMeterSeconds
+    pendingPlaybackMeterSeconds = 0
+    await environment.monetization.recordPlayback(seconds: seconds)
+    synchronizeMonetizationSnapshot()
   }
 
   func metadata(for target: MetadataTarget) -> AudiobookMetadata? {
@@ -1744,7 +1837,9 @@ final class PlayerModel {
       try await environment.persistence.save(candidate)
       library = candidate
       if wasCurrentBook {
+        await checkpointPlaybackMeter(force: true)
         environment.playback.pause()
+        playbackMeterLastUptime = nil
         playbackState = .unloaded
         loadedAssetID = nil
         loadedAssetTimelineStartSeconds = 0
@@ -1981,6 +2076,8 @@ final class PlayerModel {
   /// lightweight and runs frequently while audio is playing.
   func synchronizePlaybackProgress() async {
     guard playbackState.status == .playing else { return }
+    await checkpointPlaybackMeter(force: false)
+    synchronizeMonetizationSnapshot()
     let position = currentBookPositionSeconds
     guard position.isFinite else { return }
     playbackState.elapsedSeconds = position
@@ -2142,7 +2239,9 @@ final class PlayerModel {
       now: environment.clock.now(),
       currentPositionSeconds: sleepTimerPosition(for: timer.bookID)
     ) else { return }
+    await checkpointPlaybackMeter(force: true)
     environment.playback.completeSleepFadeAndPause()
+    playbackMeterLastUptime = nil
     playbackState = environment.playback.state
     playbackState.elapsedSeconds = currentBookPositionSeconds
     guard library.activeSleepTimer?.id == timer.id else { return }
@@ -2161,6 +2260,7 @@ final class PlayerModel {
       lastErrorMessage = SleepTimerError.noResumeContext.localizedDescription
       return false
     }
+    guard allowNewPlaybackSession() else { return false }
     do {
       try environment.audioSession.activate()
       let stoppedSeconds = history.actualStopSeconds
@@ -2178,12 +2278,14 @@ final class PlayerModel {
       environment.playback.play()
       playbackState = environment.playback.state
       playbackState.elapsedSeconds = currentBookPositionSeconds
+      beginPlaybackMetering()
       guard await recordAcknowledgedPlaybackPosition(
         currentBookPositionSeconds,
         reason: .play,
         consumedSleepHistoryID: history.id
       ) != nil else {
         environment.playback.pause()
+        playbackMeterLastUptime = nil
         playbackState = environment.playback.state
         playbackState.elapsedSeconds = currentBookPositionSeconds
         return false
@@ -2281,6 +2383,7 @@ final class PlayerModel {
       lastErrorMessage = PlayerCoreError.missingBook(bookID).localizedDescription
       return
     }
+    guard allowNewPlaybackSession() else { return }
     let rewindPlan = seconds == nil ? smartRewindPlan(for: bookID) : nil
 
     do {
@@ -2296,6 +2399,7 @@ final class PlayerModel {
       environment.playback.play()
       playbackState = environment.playback.state
       playbackState.elapsedSeconds = currentBookPositionSeconds
+      beginPlaybackMetering()
       library.currentBookID = bookID
       await acknowledgePlaybackPosition(
         currentBookPositionSeconds,
@@ -2359,6 +2463,7 @@ final class PlayerModel {
 
   func checkpointForBackground() async {
     guard playbackState.loadedBookID != nil, playbackState.status == .playing else { return }
+    await checkpointPlaybackMeter(force: true)
     await acknowledgePlaybackPosition(
       currentBookPositionSeconds,
       reason: .background
@@ -2373,12 +2478,15 @@ final class PlayerModel {
   }
 
   private func pause(reason: PositionEventReason) async {
+    await checkpointPlaybackMeter(force: true)
     let seconds = pausePlayback()
+    playbackMeterLastUptime = nil
     await acknowledgePlaybackPosition(seconds, reason: reason)
   }
 
   private func resumeCurrentBook() async {
     guard let bookID = library.currentBookID else { return }
+    guard allowNewPlaybackSession() else { return }
     if environment.playback.state.loadedBookID == bookID {
       do {
         try environment.audioSession.activate()
@@ -2389,6 +2497,7 @@ final class PlayerModel {
         environment.playback.play()
         playbackState = environment.playback.state
         playbackState.elapsedSeconds = currentBookPositionSeconds
+        beginPlaybackMetering()
         await acknowledgePlaybackPosition(
           currentBookPositionSeconds,
           reason: .play

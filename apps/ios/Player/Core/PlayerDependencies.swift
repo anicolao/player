@@ -126,6 +126,7 @@ protocol AudioPlaybackControlling: AnyObject {
   var state: PlaybackState { get }
   var currentPositionSeconds: Double { get }
   var playbackRate: Double { get }
+  var isPlaybackAdvancing: Bool { get }
   func load(url: URL, bookID: UUID, at seconds: Double) async throws
   func seek(to seconds: Double) async
   func setPlaybackRate(_ rate: Double)
@@ -139,6 +140,7 @@ protocol AudioPlaybackControlling: AnyObject {
 @MainActor
 extension AudioPlaybackControlling {
   var playbackRate: Double { 1 }
+  var isPlaybackAdvancing: Bool { state.status == .playing }
   func setPlaybackRate(_ rate: Double) {}
   func beginSleepFade(durationSeconds: TimeInterval) {}
   func completeSleepFadeAndPause() { pause() }
@@ -221,6 +223,8 @@ struct PlayerEnvironment {
   let zipExtractor: any ZipExtracting
   let backups: any LibraryBackupManaging
   let diagnostics: any SupportDiagnosticsManaging
+  let monetization: any MonetizationManaging
+  let playbackUptime: any PlaybackUptimeProviding
 
   init(
     persistence: any LibraryPersisting,
@@ -234,7 +238,9 @@ struct PlayerEnvironment {
     ids: any PlayerIDGenerating = SystemPlayerIDGenerator(),
     zipExtractor: any ZipExtracting = SafeZipExtractor(),
     backups: any LibraryBackupManaging = DisabledLibraryBackupManager(),
-    diagnostics: any SupportDiagnosticsManaging = DisabledSupportDiagnosticsManager()
+    diagnostics: any SupportDiagnosticsManaging = DisabledSupportDiagnosticsManager(),
+    monetization: any MonetizationManaging = DisabledMonetizationManager(),
+    playbackUptime: any PlaybackUptimeProviding = SystemPlaybackUptime()
   ) {
     self.persistence = persistence
     self.media = media
@@ -248,6 +254,8 @@ struct PlayerEnvironment {
     self.zipExtractor = zipExtractor
     self.backups = backups
     self.diagnostics = diagnostics
+    self.monetization = monetization
+    self.playbackUptime = playbackUptime
   }
 
   static func production(rootURL: URL? = nil) throws -> PlayerEnvironment {
@@ -261,7 +269,8 @@ struct PlayerEnvironment {
       remoteCommands: MPRemoteCommandController(),
       nowPlaying: MPNowPlayingPublisher(),
       backups: FileSystemLibraryBackupManager(rootURL: root),
-      diagnostics: FileSystemSupportDiagnosticsManager(rootURL: root)
+      diagnostics: FileSystemSupportDiagnosticsManager(rootURL: root),
+      monetization: StoreKitMonetizationManager()
     )
   }
 
