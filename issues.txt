@@ -1,0 +1,6 @@
+* skip forward from car skipped entire track
+* cant replace cover from photos
+* replacing cover should let you choose a photo
+* what is backup for
+* library screen bounces repeatedly -forever- when scrolling past the bottom on ellies phone
+* fade out sleep timer
