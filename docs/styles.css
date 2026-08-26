@@ -23,6 +23,10 @@ html {
   scroll-behavior: smooth;
 }
 
+[id] {
+  scroll-margin-top: 100px;
+}
+
 body {
   margin: 0;
   min-width: 320px;
@@ -73,9 +77,14 @@ a:focus-visible {
 }
 
 .site-header {
-  position: relative;
+  position: sticky;
+  top: 0;
   z-index: 20;
   border-bottom: 1px solid var(--line);
+  background: rgba(247, 240, 229, 0.88);
+  box-shadow: 0 8px 28px rgba(54, 31, 19, 0.05);
+  backdrop-filter: blur(18px) saturate(1.15);
+  -webkit-backdrop-filter: blur(18px) saturate(1.15);
 }
 
 .nav {
