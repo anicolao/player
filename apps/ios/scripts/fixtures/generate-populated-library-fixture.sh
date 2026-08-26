@@ -8,6 +8,7 @@ export TZ=UTC
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ios_dir="$(cd "${script_dir}/../.." && pwd)"
 fixture_root="${ios_dir}/PlayerUITests/Fixtures"
+cover_root="${script_dir}/populated-library-covers"
 output_root="${1:-}"
 
 if [[ -z "${output_root}" || ! -d "${output_root}" ]]; then
@@ -37,12 +38,14 @@ cp "${fixture_root}/SyntheticFormats/M4B/synthetic-single-book.m4b" \
   "${work_dir}/${fixture_name}/library-book-audio.m4b"
 cp "${script_dir}/synthetic-populated-library-fixture.json" \
   "${work_dir}/${fixture_name}/synthetic-populated-library-fixture.json"
-xcrun swift "${script_dir}/generate-populated-library-covers.swift" \
-  "${work_dir}/${fixture_name}/library-cover-b1.png" \
-  "${work_dir}/${fixture_name}/library-cover-b2.png" \
-  "${work_dir}/${fixture_name}/library-cover-b3.png" \
-  "${work_dir}/${fixture_name}/library-cover-b4.png" \
-  "${work_dir}/${fixture_name}/library-cover-b5.png"
+for index in 1 2 3 4 5; do
+  source_cover="${cover_root}/library-cover-b${index}.png"
+  if [[ ! -f "${source_cover}" || -L "${source_cover}" ]]; then
+    echo "populated-library source cover b${index} is unavailable" >&2
+    exit 2
+  fi
+  cp "${source_cover}" "${work_dir}/${fixture_name}/library-cover-b${index}.png"
+done
 
 (
   cd "${work_dir}"

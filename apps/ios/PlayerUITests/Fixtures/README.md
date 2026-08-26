@@ -116,3 +116,11 @@ audio format, aggregate duration tolerance, aggregate storage size, and unchange
 pre/post content hashes. It suppresses paths, filenames, metadata, artwork, and
 hashes. It never launches XCTest and therefore cannot record a screenshot or UI
 hierarchy attachment.
+
+## Populated library artwork
+
+`SyntheticLibrary/` uses five original, AI-generated fictional audiobook covers
+from `apps/ios/scripts/fixtures/populated-library-covers/`. The committed 192 px
+PNG sources make the fixture reproducible without depending on an image service
+during CI. The generator copies those sources byte-for-byte, and
+`SyntheticLibrary.sha256` detects accidental changes to either artwork or audio.
