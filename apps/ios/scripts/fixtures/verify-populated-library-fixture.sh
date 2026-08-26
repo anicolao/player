@@ -37,8 +37,8 @@ for index in 1 2 3 4 5; do
   cover="${fixture_dir}/library-cover-b${index}.png"
   dimensions="$(sips -g format -g pixelWidth -g pixelHeight "${cover}" 2>/dev/null)"
   if ! grep -q 'format: png' <<<"${dimensions}" \
-    || ! grep -q 'pixelWidth: 32' <<<"${dimensions}" \
-    || ! grep -q 'pixelHeight: 32' <<<"${dimensions}"; then
+    || ! grep -q 'pixelWidth: 192' <<<"${dimensions}" \
+    || ! grep -q 'pixelHeight: 192' <<<"${dimensions}"; then
     echo "populated-library cover is not the expected deterministic PNG" >&2
     exit 2
   fi
