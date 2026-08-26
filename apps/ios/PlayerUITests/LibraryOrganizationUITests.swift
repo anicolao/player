@@ -221,12 +221,48 @@ final class LibraryOrganizationUITests: XCTestCase {
       miniPlayer.frame.minY - 4,
       "Library content must have enough bottom runway to scroll Trash fully above the mini-player"
     )
+    var previousTrashFrame = openTrash.frame
+    for _ in 0..<8 {
+      restoredApp.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.62))
+        .press(
+          forDuration: 0.05,
+          thenDragTo: restoredApp.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.92, dy: 0.18)
+          ),
+          withVelocity: .fast,
+          thenHoldForDuration: 0
+        )
+      let nextTrashFrame = openTrash.frame
+      if abs(nextTrashFrame.minY - previousTrashFrame.minY) <= 1 { break }
+      previousTrashFrame = nextTrashFrame
+    }
+    let settledTrashFrame = openTrash.frame
+    for _ in 0..<3 {
+      restoredApp.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.62))
+        .press(
+          forDuration: 0.05,
+          thenDragTo: restoredApp.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.92, dy: 0.18)
+          ),
+          withVelocity: .fast,
+          thenHoldForDuration: 0
+        )
+      XCTAssertEqual(
+        openTrash.frame.minY,
+        settledTrashFrame.minY,
+        accuracy: 1,
+        "Repeated bottom-edge gestures must settle instead of restarting Library bounce"
+      )
+    }
     try tester.step(
       "trash-clear-of-player",
       description: "The final Library control scrolls completely above the persistent player",
       verifications: [
         .exists(openTrash, "Trash remains visible and tappable above the mini-player"),
         .exists(miniPlayer, "The persistent player remains available below Library content"),
+        StepVerification(specification: "Repeated bottom-edge gestures settle at one stable position") {
+          abs(openTrash.frame.minY - settledTrashFrame.minY) <= 1
+        },
       ]
     )
     openTrash.tap()

@@ -63,6 +63,7 @@
 
 - [x] Trash remains visible and tappable above the mini-player
 - [x] The persistent player remains available below Library content
+- [x] Repeated bottom-edge gestures settle at one stable position
 
 ## Removing a book creates an exact recoverable Trash transaction
 
