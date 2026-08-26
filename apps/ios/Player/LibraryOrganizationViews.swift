@@ -153,7 +153,8 @@ struct LibraryOrganizationHome: View {
         title: "Recently Added",
         books: books,
         scale: .feature,
-        availableWidth: availableWidth
+        availableWidth: availableWidth,
+        scrollIdentifier: "library-home-recent-shelf-scroll"
       ) { book, metrics in
         NavigationLink(value: book.id) {
           BookshelfCoverCard(book: book, metrics: metrics)
@@ -448,7 +449,8 @@ struct AllBooksView: View {
           title: "Continue Listening",
           books: continueListeningBooks,
           scale: .feature,
-          availableWidth: availableWidth
+          availableWidth: availableWidth,
+          scrollIdentifier: "all-books-continue-shelf-scroll"
         ) { book, metrics in
           bookLink(book, identifier: "bookshelf-continue-book-\(book.id.uuidString.lowercased())") {
             BookshelfCoverCard(book: book, metrics: metrics)
@@ -459,7 +461,8 @@ struct AllBooksView: View {
         title: "Recently Added",
         books: recentlyAddedBooks,
         scale: .feature,
-        availableWidth: availableWidth
+        availableWidth: availableWidth,
+        scrollIdentifier: "all-books-recent-shelf-scroll"
       ) { book, metrics in
         bookLink(book, identifier: "bookshelf-recent-book-\(book.id.uuidString.lowercased())") {
           BookshelfCoverCard(book: book, metrics: metrics)
@@ -469,7 +472,8 @@ struct AllBooksView: View {
         title: "A–Z",
         books: sortedBooks,
         scale: .compact,
-        availableWidth: availableWidth
+        availableWidth: availableWidth,
+        scrollIdentifier: "all-books-a-z-shelf-scroll"
       ) { book, metrics in
         bookLink(book) { BookshelfCoverCard(book: book, metrics: metrics) }
       }
@@ -526,6 +530,7 @@ private struct BookshelfSection<Content: View>: View {
   let books: [Book]
   let scale: BookshelfScale
   let availableWidth: CGFloat
+  let scrollIdentifier: String
   private let content: (Book, BookshelfMetrics) -> Content
 
   init(
@@ -533,12 +538,14 @@ private struct BookshelfSection<Content: View>: View {
     books: [Book],
     scale: BookshelfScale,
     availableWidth: CGFloat,
+    scrollIdentifier: String,
     @ViewBuilder content: @escaping (Book, BookshelfMetrics) -> Content
   ) {
     self.title = title
     self.books = books
     self.scale = scale
     self.availableWidth = availableWidth
+    self.scrollIdentifier = scrollIdentifier
     self.content = content
   }
 
@@ -554,19 +561,26 @@ private struct BookshelfSection<Content: View>: View {
         LazyHStack(alignment: .top, spacing: metrics.spacing) {
           ForEach(books) { book in content(book, metrics) }
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, metrics.shelfEndInset)
         .padding(.top, metrics.topInset)
+        .frame(minWidth: availableWidth, alignment: .leading)
+        .background(alignment: .topLeading) {
+          GeometryReader { shelfGeometry in
+            Image("BurntOrangeShelf")
+              .resizable(
+                capInsets: EdgeInsets(top: 0, leading: 12, bottom: 0, trailing: 12),
+                resizingMode: .stretch
+              )
+              .interpolation(.high)
+              .frame(width: shelfGeometry.size.width, height: metrics.shelfHeight)
+              .offset(y: metrics.shelfOffset)
+              .allowsHitTesting(false)
+              .accessibilityHidden(true)
+          }
+        }
       }
       .scrollIndicators(.hidden)
-      .overlay(alignment: .top) {
-        Image("BurntOrangeShelf")
-          .resizable()
-          .interpolation(.high)
-          .frame(width: availableWidth + 48, height: metrics.shelfHeight)
-          .offset(y: metrics.shelfOffset)
-          .allowsHitTesting(false)
-          .accessibilityHidden(true)
-      }
+      .accessibilityIdentifier(scrollIdentifier)
       .frame(width: availableWidth, height: metrics.rowHeight)
     }
   }
@@ -578,6 +592,7 @@ private struct BookshelfMetrics {
   let spacing: CGFloat
   let shelfHeight: CGFloat = 32
   let topInset: CGFloat = 8
+  let shelfEndInset: CGFloat = 20
 
   init(scale: BookshelfScale, availableWidth: CGFloat) {
     self.scale = scale

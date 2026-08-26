@@ -44,20 +44,30 @@
 - [x] The first ordered collection book is visible
 - [x] The second ordered collection book is visible
 
-## All Books presents square audiobook artwork on burnt-orange wooden shelves
+## All Books presents square audiobook artwork at the left ends of burnt-orange wooden shelves
 
-![All Books presents square audiobook artwork on burnt-orange wooden shelves](./screenshots/ios/002-square-cover-bookshelves.png)
+![All Books presents square audiobook artwork at the left ends of burnt-orange wooden shelves](./screenshots/ios/002-square-cover-bookshelves.png)
 
 **Verifications:**
 
 - [x] The shelf presentation is visible
+- [x] The books and their wooden shelf share one horizontal scroll surface
 - [x] Continue Listening exposes the resumable square cover
 - [x] Recently Added exposes the newest square cover
 - [x] The complete A–Z shelf exposes its first sorted audiobook
 
+## The books carry their wooden shelf to its visible right end
+
+![The books carry their wooden shelf to its visible right end](./screenshots/ios/003-square-cover-bookshelf-right-end.png)
+
+**Verifications:**
+
+- [x] The oldest audiobook remains on the shared shelf
+- [x] The final audiobook is fully reachable at the shelf end
+
 ## The final Library control scrolls completely above the persistent player
 
-![The final Library control scrolls completely above the persistent player](./screenshots/ios/003-trash-clear-of-player.png)
+![The final Library control scrolls completely above the persistent player](./screenshots/ios/004-trash-clear-of-player.png)
 
 **Verifications:**
 
@@ -67,7 +77,7 @@
 
 ## Removing a book creates an exact recoverable Trash transaction
 
-![Removing a book creates an exact recoverable Trash transaction](./screenshots/ios/004-recoverable-trash.png)
+![Removing a book creates an exact recoverable Trash transaction](./screenshots/ios/005-recoverable-trash.png)
 
 **Verifications:**
 
@@ -78,7 +88,7 @@
 
 ## Restore returns the book and its organization while list preference persists
 
-![Restore returns the book and its organization while list preference persists](./screenshots/ios/005-restored-library-list.png)
+![Restore returns the book and its organization while list preference persists](./screenshots/ios/006-restored-library-list.png)
 
 **Verifications:**
 
@@ -88,7 +98,7 @@
 
 ## Local search finds contributor metadata without a network
 
-![Local search finds contributor metadata without a network](./screenshots/ios/006-metadata-search.png)
+![Local search finds contributor metadata without a network](./screenshots/ios/007-metadata-search.png)
 
 **Verifications:**
 
@@ -98,7 +108,7 @@
 
 ## Search combines a listening-state filter with a meaningful sort
 
-![Search combines a listening-state filter with a meaningful sort](./screenshots/ios/007-filtered-search.png)
+![Search combines a listening-state filter with a meaningful sort](./screenshots/ios/008-filtered-search.png)
 
 **Verifications:**
 
@@ -108,7 +118,7 @@
 
 ## No search matches is distinct from an empty library
 
-![No search matches is distinct from an empty library](./screenshots/ios/008-no-search-matches.png)
+![No search matches is distinct from an empty library](./screenshots/ios/009-no-search-matches.png)
 
 **Verifications:**
 
