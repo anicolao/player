@@ -16,6 +16,8 @@ extension PlayerEnvironment {
             reset: arguments.contains("-e2e-reset"),
             eventControls: arguments.contains("-e2e-event-controls")
           )
+        case "monetization-exhausted":
+          return try monetizationExhaustedEnvironment()
         case "zero-duration-current-book":
           return zeroDurationCurrentBookEnvironment()
         case "metadata-rich-book":
@@ -139,7 +141,8 @@ extension PlayerEnvironment {
 
     private static func committedCurrentBookEnvironment(
       reset: Bool,
-      eventControls: Bool
+      eventControls: Bool,
+      monetization: (any MonetizationManaging)? = nil
     ) throws -> PlayerEnvironment {
       let support = try FileManager.default.url(
         for: .applicationSupportDirectory,
@@ -226,7 +229,19 @@ extension PlayerEnvironment {
           ? E2ERemoteCommandController()
           : DisabledRemoteCommandController(),
         clock: FixedPlayerClock(value: date),
-        ids: DeterministicPlayerIDGenerator(values: ids)
+        ids: DeterministicPlayerIDGenerator(values: ids),
+        monetization: monetization ?? DisabledMonetizationManager()
+      )
+    }
+
+    private static func monetizationExhaustedEnvironment() throws -> PlayerEnvironment {
+      var snapshot = MonetizationSnapshot.included
+      snapshot.consumedPlaybackSeconds = MonetizationSnapshot.includedPlaybackSeconds
+      snapshot.displayPrice = "$9.99"
+      return try committedCurrentBookEnvironment(
+        reset: true,
+        eventControls: false,
+        monetization: DeterministicMonetizationManager(snapshot: snapshot)
       )
     }
 

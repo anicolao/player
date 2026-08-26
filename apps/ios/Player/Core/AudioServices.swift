@@ -266,6 +266,10 @@ final class AVPlayerPlaybackController: AudioPlaybackControlling {
     return max(0, seconds)
   }
 
+  var isPlaybackAdvancing: Bool {
+    state.status == .playing && player?.timeControlStatus == .playing
+  }
+
   func load(url: URL, bookID: UUID, at seconds: Double = 0) async throws {
     cancelSleepFade()
     let asset = AVURLAsset(url: url)

@@ -38,7 +38,7 @@ run_story() {
   shift
   "${script_dir}/run-e2e.sh" "${story}" "$@"
   # Retain the materialized reviewable walkthrough while bounding disk use
-  # across all eleven isolated simulator builds.
+  # across all twelve isolated simulator builds.
   rm -rf "${ios_dir}/DerivedData/E2E/${story}/Build"
   rm -rf "${ios_dir}/DerivedData/E2E/${story}/Attachments"
   rm -rf "${ios_dir}/DerivedData/E2E/${story}/Results"
@@ -76,5 +76,7 @@ run_story 010-library-backup \
   PlayerUITests/BackupUITests/testExportsClearsAndRestoresAVerifiedPortableLibrary
 run_story 011-offline-recovery \
   PlayerUITests/OfflineRecoveryUITests/testRecoversStartupAndExportsOnlySanitizedOfflineDiagnostics
+run_story 012-monetization \
+  PlayerUITests/MonetizationUITests/testExplainsExhaustionAndCompletesAOneTimeUnlock
 
-echo "Complete Player suite passed: unit/integration tests and Stories 001-011."
+echo "Complete Player suite passed: unit/integration tests and Stories 001-012."

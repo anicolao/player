@@ -1003,6 +1003,7 @@ struct LibraryTrashView: View {
 }
 
 private enum LibrarySettingsDestination: Hashable {
+  case fullUnlock
   case trash
   case storage
   case backup
@@ -1024,6 +1025,7 @@ struct LibraryOrganizationSettingsView: View {
         arguments.indices.contains(option + 1)
       {
         switch arguments[option + 1] {
+        case "full-unlock": _path = State(initialValue: [.fullUnlock])
         case "backup": _path = State(initialValue: [.backup])
         case "diagnostics": _path = State(initialValue: [.diagnostics])
         default: break
@@ -1035,6 +1037,21 @@ struct LibraryOrganizationSettingsView: View {
   var body: some View {
     NavigationStack(path: $path) {
       List {
+        Section("Bookshelf") {
+          NavigationLink(value: LibrarySettingsDestination.fullUnlock) {
+            Label {
+              VStack(alignment: .leading, spacing: 2) {
+                Text("Full Unlock")
+                Text(fullUnlockStatus)
+                  .font(.caption)
+                  .foregroundStyle(PlayerColor.secondary)
+              }
+            } icon: {
+              Image(systemName: model.monetization.isUnlocked ? "checkmark.seal.fill" : "books.vertical.fill")
+            }
+          }
+          .accessibilityIdentifier("settings-full-unlock")
+        }
         Section("Library") {
           Picker("All Books layout", selection: Binding(
             get: { model.library.allBooksViewStyle },
@@ -1094,6 +1111,7 @@ struct LibraryOrganizationSettingsView: View {
       .navigationTitle("Settings")
       .navigationDestination(for: LibrarySettingsDestination.self) { destination in
         switch destination {
+        case .fullUnlock: FullUnlockView(model: model)
         case .trash: LibraryTrashView(model: model)
         case .storage: StorageSettingsView(model: model)
         case .backup: BackupSettingsView(model: model)
@@ -1104,6 +1122,12 @@ struct LibraryOrganizationSettingsView: View {
         }
       }
     }
+  }
+
+  private var fullUnlockStatus: String {
+    if model.monetization.isUnlocked { return "Purchased — no subscription" }
+    let price = model.monetization.displayPrice.map { " · \($0) once" } ?? ""
+    return "\(model.monetization.remainingPlaybackDescription)\(price)"
   }
 }
 

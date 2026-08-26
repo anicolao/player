@@ -15,6 +15,8 @@ on:
       - BACKUP_AND_RESTORE.md
       - OFFLINE_RECOVERY_AUDIT.md
       - MVP_ACCEPTANCE_MATRIX.md
+      - MONETIZATION_PLAN.md
+      - APP_STORE_SUBMISSION_PLAN.md
       - MOCKUP_COMPARISON.md
       - README.md
       - TESTFLIGHT_SETUP.md
@@ -37,6 +39,8 @@ on:
       - BACKUP_AND_RESTORE.md
       - OFFLINE_RECOVERY_AUDIT.md
       - MVP_ACCEPTANCE_MATRIX.md
+      - MONETIZATION_PLAN.md
+      - APP_STORE_SUBMISSION_PLAN.md
       - MOCKUP_COMPARISON.md
       - README.md
       - TESTFLIGHT_SETUP.md
@@ -148,6 +152,9 @@ jobs:
           - story: 011-offline-recovery
             tests: >-
               PlayerUITests/OfflineRecoveryUITests/testRecoversStartupAndExportsOnlySanitizedOfflineDiagnostics
+          - story: 012-monetization
+            tests: >-
+              PlayerUITests/MonetizationUITests/testExplainsExhaustionAndCompletesAOneTimeUnlock
     defaults:
       run:
         shell: nix develop --command bash --noprofile --norc -e -o pipefail {0}
