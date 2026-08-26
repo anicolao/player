@@ -1,7 +1,8 @@
 # Next steps
 
-Status: proposed
+Status: implementation complete; physical-device beta acceptance pending
 Created: 2026-08-25
+Updated: 2026-08-26
 Source: [issues.txt](issues.txt)
 
 ## Objective
@@ -15,6 +16,23 @@ below. Sleep-timer fading and Photos-based cover replacement already exist in
 the implementation, so those reports must be reproduced against the shipping
 build before deciding whether the defect is presentation, integration, or
 playback behavior.
+
+## Implementation record
+
+| Item | Result | Evidence |
+| --- | --- | --- |
+| External transport semantics | Implemented in `e3db95a`: external previous/next events now use configured intervals across the combined book timeline. | Full CI [32919008481](https://github.com/anicolao/player/actions/runs/32919008481) passed. |
+| Repeated Library bounce | Implemented in `7349e69`: the main Library no longer vertically bounces while retaining bottom runway and horizontal shelves. | Full CI [32922414726](https://github.com/anicolao/player/actions/runs/32922414726) passed. |
+| Replace Cover from Photos | Implemented in `03fce80`: the production Photos picker is presented after source selection, with explicit cancellation/failure handling and an E2E seam after the real chooser. | Full CI [32926334151](https://github.com/anicolao/player/actions/runs/32926334151) passed. |
+| Sleep-timer fade | No repair commit was justified: the existing five-second stepped fade, exact stop, volume restoration, persistence, and dismissal behavior passed focused tests and Story 007. | Full CI [32929302975](https://github.com/anicolao/player/actions/runs/32929302975) passed, including Story 007. |
+| Backup explanation | Implemented in `71c4566`: listener-first purpose and clear descriptions of With audio, Metadata only, and automatic on-device copies precede the actions. | Full CI [32929302975](https://github.com/anicolao/player/actions/runs/32929302975) passed, including the verified Story 010 round trip. |
+
+The remaining acceptance work requires physical hardware and must be repeated
+against the beta containing these commits: the originally affected car and a
+headset/AirPods route; Ellie's phone; the real Photos picker with a local and,
+if available, iCloud-backed image; and audible sleep-timer fading on speaker,
+Bluetooth, and headphones. Simulator and CI evidence cannot substitute for
+those output-route and device-specific checks.
 
 ## Priority order
 
