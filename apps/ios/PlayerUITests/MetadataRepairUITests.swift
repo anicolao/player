@@ -97,6 +97,10 @@ final class MetadataRepairUITests: XCTestCase {
     app.buttons["metadata-remove-cover"].tap()
     try requireValue(cover, "cover=none|source=user-clear|locked=true")
     app.buttons["metadata-replace-cover"].tap()
+    let choosePhoto = app.buttons["Choose Photo"]
+    XCTAssertTrue(choosePhoto.waitForExistence(timeout: 2))
+    XCTAssertTrue(app.buttons["Choose File"].exists)
+    choosePhoto.tap()
     try requireValue(cover, "cover=replacement|source=user|locked=true")
     try requireValue(editor, "metadata:proposal:revision=0:dirty=true")
     try requireValue(
