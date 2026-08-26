@@ -14,3 +14,4 @@ apps/ios/Player.xcodeproj/xcuserdata/
 AuthKey_*.p8
 *.mobileprovision
 *.p12
+.env
