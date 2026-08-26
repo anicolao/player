@@ -34,7 +34,7 @@ jobs:
       - name: Assemble static site
         run: |
           mkdir _site
-          cp docs/index.html docs/styles.css docs/robots.txt docs/sitemap.xml docs/.nojekyll _site/
+          cp docs/index.html docs/styles.css docs/site.js docs/robots.txt docs/sitemap.xml docs/CNAME docs/.nojekyll _site/
           cp -R docs/assets docs/community-assets _site/
 
       - name: Upload site artifact
