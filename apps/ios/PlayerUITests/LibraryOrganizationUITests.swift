@@ -167,9 +167,13 @@ final class LibraryOrganizationUITests: XCTestCase {
     try requireValue(allBooks, allBooksValue(view: "shelf", order: allBookOrder))
     try tester.step(
       "square-cover-bookshelves",
-      description: "All Books presents square audiobook artwork on burnt-orange wooden shelves",
+      description: "All Books presents square audiobook artwork at the left ends of burnt-orange wooden shelves",
       verifications: [
         .exists(anyElement(app, "all-books-bookshelf"), "The shelf presentation is visible"),
+        .exists(
+          anyElement(app, "all-books-recent-shelf-scroll"),
+          "The books and their wooden shelf share one horizontal scroll surface"
+        ),
         .exists(
           anyElement(app, "bookshelf-continue-book-\(books[0])"),
           "Continue Listening exposes the resumable square cover"
@@ -182,6 +186,20 @@ final class LibraryOrganizationUITests: XCTestCase {
           anyElement(app, "all-books-book-\(books[3])"),
           "The complete A–Z shelf exposes its first sorted audiobook"
         ),
+      ]
+    )
+    let recentShelf = anyElement(app, "all-books-recent-shelf-scroll")
+    let oldestRecentBook = app.buttons["bookshelf-recent-book-\(books[0])"]
+    recentShelf.swipeLeft()
+    recentShelf.swipeLeft()
+    try tester.step(
+      "square-cover-bookshelf-right-end",
+      description: "The books carry their wooden shelf to its visible right end",
+      verifications: [
+        .exists(oldestRecentBook, "The oldest audiobook remains on the shared shelf"),
+        StepVerification(specification: "The final audiobook is fully reachable at the shelf end") {
+          oldestRecentBook.isHittable
+        },
       ]
     )
     app.buttons["library-view-list"].tap()
