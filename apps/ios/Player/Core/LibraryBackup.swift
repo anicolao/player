@@ -8,7 +8,7 @@ enum PortableBackupKind: String, Codable, CaseIterable, Sendable {
   var displayName: String {
     switch self {
     case .metadataOnly: "Metadata only"
-    case .includingMedia: "Metadata and audio"
+    case .includingMedia: "With audio"
     }
   }
 }

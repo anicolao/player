@@ -35,6 +35,22 @@ final class BackupUITests: XCTestCase {
       "backup-settings",
       description: "Backup choices explain portable media and local automatic copies",
       verifications: [
+        .exists(anyElement(app, "backup-purpose"), "Backup leads with why a listener needs it"),
+        .valueEquals(
+          anyElement(app, "backup-choice-with-audio"),
+          "A self-contained copy of your books, artwork, edits, listening positions, preferences, and audio.",
+          "With audio is identified as the self-contained recovery choice"
+        ),
+        .valueEquals(
+          anyElement(app, "backup-choice-metadata-only"),
+          "A smaller copy of your organization, edits, listening positions, and preferences. You will still need the original audio files.",
+          "Metadata only makes its dependency on the original audio explicit"
+        ),
+        .valueEquals(
+          anyElement(app, "backup-choice-automatic"),
+          "Up to three safety copies stay on this iPhone. They are not portable and do not duplicate your audio.",
+          "Automatic copies are distinguished from portable exports"
+        ),
         .exists(app.buttons["backup-export"], "A system-destination export begins here"),
         .exists(app.buttons["backup-restore"], "A Player backup can be selected from Files"),
         .exists(
@@ -116,8 +132,10 @@ final class BackupUITests: XCTestCase {
   private func scrollBackupToTop(_ app: XCUIApplication) {
     let scrollView = app.scrollViews["backup-scroll"]
     XCTAssertTrue(scrollView.waitForExistence(timeout: 2))
-    let export = app.buttons["backup-export"]
-    XCTAssertTrue(export.isHittable)
+    let alignToTop = app.buttons["e2e-backup-scroll-top"]
+    XCTAssertTrue(alignToTop.waitForExistence(timeout: 2))
+    alignToTop.tap()
+    XCTAssertTrue(anyElement(app, "backup-purpose").isHittable)
     // Let the initial navigation hierarchy finish rasterizing before capture.
     RunLoop.current.run(until: Date().addingTimeInterval(1))
   }

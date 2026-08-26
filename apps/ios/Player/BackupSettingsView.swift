@@ -28,6 +28,47 @@ struct BackupSettingsView: View {
       ScrollViewReader { proxy in
         ScrollView {
           LazyVStack(alignment: .leading, spacing: 24) {
+            BackupSettingsSection("Protect your library") {
+              BackupSettingsRow {
+                Text(
+                  "Player keeps your library on this iPhone. Export a backup to Files to protect it or move it to another iPhone. Player never uploads your backup."
+                )
+                .font(.subheadline)
+                .accessibilityIdentifier("backup-purpose")
+              }
+              BackupSettingsDivider()
+              BackupSettingsRow {
+                BackupChoiceExplanation(
+                  title: "With audio",
+                  detail:
+                    "A self-contained copy of your books, artwork, edits, listening positions, preferences, and audio.",
+                  systemImage: "waveform",
+                  identifier: "backup-choice-with-audio"
+                )
+              }
+              BackupSettingsDivider()
+              BackupSettingsRow {
+                BackupChoiceExplanation(
+                  title: "Metadata only",
+                  detail:
+                    "A smaller copy of your organization, edits, listening positions, and preferences. You will still need the original audio files.",
+                  systemImage: "list.bullet.rectangle",
+                  identifier: "backup-choice-metadata-only"
+                )
+              }
+              BackupSettingsDivider()
+              BackupSettingsRow {
+                BackupChoiceExplanation(
+                  title: "Automatic copies",
+                  detail:
+                    "Up to three safety copies stay on this iPhone. They are not portable and do not duplicate your audio.",
+                  systemImage: "externaldrive.badge.timemachine",
+                  identifier: "backup-choice-automatic"
+                )
+              }
+            }
+            .id("backup-scroll-top")
+
             BackupSettingsSection("Export") {
               BackupSettingsRow {
                 HStack {
@@ -66,8 +107,6 @@ struct BackupSettingsView: View {
                 .accessibilityIdentifier("backup-export")
               }
             }
-            .id("backup-scroll-top")
-
             BackupSettingsSection("Restore") {
               BackupSettingsRow {
                 Button {
@@ -84,7 +123,7 @@ struct BackupSettingsView: View {
               BackupSettingsDivider()
               BackupSettingsRow {
                 Text(
-                  "Player verifies the manifest, artwork, and every audio file before replacing the library. A failed restore leaves the current library untouched."
+                  "Before replacing your current library, Player checks the backup and every included file. If the check fails, nothing changes."
                 )
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -122,7 +161,7 @@ struct BackupSettingsView: View {
               BackupSettingsDivider()
               BackupSettingsRow {
                 Text(
-                  "Player rotates up to three local database copies. Audio stays in managed storage and is not duplicated."
+                  "These safety copies stay on this iPhone. They are not portable, and your audio is not duplicated."
                 )
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -210,6 +249,14 @@ struct BackupSettingsView: View {
                 e2eTriggerButton("e2e-backup-restore") {
                   try await E2EBackupBridge.shared.restore(using: model)
                 }
+                Button { scrollBackupToTop(proxy) } label: {
+                  Color.white.opacity(0.001)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Align Backup screen to top")
+                .accessibilityIdentifier("e2e-backup-scroll-top")
               }
             }
           }
@@ -289,9 +336,9 @@ struct BackupSettingsView: View {
   private var exportExplanation: String {
     switch exportKind {
     case .metadataOnly:
-      "A small catalog backup. Restoring it requires the same verified audio to remain on this device."
+      "Choose a Files destination. This smaller backup needs your original audio files when you restore it."
     case .includingMedia:
-      "A portable package containing the catalog, artwork, listening data, and one verified copy of every audiobook."
+      "Choose a Files destination. This self-contained backup can restore your library and its audio."
     }
   }
 
@@ -427,6 +474,31 @@ private struct BackupSettingsRow<Content: View>: View {
       .padding(.horizontal, 16)
       .padding(.vertical, 13)
       .contentShape(Rectangle())
+  }
+}
+
+private struct BackupChoiceExplanation: View {
+  let title: String
+  let detail: String
+  let systemImage: String
+  let identifier: String
+
+  var body: some View {
+    HStack(alignment: .top, spacing: 12) {
+      Image(systemName: systemImage)
+        .foregroundStyle(.tint)
+        .frame(width: 24)
+      VStack(alignment: .leading, spacing: 4) {
+        Text(title).font(.subheadline.weight(.semibold))
+        Text(detail)
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+      }
+    }
+    .accessibilityElement(children: .ignore)
+    .accessibilityLabel(title)
+    .accessibilityValue(detail)
+    .accessibilityIdentifier(identifier)
   }
 }
 
