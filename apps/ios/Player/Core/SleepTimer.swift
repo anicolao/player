@@ -55,7 +55,7 @@ struct ActiveSleepTimer: Codable, Equatable, Identifiable, Sendable {
   var startedPositionMilliseconds: Int64
   var phase: SleepTimerPhase
 
-  var fadeDurationSeconds: TimeInterval { fadeEnabled ? 5 : 0 }
+  var fadeDurationSeconds: TimeInterval { fadeEnabled ? 10 : 0 }
 }
 
 enum SleepTimerHistoryStatus: String, Codable, Equatable, Sendable {

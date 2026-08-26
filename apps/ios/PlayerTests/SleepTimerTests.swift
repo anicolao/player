@@ -17,7 +17,7 @@ final class SleepTimerTests: XCTestCase {
       )
       XCTAssertEqual(timer.deadline, now.addingTimeInterval(preset.durationSeconds))
       XCTAssertNil(timer.boundaryPositionMilliseconds)
-      XCTAssertEqual(timer.fadeDurationSeconds, 5)
+      XCTAssertEqual(timer.fadeDurationSeconds, 10)
     }
 
     let custom = try SleepTimerPlanner.makeTimer(
@@ -95,12 +95,12 @@ final class SleepTimerTests: XCTestCase {
     )
     XCTAssertFalse(SleepTimerPlanner.shouldBeginFade(
       duration,
-      now: now.addingTimeInterval(594.999),
+      now: now.addingTimeInterval(589.999),
       currentPositionSeconds: 10
     ))
     XCTAssertTrue(SleepTimerPlanner.shouldBeginFade(
       duration,
-      now: now.addingTimeInterval(595),
+      now: now.addingTimeInterval(590),
       currentPositionSeconds: 10
     ))
 
@@ -192,7 +192,7 @@ final class SleepTimerTests: XCTestCase {
     playback.setPosition(seconds: 85)
     await model.evaluateSleepTimer()
     XCTAssertEqual(model.activeSleepTimer?.phase, .fading)
-    XCTAssertEqual(playback.fadeDurations, [5])
+    XCTAssertEqual(playback.fadeDurations, [10])
     XCTAssertEqual(playback.completeFadeCount, 0)
     XCTAssertTrue(model.library.sleepTimerHistory.isEmpty)
     XCTAssertFalse(model.library.positionJournal.contains(where: { $0.reason == .sleepTimer }))
