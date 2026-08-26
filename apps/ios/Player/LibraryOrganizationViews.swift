@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct LibraryOrganizationHome: View {
   @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -20,6 +21,7 @@ struct LibraryOrganizationHome: View {
           browse.padding(.horizontal, 20)
         }
         .padding(.vertical, 18)
+        .background(LibraryVerticalScrollSettler())
       }
       .playerMiniPlayerScrollRunway()
       .accessibilityIdentifier("library-root-scroll")
@@ -230,6 +232,54 @@ struct LibraryOrganizationHome: View {
     organizationDuration(max(book.durationSeconds - book.listeningState.positionSeconds, 0))
   }
 
+}
+
+private struct LibraryVerticalScrollSettler: UIViewRepresentable {
+  func makeUIView(context: Context) -> LibraryVerticalScrollSettlerView {
+    LibraryVerticalScrollSettlerView()
+  }
+
+  func updateUIView(_ uiView: LibraryVerticalScrollSettlerView, context: Context) {
+    uiView.configureEnclosingScrollViewIfNeeded()
+  }
+}
+
+private final class LibraryVerticalScrollSettlerView: UIView {
+  private weak var configuredScrollView: UIScrollView?
+
+  override init(frame: CGRect) {
+    super.init(frame: frame)
+    isUserInteractionEnabled = false
+    isAccessibilityElement = false
+  }
+
+  required init?(coder: NSCoder) {
+    fatalError("init(coder:) has not been implemented")
+  }
+
+  override func didMoveToWindow() {
+    super.didMoveToWindow()
+    configureEnclosingScrollViewIfNeeded()
+  }
+
+  override func layoutSubviews() {
+    super.layoutSubviews()
+    configureEnclosingScrollViewIfNeeded()
+  }
+
+  func configureEnclosingScrollViewIfNeeded() {
+    guard configuredScrollView == nil else { return }
+    var ancestor = superview
+    while let view = ancestor {
+      if let scrollView = view as? UIScrollView {
+        scrollView.bounces = false
+        scrollView.alwaysBounceVertical = false
+        configuredScrollView = scrollView
+        return
+      }
+      ancestor = view.superview
+    }
+  }
 }
 
 struct UpNextView: View {

@@ -213,6 +213,12 @@ trash:transactions=0:books=none:assets=0:bytes=0:restorable=false:managed-checks
 After restore, the organizer probe reports five books, b2 then b5 in Up Next,
 b3 and b4 finished, one collection, zero Trash transactions, and list mode.
 
+Before opening Trash, the journey scrolls the final Library control fully above
+the persistent mini-player, records its settled frame, and performs three more
+bottom-edge gestures. The final control must remain within one point of that
+frame after every gesture. This keeps the required mini-player runway while
+proving that repeated overscroll cannot restart an endless vertical bounce.
+
 ## Stable visual evidence
 
 Only after the associated programmatic assertions pass, TestStepHelper attaches:
