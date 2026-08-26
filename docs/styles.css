@@ -25,7 +25,7 @@ html {
 }
 
 [id] {
-  scroll-margin-top: var(--header-height);
+  scroll-margin-top: 0;
 }
 
 body {
@@ -810,7 +810,7 @@ h2 {
 
 @media (min-width: 701px) {
   .support-section {
-    min-height: calc(100vh - var(--header-height) - 214px);
+    min-height: calc(100vh - 214px);
     display: flex;
     align-items: center;
   }
@@ -1204,7 +1204,7 @@ h2 {
   .hero {
     min-height: auto;
     grid-template-columns: 1fr;
-    padding-block: 64px 76px;
+    padding-block: calc(var(--header-height) + 16px) 76px;
   }
 
   h1 {
@@ -1305,10 +1305,14 @@ h2 {
   }
 
   .support-section {
+    min-height: calc(100vh - 266px);
+    display: flex;
+    align-items: center;
     padding-block: 76px;
   }
 
   .support-card {
+    width: 100%;
     grid-template-columns: 1fr;
     gap: 24px;
     border-radius: 24px;
