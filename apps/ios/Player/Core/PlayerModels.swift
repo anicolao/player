@@ -747,6 +747,20 @@ enum RemotePlaybackCommand: Equatable, Sendable {
   case changePlaybackRate(Double)
 }
 
+enum RemoteTrackButton: Sendable {
+  case previous
+  case next
+
+  func playbackCommand(using preferences: TransportPreferences) -> RemotePlaybackCommand {
+    switch self {
+    case .previous:
+      .skipBackward(seconds: preferences.backwardSkipSeconds)
+    case .next:
+      .skipForward(seconds: preferences.forwardSkipSeconds)
+    }
+  }
+}
+
 struct NowPlayingSnapshot: Equatable, Sendable {
   var bookID: UUID
   var title: String

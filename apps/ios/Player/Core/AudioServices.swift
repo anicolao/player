@@ -494,8 +494,8 @@ final class MPRemoteCommandController: RemoteCommandControlling {
     install(center.playCommand, event: .play, handler: handler)
     install(center.pauseCommand, event: .pause, handler: handler)
     install(center.togglePlayPauseCommand, event: .togglePlayPause, handler: handler)
-    install(center.previousTrackCommand, event: .previousChapter, handler: handler)
-    install(center.nextTrackCommand, event: .nextChapter, handler: handler)
+    install(center.previousTrackCommand, trackButton: .previous, handler: handler)
+    install(center.nextTrackCommand, trackButton: .next, handler: handler)
 
     updateTransportConfiguration(transportPreferences)
     center.skipForwardCommand.isEnabled = true
@@ -553,6 +553,20 @@ final class MPRemoteCommandController: RemoteCommandControlling {
   ) {
     command.isEnabled = true
     let target = command.addTarget { _ in
+      Task { @MainActor in await handler(event) }
+      return .success
+    }
+    installedTargets.append((command, target))
+  }
+
+  private func install(
+    _ command: MPRemoteCommand,
+    trackButton: RemoteTrackButton,
+    handler: @escaping @MainActor @Sendable (RemotePlaybackCommand) async -> Void
+  ) {
+    command.isEnabled = true
+    let target = command.addTarget { _ in
+      let event = trackButton.playbackCommand(using: self.transportPreferences)
       Task { @MainActor in await handler(event) }
       return .success
     }

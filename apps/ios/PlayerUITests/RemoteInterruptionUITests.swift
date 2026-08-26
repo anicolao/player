@@ -4,8 +4,8 @@ import XCTest
 final class RemoteInterruptionUITests: XCTestCase {
   private let fixtureBookID = "20000000-0000-0000-0000-000000000001"
   private let registeredCommands: Set<String> = [
-    "change-position", "change-rate", "next-chapter", "pause", "play",
-    "previous-chapter", "skip-backward", "skip-forward", "toggle",
+    "change-position", "change-rate", "next-track-skip-forward", "pause", "play",
+    "previous-track-skip-backward", "skip-backward", "skip-forward", "toggle",
   ]
 
   func testRemoteInterruptionAndBackgroundEventsJournalAcknowledgedPositions() throws {
@@ -37,7 +37,7 @@ final class RemoteInterruptionUITests: XCTestCase {
     )
     assertIdentityAndPersistence(remotelyPlaying, expectedPositionMilliseconds: 12_000)
 
-    app.buttons["e2e-remote-skip-forward"].tap()
+    app.buttons["e2e-remote-next-track"].tap()
     let skippedForward = try requireProbe(
       probe,
       status: "playing",
@@ -67,7 +67,7 @@ final class RemoteInterruptionUITests: XCTestCase {
     )
     assertIdentityAndPersistence(toggledPlaying, expectedPositionMilliseconds: 42_000)
 
-    app.buttons["e2e-remote-skip-backward"].tap()
+    app.buttons["e2e-remote-previous-track"].tap()
     let skippedBackward = try requireProbe(
       probe,
       status: "playing",

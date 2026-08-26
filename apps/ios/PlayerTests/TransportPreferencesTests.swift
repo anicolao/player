@@ -27,6 +27,24 @@ final class TransportPreferencesTests: XCTestCase {
     XCTAssertEqual(resolved.seekContext, .chapter)
   }
 
+  func testExternalTrackButtonsUseConfiguredSkipIntervals() {
+    let preferences = TransportPreferences(
+      playbackRate: 1.25,
+      backwardSkipSeconds: 10,
+      forwardSkipSeconds: 25,
+      seekContext: .wholeBook
+    )
+
+    XCTAssertEqual(
+      RemoteTrackButton.previous.playbackCommand(using: preferences),
+      .skipBackward(seconds: 10)
+    )
+    XCTAssertEqual(
+      RemoteTrackButton.next.playbackCommand(using: preferences),
+      .skipForward(seconds: 25)
+    )
+  }
+
   func testTimelineMapsAssetBoundariesAndClampsChapterAndBookSeeks() throws {
     let book = makeBook()
 

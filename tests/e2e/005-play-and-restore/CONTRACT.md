@@ -61,8 +61,8 @@ this exposes a test control surface with these tappable identifiers:
 | `e2e-remote-play` | Registered remote play handler |
 | `e2e-remote-pause` | Registered remote pause handler |
 | `e2e-remote-toggle` | Registered remote toggle handler |
-| `e2e-remote-skip-forward` | Registered configured 30-second forward handler |
-| `e2e-remote-skip-backward` | Registered configured 15-second backward handler |
+| `e2e-remote-next-track` | Car/headset next-track event mapped to the configured 30-second forward interval |
+| `e2e-remote-previous-track` | Car/headset previous-track event mapped to the configured 15-second backward interval |
 | `e2e-interruption-began` | Audio-session interruption-began event |
 | `e2e-interruption-ended-no-resume` | Interruption-ended event without resume permission |
 
@@ -79,8 +79,9 @@ probe|<paused|playing>|<book-uuid>|<chapter-index>|<position-ms>|<journal-sequen
 ```
 
 The registered command CSV contains exactly `change-position`, `change-rate`,
-`next-chapter`, `pause`, `play`, `previous-chapter`, `skip-backward`,
-`skip-forward`, and `toggle`; ordering is immaterial. The probe
+`next-track-skip-forward`, `pause`, `play`,
+`previous-track-skip-backward`, `skip-backward`, `skip-forward`, and `toggle`;
+ordering is immaterial. The probe
 reads the real observable playback state, recovered snapshot, latest
 integrity-valid journal event, and production remote-registration state. Reading
 it has no side effects. Absolute-position behavior is covered by the same
@@ -88,9 +89,11 @@ injected production boundary in the core integration suite.
 
 The fixture starts with journal sequence 1, reason `pause`, at 12,000 ms. Every
 remote play/pause/seek completes its production-model operation before the E2E
-control action returns. Forward skip reaches 42,000 ms and backward skip reaches
-27,000 ms. Each produces one event using the existing `play`, `pause`, or `seek`
-reason and advances the journal sequence exactly once.
+control action returns. The car/headset next-track event reaches 42,000 ms and
+the previous-track event returns to 27,000 ms through the same configured
+interval mapping used by the production adapter. Each produces one event using
+the existing `play`, `pause`, or `seek` reason and advances the journal sequence
+exactly once.
 
 Interruption-began pauses and appends one `interruption` event. Ending without
 resume permission stays paused and appends nothing. The test then resumes and
