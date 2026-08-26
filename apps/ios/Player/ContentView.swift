@@ -2343,11 +2343,15 @@ func compactPlaybackTime(_ seconds: Double) -> String {
         control("Toggle", identifier: "e2e-remote-toggle") {
           await E2EPlaybackEventBridge.shared.sendRemote(.togglePlayPause)
         }
-        control("Forward", identifier: "e2e-remote-skip-forward") {
-          await E2EPlaybackEventBridge.shared.sendRemote(.skipForward(seconds: 30))
+        control("Car Forward", identifier: "e2e-remote-next-track") {
+          await E2EPlaybackEventBridge.shared.sendRemote(
+            RemoteTrackButton.next.playbackCommand(using: model.currentTransportPreferences)
+          )
         }
-        control("Backward", identifier: "e2e-remote-skip-backward") {
-          await E2EPlaybackEventBridge.shared.sendRemote(.skipBackward(seconds: 15))
+        control("Car Backward", identifier: "e2e-remote-previous-track") {
+          await E2EPlaybackEventBridge.shared.sendRemote(
+            RemoteTrackButton.previous.playbackCommand(using: model.currentTransportPreferences)
+          )
         }
         control("Interrupt", identifier: "e2e-interruption-began") {
           await E2EPlaybackEventBridge.shared.sendAudioSession(.interruptionBegan)
