@@ -25,7 +25,7 @@ struct BackupSettingsView: View {
 
   var body: some View {
     ZStack {
-      ScrollViewReader { proxy in
+      ScrollViewReader { _ in
         ScrollView {
           LazyVStack(alignment: .leading, spacing: 24) {
             BackupSettingsSection("Protect your library") {
@@ -67,8 +67,6 @@ struct BackupSettingsView: View {
                 )
               }
             }
-            .id("backup-scroll-top")
-
             BackupSettingsSection("Export") {
               BackupSettingsRow {
                 HStack {
@@ -235,8 +233,6 @@ struct BackupSettingsView: View {
         .accessibilityIdentifier("backup-scroll")
         .background(Color(uiColor: .systemGroupedBackground))
         #if E2E
-          .onAppear { scrollBackupToTop(proxy) }
-          .onChange(of: e2eRevision) { _, _ in scrollBackupToTop(proxy) }
           .overlay(alignment: .topLeading) {
             if E2EBackupBridge.shared.isConfigured {
               HStack(spacing: 0) {
@@ -249,14 +245,6 @@ struct BackupSettingsView: View {
                 e2eTriggerButton("e2e-backup-restore") {
                   try await E2EBackupBridge.shared.restore(using: model)
                 }
-                Button { scrollBackupToTop(proxy) } label: {
-                  Color.white.opacity(0.001)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Align Backup screen to top")
-                .accessibilityIdentifier("e2e-backup-scroll-top")
               }
             }
           }
@@ -393,14 +381,6 @@ struct BackupSettingsView: View {
   }
 
   #if E2E
-    private func scrollBackupToTop(_ proxy: ScrollViewProxy) {
-      var transaction = Transaction()
-      transaction.disablesAnimations = true
-      withTransaction(transaction) {
-        proxy.scrollTo("backup-scroll-top", anchor: .top)
-      }
-    }
-
     private func runE2EAction(_ action: @escaping @MainActor () async throws -> Void) async {
       isWorking = true
       message = nil
