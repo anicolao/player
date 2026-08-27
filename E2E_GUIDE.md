@@ -12,7 +12,7 @@ Player uses XCTest/XCUIAutomation for semantic verification and full-screen scre
   runners. Any channel delta of 9 or greater fails. There is no spatial
   threshold, ratio, masking, antialiasing region, or retry.
 - A baseline update is a reviewed design change, never an automatic response to failure.
-- Test code may not use arbitrary sleeps, delayed dispatch, or test retries. After semantic state passes, the step helper samples the rendered screen until two consecutive frames are pixel-identical; this is a rendering-stability gate, not a tolerance or retry.
+- Test code may not use arbitrary sleeps, delayed dispatch, or test retries. After semantic state passes, the step helper samples the rendered screen until five consecutive frames are pixel-identical; this is a rendering-stability gate, not a tolerance or retry.
 - Every observable condition has a maximum timeout of two seconds. Longer work must expose intermediate states that can be asserted independently.
 
 ## Pinned rendering environment

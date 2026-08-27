@@ -158,21 +158,30 @@ final class TestStepHelper {
   }
 
   private func stableScreenshot() -> XCUIScreenshot {
+    let requiredStableFrameCount = 5
     var previous = XCUIScreen.main.screenshot()
     var previousPixels = previous.image.pngData()
+    var stableFrameCount = 1
 
     for _ in 0..<20 {
       RunLoop.current.run(until: Date().addingTimeInterval(0.1))
       let current = XCUIScreen.main.screenshot()
       let currentPixels = current.image.pngData()
       if currentPixels == previousPixels {
-        return current
+        stableFrameCount += 1
+        if stableFrameCount == requiredStableFrameCount {
+          return current
+        }
+      } else {
+        stableFrameCount = 1
       }
       previous = current
       previousPixels = currentPixels
     }
 
-    XCTFail("The screen did not reach two consecutive pixel-identical frames")
+    XCTFail(
+      "The screen did not reach \(requiredStableFrameCount) consecutive pixel-identical frames"
+    )
     return previous
   }
 
