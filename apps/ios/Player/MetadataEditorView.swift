@@ -25,6 +25,7 @@ struct MetadataEditorView: View {
   @State private var cropX = 0.5
   @State private var cropY = 0.5
   @State private var errorMessage: String?
+  @FocusState private var isTitleFocused: Bool
 
   var body: some View {
     ZStack {
@@ -59,6 +60,16 @@ struct MetadataEditorView: View {
           }
         #endif
       }
+      #if E2E
+        StateProbe(
+          id: "metadata-title-focus-state",
+          value: isTitleFocused ? "focused" : "unfocused"
+        )
+        StateProbe(
+          id: "metadata-title-value-state",
+          value: draft.title.isEmpty ? "empty" : "value=\(draft.title)"
+        )
+      #endif
     }
     .navigationTitle("Edit Details")
     .navigationBarTitleDisplayMode(.inline)
@@ -158,6 +169,7 @@ struct MetadataEditorView: View {
           )
             .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
             .textInputAutocapitalization(.words)
+            .focused($isTitleFocused)
             .accessibilityIdentifier("metadata-title-input")
           Button("Apply") {
             touchedFields.insert(.title)
