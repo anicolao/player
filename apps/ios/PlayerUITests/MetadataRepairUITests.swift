@@ -115,9 +115,9 @@ final class MetadataRepairUITests: XCTestCase {
     // The repaired title already exists on the review screen. Wait for the
     // asynchronous commit to leave that screen before resolving the matching
     // title in Library; otherwise a fast host can tap the stale review label.
-    XCTAssertTrue(review.waitForNonExistence(timeout: 10))
+    XCTAssertTrue(review.waitForNonExistence(timeout: 2))
     let repairedBook = app.staticTexts["The Amber Signal"]
-    XCTAssertTrue(repairedBook.waitForExistence(timeout: 5))
+    XCTAssertTrue(repairedBook.waitForExistence(timeout: 2))
     repairedBook.tap()
 
     let bookMetadata = anyElement(app, "book-metadata-probe")

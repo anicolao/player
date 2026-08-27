@@ -135,19 +135,21 @@ final class BackupUITests: XCTestCase {
     let alignToTop = app.buttons["e2e-backup-scroll-top"]
     XCTAssertTrue(alignToTop.waitForExistence(timeout: 2))
     alignToTop.tap()
-    XCTAssertTrue(anyElement(app, "backup-purpose").isHittable)
-    // Let the initial navigation hierarchy finish rasterizing before capture.
-    RunLoop.current.run(until: Date().addingTimeInterval(1))
+    let purpose = anyElement(app, "backup-purpose")
+    let aligned = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "exists == true AND hittable == true"),
+      object: purpose
+    )
+    XCTAssertEqual(XCTWaiter.wait(for: [aligned], timeout: 2), .completed)
   }
 
   private func tapWalkthroughAction(_ identifier: String, in app: XCUIApplication) {
     let trigger = app.buttons["e2e-trigger-\(identifier)"]
     XCTAssertTrue(trigger.waitForExistence(timeout: 2))
-    let enabledDeadline = Date().addingTimeInterval(5)
-    while !trigger.isEnabled, Date() < enabledDeadline {
-      RunLoop.current.run(until: Date().addingTimeInterval(0.05))
-    }
-    XCTAssertTrue(trigger.isEnabled)
+    let enabled = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "enabled == true"), object: trigger
+    )
+    XCTAssertEqual(XCTWaiter.wait(for: [enabled], timeout: 2), .completed)
     trigger.tap()
   }
 
@@ -156,7 +158,7 @@ final class BackupUITests: XCTestCase {
     _ expected: String,
     in app: XCUIApplication
   ) throws {
-    guard element.waitForStringValue(expected, timeout: 3) else {
+    guard element.waitForStringValue(expected, timeout: 2) else {
       let alert = app.alerts.firstMatch
       let alertDiagnostic =
         alert.exists
@@ -170,21 +172,13 @@ final class BackupUITests: XCTestCase {
   }
 
   private func requireProbeValue(_ expected: String, in app: XCUIApplication) throws {
-    let deadline = Date().addingTimeInterval(5)
-    var latest: String?
-    repeat {
-      let probe = anyElement(app, "backup-e2e-probe")
-      if probe.exists {
-        latest = probe.value as? String
-        if latest == expected { return }
-      }
-      RunLoop.current.run(until: Date().addingTimeInterval(0.05))
-    } while Date() < deadline
-
-    XCTFail(
-      "The backup journey did not reach \(expected); actual=\(String(describing: latest))"
-    )
-    throw BackupUITestError.semanticStateUnavailable
+    let probe = anyElement(app, "backup-e2e-probe")
+    guard probe.waitForStringValue(expected, timeout: 2) else {
+      XCTFail(
+        "The backup journey did not reach \(expected); actual=\(String(describing: probe.value))"
+      )
+      throw BackupUITestError.semanticStateUnavailable
+    }
   }
 }
 

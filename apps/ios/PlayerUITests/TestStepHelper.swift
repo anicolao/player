@@ -1,16 +1,37 @@
 import XCTest
 
 @MainActor
+private final class StableScreenshotSampler {
+  private let requiredStableFrameCount: Int
+  private(set) var latest: XCUIScreenshot
+  private var latestPixels: Data?
+  private var stableFrameCount = 1
+
+  init(requiredStableFrameCount: Int) {
+    self.requiredStableFrameCount = requiredStableFrameCount
+    latest = XCUIScreen.main.screenshot()
+    latestPixels = latest.image.pngData()
+  }
+
+  func sampleIsStable() -> Bool {
+    let current = XCUIScreen.main.screenshot()
+    let currentPixels = current.image.pngData()
+    if currentPixels == latestPixels { stableFrameCount += 1 }
+    else { stableFrameCount = 1 }
+    latest = current
+    latestPixels = currentPixels
+    return stableFrameCount >= requiredStableFrameCount
+  }
+}
+
+@MainActor
 extension XCUIElement {
   func waitForStringValue(_ expectedValue: String, timeout: TimeInterval) -> Bool {
-    let deadline = Date().addingTimeInterval(timeout)
-    repeat {
-      if exists, value.map(String.init(describing:)) == expectedValue {
-        return true
-      }
-      RunLoop.current.run(until: Date().addingTimeInterval(0.05))
-    } while Date() < deadline
-    return false
+    let expectation = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "exists == true AND value == %@", expectedValue),
+      object: self
+    )
+    return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
   }
 }
 
@@ -71,20 +92,21 @@ struct StepVerification {
     _ specification: String
   ) -> StepVerification {
     StepVerification(specification: specification) {
-      let deadline = Date().addingTimeInterval(TestStepHelper.conditionTimeout)
-      var latest = ""
-      repeat {
-        if element.exists {
-          latest = element.value.map(String.init(describing:)) ?? ""
-          if latest.contains(expectedFragment) { return true }
-        }
-        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
-      } while Date() < deadline
-      print(
-        "Value verification failed: identifier=\(element.identifier), "
-          + "expected fragment=\(expectedFragment), latest=\(latest)"
+      let expectation = XCTNSPredicateExpectation(
+        predicate: NSPredicate(format: "exists == true AND value CONTAINS %@", expectedFragment),
+        object: element
       )
-      return false
+      guard XCTWaiter.wait(
+        for: [expectation], timeout: TestStepHelper.conditionTimeout
+      ) == .completed else {
+        let latest = element.value.map(String.init(describing:)) ?? ""
+        print(
+          "Value verification failed: identifier=\(element.identifier), "
+            + "expected fragment=\(expectedFragment), latest=\(latest)"
+        )
+        return false
+      }
+      return true
     }
   }
 }
@@ -158,31 +180,20 @@ final class TestStepHelper {
   }
 
   private func stableScreenshot() -> XCUIScreenshot {
-    let requiredStableFrameCount = 5
-    var previous = XCUIScreen.main.screenshot()
-    var previousPixels = previous.image.pngData()
-    var stableFrameCount = 1
-
-    for _ in 0..<20 {
-      RunLoop.current.run(until: Date().addingTimeInterval(0.1))
-      let current = XCUIScreen.main.screenshot()
-      let currentPixels = current.image.pngData()
-      if currentPixels == previousPixels {
-        stableFrameCount += 1
-        if stableFrameCount == requiredStableFrameCount {
-          return current
-        }
-      } else {
-        stableFrameCount = 1
-      }
-      previous = current
-      previousPixels = currentPixels
+    let requiredStableFrameCount = 2
+    let sampler = StableScreenshotSampler(requiredStableFrameCount: requiredStableFrameCount)
+    let stable = XCTNSPredicateExpectation(
+      predicate: NSPredicate { _, _ in sampler.sampleIsStable() },
+      object: nil
+    )
+    if XCTWaiter.wait(for: [stable], timeout: Self.conditionTimeout) == .completed {
+      return sampler.latest
     }
 
     XCTFail(
       "The screen did not reach \(requiredStableFrameCount) consecutive pixel-identical frames"
     )
-    return previous
+    return sampler.latest
   }
 
   func generateDocs() {

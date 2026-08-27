@@ -10,7 +10,7 @@ final class AccessibilityUITests: XCTestCase {
     app.launch()
     app.tabBars.buttons["Settings"].tap()
     let accessibility = app.buttons["settings-accessibility"]
-    scrollTo(accessibility, in: app)
+    align("e2e-align-settings-accessibility", to: accessibility, in: app)
     accessibility.tap()
 
     let highContrast = app.switches["accessibility-high-contrast"]
@@ -74,12 +74,11 @@ final class AccessibilityUITests: XCTestCase {
     )
 
     let edit = app.buttons["edit-metadata"]
-    scrollTo(edit, in: app)
+    align("e2e-align-review-edit-metadata", to: edit, in: app)
     edit.tap()
     let titleField = app.textFields["metadata-title-input"]
     app.buttons["e2e-align-metadata-identity"].tap()
-    XCTAssertTrue(titleField.waitForExistence(timeout: 2))
-    RunLoop.current.run(until: Date().addingTimeInterval(0.8))
+    waitUntilHittable(titleField)
     try tester.step(
       "large-text-metadata-repair",
       description: "Metadata fields reflow vertically instead of compressing their labels",
@@ -99,8 +98,7 @@ final class AccessibilityUITests: XCTestCase {
     app.staticTexts["Harbor at Dawn"].tap()
     let playBook = app.buttons["play-book"]
     app.buttons["e2e-align-book-detail-play"].tap()
-    XCTAssertTrue(playBook.waitForExistence(timeout: 2))
-    RunLoop.current.run(until: Date().addingTimeInterval(0.8))
+    waitUntilHittable(playBook)
     try tester.step(
       "large-text-book-detail",
       description: "Book Detail stacks identity and primary actions at the largest text size",
@@ -116,9 +114,9 @@ final class AccessibilityUITests: XCTestCase {
 
     playBook.tap()
     let slider = app.sliders["player-position-slider"]
-    scrollTo(slider, in: app)
     let playPause = app.buttons["player-play-pause"]
-    scrollTo(playPause, in: app)
+    align("e2e-align-now-playing-transport", to: playPause, in: app)
+    XCTAssertTrue(slider.waitForExistence(timeout: 2))
     try tester.step(
       "large-text-now-playing",
       description: "Now Playing scrolls to an adjustable timeline and reachable transport controls",
@@ -139,7 +137,7 @@ final class AccessibilityUITests: XCTestCase {
     app = try makePopulatedLibraryApplication()
     app.launch()
     let upNext = app.buttons["open-up-next"]
-    scrollTo(upNext, in: app)
+    align("e2e-align-library-up-next", to: upNext, in: app)
     upNext.tap()
     try tester.step(
       "large-text-non-drag-ordering",
@@ -170,7 +168,7 @@ final class AccessibilityUITests: XCTestCase {
       "The Settings layout picker should name Shelf as the active book layout"
     )
     let accessibility = app.buttons["settings-accessibility"]
-    scrollTo(accessibility, in: app)
+    align("e2e-align-settings-accessibility", to: accessibility, in: app)
     accessibility.tap()
     let highContrast = app.switches["accessibility-high-contrast"]
     tapSwitchControl(highContrast)
@@ -178,8 +176,7 @@ final class AccessibilityUITests: XCTestCase {
     tapSwitchControl(reduceArtwork)
     let activeSettings = app.staticTexts["Active iPhone settings"]
     app.buttons["e2e-align-active-iphone-settings"].tap()
-    XCTAssertTrue(activeSettings.waitForExistence(timeout: 2))
-    RunLoop.current.run(until: Date().addingTimeInterval(0.8))
+    waitUntilHittable(activeSettings)
     try tester.step(
       "accessibility-preferences",
       description: "Settings distinguishes app preferences from authoritative iPhone settings",
@@ -283,10 +280,23 @@ final class AccessibilityUITests: XCTestCase {
     element.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
   }
 
-  private func scrollTo(_ element: XCUIElement, in app: XCUIApplication) {
-    for _ in 0..<8 where !element.isHittable { app.swipeUp() }
-    XCTAssertTrue(element.waitForExistence(timeout: 2))
-    RunLoop.current.run(until: Date().addingTimeInterval(0.8))
+  private func align(
+    _ controlIdentifier: String,
+    to element: XCUIElement,
+    in app: XCUIApplication
+  ) {
+    let control = app.buttons[controlIdentifier]
+    XCTAssertTrue(control.waitForExistence(timeout: 2))
+    control.tap()
+    waitUntilHittable(element)
+  }
+
+  private func waitUntilHittable(_ element: XCUIElement) {
+    let expectation = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "exists == true AND hittable == true"),
+      object: element
+    )
+    XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: 2), .completed)
   }
 
   private func visibleControl(

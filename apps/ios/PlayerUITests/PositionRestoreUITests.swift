@@ -224,16 +224,17 @@ final class PositionRestoreUITests: XCTestCase {
     status: String,
     positionMilliseconds: Int? = nil
   ) -> PlaybackSemanticState? {
-    let deadline = Date().addingTimeInterval(2)
-    repeat {
-      if let state = PlaybackSemanticState(element.value as? String),
+    let predicate = NSPredicate { object, _ in
+      guard let element = object as? XCUIElement,
+        let state = PlaybackSemanticState(element.value as? String),
          state.status == status,
-         positionMilliseconds == nil || state.positionMilliseconds == positionMilliseconds {
-        return state
-      }
-      RunLoop.current.run(until: Date().addingTimeInterval(0.05))
-    } while Date() < deadline
-    return nil
+         positionMilliseconds == nil || state.positionMilliseconds == positionMilliseconds
+      else { return false }
+      return true
+    }
+    let expectation = XCTNSPredicateExpectation(predicate: predicate, object: element)
+    guard XCTWaiter.wait(for: [expectation], timeout: 2) == .completed else { return nil }
+    return PlaybackSemanticState(element.value as? String)
   }
 
   private func restoredPositionVerification(

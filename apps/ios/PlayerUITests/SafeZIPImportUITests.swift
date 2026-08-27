@@ -186,20 +186,12 @@ final class SafeZIPImportUITests: XCTestCase {
   }
 
   private func requireValue(_ element: XCUIElement, _ expected: String) throws {
-    // Archive inspection runs on production async paths. A cold hosted
-    // simulator can remain in the observable processing state for several
-    // seconds even though the same fixture completes immediately when warm.
-    let deadline = Date().addingTimeInterval(10)
-    var latest: String?
-    repeat {
-      latest = element.value as? String
-      if element.exists, latest == expected { return }
-      RunLoop.current.run(until: Date().addingTimeInterval(0.05))
-    } while Date() < deadline
-    XCTFail(
-      "The ZIP safety journey expected \(expected), latest=\(latest ?? "nil")"
-    )
-    throw SafeZIPImportTestError.semanticStateUnavailable
+    guard element.waitForStringValue(expected, timeout: 2) else {
+      XCTFail(
+        "The ZIP safety journey expected \(expected), latest=\(String(describing: element.value))"
+      )
+      throw SafeZIPImportTestError.semanticStateUnavailable
+    }
   }
 }
 

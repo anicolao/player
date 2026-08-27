@@ -5,6 +5,7 @@ struct LibrarySearchView: View {
   @State private var query = ""
   @State private var index = LibrarySearchIndex.empty
   @State private var isIndexed = false
+  @FocusState private var isSearchFocused: Bool
 
   var body: some View {
     ZStack {
@@ -16,6 +17,12 @@ struct LibrarySearchView: View {
       }
       StateProbe(id: "library-search-screen", value: isIndexed ? "ready" : "indexing")
       StateProbe(id: "library-search-probe", value: probeValue)
+      #if E2E
+        StateProbe(
+          id: "library-search-focus-state",
+          value: isSearchFocused ? "focused" : "unfocused"
+        )
+      #endif
     }
     .navigationTitle("Search")
     .task(id: indexRevision) {
@@ -30,6 +37,7 @@ struct LibrarySearchView: View {
     HStack(spacing: 10) {
       Image(systemName: "magnifyingglass").foregroundStyle(PlayerColor.secondary)
       TextField("Search your library", text: $query)
+        .focused($isSearchFocused)
         .textInputAutocapitalization(.never)
         .autocorrectionDisabled()
         .submitLabel(.search)
