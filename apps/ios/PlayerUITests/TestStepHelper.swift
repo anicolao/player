@@ -1,6 +1,23 @@
 import XCTest
 
 @MainActor
+func dismissAppleIntelligenceNotificationIfPresent(
+  file: StaticString = #filePath,
+  line: UInt = #line
+) {
+  let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+  let notificationTitle = springboard.staticTexts["Ready for Apple Intelligence"]
+  guard notificationTitle.waitForExistence(timeout: 0.5) else { return }
+  notificationTitle.swipeUp()
+  XCTAssertFalse(
+    notificationTitle.waitForExistence(timeout: 1),
+    "The simulator's Apple Intelligence notification should not obscure the walkthrough",
+    file: file,
+    line: line
+  )
+}
+
+@MainActor
 extension XCUIElement {
   func waitForStringValue(_ expectedValue: String, timeout: TimeInterval) -> Bool {
     if currentStringValue == expectedValue { return true }
@@ -145,6 +162,8 @@ final class TestStepHelper {
         line: #line
       )
     }
+
+    dismissAppleIntelligenceNotificationIfPresent()
 
     let filename = String(format: "%03d-%@.png", nextScreenshotIndex, identifier)
     nextScreenshotIndex += 1

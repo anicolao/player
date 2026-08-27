@@ -166,17 +166,6 @@ final class PositionRestoreUITests: XCTestCase {
     return app
   }
 
-  private func dismissAppleIntelligenceNotificationIfPresent() {
-    let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-    let notificationTitle = springboard.staticTexts["Ready for Apple Intelligence"]
-    guard notificationTitle.waitForExistence(timeout: 0.5) else { return }
-    notificationTitle.swipeUp()
-    XCTAssertFalse(
-      notificationTitle.waitForExistence(timeout: 1),
-      "The simulator's Apple Intelligence notification should not obscure the walkthrough"
-    )
-  }
-
   private func requirePlaybackState(
     _ element: XCUIElement,
     status: String,

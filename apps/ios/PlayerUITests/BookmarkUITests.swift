@@ -373,6 +373,7 @@ final class BookmarkUITests: XCTestCase {
     let elementType = field.elementType
     let currentField = app.descendants(matching: elementType)[identifier]
     XCTAssertTrue(currentField.waitForExistence(timeout: 2))
+    dismissAppleIntelligenceNotificationIfPresent()
     currentField.tap()
 
     let focusExpectation: (identifier: String, value: String)
