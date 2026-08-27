@@ -30,7 +30,7 @@ final class BackupUITests: XCTestCase {
     )
     app.launch()
 
-    scrollBackupToTop(app)
+    requireBackupTopVisible(app)
     try tester.step(
       "backup-settings",
       description: "Backup choices explain portable media and local automatic copies",
@@ -64,7 +64,7 @@ final class BackupUITests: XCTestCase {
       "backup:exported:books=1:bookmarks=1:position=42000:media=1:audio=true",
       in: app
     )
-    scrollBackupToTop(app)
+    requireBackupTopVisible(app)
     try tester.step(
       "verified-export",
       description: "A media-inclusive package preserves one checksum-verified audio payload",
@@ -82,7 +82,7 @@ final class BackupUITests: XCTestCase {
       "backup:cleared:books=0:bookmarks=0:position=-1:media=0:audio=false",
       in: app
     )
-    scrollBackupToTop(app)
+    requireBackupTopVisible(app)
     try tester.step(
       "cleared-library",
       description: "The fixture library and managed media are absent before restore",
@@ -100,7 +100,7 @@ final class BackupUITests: XCTestCase {
       "backup:restored:books=1:bookmarks=1:position=42000:media=1:audio=true",
       in: app
     )
-    scrollBackupToTop(app)
+    requireBackupTopVisible(app)
     try tester.step(
       "restored-library",
       description: "Restore returns the identical library only after integrity verification",
@@ -129,18 +129,26 @@ final class BackupUITests: XCTestCase {
     app.descendants(matching: .any)[identifier]
   }
 
-  private func scrollBackupToTop(_ app: XCUIApplication) {
+  private func requireBackupTopVisible(_ app: XCUIApplication) {
     let scrollView = app.scrollViews["backup-scroll"]
     XCTAssertTrue(scrollView.waitForExistence(timeout: 2))
-    let alignToTop = app.buttons["e2e-backup-scroll-top"]
-    XCTAssertTrue(alignToTop.waitForExistence(timeout: 2))
-    alignToTop.tap()
+    let heading = app.staticTexts["Protect your library"]
     let purpose = anyElement(app, "backup-purpose")
-    let aligned = XCTNSPredicateExpectation(
-      predicate: NSPredicate(format: "exists == true AND hittable == true"),
-      object: purpose
+    let aligned = NSPredicate { _, _ in
+      guard heading.exists, purpose.exists else { return false }
+      let viewport = scrollView.frame
+      let headingFrame = heading.frame
+      return headingFrame.minY >= viewport.minY
+        && headingFrame.maxY <= viewport.maxY
+        && purpose.frame.maxY <= viewport.maxY
+    }
+    if aligned.evaluate(with: purpose) { return }
+    let expectation = XCTNSPredicateExpectation(predicate: aligned, object: purpose)
+    if XCTWaiter.wait(for: [expectation], timeout: 2) == .completed { return }
+    XCTAssertTrue(
+      aligned.evaluate(with: purpose),
+      "The Backup heading and purpose row must be inside the visible viewport"
     )
-    XCTAssertEqual(XCTWaiter.wait(for: [aligned], timeout: 2), .completed)
   }
 
   private func tapWalkthroughAction(_ identifier: String, in app: XCUIApplication) {
