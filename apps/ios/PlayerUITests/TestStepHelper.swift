@@ -1,30 +1,6 @@
 import XCTest
 
 @MainActor
-private final class StableScreenshotSampler {
-  private let requiredStableFrameCount: Int
-  private(set) var latest: XCUIScreenshot
-  private var latestPixels: Data?
-  private var stableFrameCount = 1
-
-  init(requiredStableFrameCount: Int) {
-    self.requiredStableFrameCount = requiredStableFrameCount
-    latest = XCUIScreen.main.screenshot()
-    latestPixels = latest.image.pngData()
-  }
-
-  func sampleIsStable() -> Bool {
-    let current = XCUIScreen.main.screenshot()
-    let currentPixels = current.image.pngData()
-    if currentPixels == latestPixels { stableFrameCount += 1 }
-    else { stableFrameCount = 1 }
-    latest = current
-    latestPixels = currentPixels
-    return stableFrameCount >= requiredStableFrameCount
-  }
-}
-
-@MainActor
 extension XCUIElement {
   func waitForStringValue(_ expectedValue: String, timeout: TimeInterval) -> Bool {
     let expectation = XCTNSPredicateExpectation(
@@ -164,7 +140,7 @@ final class TestStepHelper {
     let filename = String(format: "%03d-%@.png", nextScreenshotIndex, identifier)
     nextScreenshotIndex += 1
 
-    let screenshot = stableScreenshot()
+    let screenshot = XCUIScreen.main.screenshot()
     let attachment = XCTAttachment(screenshot: screenshot)
     attachment.name = filename
     attachment.lifetime = .keepAlways
@@ -177,23 +153,6 @@ final class TestStepHelper {
         verifications: verifications.map(\.specification)
       )
     )
-  }
-
-  private func stableScreenshot() -> XCUIScreenshot {
-    let requiredStableFrameCount = 2
-    let sampler = StableScreenshotSampler(requiredStableFrameCount: requiredStableFrameCount)
-    let stable = XCTNSPredicateExpectation(
-      predicate: NSPredicate { _, _ in sampler.sampleIsStable() },
-      object: nil
-    )
-    if XCTWaiter.wait(for: [stable], timeout: Self.conditionTimeout) == .completed {
-      return sampler.latest
-    }
-
-    XCTFail(
-      "The screen did not reach \(requiredStableFrameCount) consecutive pixel-identical frames"
-    )
-    return sampler.latest
   }
 
   func generateDocs() {
