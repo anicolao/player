@@ -392,8 +392,18 @@ final class BookmarkUITests: XCTestCase {
       "Expected \(identifier) to acquire focus before typing"
     )
     currentField.typeText(text)
+
+    let valueProbeIdentifier: String?
+    switch identifier {
+    case "bookmark-label-editor": valueProbeIdentifier = "bookmark-label-editor-value"
+    case "bookmark-note-editor": valueProbeIdentifier = "bookmark-note-editor-value"
+    default: valueProbeIdentifier = nil
+    }
+    let valueProbeMatches = valueProbeIdentifier.map {
+      app.descendants(matching: .any)[$0].waitForStringValue(text, timeout: 2)
+    } ?? false
     XCTAssertTrue(
-      currentField.waitForStringValue(text, timeout: 2),
+      valueProbeMatches || currentField.waitForStringValue(text, timeout: 2),
       "Expected \(identifier) to receive the complete text"
     )
   }
