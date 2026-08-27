@@ -6,6 +6,16 @@ on:
       - main
     paths:
       - "docs/**"
+      - "app-store/listing.json"
+      - "scripts/build-website"
+      - "scripts/capture-marketing-screenshots"
+      - "apps/ios/Player/**"
+      - "apps/ios/PlayerUITests/**"
+      - "apps/ios/scripts/**"
+      - "apps/ios/project.yml"
+      - "tests/e2e/013-app-store-listing/**"
+      - "flake.nix"
+      - "flake.lock"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -23,19 +33,23 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      PLAYER_SKIP_SIMULATOR_LAUNCH: "1"
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
-      - name: Assemble static site
-        run: |
-          mkdir _site
-          cp docs/index.html docs/styles.css docs/site.js docs/robots.txt docs/sitemap.xml docs/CNAME docs/.nojekyll _site/
-          cp -R docs/assets docs/community-assets _site/
+      - name: Assemble site with fresh E2E screenshots
+        run: nix develop --command bash --noprofile --norc -e -o pipefail -c 'PLAYER_MARKETING_INSIDE_NIX=1 scripts/build-website --output _site'
 
       - name: Upload site artifact
         uses: actions/upload-pages-artifact@v4

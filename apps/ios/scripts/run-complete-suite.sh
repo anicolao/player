@@ -78,5 +78,7 @@ run_story 011-offline-recovery \
   PlayerUITests/OfflineRecoveryUITests/testRecoversStartupAndExportsOnlySanitizedOfflineDiagnostics
 run_story 012-monetization \
   PlayerUITests/MonetizationUITests/testExplainsExhaustionAndCompletesAOneTimeUnlock
+run_story 013-app-store-listing \
+  PlayerUITests/AppStoreListingUITests/testCapturesCanonicalMarketingSurfaces
 
-echo "Complete Player suite passed: unit/integration tests and Stories 001-012."
+echo "Complete Player suite passed: unit/integration tests and Stories 001-013."

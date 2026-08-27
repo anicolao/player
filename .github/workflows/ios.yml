@@ -17,6 +17,12 @@ on:
       - MVP_ACCEPTANCE_MATRIX.md
       - MONETIZATION_PLAN.md
       - APP_STORE_SUBMISSION_PLAN.md
+      - APP_STORE_LISTING.md
+      - APP_STORE_LISTING_DESIGN.md
+      - app-store/**
+      - scripts/app-store-listing
+      - scripts/capture-marketing-screenshots
+      - scripts/render-app-store-listing.swift
       - MOCKUP_COMPARISON.md
       - README.md
       - TESTFLIGHT_SETUP.md
@@ -41,6 +47,12 @@ on:
       - MVP_ACCEPTANCE_MATRIX.md
       - MONETIZATION_PLAN.md
       - APP_STORE_SUBMISSION_PLAN.md
+      - APP_STORE_LISTING.md
+      - APP_STORE_LISTING_DESIGN.md
+      - app-store/**
+      - scripts/app-store-listing
+      - scripts/capture-marketing-screenshots
+      - scripts/render-app-store-listing.swift
       - MOCKUP_COMPARISON.md
       - README.md
       - TESTFLIGHT_SETUP.md
@@ -155,6 +167,9 @@ jobs:
           - story: 012-monetization
             tests: >-
               PlayerUITests/MonetizationUITests/testExplainsExhaustionAndCompletesAOneTimeUnlock
+          - story: 013-app-store-listing
+            tests: >-
+              PlayerUITests/AppStoreListingUITests/testCapturesCanonicalMarketingSurfaces
     defaults:
       run:
         shell: nix develop --command bash --noprofile --norc -e -o pipefail {0}
@@ -184,6 +199,14 @@ jobs:
           ${{ matrix.story }}
           ${{ matrix.tests }}
 
+      - name: Render reviewable App Store images
+        if: matrix.story == '013-app-store-listing'
+        run: >-
+          swift scripts/render-app-store-listing.swift
+          app-store/listing.json
+          apps/ios/DerivedData/E2E/013-app-store-listing/ActualWalkthrough/screenshots/ios
+          build/app-store-listing/screenshots
+
       - name: Upload reviewable diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -193,6 +216,7 @@ jobs:
             apps/ios/DerivedData/E2E/${{ matrix.story }}/ActualWalkthrough/
             apps/ios/DerivedData/E2E/${{ matrix.story }}/Attachments/
             apps/ios/DerivedData/E2E/${{ matrix.story }}/Results/Story.xcresult/
+            build/app-store-listing/screenshots/
           if-no-files-found: warn
           retention-days: 7
 
