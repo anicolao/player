@@ -479,7 +479,7 @@ struct ComputerReceiverView: View {
             .frame(width: 42)
           VStack(alignment: .leading, spacing: 5) {
             Text("Using a Mac?").font(.headline).foregroundStyle(PlayerColor.ink)
-            Text("In supported regions, you can also drag books straight into this Player window with iPhone Mirroring.")
+            Text("For the fastest Mac import, drag books straight into this Bookshelf window with iPhone Mirroring.")
               .font(.subheadline)
               .foregroundStyle(PlayerColor.secondary)
           }

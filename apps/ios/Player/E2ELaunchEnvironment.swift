@@ -1506,6 +1506,13 @@ extension PlayerEnvironment {
     }
 
     private static func metadataRichArtwork() -> Data {
+      if
+        let encoded = ProcessInfo.processInfo.environment["PLAYER_E2E_METADATA_RICH_COVER_BASE64"],
+        let artwork = Data(base64Encoded: encoded)
+      {
+        return artwork
+      }
+
       let renderer = UIGraphicsImageRenderer(size: CGSize(width: 240, height: 240))
       return renderer.pngData { context in
         UIColor(red: 0.08, green: 0.16, blue: 0.21, alpha: 1).setFill()

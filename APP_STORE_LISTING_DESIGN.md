@@ -4,13 +4,14 @@
 
 ## Goal
 
-Turn a quick App Store glance into three immediate answers:
+Turn a quick App Store glance into four immediate answers:
 
-1. **What is it?** A beautiful, offline home for audiobooks you own.
-2. **Is it easy?** Yes—bring in files from Files, AirDrop, ZIP, or a nearby computer.
-3. **Will it fit me?** Yes—speed, skips, seeking, chapters, and sleep are adjustable.
+1. **Can I get my books in?** Yes—from any computer through a private local browser upload.
+2. **Is there an even faster Mac path?** Yes—drag straight from Finder with iPhone Mirroring.
+3. **What is it?** A beautiful, offline home for audiobooks you own.
+4. **Will it fit me?** Yes—speed, skips, seeking, chapters, and sleep are adjustable.
 
-The first three screenshots carry that whole story. Later images deepen confidence and clearly disclose the 50-hour allowance and one-time Full Unlock.
+The first four screenshots carry that whole story. Later images deepen confidence and clearly disclose the 50-hour allowance and one-time Full Unlock.
 
 ## What the research says
 
@@ -26,7 +27,7 @@ The first three screenshots carry that whole story. Later images deepen confiden
 - Match the website’s paper, ember, charcoal, and warm-wood mood.
 - Use benefit-led headlines instead of UI labels.
 - Keep one promise per image and make the real interface the largest element.
-- Use the same typographic rhythm across all six images so the gallery feels like one story.
+- Use the same typographic rhythm across the full gallery so it feels like one story.
 - Alternate light, ember, and charcoal backgrounds to create rhythm while retaining one visual system.
 - Use only deterministic synthetic books and artwork—never personal library data.
 
@@ -34,69 +35,78 @@ The first three screenshots carry that whole story. Later images deepen confiden
 
 | # | Promise | Conversion job | Source |
 | --- | --- | --- | --- |
-| 1 | **Beautifully offline.** | A calm library for every audiobook you own. | 000-library.png |
-| 2 | **Drop in a book. Pick up your iPhone.** | Use Files, AirDrop, ZIP, or a nearby computer. | 001-receiver-ready.png + 002-mirroring-drop-progress.png |
-| 3 | **Every control, just how you like it.** | Choose speed, skips, and chapter-aware seeking. | 003-playback-settings.png |
-| 4 | **Your story. Your pace.** | Chapters, precise progress, and controls that stay close. | 004-now-playing.png |
-| 5 | **Drift off. Keep your place.** | Stop after a timer, chapter, or track—with a gentle fade. | 005-sleep-timer.png |
-| 6 | **50 hours included. Unlock once.** | Keep listening without a recurring subscription. | 006-full-unlock.png |
+| 1 | **Open a browser. Drop in a book.** | Private local upload from Mac, Windows, Linux, or Chromebook. | 001-receiver-ready.png |
+| 2 | **Drag. Drop. Done.** | Use iPhone Mirroring to drop books straight from Finder. | 002-mirroring-drop-progress.png |
+| 3 | **Beautifully offline.** | A calm library for every audiobook you own. | 000-library.png |
+| 4 | **Every control, just how you like it.** | Choose speed, skips, and chapter-aware seeking. | 003-playback-settings.png |
+| 5 | **Your story. Your pace.** | Chapters, precise progress, and controls that stay close. | 004-now-playing.png |
+| 6 | **Drift off. Keep your place.** | Stop after a timer, chapter, or track—with a gentle fade. | 005-sleep-timer.png |
+| 7 | **50 hours included. Unlock once.** | Keep listening without a recurring subscription. | 006-full-unlock.png |
 
-The first three are deliberately ordered **library → import → control**. They communicate the app’s identity, remove the biggest setup objection, and show why Bookshelf is better suited to long listening than a generic audio player.
+The opening sequence is deliberately ordered **any-computer upload → fastest Mac path → library → control**. It removes the biggest setup objection before showing the payoff, while keeping Files, AirDrop, the share sheet, and ZIP import as useful secondary paths in the description.
 
-### 1. Library
+### 1. Any Computer
+
+- **Eyebrow:** WORKS WITH ANY COMPUTER
+- **Headline:** Open a browser. / Drop in a book.
+- **Supporting line:** Private local upload from Mac, Windows, Linux, or Chromebook.
+- **Theme:** paper
+
+<img src="tests/e2e/013-app-store-listing/screenshots/ios/001-receiver-ready.png" width="260" alt="Real Bookshelf E2E source for 01-any-computer">
+
+### 2. iPhone Mirroring
+
+- **Eyebrow:** FASTEST ON A MAC
+- **Headline:** Drag. Drop. / Done.
+- **Supporting line:** Use iPhone Mirroring to drop books straight from Finder.
+- **Theme:** ember
+
+<img src="tests/e2e/013-app-store-listing/screenshots/ios/002-mirroring-drop-progress.png" width="260" alt="Real Bookshelf E2E source for 02-iphone-mirroring">
+
+### 3. Library
 
 - **Eyebrow:** YOUR BOOKS. YOUR PLACE.
 - **Headline:** Beautifully / offline.
 - **Supporting line:** A calm library for every audiobook you own.
 - **Theme:** paper
 
-<img src="tests/e2e/013-app-store-listing/screenshots/ios/000-library.png" width="260" alt="Real Bookshelf E2E source for 01-library">
+<img src="tests/e2e/013-app-store-listing/screenshots/ios/000-library.png" width="260" alt="Real Bookshelf E2E source for 03-library">
 
-### 2. Import
-
-- **Eyebrow:** EASY IMPORT
-- **Headline:** Drop in a book. / Pick up your iPhone.
-- **Supporting line:** Use Files, AirDrop, ZIP, or a nearby computer.
-- **Theme:** ember
-
-<img src="tests/e2e/013-app-store-listing/screenshots/ios/001-receiver-ready.png" width="260" alt="Real Bookshelf E2E source for 02-import">
-<img src="tests/e2e/013-app-store-listing/screenshots/ios/002-mirroring-drop-progress.png" width="260" alt="Real Bookshelf E2E source for 02-import">
-
-### 3. Playback Settings
+### 4. Playback Settings
 
 - **Eyebrow:** LISTEN YOUR WAY
 - **Headline:** Every control, / just how you like it.
 - **Supporting line:** Choose speed, skips, and chapter-aware seeking.
 - **Theme:** night
 
-<img src="tests/e2e/013-app-store-listing/screenshots/ios/003-playback-settings.png" width="260" alt="Real Bookshelf E2E source for 03-playback-settings">
+<img src="tests/e2e/013-app-store-listing/screenshots/ios/003-playback-settings.png" width="260" alt="Real Bookshelf E2E source for 04-playback-settings">
 
-### 4. Now Playing
+### 5. Now Playing
 
 - **Eyebrow:** MADE FOR LONG LISTENS
 - **Headline:** Your story. / Your pace.
 - **Supporting line:** Chapters, precise progress, and controls that stay close.
 - **Theme:** paper
 
-<img src="tests/e2e/013-app-store-listing/screenshots/ios/004-now-playing.png" width="260" alt="Real Bookshelf E2E source for 04-now-playing">
+<img src="tests/e2e/013-app-store-listing/screenshots/ios/004-now-playing.png" width="260" alt="Real Bookshelf E2E source for 05-now-playing">
 
-### 5. Sleep Timer
+### 6. Sleep Timer
 
 - **Eyebrow:** REST EASY
 - **Headline:** Drift off. / Keep your place.
 - **Supporting line:** Stop after a timer, chapter, or track—with a gentle fade.
 - **Theme:** ember
 
-<img src="tests/e2e/013-app-store-listing/screenshots/ios/005-sleep-timer.png" width="260" alt="Real Bookshelf E2E source for 05-sleep-timer">
+<img src="tests/e2e/013-app-store-listing/screenshots/ios/005-sleep-timer.png" width="260" alt="Real Bookshelf E2E source for 06-sleep-timer">
 
-### 6. Unlock
+### 7. Unlock
 
 - **Eyebrow:** NO SUBSCRIPTION
 - **Headline:** 50 hours included. / Unlock once.
 - **Supporting line:** Keep listening without a recurring subscription.
 - **Theme:** night
 
-<img src="tests/e2e/013-app-store-listing/screenshots/ios/006-full-unlock.png" width="260" alt="Real Bookshelf E2E source for 06-unlock">
+<img src="tests/e2e/013-app-store-listing/screenshots/ios/006-full-unlock.png" width="260" alt="Real Bookshelf E2E source for 07-unlock">
 
 ## Listing copy
 
@@ -110,14 +120,22 @@ The first three are deliberately ordered **library → import → control**. The
 
 ### Promotional text
 
-A quiet home for the audiobooks you own. Import MP3, M4A, and M4B files, listen offline, and make every playback control yours.
+Bring books in from any computer with a private browser upload—or drag them straight from Finder with iPhone Mirroring—then listen your way.
 
 ### Description
 
 ```text
 Your books. Your files. Your place.
 
-Bookshelf is a private, offline audiobook player for the MP3, M4A, and M4B files you own. Bring a book in from Files, AirDrop, a ZIP archive, or a nearby computer, then get back to listening.
+Bookshelf is a private, offline audiobook player for the MP3, M4A, and M4B files you own. Bring books in from any computer, then listen exactly your way.
+
+FROM ANY COMPUTER
+Open Bookshelf’s private receiver, enter its local address in a browser, and drop in your books. It works from Mac, Windows, Linux, or Chromebook, and the transfer stays on your local network.
+
+FASTEST ON A MAC
+With iPhone Mirroring, drag an audiobook straight from Finder onto Bookshelf. No upload form and no cable—just drag, drop, and listen.
+
+You can also import through Files, AirDrop, the share sheet, or ZIP archives when those fit better. Bookshelf preserves embedded chapters, metadata, and cover artwork, and lets you review details before adding a book.
 
 A LIBRARY THAT FEELS LIKE YOURS
 • See cover art on warm wooden shelves
@@ -131,9 +149,6 @@ LISTEN YOUR WAY
 • Move by chapter or across the whole book
 • Use a sleep timer with presets, custom times, chapter and track endings, and a gentle fade
 • Save bookmarks and notes for moments worth keeping
-
-EASY TO BRING YOUR BOOKS
-Import through Files, AirDrop, the share sheet, ZIP archives, or Bookshelf’s private receiver on a nearby computer. Bookshelf preserves embedded chapters, metadata, and cover artwork, and lets you review details before adding a book.
 
 PRIVATE BY DESIGN
 Your library and listening history stay on your device. Bookshelf needs no account and includes no advertising or tracking.
@@ -165,9 +180,9 @@ Record the first 14 and 28 days by acquisition source before changing the galler
 
 After enough traffic arrives, run Product Page Optimization tests in this order:
 
-1. **Opening promise:** “Beautifully offline” versus “Your audiobooks, beautifully offline.” Change only slide 1.
-2. **First-three order:** library-first versus import-first. Keep the designs and copy unchanged.
-3. **Control framing:** “Every control, just how you like it” versus “Listen exactly your way.” Change only slide 3.
+1. **Universal import framing:** “Open a browser. Drop in a book.” versus “Any computer. Straight to Bookshelf.” Change only slide 1.
+2. **Mac-speed framing:** “Drag. Drop. Done.” versus “Finder to Bookshelf.” Change only slide 2.
+3. **Control framing:** “Every control, just how you like it” versus “Listen exactly your way.” Change only slide 4.
 
 Do not declare a winner before Apple reports at least 90% confidence. Keep screenshots and metadata unchanged while each experiment runs.
 

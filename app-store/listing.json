@@ -6,15 +6,34 @@
   "metadata": {
     "name": "Bookshelf Offline Audio Player",
     "subtitle": "Your MP3 & M4B Audiobooks",
-    "promotionalText": "A quiet home for the audiobooks you own. Import MP3, M4A, and M4B files, listen offline, and make every playback control yours.",
-    "description": "Your books. Your files. Your place.\n\nBookshelf is a private, offline audiobook player for the MP3, M4A, and M4B files you own. Bring a book in from Files, AirDrop, a ZIP archive, or a nearby computer, then get back to listening.\n\nA LIBRARY THAT FEELS LIKE YOURS\n• See cover art on warm wooden shelves\n• Keep multi-part books together\n• Search by title, author, narrator, or series\n• Pick up at the exact place you stopped\n\nLISTEN YOUR WAY\n• Set playback speed from 0.5× to 3×\n• Choose your own forward and backward skips\n• Move by chapter or across the whole book\n• Use a sleep timer with presets, custom times, chapter and track endings, and a gentle fade\n• Save bookmarks and notes for moments worth keeping\n\nEASY TO BRING YOUR BOOKS\nImport through Files, AirDrop, the share sheet, ZIP archives, or Bookshelf’s private receiver on a nearby computer. Bookshelf preserves embedded chapters, metadata, and cover artwork, and lets you review details before adding a book.\n\nPRIVATE BY DESIGN\nYour library and listening history stay on your device. Bookshelf needs no account and includes no advertising or tracking.\n\nTRY THE WHOLE EXPERIENCE\nBookshelf includes 50 hours of playback. A one-time in-app purchase unlocks unlimited playback. No subscription.\n\nBookshelf does not sell or provide audiobooks. Only import recordings you are legally permitted to use.",
+    "promotionalText": "Bring books in from any computer with a private browser upload—or drag them straight from Finder with iPhone Mirroring—then listen your way.",
+    "description": "Your books. Your files. Your place.\n\nBookshelf is a private, offline audiobook player for the MP3, M4A, and M4B files you own. Bring books in from any computer, then listen exactly your way.\n\nFROM ANY COMPUTER\nOpen Bookshelf’s private receiver, enter its local address in a browser, and drop in your books. It works from Mac, Windows, Linux, or Chromebook, and the transfer stays on your local network.\n\nFASTEST ON A MAC\nWith iPhone Mirroring, drag an audiobook straight from Finder onto Bookshelf. No upload form and no cable—just drag, drop, and listen.\n\nYou can also import through Files, AirDrop, the share sheet, or ZIP archives when those fit better. Bookshelf preserves embedded chapters, metadata, and cover artwork, and lets you review details before adding a book.\n\nA LIBRARY THAT FEELS LIKE YOURS\n• See cover art on warm wooden shelves\n• Keep multi-part books together\n• Search by title, author, narrator, or series\n• Pick up at the exact place you stopped\n\nLISTEN YOUR WAY\n• Set playback speed from 0.5× to 3×\n• Choose your own forward and backward skips\n• Move by chapter or across the whole book\n• Use a sleep timer with presets, custom times, chapter and track endings, and a gentle fade\n• Save bookmarks and notes for moments worth keeping\n\nPRIVATE BY DESIGN\nYour library and listening history stay on your device. Bookshelf needs no account and includes no advertising or tracking.\n\nTRY THE WHOLE EXPERIENCE\nBookshelf includes 50 hours of playback. A one-time in-app purchase unlocks unlimited playback. No subscription.\n\nBookshelf does not sell or provide audiobooks. Only import recordings you are legally permitted to use.",
     "keywords": "m4a,files,import,airdrop,chapters,bookmark,sleep,timer,speed,local,library,listen,reader,drm-free",
     "marketingUrl": "https://bookshelf.spnss.com/",
     "supportUrl": "https://bookshelf.spnss.com/#support"
   },
   "slides": [
     {
-      "id": "01-library",
+      "id": "01-any-computer",
+      "theme": "paper",
+      "eyebrow": "WORKS WITH ANY COMPUTER",
+      "headline": "Open a browser.\nDrop in a book.",
+      "body": "Private local upload from Mac, Windows, Linux, or Chromebook.",
+      "layout": "single",
+      "sources": ["001-receiver-ready.png"]
+    },
+    {
+      "id": "02-iphone-mirroring",
+      "title": "iPhone Mirroring",
+      "theme": "ember",
+      "eyebrow": "FASTEST ON A MAC",
+      "headline": "Drag. Drop.\nDone.",
+      "body": "Use iPhone Mirroring to drop books straight from Finder.",
+      "layout": "single",
+      "sources": ["002-mirroring-drop-progress.png"]
+    },
+    {
+      "id": "03-library",
       "theme": "paper",
       "eyebrow": "YOUR BOOKS. YOUR PLACE.",
       "headline": "Beautifully\noffline.",
@@ -23,16 +42,7 @@
       "sources": ["000-library.png"]
     },
     {
-      "id": "02-import",
-      "theme": "ember",
-      "eyebrow": "EASY IMPORT",
-      "headline": "Drop in a book.\nPick up your iPhone.",
-      "body": "Use Files, AirDrop, ZIP, or a nearby computer.",
-      "layout": "pair",
-      "sources": ["001-receiver-ready.png", "002-mirroring-drop-progress.png"]
-    },
-    {
-      "id": "03-playback-settings",
+      "id": "04-playback-settings",
       "theme": "night",
       "eyebrow": "LISTEN YOUR WAY",
       "headline": "Every control,\njust how you like it.",
@@ -41,7 +51,7 @@
       "sources": ["003-playback-settings.png"]
     },
     {
-      "id": "04-now-playing",
+      "id": "05-now-playing",
       "theme": "paper",
       "eyebrow": "MADE FOR LONG LISTENS",
       "headline": "Your story.\nYour pace.",
@@ -50,7 +60,7 @@
       "sources": ["004-now-playing.png"]
     },
     {
-      "id": "05-sleep-timer",
+      "id": "06-sleep-timer",
       "theme": "ember",
       "eyebrow": "REST EASY",
       "headline": "Drift off.\nKeep your place.",
@@ -59,7 +69,7 @@
       "sources": ["005-sleep-timer.png"]
     },
     {
-      "id": "06-unlock",
+      "id": "07-unlock",
       "theme": "night",
       "eyebrow": "NO SUBSCRIPTION",
       "headline": "50 hours included.\nUnlock once.",

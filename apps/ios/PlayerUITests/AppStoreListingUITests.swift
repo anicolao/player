@@ -14,6 +14,7 @@ final class AppStoreListingUITests: XCTestCase {
       fixture: "marketing-surfaces",
       additionalPreconditions: [
         "Every image uses fixed synthetic audiobook metadata and artwork.",
+        "Harbor at Dawn uses committed, generated fictional cover artwork made for this marketing fixture.",
         "The listing and website build scripts consume the fresh ActualWalkthrough output from this story.",
         "No marketing screenshot is maintained as a second copied source file.",
       ]
@@ -41,7 +42,7 @@ final class AppStoreListingUITests: XCTestCase {
     receiver.buttons["receive-from-computer-empty-library"].tap()
     try tester.step(
       "receiver-ready",
-      description: "Bookshelf offers a direct computer receiver and a Files fallback",
+      description: "The private receiver accepts books through a browser on any computer",
       verifications: [
         .valueEquals(receiver.scrollViews["computer-receiver-screen"], "receiver:ready", "The receiver is ready"),
         .exists(receiver.staticTexts["computer-receiver-pairing-code"], "The pairing code is visible"),
@@ -61,7 +62,7 @@ final class AppStoreListingUITests: XCTestCase {
     progress.buttons["receive-from-computer-empty-library"].tap()
     try tester.step(
       "mirroring-drop-progress",
-      description: "A dropped audiobook shows clear import progress",
+      description: "iPhone Mirroring makes Finder drag-and-drop the fastest Mac path",
       verifications: [
         .valueEquals(progress.scrollViews["computer-receiver-screen"], "receiver:preparing-mirrored-drop", "The mirrored drop is being prepared"),
         .exists(progress.progressIndicators["mirroring-drop-progress"], "Import progress is visible"),
@@ -74,6 +75,9 @@ final class AppStoreListingUITests: XCTestCase {
       fixture: "metadata-rich-book",
       extraArguments: ["-e2e-start-section", "settings"]
     )
+    playback.launchEnvironment["PLAYER_E2E_METADATA_RICH_COVER_BASE64"] = try fixtureData(
+      resource: "harbor-at-dawn-cover", extension: "png"
+    ).base64EncodedString()
     playback.launch()
     let playbackDefaults = playback.buttons["playback-defaults"]
     XCTAssertTrue(playbackDefaults.waitForExistence(timeout: 5))
