@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repository_root="$(cd "${script_dir}/.." && pwd)"
+output="${repository_root}/build/website"
+
+if [[ $# -gt 0 ]]; then
+  if [[ "$1" != "--output" || $# -ne 2 ]]; then
+    echo "usage: scripts/build-website [--output <repository build path>]" >&2
+    exit 2
+  fi
+  if [[ "$2" = /* ]]; then
+    output="$2"
+  else
+    output="${repository_root}/$2"
+  fi
+fi
+
+# Normalize `build/../…` before the destructive cleanup and boundary check.
+output="$(ruby -e 'print File.expand_path(ARGV.fetch(0))' "${output}")"
+
+case "${output}" in
+  "${repository_root}/build/"*|"${repository_root}/_site") ;;
+  *)
+    echo "Website output must be under build/ or exactly _site in this repository: ${output}" >&2
+    exit 2
+    ;;
+esac
+
+"${script_dir}/capture-marketing-screenshots"
+
+fresh_directory="${repository_root}/apps/ios/DerivedData/E2E/013-app-store-listing/ActualWalkthrough/screenshots/ios"
+listing="${repository_root}/app-store/listing.json"
+
+rm -rf "${output}"
+mkdir -p "${output}/assets/generated"
+cp \
+  "${repository_root}/docs/index.html" \
+  "${repository_root}/docs/styles.css" \
+  "${repository_root}/docs/site.js" \
+  "${repository_root}/docs/robots.txt" \
+  "${repository_root}/docs/sitemap.xml" \
+  "${repository_root}/docs/CNAME" \
+  "${repository_root}/docs/.nojekyll" \
+  "${output}/"
+cp "${repository_root}/docs/assets/bookshelf-icon.png" "${output}/assets/"
+cp -R "${repository_root}/docs/community-assets" "${output}/"
+
+while IFS=$'\t' read -r target source; do
+  [[ -f "${fresh_directory}/${source}" ]] || {
+    echo "Website screenshot source is missing: ${fresh_directory}/${source}" >&2
+    exit 1
+  }
+  cp "${fresh_directory}/${source}" "${output}/assets/generated/${target}"
+done < <(jq -r '.websiteScreenshots | to_entries[] | [.key, .value] | @tsv' "${listing}")
+
+while IFS= read -r referenced; do
+  [[ -f "${output}/${referenced}" ]] || {
+    echo "Built website references a missing file: ${referenced}" >&2
+    exit 1
+  }
+done < <(rg -o -r '$1' '(?:src|href)="([A-Za-z0-9_./-]+\.png)"' "${output}/index.html" | sort -u)
+
+echo "Fresh website build: ${output}"

@@ -144,6 +144,7 @@
 		EBF2545B018518C72CD1F9FD /* AccessibilitySupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24553F95F9E8F6ED0195D7FC /* AccessibilitySupport.swift */; };
 		ECC8B27CB0D35E1D3F552717 /* library-cover-b2.png in Resources */ = {isa = PBXBuildFile; fileRef = 0799F7F7CC4809E887801D20 /* library-cover-b2.png */; };
 		F2E07234DD498BBE6573029F /* library-cover-b1.png in Resources */ = {isa = PBXBuildFile; fileRef = E10C70BBAC3312086D26B82E /* library-cover-b1.png */; };
+		F45873F93B145DD74AF5DBE7 /* AppStoreListingUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC8EB5090AC96805FFF1B8A8 /* AppStoreListingUITests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -297,6 +298,7 @@
 		C884007A591C7AA4EA2160DB /* E2ESleepTimerBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = E2ESleepTimerBridge.swift; sourceTree = "<group>"; };
 		C8AD0E1BABB922E62EE878C8 /* FileSystemMediaManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileSystemMediaManager.swift; sourceTree = "<group>"; };
 		CB02A22ADE7392D8BA567EA0 /* ratio-limit.zip */ = {isa = PBXFileReference; lastKnownFileType = archive.zip; path = "ratio-limit.zip"; sourceTree = "<group>"; };
+		CC8EB5090AC96805FFF1B8A8 /* AppStoreListingUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStoreListingUITests.swift; sourceTree = "<group>"; };
 		D09A4E4E776E73279970B73B /* SyntheticZIPs.sha256 */ = {isa = PBXFileReference; path = SyntheticZIPs.sha256; sourceTree = "<group>"; };
 		D1AAF5F41D398DB0EF91A14E /* share-extension-envelope.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "share-extension-envelope.json"; sourceTree = "<group>"; };
 		D2EE054FCAB717FA31059033 /* MonetizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonetizationTests.swift; sourceTree = "<group>"; };
@@ -564,6 +566,7 @@
 			isa = PBXGroup;
 			children = (
 				93287A88131F16C77FD96A63 /* AccessibilityUITests.swift */,
+				CC8EB5090AC96805FFF1B8A8 /* AppStoreListingUITests.swift */,
 				A43B8844446FCD63551970E4 /* BackupUITests.swift */,
 				636BCFA7A21357FF2C00ADC0 /* BookmarkUITests.swift */,
 				C6592BB65EEE9F11DFD6D0AA /* ImportIngressResilienceUITests.swift */,
@@ -885,6 +888,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				BE28B7A5F9CAC2C14468E00A /* AccessibilityUITests.swift in Sources */,
+				F45873F93B145DD74AF5DBE7 /* AppStoreListingUITests.swift in Sources */,
 				A53618E5AC5FC450C5F705FB /* BackupUITests.swift in Sources */,
 				3D2C255F39C46859C908AD68 /* BookmarkUITests.swift in Sources */,
 				6E5CC9A908A8DD83897022B7 /* ImportIngressResilienceUITests.swift in Sources */,

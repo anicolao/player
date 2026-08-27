@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repository_root="$(cd "${script_dir}/.." && pwd)"
+story="013-app-store-listing"
+selector="PlayerUITests/AppStoreListingUITests/testCapturesCanonicalMarketingSurfaces"
+
+if [[ "${PLAYER_MARKETING_INSIDE_NIX:-0}" != "1" ]]; then
+  command -v nix >/dev/null 2>&1 || {
+    echo "nix is required to enter the pinned E2E environment." >&2
+    exit 1
+  }
+  exec env PLAYER_SKIP_SIMULATOR_LAUNCH=1 nix develop "${repository_root}" \
+    --command env PLAYER_MARKETING_INSIDE_NIX=1 \
+    bash "${BASH_SOURCE[0]}"
+fi
+
+cd "${repository_root}"
+apps/ios/scripts/run-e2e.sh \
+  "${story}" \
+  "${selector}"
+
+fresh_directory="${repository_root}/apps/ios/DerivedData/E2E/${story}/ActualWalkthrough/screenshots/ios"
+expected=(
+  000-library.png
+  001-receiver-ready.png
+  002-mirroring-drop-progress.png
+  003-playback-settings.png
+  004-now-playing.png
+  005-sleep-timer.png
+  006-full-unlock.png
+)
+for filename in "${expected[@]}"; do
+  [[ -f "${fresh_directory}/${filename}" ]] || {
+    echo "Fresh E2E screenshot is missing: ${fresh_directory}/${filename}" >&2
+    exit 1
+  }
+done
+
+echo "Fresh marketing screenshots: ${fresh_directory}"

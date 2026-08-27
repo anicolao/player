@@ -1,13 +1,13 @@
 # App Store listing
 
-The canonical English (U.S.) App Store Connect metadata is:
+The canonical English (U.S.) metadata, screenshot storyboard, research, and
+sync workflow now live in:
 
-- Title: `Bookshelf Offline Audio Player`
-- Subtitle: `Local MP3 & M4B Audiobook App`
-- Keywords: `listen,reader,files,manager,import,airdrop,background,bookmark,chapters,bluetooth,sleep,timer,speed`
-- Installed app name: `Bookshelf`
+- `app-store/listing.json` — machine-readable listing source of truth
+- `APP_STORE_LISTING_DESIGN.md` — generated, reviewable listing design
+- `scripts/app-store-listing` — fresh screenshot generation and App Store
+  Connect preview/apply workflow
 
-The keyword field is 99 characters. Terms already present in the title or
-subtitle are not repeated. `podcast` and `sync` are intentionally excluded
-because Bookshelf does not manage podcast feeds or sync a library across
-devices.
+The installed app name remains `Bookshelf`. Edit `app-store/listing.json`, then
+run `scripts/app-store-listing prepare`; do not maintain a second copy of the
+metadata here.

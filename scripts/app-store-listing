@@ -1,0 +1,479 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "base64"
+require "digest"
+require "erb"
+require "fileutils"
+require "json"
+require "net/http"
+require "openssl"
+require "optparse"
+require "open3"
+require "time"
+require "uri"
+
+REPOSITORY_ROOT = File.expand_path("..", __dir__)
+LISTING_PATH = File.join(REPOSITORY_ROOT, "app-store/listing.json")
+TEMPLATE_PATH = File.join(REPOSITORY_ROOT, "app-store/listing-design.md.erb")
+DOCUMENT_PATH = File.join(REPOSITORY_ROOT, "APP_STORE_LISTING_DESIGN.md")
+FRESH_SCREENSHOTS = File.join(
+  REPOSITORY_ROOT,
+  "apps/ios/DerivedData/E2E/013-app-store-listing/ActualWalkthrough/screenshots/ios"
+)
+BASELINE_SCREENSHOTS = File.join(
+  REPOSITORY_ROOT,
+  "tests/e2e/013-app-store-listing/screenshots/ios"
+)
+OUTPUT_SCREENSHOTS = File.join(REPOSITORY_ROOT, "build/app-store-listing/screenshots")
+DEFAULT_CREDENTIALS = File.expand_path("~/.config/player/testflight.env")
+API_BASE = "https://api.appstoreconnect.apple.com"
+
+class AppStoreConnectError < StandardError
+  attr_reader :status
+
+  def initialize(status, body)
+    @status = status
+    parsed = JSON.parse(body)
+    details = Array(parsed["errors"]).map { |error| error["detail"] || error["title"] }.compact
+    super(details.empty? ? "App Store Connect returned HTTP #{status}" : details.join("; "))
+  rescue JSON::ParserError
+    super("App Store Connect returned HTTP #{status}: #{body.to_s.strip}")
+  end
+end
+
+class AppStoreConnect
+  def initialize(issuer_id:, key_id:, key_path:)
+    @issuer_id = issuer_id
+    @key_id = key_id
+    @key = OpenSSL::PKey.read(File.binread(File.expand_path(key_path)))
+    @token = nil
+    @token_created_at = nil
+  end
+
+  def get(path, params = {})
+    request(:get, path, params: params)
+  end
+
+  def post(path, body)
+    request(:post, path, body: body)
+  end
+
+  def patch(path, body)
+    request(:patch, path, body: body)
+  end
+
+  def delete(path)
+    request(:delete, path)
+  end
+
+  def all(path, params = {})
+    result = []
+    page = get(path, params)
+    loop do
+      result.concat(Array(page["data"]))
+      next_url = page.dig("links", "next")
+      break unless next_url
+
+      page = get(next_url)
+    end
+    result
+  end
+
+  def upload(operation, bytes)
+    uri = URI(operation.fetch("url"))
+    offset = operation.fetch("offset")
+    length = operation.fetch("length")
+    body = bytes.byteslice(offset, length)
+    raise "Upload operation exceeds source data" unless body&.bytesize == length
+
+    headers = Array(operation["requestHeaders"]).to_h do |header|
+      [header.fetch("name"), header.fetch("value")]
+    end
+    request = Net::HTTPGenericRequest.new(
+      operation.fetch("method"), true, true, uri.request_uri, headers
+    )
+    request.body = body
+    response = Net::HTTP.start(uri.host, uri.port, use_ssl: true) do |http|
+      http.open_timeout = 20
+      http.read_timeout = 120
+      http.request(request)
+    end
+    return if response.is_a?(Net::HTTPSuccess)
+
+    raise AppStoreConnectError.new(response.code, response.body)
+  end
+
+  private
+
+  def request(method, path_or_url, params: {}, body: nil)
+    uri = path_or_url.start_with?("http") ? URI(path_or_url) : URI.join(API_BASE, path_or_url)
+    unless params.empty?
+      existing = URI.decode_www_form(uri.query.to_s)
+      uri.query = URI.encode_www_form(existing + params.to_a)
+    end
+
+    attempts = 0
+    loop do
+      attempts += 1
+      request_class = {
+        get: Net::HTTP::Get,
+        post: Net::HTTP::Post,
+        patch: Net::HTTP::Patch,
+        delete: Net::HTTP::Delete,
+      }.fetch(method)
+      http_request = request_class.new(uri)
+      http_request["Authorization"] = "Bearer #{token}"
+      http_request["Accept"] = "application/json"
+      if body
+        http_request["Content-Type"] = "application/json"
+        http_request.body = JSON.generate(body)
+      end
+      response = Net::HTTP.start(uri.host, uri.port, use_ssl: true) do |http|
+        http.open_timeout = 15
+        http.read_timeout = 60
+        http.request(http_request)
+      end
+      return response.body.to_s.empty? ? {} : JSON.parse(response.body) if response.is_a?(Net::HTTPSuccess)
+
+      retryable = response.code.to_i == 429 || response.code.to_i >= 500
+      if retryable && attempts < 4
+        sleep(2**(attempts - 1))
+        next
+      end
+      raise AppStoreConnectError.new(response.code, response.body)
+    rescue Net::OpenTimeout, Net::ReadTimeout => error
+      if attempts < 4
+        sleep(2**(attempts - 1))
+        next
+      end
+      raise AppStoreConnectError.new("timeout", error.message)
+    end
+  end
+
+  def token
+    if @token.nil? || Time.now - @token_created_at > 600
+      header = base64url({ alg: "ES256", kid: @key_id, typ: "JWT" }.to_json)
+      now = Time.now.to_i
+      payload = base64url({ iss: @issuer_id, iat: now - 5, exp: now + 900, aud: "appstoreconnect-v1" }.to_json)
+      unsigned = "#{header}.#{payload}"
+      digest = OpenSSL::Digest::SHA256.digest(unsigned)
+      sequence = OpenSSL::ASN1.decode(@key.dsa_sign_asn1(digest))
+      signature = sequence.value.map do |integer|
+        integer.value.to_s(2).rjust(32, "\0")[-32, 32]
+      end.join
+      @token = "#{unsigned}.#{base64url(signature)}"
+      @token_created_at = Time.now
+    end
+    @token
+  end
+
+  def base64url(value)
+    Base64.urlsafe_encode64(value, padding: false)
+  end
+end
+
+class ListingSync
+  EDITABLE_STATES = %w[
+    PREPARE_FOR_SUBMISSION READY_FOR_REVIEW INVALID_BINARY REJECTED
+    METADATA_REJECTED DEVELOPER_REJECTED
+  ].freeze
+
+  def initialize(api:, listing:, screenshots:, version:)
+    @api = api
+    @listing = listing
+    @metadata = listing.fetch("metadata")
+    @screenshots = screenshots
+    @version_string = version
+  end
+
+  def run(apply:)
+    app = only!(@api.all("/v1/apps", "filter[bundleId]" => @listing.fetch("bundleId")), "app")
+    app_id = app.fetch("id")
+    versions = @api.all(
+      "/v1/apps/#{app_id}/appStoreVersions",
+      "filter[platform]" => "IOS",
+      "filter[versionString]" => @version_string,
+      "limit" => 200
+    )
+    version = only!(versions, "iOS version #{@version_string}")
+    state = version.dig("attributes", "appVersionState") || version.dig("attributes", "appStoreState")
+    abort("Version #{@version_string} is not editable (#{state}).") unless EDITABLE_STATES.include?(state)
+
+    version_localization = only!(
+      @api.all(
+        "/v1/appStoreVersions/#{version.fetch("id")}/appStoreVersionLocalizations",
+        "filter[locale]" => @listing.fetch("locale"), "limit" => 200
+      ),
+      "#{@listing.fetch("locale")} version localization"
+    )
+    app_info, info_localization = find_app_info_localization(app_id)
+    screenshot_set = find_screenshot_set(version_localization.fetch("id"))
+    existing_screenshots = screenshot_set ? @api.all("/v1/appScreenshotSets/#{screenshot_set.fetch("id")}/appScreenshots", "limit" => 200) : []
+
+    print_plan(
+      app: app, version: version, state: state,
+      info_localization: info_localization,
+      version_localization: version_localization,
+      existing_screenshots: existing_screenshots,
+      apply: apply
+    )
+    return unless apply
+
+    @api.patch(
+      "/v1/appInfoLocalizations/#{info_localization.fetch("id")}",
+      data: {
+        type: "appInfoLocalizations", id: info_localization.fetch("id"),
+        attributes: { name: @metadata.fetch("name"), subtitle: @metadata.fetch("subtitle") },
+      }
+    )
+    @api.patch(
+      "/v1/appStoreVersionLocalizations/#{version_localization.fetch("id")}",
+      data: {
+        type: "appStoreVersionLocalizations", id: version_localization.fetch("id"),
+        attributes: {
+          description: @metadata.fetch("description"),
+          keywords: @metadata.fetch("keywords"),
+          marketingUrl: @metadata.fetch("marketingUrl"),
+          promotionalText: @metadata.fetch("promotionalText"),
+          supportUrl: @metadata.fetch("supportUrl"),
+        },
+      }
+    )
+
+    screenshot_set ||= @api.post(
+      "/v1/appScreenshotSets",
+      data: {
+        type: "appScreenshotSets",
+        attributes: { screenshotDisplayType: @listing.fetch("screenshotDisplayType") },
+        relationships: {
+          appStoreVersionLocalization: {
+            data: { type: "appStoreVersionLocalizations", id: version_localization.fetch("id") },
+          },
+        },
+      }
+    ).fetch("data")
+
+    # Preserve as much of the current gallery as Apple's ten-image limit allows
+    # until every replacement has finished processing. A failed upload therefore
+    # cannot unnecessarily leave an empty product page.
+    required_slots = [existing_screenshots.length + @screenshots.length - 10, 0].max
+    early_deletions, retained_screenshots = existing_screenshots.first(required_slots), existing_screenshots.drop(required_slots)
+    early_deletions.each do |screenshot|
+      @api.delete("/v1/appScreenshots/#{screenshot.fetch("id")}")
+    end
+    uploaded_ids = @screenshots.map do |path|
+      upload_screenshot(screenshot_set.fetch("id"), path)
+    end
+    retained_screenshots.each do |screenshot|
+      @api.delete("/v1/appScreenshots/#{screenshot.fetch("id")}")
+    end
+    @api.patch(
+      "/v1/appScreenshotSets/#{screenshot_set.fetch("id")}/relationships/appScreenshots",
+      data: uploaded_ids.map { |id| { type: "appScreenshots", id: id } }
+    )
+    puts "\nUpdated App Store Connect version #{@version_string} with #{@screenshots.length} screenshots."
+  end
+
+  private
+
+  def find_app_info_localization(app_id)
+    infos = @api.all("/v1/apps/#{app_id}/appInfos", "limit" => 200)
+    candidates = infos.each_with_object([]) do |info, matches|
+      localization = @api.all(
+        "/v1/appInfos/#{info.fetch("id")}/appInfoLocalizations",
+        "filter[locale]" => @listing.fetch("locale"), "limit" => 200
+      ).first
+      matches << [info, localization] if localization
+    end
+    editable = candidates.select do |info, _localization|
+      state = info.dig("attributes", "state") || info.dig("attributes", "appStoreState")
+      EDITABLE_STATES.include?(state)
+    end
+    only!(editable.empty? ? candidates : editable, "editable #{@listing.fetch("locale")} app info localization")
+  end
+
+  def find_screenshot_set(localization_id)
+    sets = @api.all(
+      "/v1/appStoreVersionLocalizations/#{localization_id}/appScreenshotSets",
+      "filter[screenshotDisplayType]" => @listing.fetch("screenshotDisplayType"), "limit" => 50
+    )
+    return nil if sets.empty?
+
+    only!(sets, "#{@listing.fetch("screenshotDisplayType")} screenshot set")
+  end
+
+  def upload_screenshot(set_id, path)
+    bytes = File.binread(path)
+    reservation = @api.post(
+      "/v1/appScreenshots",
+      data: {
+        type: "appScreenshots",
+        attributes: { fileSize: bytes.bytesize, fileName: File.basename(path) },
+        relationships: {
+          appScreenshotSet: { data: { type: "appScreenshotSets", id: set_id } },
+        },
+      }
+    ).fetch("data")
+    Array(reservation.dig("attributes", "uploadOperations")).each do |operation|
+      @api.upload(operation, bytes)
+    end
+    screenshot_id = reservation.fetch("id")
+    @api.patch(
+      "/v1/appScreenshots/#{screenshot_id}",
+      data: {
+        type: "appScreenshots", id: screenshot_id,
+        attributes: { uploaded: true, sourceFileChecksum: Digest::MD5.hexdigest(bytes) },
+      }
+    )
+    wait_for_asset(screenshot_id, File.basename(path))
+    screenshot_id
+  end
+
+  def wait_for_asset(id, filename)
+    30.times do
+      asset = @api.get("/v1/appScreenshots/#{id}")
+      state = asset.dig("data", "attributes", "assetDeliveryState", "state")
+      return puts("Uploaded #{filename}") if state == "COMPLETE"
+      if %w[FAILED REJECTED].include?(state)
+        errors = asset.dig("data", "attributes", "assetDeliveryState", "errors")
+        abort("App Store Connect rejected #{filename}: #{errors}")
+      end
+      sleep 2
+    end
+    abort("Timed out waiting for App Store Connect to process #{filename}")
+  end
+
+  def print_plan(app:, version:, state:, info_localization:, version_localization:, existing_screenshots:, apply:)
+    puts "# App Store Connect listing #{apply ? "update" : "preview"}"
+    puts
+    puts "- App: #{app.dig("attributes", "name")} (#{@listing.fetch("bundleId")})"
+    puts "- Version: #{version.dig("attributes", "versionString")} (#{state})"
+    puts "- Locale: #{@listing.fetch("locale")}"
+    puts "- Screenshot set: #{@listing.fetch("screenshotDisplayType")}"
+    puts "- Screenshots: replace #{existing_screenshots.length} with #{@screenshots.length} fresh images"
+    puts "- Name: #{info_localization.dig("attributes", "name").inspect} → #{@metadata.fetch("name").inspect}"
+    puts "- Subtitle: #{info_localization.dig("attributes", "subtitle").inspect} → #{@metadata.fetch("subtitle").inspect}"
+    %w[promotionalText description keywords marketingUrl supportUrl].each do |field|
+      current = version_localization.dig("attributes", field).to_s
+      proposed = @metadata.fetch(field).to_s
+      status = current == proposed ? "unchanged" : "update"
+      puts "- #{field}: #{status} (#{proposed.length} characters)"
+    end
+    puts
+    puts(apply ? "Applying changes…" : "Read-only preview. Add --apply to make these changes.")
+  end
+
+  def only!(items, label)
+    return items.first if items.length == 1
+
+    abort("Expected exactly one #{label}; found #{items.length}.")
+  end
+end
+
+def load_credentials(path)
+  issuer = ENV["ASC_ISSUER_ID"] || ENV["PLAYER_ASC_ISSUER_ID"]
+  key_id = ENV["ASC_KEY_ID"] || ENV["PLAYER_ASC_KEY_ID"]
+  key_path = ENV["ASC_KEY_PATH"] || ENV["PLAYER_ASC_KEY_PATH"]
+  return [issuer, key_id, key_path] if [issuer, key_id, key_path].all? { |value| !value.to_s.empty? }
+
+  abort("Credential file not found: #{path}") unless File.file?(path)
+  command = <<~'ZSH'
+    source "$1"
+    printf '%s\0%s\0%s\0' \
+      "${ASC_ISSUER_ID:-${PLAYER_ASC_ISSUER_ID:-}}" \
+      "${ASC_KEY_ID:-${PLAYER_ASC_KEY_ID:-}}" \
+      "${ASC_KEY_PATH:-${PLAYER_ASC_KEY_PATH:-}}"
+  ZSH
+  output, error, status = Open3.capture3("/bin/zsh", "-c", command, "app-store-listing", path)
+  abort("Unable to load credentials: #{error.strip}") unless status.success?
+  values = output.split("\0", -1).first(3)
+  abort("Credential file is missing issuer ID, key ID, or key path: #{path}") unless values.all? { |value| !value.to_s.empty? }
+  values
+end
+
+def validate_listing!(listing)
+  metadata = listing.fetch("metadata")
+  limits = { "name" => 30, "subtitle" => 30, "promotionalText" => 170, "description" => 4000 }
+  limits.each do |field, maximum|
+    length = metadata.fetch(field).length
+    abort("#{field} is #{length} characters; maximum is #{maximum}.") if length > maximum
+  end
+  keyword_bytes = metadata.fetch("keywords").bytesize
+  abort("keywords are #{keyword_bytes} bytes; maximum is 100.") if keyword_bytes > 100
+  abort("Use comma-separated keywords without spaces after commas.") if metadata.fetch("keywords").include?(", ")
+  slides = listing.fetch("slides")
+  abort("App Store Connect requires one to ten screenshots.") unless (1..10).cover?(slides.length)
+  sources = slides.flat_map { |slide| slide.fetch("sources") }.uniq
+  sources.each do |source|
+    baseline = File.join(BASELINE_SCREENSHOTS, source)
+    abort("Reviewed E2E baseline is missing: #{baseline}") unless File.file?(baseline)
+  end
+end
+
+def prepare(listing)
+  system(File.join(REPOSITORY_ROOT, "scripts/capture-marketing-screenshots")) || abort("Fresh E2E capture failed.")
+  FileUtils.rm_rf(OUTPUT_SCREENSHOTS)
+  FileUtils.mkdir_p(OUTPUT_SCREENSHOTS)
+  system(
+    "swift", File.join(REPOSITORY_ROOT, "scripts/render-app-store-listing.swift"),
+    LISTING_PATH, FRESH_SCREENSHOTS, OUTPUT_SCREENSHOTS
+  ) || abort("App Store screenshot rendering failed.")
+
+  listing.fetch("slides").each do |slide|
+    path = File.join(OUTPUT_SCREENSHOTS, "#{slide.fetch("id")}.png")
+    output, status = Open3.capture2("sips", "-g", "pixelWidth", "-g", "pixelHeight", "-g", "hasAlpha", path)
+    abort("Could not inspect #{path}") unless status.success?
+    unless output.include?("pixelWidth: 1320") && output.include?("pixelHeight: 2868") && output.include?("hasAlpha: no")
+      abort("Rendered screenshot has invalid App Store properties: #{path}\n#{output}")
+    end
+  end
+
+  metadata = listing.fetch("metadata")
+  slides = listing.fetch("slides")
+  template = ERB.new(File.read(TEMPLATE_PATH), trim_mode: "-")
+  File.write(DOCUMENT_PATH, template.result(binding))
+  puts "Updated #{DOCUMENT_PATH}"
+  puts "Prepared #{slides.length} screenshots in #{OUTPUT_SCREENSHOTS}"
+end
+
+command = ARGV.shift || "help"
+options = {
+  apply: false,
+  credentials: ENV["IOSCONNECT_CONFIG"] || DEFAULT_CREDENTIALS,
+  version: nil,
+}
+parser = OptionParser.new do |option_parser|
+  option_parser.banner = "usage: scripts/app-store-listing <prepare|upload> [options]"
+  option_parser.on("--version VERSION", "Editable App Store version (default: listing.json)") { |value| options[:version] = value }
+  option_parser.on("--config PATH", "Credential env file") { |value| options[:credentials] = File.expand_path(value) }
+  option_parser.on("--apply", "Apply metadata and replace screenshots in App Store Connect") { options[:apply] = true }
+  option_parser.on("-h", "--help", "Show help") { puts option_parser; exit }
+end
+parser.parse!(ARGV)
+
+listing = JSON.parse(File.read(LISTING_PATH))
+validate_listing!(listing)
+
+case command
+when "prepare"
+  abort("--apply is only valid with upload.") if options[:apply]
+  prepare(listing)
+when "upload"
+  prepare(listing)
+  issuer_id, key_id, key_path = load_credentials(options[:credentials])
+  api = AppStoreConnect.new(issuer_id: issuer_id, key_id: key_id, key_path: key_path)
+  screenshots = listing.fetch("slides").map do |slide|
+    File.join(OUTPUT_SCREENSHOTS, "#{slide.fetch("id")}.png")
+  end
+  ListingSync.new(
+    api: api,
+    listing: listing,
+    screenshots: screenshots,
+    version: options[:version] || listing.fetch("version")
+  ).run(apply: options[:apply])
+when "help"
+  puts parser
+else
+  abort("Unknown command: #{command}\n#{parser}")
+end

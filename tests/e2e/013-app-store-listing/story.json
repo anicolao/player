@@ -1,0 +1,15 @@
+{
+  "id": "013-app-store-listing",
+  "platform": "ios",
+  "test": "PlayerUITests/AppStoreListingUITests/testCapturesCanonicalMarketingSurfaces",
+  "fixture": "marketing-surfaces",
+  "screenshots": [
+    "000-library.png",
+    "001-receiver-ready.png",
+    "002-mirroring-drop-progress.png",
+    "003-playback-settings.png",
+    "004-now-playing.png",
+    "005-sleep-timer.png",
+    "006-full-unlock.png"
+  ]
+}

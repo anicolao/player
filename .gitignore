@@ -15,3 +15,7 @@ AuthKey_*.p8
 *.mobileprovision
 *.p12
 .env
+
+# Rebuilt marketing and website artifacts
+build/
+_site/

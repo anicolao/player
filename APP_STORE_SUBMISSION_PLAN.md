@@ -20,8 +20,8 @@ record for `com.spnss.player`.
 
 - App Store Connect app name: `Bookshelf Offline Audio Player`
 - Installed app name: `Bookshelf`
-- Subtitle: `Local MP3 & M4B Audiobook App`
-- A 99-character keyword set documented in `APP_STORE_LISTING.md`
+- Subtitle: `Your MP3 & M4B Audiobooks`
+- Listing metadata and a 97-byte keyword set in `app-store/listing.json`
 - App Store version record: `1.0`, state `PREPARE_FOR_SUBMISSION`
 - Valid uploaded TestFlight builds through build 30; build 30 contains the
   monetization implementation, playback refinements, and scrolling bookshelf,
@@ -31,7 +31,7 @@ record for `com.spnss.player`.
 - `ITSAppUsesNonExemptEncryption = false`
 - Privacy manifest declaring no tracking and no collected data
 - No third-party SDK or remote analytics dependency found in the app
-- A deterministic unit/integration and twelve-story end-to-end release suite
+- A deterministic unit/integration and thirteen-story end-to-end release suite
 - A 50-hour active-playback allowance, permanent StoreKit Full Unlock, purchase
   restoration, offline entitlement cache, and in-app offer-code redemption
 - A draft `com.spnss.player.fullunlock` non-consumable configured for US$9.99,
@@ -44,8 +44,9 @@ record for `com.spnss.player`.
   therefore has no selectable build.
 - User-visible `Player` branding remains in the app, share extension, receiver,
   recovery, backup, and diagnostic copy.
-- The App Store description, support URL, and privacy-policy URL are empty.
-- No App Store screenshots are uploaded.
+- The App Store description and support URL are drafted in
+  `app-store/listing.json`; the privacy-policy URL is still empty.
+- Six App Store screenshots are designed but not yet uploaded.
 - Copyright and primary category are unset.
 - Age-rating answers are unset.
 - Content-rights and IDFA declarations are unset.
