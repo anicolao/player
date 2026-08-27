@@ -130,11 +130,10 @@ final class RemoteInterruptionUITests: XCTestCase {
     )
 
     XCUIDevice.shared.press(.home)
-    // Give the real scene-phase checkpoint task a complete scheduling window
-    // before foregrounding again. On a loaded hosted simulator, immediately
-    // activating the app can otherwise cancel the background phase before its
-    // acknowledged position is journaled.
-    RunLoop.current.run(until: Date().addingTimeInterval(1))
+    XCTAssertTrue(
+      app.wait(for: .runningBackground, timeout: 2),
+      "The app must report its background lifecycle transition before reactivation"
+    )
     app.activate()
     XCTAssertTrue(
       app.wait(for: .runningForeground, timeout: 2),
@@ -205,22 +204,23 @@ final class RemoteInterruptionUITests: XCTestCase {
     sequence: Int,
     reason: String
   ) throws -> PlaybackJournalProbe {
-    let deadline = Date().addingTimeInterval(2)
-    var latestValue: String?
-    repeat {
-      latestValue = element.value as? String
-      if let state = PlaybackJournalProbe(latestValue),
+    let predicate = NSPredicate { object, _ in
+      guard let element = object as? XCUIElement,
+        let state = PlaybackJournalProbe(element.value as? String),
          state.status == status,
          state.positionMilliseconds == positionMilliseconds,
          state.sequence == sequence,
-         state.reason == reason {
-        return state
-      }
-      RunLoop.current.run(until: Date().addingTimeInterval(0.05))
-    } while Date() < deadline
+         state.reason == reason
+      else { return false }
+      return true
+    }
+    let expectation = XCTNSPredicateExpectation(predicate: predicate, object: element)
+    if XCTWaiter.wait(for: [expectation], timeout: 2) == .completed,
+      let state = PlaybackJournalProbe(element.value as? String)
+    { return state }
 
     XCTFail(
-      "The production playback probe did not report status=\(status), position=\(positionMilliseconds), sequence=\(sequence), reason=\(reason); latest=\(latestValue ?? "nil")"
+      "The production playback probe did not report status=\(status), position=\(positionMilliseconds), sequence=\(sequence), reason=\(reason); latest=\(String(describing: element.value))"
     )
     throw RemoteInterruptionTestError.probeUnavailable
   }

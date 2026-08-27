@@ -229,13 +229,11 @@ final class BookmarkUITests: XCTestCase {
     placeholder: String,
     timeout: TimeInterval
   ) -> Bool {
-    let deadline = Date().addingTimeInterval(timeout)
-    repeat {
-      let value = field.value as? String
-      if value == "" || value == placeholder { return true }
-      RunLoop.current.run(until: Date().addingTimeInterval(0.05))
-    } while Date() < deadline
-    return false
+    let expectation = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "value == '' OR value == %@", placeholder),
+      object: field
+    )
+    return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
   }
 
   private func assertEverySort(_ app: XCUIApplication) throws {
@@ -317,9 +315,9 @@ final class BookmarkUITests: XCTestCase {
     XCTAssertTrue(scrollView.exists)
     XCTAssertTrue(miniPlayer.exists)
 
-    for _ in 0..<3 where !bookmarkFrameIsUnobscured(rows, actions: jumpActions, above: miniPlayer) {
-      scrollView.swipeUp(velocity: .slow)
-    }
+    let align = app.buttons["e2e-align-bookmarks-walkthrough"]
+    XCTAssertTrue(align.waitForExistence(timeout: 2))
+    align.tap()
 
     let visible = NSPredicate(format: "hittable == true")
     for element in rows + jumpActions {
@@ -358,7 +356,7 @@ final class BookmarkUITests: XCTestCase {
   }
 
   private func tapWhenHittable(_ element: XCUIElement, in app: XCUIApplication) throws {
-    let deadline = Date().addingTimeInterval(4)
+    let deadline = Date().addingTimeInterval(2)
     while !element.isHittable && Date() < deadline {
       app.swipeUp()
     }
@@ -376,10 +374,27 @@ final class BookmarkUITests: XCTestCase {
     let currentField = app.descendants(matching: elementType)[identifier]
     XCTAssertTrue(currentField.waitForExistence(timeout: 2))
     currentField.tap()
-    // XCTest's software-keyboard query can remain stale even while the field's
-    // accessibility snapshot reports Keyboard Focused. typeText performs its
-    // own focus synchronization, so use the freshly queried field directly.
+
+    let focusExpectation: (identifier: String, value: String)
+    switch identifier {
+    case "bookmark-search": focusExpectation = ("bookmark-search-focus-state", "focused")
+    case "bookmark-label-editor": focusExpectation = ("bookmark-editor-focus-state", "label")
+    case "bookmark-note-editor": focusExpectation = ("bookmark-editor-focus-state", "note")
+    case "library-search-input": focusExpectation = ("library-search-focus-state", "focused")
+    default:
+      XCTFail("No observable focus state is defined for \(identifier)")
+      return
+    }
+    let focusProbe = app.descendants(matching: .any)[focusExpectation.identifier]
+    XCTAssertTrue(
+      focusProbe.waitForStringValue(focusExpectation.value, timeout: 2),
+      "Expected \(identifier) to acquire focus before typing"
+    )
     currentField.typeText(text)
+    XCTAssertTrue(
+      currentField.waitForStringValue(text, timeout: 2),
+      "Expected \(identifier) to receive the complete text"
+    )
   }
 
   private func requireProbe(
@@ -389,18 +404,23 @@ final class BookmarkUITests: XCTestCase {
     position: Int64
   ) throws -> BookmarkProbe {
     let element = app.descendants(matching: .any)["bookmarks-state-probe"]
-    let deadline = Date().addingTimeInterval(3)
-    repeat {
-      if let value = element.value as? String,
+    let predicate = NSPredicate { object, _ in
+      guard let element = object as? XCUIElement,
+        let value = element.value as? String,
         let probe = BookmarkProbe(value),
         probe["count"] == String(count),
         transactions == nil || probe["transactions"] == String(transactions!),
         probe["position"] == String(position)
-      {
-        return probe
-      }
-      RunLoop.current.run(until: Date().addingTimeInterval(0.05))
-    } while Date() < deadline
+      else { return false }
+      return true
+    }
+    let expectation = XCTNSPredicateExpectation(predicate: predicate, object: element)
+    if XCTWaiter.wait(for: [expectation], timeout: 2) == .completed,
+      let value = element.value as? String,
+      let probe = BookmarkProbe(value)
+    {
+      return probe
+    }
     XCTFail("Bookmark probe did not reach count=\(count), transactions=\(transactions.map(String.init) ?? "any"), position=\(position); actual=\(String(describing: element.value))")
     throw BookmarkUITestError.probeUnavailable
   }

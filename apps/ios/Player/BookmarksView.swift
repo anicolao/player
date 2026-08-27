@@ -40,9 +40,20 @@ struct BookmarksView: View {
             bookmarkRow(bookmark)
           }
         }
+        #if E2E
+          Color.clear
+            .frame(height: 0)
+            .id("bookmarks-walkthrough-bottom")
+        #endif
       }
 
       StateProbe(id: "bookmarks-screen", value: screenValue)
+      #if E2E
+        StateProbe(
+          id: "bookmark-search-focus-state",
+          value: isSearchFocused ? "focused" : "unfocused"
+        )
+      #endif
     }
     .sheet(item: $editingBookmark) { bookmark in
       BookmarkEditorView(model: model, bookmark: bookmark)
@@ -263,11 +274,14 @@ struct BookmarksView: View {
 }
 
 private struct BookmarkEditorView: View {
+  private enum FocusedField: String { case label, note }
+
   @Environment(\.dismiss) private var dismiss
   @Bindable var model: PlayerModel
   let bookmark: Bookmark
   @State private var label: String
   @State private var note: String
+  @FocusState private var focusedField: FocusedField?
 
   init(model: PlayerModel, bookmark: Bookmark) {
     self.model = model
@@ -282,6 +296,7 @@ private struct BookmarkEditorView: View {
         Section("Label") {
           HStack(spacing: 10) {
             TextField("Bookmark label", text: $label)
+              .focused($focusedField, equals: .label)
               .accessibilityIdentifier("bookmark-label-editor")
             if !label.isEmpty {
               Button {
@@ -298,6 +313,7 @@ private struct BookmarkEditorView: View {
         }
         Section {
           TextEditor(text: $note)
+            .focused($focusedField, equals: .note)
             .frame(minHeight: 110)
             .accessibilityIdentifier("bookmark-note-editor")
         } header: {
@@ -328,6 +344,14 @@ private struct BookmarkEditorView: View {
       .accessibilityElement(children: .contain)
       .accessibilityIdentifier("bookmark-editor")
       .accessibilityValue(Text(verbatim: "bookmark=\(bookmark.id.uuidString.lowercased()):valid=\(!label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)"))
+      #if E2E
+        .overlay {
+          StateProbe(
+            id: "bookmark-editor-focus-state",
+            value: focusedField?.rawValue ?? "none"
+          )
+        }
+      #endif
     }
   }
 }

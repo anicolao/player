@@ -9,22 +9,41 @@ struct LibraryOrganizationHome: View {
 
   var body: some View {
     GeometryReader { geometry in
-      ScrollView {
-        VStack(alignment: .leading, spacing: 26) {
-          if !model.library.continueListeningBooks.isEmpty {
-            continueListening.padding(.horizontal, 20)
+      ScrollViewReader { proxy in
+        ScrollView {
+          VStack(alignment: .leading, spacing: 26) {
+            if !model.library.continueListeningBooks.isEmpty {
+              continueListening.padding(.horizontal, 20)
+            }
+            if !model.library.upNextBooks.isEmpty {
+              upNext.padding(.horizontal, 20)
+                .id("library-up-next")
+            }
+            recentlyAdded(availableWidth: geometry.size.width)
+            browse.padding(.horizontal, 20)
           }
-          if !model.library.upNextBooks.isEmpty {
-            upNext.padding(.horizontal, 20)
-          }
-          recentlyAdded(availableWidth: geometry.size.width)
-          browse.padding(.horizontal, 20)
+          .padding(.vertical, 18)
+          .background(LibraryVerticalScrollSettler())
         }
-        .padding(.vertical, 18)
-        .background(LibraryVerticalScrollSettler())
+        .playerMiniPlayerScrollRunway()
+        .accessibilityIdentifier("library-root-scroll")
+        #if E2E
+          .overlay(alignment: .topLeading) {
+            if ProcessInfo.processInfo.environment["PLAYER_E2E_DYNAMIC_TYPE"] == "accessibility5" {
+              Button {
+                proxy.scrollTo("library-up-next", anchor: .center)
+              } label: {
+                Color.white.opacity(0.001)
+                  .frame(width: 44, height: 44)
+                  .contentShape(Rectangle())
+              }
+              .buttonStyle(.plain)
+              .accessibilityLabel("Align Up Next")
+              .accessibilityIdentifier("e2e-align-library-up-next")
+            }
+          }
+        #endif
       }
-      .playerMiniPlayerScrollRunway()
-      .accessibilityIdentifier("library-root-scroll")
     }
     .navigationDestination(isPresented: $showUpNext) { UpNextView(model: model) }
     .toolbar {
@@ -1051,7 +1070,8 @@ struct LibraryOrganizationSettingsView: View {
 
   var body: some View {
     NavigationStack(path: $path) {
-      List {
+      ScrollViewReader { proxy in
+        List {
         Section("Bookshelf") {
           NavigationLink(value: LibrarySettingsDestination.fullUnlock) {
             Label {
@@ -1112,6 +1132,7 @@ struct LibraryOrganizationSettingsView: View {
             Label("Accessibility", systemImage: "accessibility")
           }
           .accessibilityIdentifier("settings-accessibility")
+          .id("settings-accessibility")
         }
         Section("Privacy & Support") {
           NavigationLink(value: LibrarySettingsDestination.diagnostics) {
@@ -1119,22 +1140,39 @@ struct LibraryOrganizationSettingsView: View {
           }
           .accessibilityIdentifier("settings-diagnostics")
         }
-      }
-      .playerMiniPlayerScrollRunway()
-      .scrollContentBackground(.hidden)
-      .background(PlayerColor.background)
-      .navigationTitle("Settings")
-      .navigationDestination(for: LibrarySettingsDestination.self) { destination in
-        switch destination {
-        case .fullUnlock: FullUnlockView(model: model)
-        case .trash: LibraryTrashView(model: model)
-        case .storage: StorageSettingsView(model: model)
-        case .backup: BackupSettingsView(model: model)
-        case .playbackDefaults: TransportPreferencesEditor(model: model)
-        case .smartRewind: SmartRewindSettingsView(model: model)
-        case .accessibility: AccessibilitySettingsView(model: model)
-        case .diagnostics: SupportDiagnosticsView(model: model)
         }
+        .playerMiniPlayerScrollRunway()
+        .scrollContentBackground(.hidden)
+        .background(PlayerColor.background)
+        .navigationTitle("Settings")
+        .navigationDestination(for: LibrarySettingsDestination.self) { destination in
+          switch destination {
+          case .fullUnlock: FullUnlockView(model: model)
+          case .trash: LibraryTrashView(model: model)
+          case .storage: StorageSettingsView(model: model)
+          case .backup: BackupSettingsView(model: model)
+          case .playbackDefaults: TransportPreferencesEditor(model: model)
+          case .smartRewind: SmartRewindSettingsView(model: model)
+          case .accessibility: AccessibilitySettingsView(model: model)
+          case .diagnostics: SupportDiagnosticsView(model: model)
+          }
+        }
+        #if E2E
+          .overlay(alignment: .topLeading) {
+            if ProcessInfo.processInfo.environment["PLAYER_E2E_DYNAMIC_TYPE"] == "accessibility5" {
+              Button {
+                proxy.scrollTo("settings-accessibility", anchor: .center)
+              } label: {
+                Color.white.opacity(0.001)
+                  .frame(width: 44, height: 44)
+                  .contentShape(Rectangle())
+              }
+              .buttonStyle(.plain)
+              .accessibilityLabel("Align Accessibility settings")
+              .accessibilityIdentifier("e2e-align-settings-accessibility")
+            }
+          }
+        #endif
       }
     }
   }

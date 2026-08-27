@@ -12,10 +12,10 @@ final class TransportControlsUITests: XCTestCase {
     app.launch()
 
     let globalPreferences = app.buttons["playback-defaults"]
-    XCTAssertTrue(globalPreferences.waitForExistence(timeout: 5))
+    XCTAssertTrue(globalPreferences.waitForExistence(timeout: 2))
     globalPreferences.tap()
     let preferencesScreen = app.descendants(matching: .any)["transport-preferences-screen"]
-    XCTAssertTrue(preferencesScreen.waitForExistence(timeout: 5))
+    XCTAssertTrue(preferencesScreen.waitForExistence(timeout: 2))
     try requireValue(
       preferencesScreen,
       "transport:scope=global:rate=1.00:back=15:forward=30:seek=chapter"

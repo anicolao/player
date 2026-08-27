@@ -294,7 +294,7 @@ final class SleepTimerUITests: XCTestCase {
   }
 
   private func tapWhenHittable(_ element: XCUIElement, in app: XCUIApplication) throws {
-    let deadline = Date().addingTimeInterval(3)
+    let deadline = Date().addingTimeInterval(2)
     while !element.isHittable && Date() < deadline {
       app.swipeUp()
     }
@@ -315,20 +315,22 @@ final class SleepTimerUITests: XCTestCase {
     context: String? = nil
   ) throws -> SleepProbe {
     let element = app.descendants(matching: .any)["sleep-timer-state-probe"]
-    let deadline = Date().addingTimeInterval(3)
-    repeat {
-      if let value = element.value as? String,
+    let predicate = NSPredicate { object, _ in
+      guard let element = object as? XCUIElement,
+        let value = element.value as? String,
         let state = SleepProbe(value),
         active == nil || state["active"] == active,
         historyCount == nil || state["history"] == String(historyCount!),
         phase == nil || state["phase"] == phase,
         position == nil || state["position"] == String(position!),
         context == nil || state["context"] == context
-      {
-        return state
-      }
-      RunLoop.current.run(until: Date().addingTimeInterval(0.05))
-    } while Date() < deadline
+      else { return false }
+      return true
+    }
+    let expectation = XCTNSPredicateExpectation(predicate: predicate, object: element)
+    if XCTWaiter.wait(for: [expectation], timeout: 2) == .completed,
+      let value = element.value as? String, let state = SleepProbe(value)
+    { return state }
     XCTFail("Sleep timer probe did not reach active=\(active ?? "any") history=\(historyCount.map(String.init) ?? "any") phase=\(phase ?? "any") position=\(position.map(String.init) ?? "any") context=\(context ?? "any"); actual=\(String(describing: element.value))")
     throw SleepTimerUITestError.probeUnavailable
   }
@@ -349,7 +351,7 @@ final class SleepTimerUITests: XCTestCase {
     _ expected: String,
     in app: XCUIApplication
   ) throws {
-    let deadline = Date().addingTimeInterval(4)
+    let deadline = Date().addingTimeInterval(2)
     while !element.exists && Date() < deadline {
       app.swipeUp()
     }

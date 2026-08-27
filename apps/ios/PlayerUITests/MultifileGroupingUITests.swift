@@ -230,20 +230,12 @@ final class MultifileGroupingUITests: XCTestCase {
   }
 
   private func requireValue(_ element: XCUIElement, _ expected: String) throws {
-    // Import acquisition performs real filesystem work. Hosted macOS runners can
-    // take several seconds longer than a warm local simulator under contention.
-    let deadline = Date().addingTimeInterval(10)
-    var latest: String?
-    repeat {
-      if element.exists {
-        latest = element.value as? String
-        if latest == expected { return }
-      }
-      RunLoop.current.run(until: Date().addingTimeInterval(0.05))
-    } while Date() < deadline
-
-    XCTFail("The multifile journey expected \(expected), latest=\(latest ?? "nil")")
-    throw MultifileGroupingTestError.semanticStateUnavailable
+    guard element.waitForStringValue(expected, timeout: 2) else {
+      XCTFail(
+        "The multifile journey expected \(expected), latest=\(String(describing: element.value))"
+      )
+      throw MultifileGroupingTestError.semanticStateUnavailable
+    }
   }
 }
 

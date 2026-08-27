@@ -64,7 +64,7 @@ final class OfflineRecoveryUITests: XCTestCase {
     XCTAssertTrue(
       diagnosticsProbe.waitForStringValue(
         "diagnostics:sanitized=true:offline=true:quarantined=3",
-        timeout: 3
+        timeout: 2
       )
     )
     try tester.step(

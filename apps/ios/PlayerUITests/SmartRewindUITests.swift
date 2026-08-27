@@ -282,17 +282,19 @@ final class SmartRewindUITests: XCTestCase {
     position: Int64? = nil
   ) throws -> ProbeState {
     let element = app.descendants(matching: .any)["smart-rewind-state-probe"]
-    let deadline = Date().addingTimeInterval(2)
-    repeat {
-      if let value = element.value as? String,
+    let predicate = NSPredicate { object, _ in
+      guard let element = object as? XCUIElement,
+        let value = element.value as? String,
         let state = ProbeState(value),
         latest == nil || state["latest"] == latest,
         position == nil || state["position"] == String(position!)
-      {
-        return state
-      }
-      RunLoop.current.run(until: Date().addingTimeInterval(0.05))
-    } while Date() < deadline
+      else { return false }
+      return true
+    }
+    let expectation = XCTNSPredicateExpectation(predicate: predicate, object: element)
+    if XCTWaiter.wait(for: [expectation], timeout: 2) == .completed,
+      let value = element.value as? String, let state = ProbeState(value)
+    { return state }
     XCTFail("Smart Rewind probe did not reach latest=\(latest ?? "any") position=\(position.map(String.init) ?? "any"); actual=\(String(describing: element.value))")
     throw SmartRewindUITestError.probeUnavailable
   }

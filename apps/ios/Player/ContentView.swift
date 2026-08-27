@@ -711,24 +711,42 @@ struct ReviewImportView: View {
   @State private var isConfirmingAbandonment = false
 
   var body: some View {
-    ZStack {
-      PlayerColor.background.ignoresSafeArea()
-      if let job = model.library.importJobs.first(where: { $0.id == jobID }),
-         let proposal = job.proposal {
-        if isCompactReview(job: job, proposal: proposal) {
-          reviewContent(job: job, proposal: proposal)
-            .padding(20)
-            .frame(maxHeight: .infinity, alignment: .top)
-        } else {
-          ScrollView {
+    ScrollViewReader { proxy in
+      ZStack {
+        PlayerColor.background.ignoresSafeArea()
+        if let job = model.library.importJobs.first(where: { $0.id == jobID }),
+           let proposal = job.proposal {
+          if isCompactReview(job: job, proposal: proposal) {
             reviewContent(job: job, proposal: proposal)
               .padding(20)
+              .frame(maxHeight: .infinity, alignment: .top)
+          } else {
+            ScrollView {
+              reviewContent(job: job, proposal: proposal)
+                .padding(20)
+            }
+            .playerMiniPlayerScrollRunway()
           }
-          .playerMiniPlayerScrollRunway()
+        } else {
+          ProgressView("Preparing review…")
         }
-      } else {
-        ProgressView("Preparing review…")
       }
+      #if E2E
+        .overlay(alignment: .topLeading) {
+          if ProcessInfo.processInfo.environment["PLAYER_E2E_DYNAMIC_TYPE"] == "accessibility5" {
+            Button {
+              proxy.scrollTo("review-edit-metadata", anchor: .center)
+            } label: {
+              Color.white.opacity(0.001)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Align Edit Details")
+            .accessibilityIdentifier("e2e-align-review-edit-metadata")
+          }
+        }
+      #endif
     }
     .navigationTitle("Review Import")
     .navigationBarTitleDisplayMode(.inline)
@@ -867,6 +885,7 @@ struct ReviewImportView: View {
       .controlSize(.large)
       .tint(PlayerColor.accent)
       .accessibilityIdentifier("edit-metadata")
+      .id("review-edit-metadata")
     }
   }
 
@@ -1481,16 +1500,34 @@ struct BookDetailView: View {
           .playerMiniPlayerScrollRunway()
           #if E2E
             .overlay(alignment: .topLeading) {
-              Button {
-                proxy.scrollTo("book-detail-play", anchor: .center)
-              } label: {
-                Color.white.opacity(0.001)
-                  .frame(width: 44, height: 44)
-                  .contentShape(Rectangle())
+              VStack(spacing: 0) {
+                Button {
+                  proxy.scrollTo("book-detail-play", anchor: .center)
+                } label: {
+                  Color.white.opacity(0.001)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Align Book Detail actions")
+                .accessibilityIdentifier("e2e-align-book-detail-play")
+
+                if E2EBookmarkBridge.shared.isConfigured, selectedContent == .bookmarks {
+                  Button {
+                    proxy.scrollTo(
+                      "bookmarks-walkthrough-bottom",
+                      anchor: UnitPoint(x: 0.5, y: 0.68)
+                    )
+                  } label: {
+                    Color.white.opacity(0.001)
+                      .frame(width: 44, height: 44)
+                      .contentShape(Rectangle())
+                  }
+                  .buttonStyle(.plain)
+                  .accessibilityLabel("Align Bookmarks walkthrough")
+                  .accessibilityIdentifier("e2e-align-bookmarks-walkthrough")
+                }
               }
-              .buttonStyle(.plain)
-              .accessibilityLabel("Align Book Detail actions")
-              .accessibilityIdentifier("e2e-align-book-detail-play")
             }
           #endif
         }
@@ -1674,10 +1711,12 @@ private struct NowPlayingView: View {
   @State private var savedBookmarkID: UUID?
   var body: some View {
     let slider = PlaybackSliderConfiguration(durationSeconds: displayedDuration)
-    NavigationStack {
-      ZStack {
-        PlayerColor.background.ignoresSafeArea()
-        VStack(spacing: 24) {
+    ZStack {
+      NavigationStack {
+        ScrollViewReader { proxy in
+          ZStack {
+            PlayerColor.background.ignoresSafeArea()
+            VStack(spacing: 24) {
           Spacer()
           ArtworkView(data: book.artworkData, size: 270)
           VStack(spacing: 7) {
@@ -1727,6 +1766,7 @@ private struct NowPlayingView: View {
           .accessibilityValue(positionAccessibilityValue)
           .accessibilityHint("Swipe up or down to move through this listening timeline")
           .accessibilityIdentifier("player-position-slider")
+          .id("now-playing-timeline")
           HStack {
             Text(visibleElapsedLabel)
               .accessibilityLabel("Elapsed time")
@@ -1764,6 +1804,7 @@ private struct NowPlayingView: View {
             .buttonStyle(.borderedProminent).buttonBorderShape(.circle).tint(PlayerColor.accent)
             .accessibilityLabel(model.playbackState.status == .playing ? "Pause" : "Play")
             .accessibilityIdentifier("player-play-pause")
+            .id("now-playing-transport")
             transportButton(
               "Skip forward \(Int(preferences.forwardSkipSeconds)) seconds",
               systemImage: "goforward.\(skipSymbol(preferences.forwardSkipSeconds))",
@@ -1792,68 +1833,134 @@ private struct NowPlayingView: View {
           .controlSize(.large)
           .accessibilityIdentifier("open-transport-preferences")
           .accessibilityValue(transportValue)
-          Spacer()
-        }
-        .padding(24)
-        .accessibilityScrollsIfNeeded(dynamicTypeSize.isAccessibilitySize)
-      }
-      .toolbar {
-        ToolbarItem(placement: .topBarLeading) { Button("Done") { dismiss() } }
-        ToolbarItemGroup(placement: .topBarTrailing) {
-          Button {
-            Task { savedBookmarkID = await model.addBookmark() }
-          } label: {
-            Image(systemName: "bookmark")
+            Spacer()
           }
-          .accessibilityLabel("Add Bookmark")
-          .accessibilityIdentifier("add-bookmark")
-          Button { showsSleepTimer = true } label: {
-            Image(systemName: model.activeSleepTimer == nil ? "moon.zzz" : "timer")
+          .padding(24)
+          .accessibilityScrollsIfNeeded(dynamicTypeSize.isAccessibilitySize)
+
           }
-          .accessibilityLabel("Sleep Timer")
-          .accessibilityIdentifier("open-sleep-timer")
-          .accessibilityValue(sleepTimerButtonValue)
-        }
-      }
-      .accessibilityElement(children: .contain)
-      .accessibilityIdentifier("now-playing-screen")
-      .accessibilityValue(playerValue)
-      .animation(.easeOut(duration: 0.3), value: model.pendingResumeRewind?.id)
-      #if E2E
-        .overlay { smartRewindStateProbe }
-        .overlay(alignment: .topTrailing) {
-          if E2ESleepTimerBridge.shared.isConfigured {
-            E2ESleepTimerControlSurface(model: model)
-          }
-        }
-        .overlay(alignment: .bottomLeading) {
-          if E2EBookmarkBridge.shared.isConfigured {
-            E2EBookmarkControlSurface(model: model)
-              .padding(.leading, 4)
-              .padding(.bottom, 72)
-          }
-        }
-        .overlay(alignment: .topLeading) {
-          if ProcessInfo.processInfo.arguments.contains("-e2e-rewind-expiry-control") {
-            Button("Advance five seconds") {
-              Task {
-                await model.seek(to: model.playbackState.elapsedSeconds + 5)
-                await model.synchronizePlaybackProgress()
+          #if E2E
+            .overlay(alignment: .topLeading) {
+              if ProcessInfo.processInfo.environment["PLAYER_E2E_DYNAMIC_TYPE"] == "accessibility5" {
+                Button {
+                  proxy.scrollTo("now-playing-transport", anchor: .center)
+                } label: {
+                  Color.white.opacity(0.001)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Align Now Playing transport controls")
+                .accessibilityIdentifier("e2e-align-now-playing-transport")
               }
             }
-            .accessibilityIdentifier("e2e-advance-rewind-expiry")
+          #endif
+        }
+        .toolbar { nowPlayingToolbar }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("now-playing-screen")
+        .accessibilityValue(playerValue)
+        .animation(.easeOut(duration: 0.3), value: model.pendingResumeRewind?.id)
+        #if E2E
+          .overlay { smartRewindStateProbe }
+          .overlay(alignment: .topTrailing) {
+            if E2ESleepTimerBridge.shared.isConfigured {
+              E2ESleepTimerControlSurface(model: model)
+            }
           }
-        }
-      #endif
-      .sheet(isPresented: $showsTransportPreferences) {
-        NavigationStack {
-          TransportPreferencesEditor(model: model, book: currentBookFromModel ?? book)
-        }
+          .overlay(alignment: .bottomLeading) {
+            if E2EBookmarkBridge.shared.isConfigured {
+              E2EBookmarkControlSurface(model: model)
+                .padding(.leading, 4)
+                .padding(.bottom, 72)
+            }
+          }
+          .overlay(alignment: .topLeading) {
+            if ProcessInfo.processInfo.arguments.contains("-e2e-rewind-expiry-control") {
+              Button("Advance five seconds") {
+                Task {
+                  await model.seek(to: model.playbackState.elapsedSeconds + 5)
+                  await model.synchronizePlaybackProgress()
+                }
+              }
+              .accessibilityIdentifier("e2e-advance-rewind-expiry")
+            }
+          }
+        #endif
       }
-      .sheet(isPresented: $showsSleepTimer) {
-        SleepTimerView(model: model)
+      if showsSleepTimer {
+        PlayerColor.background.ignoresSafeArea()
       }
     }
+    .sheet(isPresented: $showsTransportPreferences) {
+      NavigationStack {
+        TransportPreferencesEditor(model: model, book: currentBookFromModel ?? book)
+      }
+    }
+    .sheet(isPresented: $showsSleepTimer) {
+      SleepTimerView(model: model)
+    }
+  }
+
+  @ToolbarContentBuilder
+  private var nowPlayingToolbar: some ToolbarContent {
+    if #available(iOS 26.0, *) {
+      ToolbarItem(placement: .topBarLeading) {
+        Button { dismiss() } label: {
+          Text("Done")
+            .foregroundStyle(PlayerColor.accent)
+            .frame(width: 64, height: 44)
+            .background(PlayerColor.card, in: Capsule())
+            .overlay { Capsule().stroke(PlayerColor.ink.opacity(0.05), lineWidth: 1) }
+            .shadow(color: PlayerColor.ink.opacity(0.10), radius: 12, y: 5)
+        }
+        .buttonStyle(.plain)
+        .fixedSize()
+      }
+      .sharedBackgroundVisibility(.hidden)
+
+      ToolbarItem(placement: .topBarTrailing) {
+        HStack(spacing: 0) {
+          addBookmarkButton
+          sleepTimerToolbarButton
+        }
+        .foregroundStyle(PlayerColor.accent)
+        .frame(width: 94, height: 44)
+        .background(PlayerColor.card, in: Capsule())
+        .overlay { Capsule().stroke(PlayerColor.ink.opacity(0.05), lineWidth: 1) }
+        .shadow(color: PlayerColor.ink.opacity(0.10), radius: 12, y: 5)
+        .fixedSize()
+      }
+      .sharedBackgroundVisibility(.hidden)
+    } else {
+      ToolbarItem(placement: .topBarLeading) { Button("Done") { dismiss() } }
+      ToolbarItemGroup(placement: .topBarTrailing) {
+        addBookmarkButton
+        sleepTimerToolbarButton
+      }
+    }
+  }
+
+  private var addBookmarkButton: some View {
+    Button {
+      Task { savedBookmarkID = await model.addBookmark() }
+    } label: {
+      Image(systemName: "bookmark").frame(width: 44, height: 44)
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel("Add Bookmark")
+    .accessibilityIdentifier("add-bookmark")
+  }
+
+  private var sleepTimerToolbarButton: some View {
+    Button { showsSleepTimer = true } label: {
+      Image(systemName: model.activeSleepTimer == nil ? "moon.zzz" : "timer")
+        .frame(width: 44, height: 44)
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel("Sleep Timer")
+    .accessibilityIdentifier("open-sleep-timer")
+    .accessibilityValue(sleepTimerButtonValue)
   }
 
   private var preferences: TransportPreferences {
