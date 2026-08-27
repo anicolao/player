@@ -3,11 +3,18 @@ import XCTest
 @MainActor
 extension XCUIElement {
   func waitForStringValue(_ expectedValue: String, timeout: TimeInterval) -> Bool {
+    if currentStringValue == expectedValue { return true }
     let expectation = XCTNSPredicateExpectation(
       predicate: NSPredicate(format: "exists == true AND value == %@", expectedValue),
       object: self
     )
-    return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
+    if XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed { return true }
+    return currentStringValue == expectedValue
+  }
+
+  fileprivate var currentStringValue: String? {
+    guard exists else { return nil }
+    return value.map(String.init(describing:))
   }
 }
 
@@ -30,14 +37,16 @@ struct StepVerification {
     _ specification: String
   ) -> StepVerification {
     StepVerification(specification: specification) {
+      if !element.exists { return true }
       let expectation = XCTNSPredicateExpectation(
         predicate: NSPredicate(format: "exists == false"),
         object: element
       )
-      return XCTWaiter.wait(
+      if XCTWaiter.wait(
         for: [expectation],
         timeout: TestStepHelper.conditionTimeout
-      ) == .completed
+      ) == .completed { return true }
+      return !element.exists
     }
   }
 
@@ -68,21 +77,21 @@ struct StepVerification {
     _ specification: String
   ) -> StepVerification {
     StepVerification(specification: specification) {
+      if element.currentStringValue?.contains(expectedFragment) == true { return true }
       let expectation = XCTNSPredicateExpectation(
         predicate: NSPredicate(format: "exists == true AND value CONTAINS %@", expectedFragment),
         object: element
       )
-      guard XCTWaiter.wait(
+      if XCTWaiter.wait(
         for: [expectation], timeout: TestStepHelper.conditionTimeout
-      ) == .completed else {
-        let latest = element.value.map(String.init(describing:)) ?? ""
-        print(
-          "Value verification failed: identifier=\(element.identifier), "
-            + "expected fragment=\(expectedFragment), latest=\(latest)"
-        )
-        return false
-      }
-      return true
+      ) == .completed { return true }
+      if element.currentStringValue?.contains(expectedFragment) == true { return true }
+      let latest = element.value.map(String.init(describing:)) ?? ""
+      print(
+        "Value verification failed: identifier=\(element.identifier), "
+          + "expected fragment=\(expectedFragment), latest=\(latest)"
+      )
+      return false
     }
   }
 }

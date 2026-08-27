@@ -37,7 +37,7 @@ final class PositionRestoreUITests: XCTestCase {
     XCTAssertTrue(remainingTime.waitForExistence(timeout: 2))
     XCTAssertEqual(elapsedTime.value as? String, "0m12s")
     XCTAssertEqual(remainingTime.value as? String, "1m48s")
-    let seekedState = try adjustSliderUntilAcknowledged(
+    let seekedState = try adjustSliderAndRequireAcknowledgement(
       positionSlider,
       to: 0.5,
       reportingThrough: nowPlaying,
@@ -196,25 +196,23 @@ final class PositionRestoreUITests: XCTestCase {
     throw PositionRestoreTestError.semanticStateUnavailable
   }
 
-  private func adjustSliderUntilAcknowledged(
+  private func adjustSliderAndRequireAcknowledgement(
     _ slider: XCUIElement,
     to normalizedPosition: CGFloat,
     reportingThrough element: XCUIElement,
     expectedPositionMilliseconds: Int
   ) throws -> PlaybackSemanticState {
-    for _ in 0..<3 {
-      slider.adjust(toNormalizedSliderPosition: normalizedPosition)
-      if let state = waitForPlaybackState(
-        element,
-        status: "paused",
-        positionMilliseconds: expectedPositionMilliseconds
-      ) {
-        return state
-      }
+    slider.adjust(toNormalizedSliderPosition: normalizedPosition)
+    if let state = waitForPlaybackState(
+      element,
+      status: "paused",
+      positionMilliseconds: expectedPositionMilliseconds
+    ) {
+      return state
     }
 
     XCTFail(
-      "The slider did not acknowledge position=\(expectedPositionMilliseconds) after 3 attempts; latest=\(String(describing: element.value))"
+      "The slider did not acknowledge position=\(expectedPositionMilliseconds); latest=\(String(describing: element.value))"
     )
     throw PositionRestoreTestError.semanticStateUnavailable
   }
@@ -224,6 +222,15 @@ final class PositionRestoreUITests: XCTestCase {
     status: String,
     positionMilliseconds: Int? = nil
   ) -> PlaybackSemanticState? {
+    func matchingState() -> PlaybackSemanticState? {
+      guard let state = PlaybackSemanticState(element.value as? String),
+        state.status == status,
+        positionMilliseconds == nil || state.positionMilliseconds == positionMilliseconds
+      else { return nil }
+      return state
+    }
+
+    if let state = matchingState() { return state }
     let predicate = NSPredicate { object, _ in
       guard let element = object as? XCUIElement,
         let state = PlaybackSemanticState(element.value as? String),
@@ -233,8 +240,10 @@ final class PositionRestoreUITests: XCTestCase {
       return true
     }
     let expectation = XCTNSPredicateExpectation(predicate: predicate, object: element)
-    guard XCTWaiter.wait(for: [expectation], timeout: 2) == .completed else { return nil }
-    return PlaybackSemanticState(element.value as? String)
+    if XCTWaiter.wait(for: [expectation], timeout: 2) == .completed,
+      let state = matchingState()
+    { return state }
+    return matchingState()
   }
 
   private func restoredPositionVerification(

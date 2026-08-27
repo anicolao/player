@@ -214,13 +214,28 @@ final class MetadataRepairUITests: XCTestCase {
     with replacement: String,
     app: XCUIApplication
   ) throws {
-    for _ in 0..<3 {
-      field.tap()
-      XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 2))
-      field.typeKey("a", modifierFlags: .command)
-      field.typeText(replacement)
-      if field.waitForStringValue(replacement, timeout: 1) { return }
-    }
+    let existingValue = try XCTUnwrap(field.value as? String)
+    field.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
+    let focus = app.descendants(matching: .any)["metadata-title-focus-state"]
+    XCTAssertTrue(
+      focus.waitForStringValue("focused", timeout: 2),
+      "The metadata title must acquire focus before replacement text is entered"
+    )
+    XCTAssertTrue(
+      app.keyboards.firstMatch.waitForExistence(timeout: 2),
+      "The software keyboard must be ready before replacement text is entered"
+    )
+    let titleValue = app.descendants(matching: .any)["metadata-title-value-state"]
+    field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: existingValue.count))
+    XCTAssertTrue(
+      titleValue.waitForStringValue("empty", timeout: 2),
+      "Deleting the observed title must clear the metadata field"
+    )
+    field.typeText(replacement)
+    XCTAssertTrue(
+      titleValue.waitForStringValue("value=\(replacement)", timeout: 2),
+      "The metadata draft must receive the replacement title"
+    )
     try requireValue(field, replacement)
   }
 
