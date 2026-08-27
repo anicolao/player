@@ -346,10 +346,14 @@ private struct BookmarkEditorView: View {
       .accessibilityValue(Text(verbatim: "bookmark=\(bookmark.id.uuidString.lowercased()):valid=\(!label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)"))
       #if E2E
         .overlay {
-          StateProbe(
-            id: "bookmark-editor-focus-state",
-            value: focusedField?.rawValue ?? "none"
-          )
+          ZStack {
+            StateProbe(
+              id: "bookmark-editor-focus-state",
+              value: focusedField?.rawValue ?? "none"
+            )
+            StateProbe(id: "bookmark-label-editor-value", value: label)
+            StateProbe(id: "bookmark-note-editor-value", value: note)
+          }
         }
       #endif
     }
