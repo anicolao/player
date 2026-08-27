@@ -12,6 +12,7 @@
 - Animations: disabled by the E2E build configuration
 - Network and clock data: unused by this story
 - Every image uses fixed synthetic audiobook metadata and artwork.
+- Harbor at Dawn uses committed, generated fictional cover artwork made for this marketing fixture.
 - The listing and website build scripts consume the fresh ActualWalkthrough output from this story.
 - No marketing screenshot is maintained as a second copied source file.
 
@@ -26,9 +27,9 @@
 - [x] Recent cover artwork is visible
 - [x] The current book stays within reach
 
-## Bookshelf offers a direct computer receiver and a Files fallback
+## The private receiver accepts books through a browser on any computer
 
-![Bookshelf offers a direct computer receiver and a Files fallback](./screenshots/ios/001-receiver-ready.png)
+![The private receiver accepts books through a browser on any computer](./screenshots/ios/001-receiver-ready.png)
 
 **Verifications:**
 
@@ -36,9 +37,9 @@
 - [x] The pairing code is visible
 - [x] Files remains available
 
-## A dropped audiobook shows clear import progress
+## iPhone Mirroring makes Finder drag-and-drop the fastest Mac path
 
-![A dropped audiobook shows clear import progress](./screenshots/ios/002-mirroring-drop-progress.png)
+![iPhone Mirroring makes Finder drag-and-drop the fastest Mac path](./screenshots/ios/002-mirroring-drop-progress.png)
 
 **Verifications:**
 

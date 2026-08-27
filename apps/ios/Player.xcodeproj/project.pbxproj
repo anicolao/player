@@ -87,6 +87,7 @@
 		79EDCC32634DD7C0FFEE0966 /* E2EOfflineRecoveryBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 257D6CA5A0E6740077ACCC68 /* E2EOfflineRecoveryBridge.swift */; };
 		7A0C6CF9F7582BFBC189C842 /* ComputerReceiverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61B0A2BF4187CC699F787057 /* ComputerReceiverView.swift */; };
 		7B404E50E78239892CDA1CC9 /* AccessibilityPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = B73879FC42A70C0D19980BD4 /* AccessibilityPreferences.swift */; };
+		7C0EDCCE51C436D2CF61D225 /* harbor-at-dawn-cover.png in Resources */ = {isa = PBXBuildFile; fileRef = 5C76BBD4693166AB63F1527A /* harbor-at-dawn-cover.png */; };
 		7D18DF81E703DEEA12ECFF86 /* L’Écho — piste 3.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 9101B008DF263F7327189F17 /* L’Écho — piste 3.m4a */; };
 		7D3C2B0477FCE5FE4B1BD9F6 /* L’Écho — piste 6 – fin.m4a in Resources */ = {isa = PBXBuildFile; fileRef = D3085638600B5ABEC354A6AF /* L’Écho — piste 6 – fin.m4a */; };
 		800640FD32AD264DB1A88C35 /* SleepTimerUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CA7265ABF3FC6EDADF32303 /* SleepTimerUITests.swift */; };
@@ -230,6 +231,7 @@
 		59EEC7D9C47D2EE7DBB766E8 /* LibraryBackup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryBackup.swift; sourceTree = "<group>"; };
 		5A472F6239334DA5828702A9 /* ShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShareExtension.entitlements; sourceTree = "<group>"; };
 		5ABB8C6C8BEDE0621F262590 /* PlayerTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PlayerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		5C76BBD4693166AB63F1527A /* harbor-at-dawn-cover.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "harbor-at-dawn-cover.png"; sourceTree = "<group>"; };
 		5FAAE35AA42E9E88AD5F2E3F /* SleepTimerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SleepTimerTests.swift; sourceTree = "<group>"; };
 		60929D903556CFEFA58F2339 /* SmartRewindTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartRewindTests.swift; sourceTree = "<group>"; };
 		61B0A2BF4187CC699F787057 /* ComputerReceiverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComputerReceiverView.swift; sourceTree = "<group>"; };
@@ -436,6 +438,7 @@
 				2AF7054F4F9B696438AC9503 /* SyntheticMessyMultifile.sha256 */,
 				BB1F32A2AD18F7AC1E3E699D /* SyntheticMetadataRepair.sha256 */,
 				D09A4E4E776E73279970B73B /* SyntheticZIPs.sha256 */,
+				80F82326B97C32CA59646ECC /* Marketing */,
 				46619CF9D3C6EE1A87DFA5FC /* SyntheticAudiobook */,
 				645CB5C582D304E2943BCE4E /* SyntheticFormats */,
 				AA86F5511E4405F9977BA104 /* SyntheticImportChannels */,
@@ -494,6 +497,14 @@
 				15FBA6AB4ED4CDBB6EBDAAB5 /* MP3 */,
 			);
 			path = SyntheticFormats;
+			sourceTree = "<group>";
+		};
+		80F82326B97C32CA59646ECC /* Marketing */ = {
+			isa = PBXGroup;
+			children = (
+				5C76BBD4693166AB63F1527A /* harbor-at-dawn-cover.png */,
+			);
+			path = Marketing;
 			sourceTree = "<group>";
 		};
 		822299C0ABCA489C6CCF63B5 /* SyntheticZIPs */ = {
@@ -801,6 +812,7 @@
 				435E30EB44CEA0DD8596A7B7 /* count-limit.zip in Resources */,
 				2037E6AB5E61C0445C81E3A3 /* document-open-interrupted-acquire.m4a in Resources */,
 				70E5B4E9152228E0D6098F9B /* fixture.json in Resources */,
+				7C0EDCCE51C436D2CF61D225 /* harbor-at-dawn-cover.png in Resources */,
 				B0526B23866B736977F54605 /* library-book-audio.m4b in Resources */,
 				F2E07234DD498BBE6573029F /* library-cover-b1.png in Resources */,
 				ECC8B27CB0D35E1D3F552717 /* library-cover-b2.png in Resources */,

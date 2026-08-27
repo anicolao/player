@@ -46,7 +46,7 @@ record for `com.spnss.player`.
   recovery, backup, and diagnostic copy.
 - The App Store description and support URL are drafted in
   `app-store/listing.json`; the privacy-policy URL is still empty.
-- Six App Store screenshots are designed but not yet uploaded.
+- Seven App Store screenshots are designed but not yet uploaded.
 - Copyright and primary category are unset.
 - Age-rating answers are unset.
 - Content-rights and IDFA declarations are unset.
