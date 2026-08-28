@@ -3,6 +3,104 @@ import SwiftUI
 import UniformTypeIdentifiers
 import UIKit
 
+#if E2E
+  struct E2EComputerReceiverLaunchConfiguration: Equatable {
+    enum Scenario: String, CaseIterable {
+      case ready
+      case dropProgress = "drop-progress"
+      case completed
+      case paused
+    }
+
+    enum MirroringTip: Equatable {
+      case automatic
+      case show
+      case hide
+    }
+
+    static let readyArgument = "-e2e-computer-receiver-ready"
+    static let dropProgressArgument = "-e2e-mirroring-drop-progress"
+    static let completedArgument = "-e2e-computer-receiver-completed"
+    static let pausedArgument = "-e2e-computer-receiver-paused"
+    static let showMirroringTipArgument = "-e2e-show-mirroring-tip"
+    static let hideMirroringTipArgument = "-e2e-hide-mirroring-tip"
+
+    let scenario: Scenario?
+    let mirroringTip: MirroringTip
+
+    static func parse(arguments: [String]) throws -> E2EComputerReceiverLaunchConfiguration {
+      guard arguments.contains("-e2e") else {
+        return E2EComputerReceiverLaunchConfiguration(
+          scenario: nil,
+          mirroringTip: .automatic
+        )
+      }
+
+      let recognizedArguments: Set<String> = [
+        readyArgument,
+        dropProgressArgument,
+        completedArgument,
+        pausedArgument,
+        showMirroringTipArgument,
+        hideMirroringTipArgument,
+      ]
+      if let unknown = arguments.first(where: {
+        isReceiverArgument($0) && !recognizedArguments.contains($0)
+      }) {
+        throw PlayerCoreError.fileOperation(
+          "Unknown Computer Receiver E2E option: \(unknown)"
+        )
+      }
+
+      for argument in recognizedArguments where arguments.filter({ $0 == argument }).count > 1 {
+        throw PlayerCoreError.fileOperation(
+          "Duplicate Computer Receiver E2E option: \(argument)"
+        )
+      }
+
+      let ready = arguments.contains(readyArgument)
+      let phases: [(argument: String, scenario: Scenario)] = [
+        (dropProgressArgument, .dropProgress),
+        (completedArgument, .completed),
+        (pausedArgument, .paused),
+      ]
+      let selectedPhases = phases.filter { arguments.contains($0.argument) }
+      guard selectedPhases.count <= 1 else {
+        throw PlayerCoreError.fileOperation(
+          "Computer Receiver E2E phases are mutually exclusive."
+        )
+      }
+      guard selectedPhases.isEmpty || ready else {
+        throw PlayerCoreError.fileOperation(
+          "A Computer Receiver E2E phase requires the ready scenario."
+        )
+      }
+      let scenario = selectedPhases.first?.scenario ?? (ready ? .ready : nil)
+
+      let showsTip = arguments.contains(showMirroringTipArgument)
+      let hidesTip = arguments.contains(hideMirroringTipArgument)
+      guard !(showsTip && hidesTip) else {
+        throw PlayerCoreError.fileOperation(
+          "Computer Receiver E2E mirroring-tip overrides are mutually exclusive."
+        )
+      }
+      let mirroringTip: MirroringTip = showsTip ? .show : (hidesTip ? .hide : .automatic)
+
+      return E2EComputerReceiverLaunchConfiguration(
+        scenario: scenario,
+        mirroringTip: mirroringTip
+      )
+    }
+
+    private static func isReceiverArgument(_ argument: String) -> Bool {
+      argument.hasPrefix("-e2e-computer-receiver-")
+        || argument.hasPrefix("-e2e-mirroring-drop-")
+        || argument.hasPrefix("-e2e-show-mirroring-tip")
+        || argument.hasPrefix("-e2e-hide-mirroring-tip")
+    }
+  }
+#endif
+
 @MainActor
 @Observable
 final class ComputerReceiverController {
@@ -29,28 +127,29 @@ final class ComputerReceiverController {
   private(set) var httpExchange: ComputerReceiverHTTPExchange?
   @ObservationIgnored private let server: ComputerReceiverServer
   @ObservationIgnored private let mirroringDropAdapter: MirroringDropAdapter
-  @ObservationIgnored private let usesSimulatedReadyState: Bool
-  @ObservationIgnored private let usesSimulatedDropProgress: Bool
-  @ObservationIgnored private let usesSimulatedCompletion: Bool
-  @ObservationIgnored private let usesSimulatedPause: Bool
+  #if E2E
+    @ObservationIgnored private let simulatedScenario: E2EComputerReceiverLaunchConfiguration.Scenario?
+    @ObservationIgnored private let launchConfigurationError: String?
+  #endif
   @ObservationIgnored private var startTask: Task<Void, Never>?
   @ObservationIgnored private var dropTask: Task<Void, Never>?
   @ObservationIgnored private var dropOperation: MirroringDropMaterializationOperation?
   @ObservationIgnored private var activeDropSession: (any UIDropSession)?
 
   init(fileManager: FileManager = .default, bundle: Bundle = .main) {
-    usesSimulatedReadyState = ProcessInfo.processInfo.arguments.contains(
-      "-e2e-computer-receiver-ready"
-    )
-    usesSimulatedDropProgress = ProcessInfo.processInfo.arguments.contains(
-      "-e2e-mirroring-drop-progress"
-    )
-    usesSimulatedCompletion = ProcessInfo.processInfo.arguments.contains(
-      "-e2e-computer-receiver-completed"
-    )
-    usesSimulatedPause = ProcessInfo.processInfo.arguments.contains(
-      "-e2e-computer-receiver-paused"
-    )
+    #if E2E
+      let launchConfiguration: E2EComputerReceiverLaunchConfiguration?
+      do {
+        launchConfiguration = try E2EComputerReceiverLaunchConfiguration.parse(
+          arguments: ProcessInfo.processInfo.arguments
+        )
+        launchConfigurationError = nil
+      } catch {
+        launchConfiguration = nil
+        launchConfigurationError = error.localizedDescription
+      }
+      simulatedScenario = launchConfiguration?.scenario
+    #endif
     let support = (try? fileManager.url(
       for: .applicationSupportDirectory,
       in: .userDomainMask,
@@ -69,10 +168,10 @@ final class ComputerReceiverController {
       try? fileManager.createDirectory(at: root, withIntermediateDirectories: true)
     }
     #if E2E
-      let binding: (any ComputerReceiverBinding)? = usesSimulatedReadyState
+      let binding: (any ComputerReceiverBinding)? = simulatedScenario != nil
         ? E2EDeterministicComputerReceiverBinding()
         : nil
-      let credentials: ComputerReceiverCredentials? = usesSimulatedReadyState
+      let credentials: ComputerReceiverCredentials? = simulatedScenario != nil
         ? ComputerReceiverCredentials(
           pairingCode: "482731",
           bearerToken: "e2e-deterministic-receiver-token"
@@ -92,6 +191,12 @@ final class ComputerReceiverController {
   }
 
   func start(model: PlayerModel) {
+    #if E2E
+      if let launchConfigurationError {
+        phase = .failed(launchConfigurationError)
+        return
+      }
+    #endif
     guard startTask == nil else { return }
     phase = .starting
     startTask = Task { [weak self] in
@@ -216,18 +321,22 @@ final class ComputerReceiverController {
       phase = .ready
     case .httpExchange(let exchange):
       httpExchange = exchange
-      guard usesSimulatedReadyState else { return }
-      if usesSimulatedCompletion {
-        phase = .completed(message: "Project Hail Mary added", addedBookCount: 1)
-      } else if usesSimulatedPause {
-        phase = .paused(
-          name: "Project Hail Mary",
-          completedBytes: 734_003_200,
-          totalBytes: 1_468_006_400
-        )
-      } else if usesSimulatedDropProgress {
-        phase = .preparingDrop(name: "Project Hail Mary", completedItems: 1, totalItems: 3)
-      }
+      #if E2E
+        switch simulatedScenario {
+        case .completed:
+          phase = .completed(message: "Project Hail Mary added", addedBookCount: 1)
+        case .paused:
+          phase = .paused(
+            name: "Project Hail Mary",
+            completedBytes: 734_003_200,
+            totalBytes: 1_468_006_400
+          )
+        case .dropProgress:
+          phase = .preparingDrop(name: "Project Hail Mary", completedItems: 1, totalItems: 3)
+        case .ready, nil:
+          break
+        }
+      #endif
     case .connected(let clientName):
       phase = .connected(clientName)
     case .receiving(let name, let completedBytes, let totalBytes):
@@ -253,9 +362,7 @@ struct ComputerReceiverView: View {
   @Bindable var model: PlayerModel
   @State private var controller = ComputerReceiverController()
   @State private var showStopConfirmation = false
-  @State private var isDropTargeted = ProcessInfo.processInfo.arguments.contains(
-    "-e2e-mirroring-drop-targeted"
-  )
+  @State private var isDropTargeted = false
   let chooseFromFiles: () -> Void
   let didFinish: (_ needsInbox: Bool) -> Void
 
@@ -751,8 +858,18 @@ enum MirroringTipPolicy {
   ]
 
   static var shouldShow: Bool {
-    if ProcessInfo.processInfo.arguments.contains("-e2e-hide-mirroring-tip") { return false }
-    if ProcessInfo.processInfo.arguments.contains("-e2e-show-mirroring-tip") { return true }
+    #if E2E
+      guard
+        let launchConfiguration = try? E2EComputerReceiverLaunchConfiguration.parse(
+          arguments: ProcessInfo.processInfo.arguments
+        )
+      else { return false }
+      switch launchConfiguration.mirroringTip {
+      case .show: return true
+      case .hide: return false
+      case .automatic: break
+      }
+    #endif
     guard let region = Locale.current.region?.identifier else { return false }
     return !europeanUnionRegions.contains(region)
   }

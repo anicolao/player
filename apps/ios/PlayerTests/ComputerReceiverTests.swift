@@ -4,6 +4,94 @@ import Network
 
 @MainActor
 final class ComputerReceiverTests: XCTestCase {
+  func testCanonicalReceiverScenariosAndMirroringTipOverridesParseExactly() throws {
+    let production = try E2EComputerReceiverLaunchConfiguration.parse(arguments: [
+      "Player", "-e2e-computer-receiver-ready", "-e2e-show-mirroring-tip",
+    ])
+    XCTAssertNil(production.scenario)
+    XCTAssertEqual(production.mirroringTip, .automatic)
+
+    let ready = try receiverConfiguration(arguments: [])
+    XCTAssertEqual(ready.scenario, .ready)
+    XCTAssertEqual(ready.mirroringTip, .automatic)
+
+    let phases: [(String, E2EComputerReceiverLaunchConfiguration.Scenario)] = [
+      ("-e2e-mirroring-drop-progress", .dropProgress),
+      ("-e2e-computer-receiver-completed", .completed),
+      ("-e2e-computer-receiver-paused", .paused),
+    ]
+    for (argument, scenario) in phases {
+      let parsed = try receiverConfiguration(arguments: [argument])
+      XCTAssertEqual(parsed.scenario, scenario)
+      XCTAssertEqual(parsed.mirroringTip, .automatic)
+    }
+
+    let shown = try receiverConfiguration(arguments: ["-e2e-show-mirroring-tip"])
+    XCTAssertEqual(shown.scenario, .ready)
+    XCTAssertEqual(shown.mirroringTip, .show)
+    let hidden = try receiverConfiguration(arguments: ["-e2e-hide-mirroring-tip"])
+    XCTAssertEqual(hidden.scenario, .ready)
+    XCTAssertEqual(hidden.mirroringTip, .hide)
+  }
+
+  func testReceiverScenarioRejectsDuplicateIncompatibleAndPhaseWithoutReadyFlags() {
+    let invalidArguments = [
+      ["-e2e-computer-receiver-ready"],
+      ["-e2e-mirroring-drop-progress", "-e2e-mirroring-drop-progress"],
+      ["-e2e-computer-receiver-completed", "-e2e-computer-receiver-completed"],
+      ["-e2e-computer-receiver-paused", "-e2e-computer-receiver-paused"],
+      ["-e2e-mirroring-drop-progress", "-e2e-computer-receiver-completed"],
+      ["-e2e-mirroring-drop-progress", "-e2e-computer-receiver-paused"],
+      ["-e2e-computer-receiver-completed", "-e2e-computer-receiver-paused"],
+    ]
+
+    for additionalArguments in invalidArguments {
+      let arguments = ["Player", "-e2e", "-e2e-computer-receiver-ready"]
+        + additionalArguments
+      XCTAssertThrowsError(
+        try E2EComputerReceiverLaunchConfiguration.parse(arguments: arguments),
+        "Expected invalid receiver scenario to be rejected: \(arguments)"
+      )
+    }
+
+    for phase in [
+      "-e2e-mirroring-drop-progress",
+      "-e2e-computer-receiver-completed",
+      "-e2e-computer-receiver-paused",
+    ] {
+      XCTAssertThrowsError(
+        try E2EComputerReceiverLaunchConfiguration.parse(arguments: ["Player", "-e2e", phase])
+      )
+    }
+  }
+
+  func testMirroringTipRejectsDuplicatesAndConflictingOverrides() {
+    let invalidArguments = [
+      ["-e2e-show-mirroring-tip", "-e2e-show-mirroring-tip"],
+      ["-e2e-hide-mirroring-tip", "-e2e-hide-mirroring-tip"],
+      ["-e2e-show-mirroring-tip", "-e2e-hide-mirroring-tip"],
+    ]
+    for additionalArguments in invalidArguments {
+      XCTAssertThrowsError(
+        try receiverConfiguration(arguments: additionalArguments),
+        "Expected invalid mirroring-tip override to be rejected: \(additionalArguments)"
+      )
+    }
+  }
+
+  func testRemovedTargetedModeAndUnknownReceiverFlagsFailClosed() {
+    for argument in [
+      "-e2e-mirroring-drop-targeted",
+      "-e2e-mirroring-drop-unknown",
+      "-e2e-computer-receiver-unknown",
+    ] {
+      XCTAssertThrowsError(
+        try receiverConfiguration(arguments: [argument]),
+        "Expected unknown receiver option to be rejected: \(argument)"
+      )
+    }
+  }
+
   func testInjectedBindingServesRawHTTPGetThroughProductionServerPath() async throws {
     let root = temporaryRoot()
     let binding = E2EDeterministicComputerReceiverBinding()
@@ -49,6 +137,14 @@ final class ComputerReceiverTests: XCTestCase {
     XCTAssertTrue(rawResponse.hasPrefix("HTTP/1.1 200 OK\r\n"))
     XCTAssertTrue(rawResponse.contains("Content-Type: text/html; charset=utf-8\r\n"))
     XCTAssertTrue(rawResponse.contains("Send audiobooks to Player"))
+  }
+
+  private func receiverConfiguration(
+    arguments: [String]
+  ) throws -> E2EComputerReceiverLaunchConfiguration {
+    try E2EComputerReceiverLaunchConfiguration.parse(arguments: [
+      "Player", "-e2e", "-e2e-computer-receiver-ready",
+    ] + arguments)
   }
 
   func testFolderTransferPreservesBookNameAndRemovesIncomingCopyAfterImport() async throws {
