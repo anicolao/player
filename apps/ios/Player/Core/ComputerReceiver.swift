@@ -376,7 +376,7 @@ actor ComputerImportStore {
       throw ComputerReceiverError.invalidSelection("Some files have not finished uploading.")
     }
     session.state = "importing"
-    session.message = "Player is checking your files…"
+    session.message = "Bookshelf is checking your files…"
     sessions[sessionID] = session
     let urls = session.selectionKind == "folder"
       ? [session.selectionURL]
@@ -563,7 +563,7 @@ actor ComputerReceiverServer {
 
   private func startListener(on port: NWEndpoint.Port) async throws -> UInt16 {
     let listener = try NWListener(using: .tcp, on: port)
-    listener.service = NWListener.Service(name: "Player", type: "_player-import._tcp")
+    listener.service = NWListener.Service(name: "Bookshelf", type: "_player-import._tcp")
     listener.newConnectionHandler = { [weak self] connection in
       let wrapped = NWComputerReceiverConnection(connection: connection)
       Task { await self?.accept(wrapped) }
@@ -1314,19 +1314,19 @@ enum ComputerReceiverError: LocalizedError {
     switch self {
     case .alreadyRunning: "The computer receiver is already running."
     case .listenerStopped: "The computer receiver stopped."
-    case .listenerFailed(let message): "Player could not start receiving: \(message)"
+    case .listenerFailed(let message): "Bookshelf could not start receiving: \(message)"
     case .invalidRequest: "The computer sent an invalid request."
     case .headerTooLarge: "The request headers are too large."
     case .bodyTooLarge: "The request is too large."
-    case .invalidPairingCode: "That code did not match. Check Player and try again."
-    case .unauthorized: "This computer is not paired with Player."
+    case .invalidPairingCode: "That code did not match. Check Bookshelf and try again."
+    case .unauthorized: "This computer is not paired with Bookshelf."
     case .routeNotFound: "The requested receiver page was not found."
     case .invalidSelection(let message): message
-    case .importNotFound: "Player no longer has this transfer."
-    case .importAlreadySealed: "This transfer has already been sent to Player."
-    case .fileNotFound: "Player could not match this uploaded file."
-    case .fileAlreadyReceived: "Player already received this file."
-    case .fileWriteInProgress: "Player is already receiving this file."
+    case .importNotFound: "Bookshelf no longer has this transfer."
+    case .importAlreadySealed: "This transfer has already been sent to Bookshelf."
+    case .fileNotFound: "Bookshelf could not match this uploaded file."
+    case .fileAlreadyReceived: "Bookshelf already received this file."
+    case .fileWriteInProgress: "Bookshelf is already receiving this file."
     case .invalidUploadOffset(let expected, let received):
       "The transfer must resume at byte \(expected), not byte \(received)."
     case .byteCountMismatch(let expected, let received):

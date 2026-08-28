@@ -52,7 +52,7 @@ final class BackupUITests: XCTestCase {
           "Automatic copies are distinguished from portable exports"
         ),
         .exists(app.buttons["backup-export"], "A system-destination export begins here"),
-        .exists(app.buttons["backup-restore"], "A Player backup can be selected from Files"),
+        .exists(app.buttons["backup-restore"], "A Bookshelf backup can be selected from Files"),
         .exists(
           app.buttons["e2e-backup-export"],
           "The deterministic production export action is available"),

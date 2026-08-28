@@ -819,7 +819,7 @@ private struct ImportErrorView: View {
 
   private var displayMessage: String {
     guard let failure = job?.failure else {
-      return "Player could not safely import this selection."
+      return "Bookshelf could not safely import this selection."
     }
     switch failure.reasonCode {
     case "path-traversal":
@@ -827,7 +827,7 @@ private struct ImportErrorView: View {
     case "symlink":
       return "This ZIP contains a link instead of an audiobook file. Choose a different archive."
     case "compression-ratio", "entry-count", "entry-size":
-      return "This ZIP exceeds Player’s safe extraction limits. Choose a smaller archive."
+      return "This ZIP exceeds Bookshelf’s safe extraction limits. Choose a smaller archive."
     case "inspection-transient":
       return "The audio files were extracted safely, but inspection was interrupted. Try again."
     default:

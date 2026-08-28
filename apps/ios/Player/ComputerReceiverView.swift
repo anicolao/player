@@ -688,7 +688,7 @@ struct ComputerReceiverView: View {
       VStack(spacing: 18) {
         ProgressView().controlSize(.large).tint(PlayerColor.accent)
         Text(name).font(.title3.bold()).foregroundStyle(PlayerColor.ink)
-        Text("Player is checking your files and adding valid books automatically.")
+        Text("Bookshelf is checking your files and adding valid books automatically.")
           .multilineTextAlignment(.center)
           .foregroundStyle(PlayerColor.secondary)
       }

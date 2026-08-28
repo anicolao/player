@@ -26,7 +26,7 @@ final class ImportRecoveryStorageUITests: XCTestCase {
     tester.setMetadata(
       title: "Import recovery keeps every source safe and makes storage actionable",
       narrative:
-        "As a listener importing a messy selection, I want Player to explain each problem, preserve the usable files, and show exactly what storage I can safely reclaim.",
+        "As a listener importing a messy selection, I want Bookshelf to explain each problem, preserve the usable files, and show exactly what storage I can safely reclaim.",
       fixture: "import-recovery-storage",
       additionalPreconditions: [
         "All filenames, checksums, byte counts, and library records are deterministic synthetic fixtures",
@@ -85,7 +85,7 @@ final class ImportRecoveryStorageUITests: XCTestCase {
     let clearStaging = app.buttons["clear-staging-\(stagingJobID)"]
     try tester.step(
       "storage-recovery",
-      description: "Settings shows what Player uses and what can be reclaimed safely",
+      description: "Settings shows what Bookshelf uses and what can be reclaimed safely",
       verifications: [
         .valueEquals(
           storage,

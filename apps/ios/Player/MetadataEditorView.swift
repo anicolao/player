@@ -287,7 +287,7 @@ struct MetadataEditorView: View {
     VStack(alignment: .leading, spacing: 6) {
       Label("Curated fields stay locked", systemImage: "lock.shield")
         .font(.headline)
-      Text("Player will not replace a locked value during a future rescan. Clear is saved as an intentional choice.")
+      Text("Bookshelf will not replace a locked value during a future rescan. Clear is saved as an intentional choice.")
         .font(.caption)
         .foregroundStyle(PlayerColor.secondary)
     }

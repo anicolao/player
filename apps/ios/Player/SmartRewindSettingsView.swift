@@ -25,7 +25,7 @@ struct SmartRewindSettingsView: View {
         }
         .accessibilityIdentifier("smart-rewind-enabled")
       } footer: {
-        Text("After time away, Player briefly rewinds so you can pick up the thread. An Undo button always returns to your exact saved position.")
+        Text("After time away, Bookshelf briefly rewinds so you can pick up the thread. An Undo button always returns to your exact saved position.")
       }
 
       Section("Maximum rewind") {

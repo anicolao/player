@@ -73,7 +73,7 @@ final class PositionRestoreUITests: XCTestCase {
     tester.setMetadata(
       title: "A paused listening position survives app termination",
       narrative:
-        "As a listener, I want Player to return at audio I have already heard after I close and reopen the app.",
+        "As a listener, I want Bookshelf to return at audio I have already heard after I close and reopen the app.",
       fixture: "committed-current-book",
       additionalPreconditions: [
         "The fixture contains one committed 120-second book at chapter 1 and 12 seconds",

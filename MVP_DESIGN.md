@@ -2,7 +2,7 @@
 
 ## Document status
 
-- **Product:** Player, working title
+- **Product:** Bookshelf, working title
 - **Target:** Native iPhone MVP
 - **Minimum OS:** iOS 17
 - **Design baseline:** iPhone 17, portrait
@@ -59,7 +59,7 @@ These exclusions keep the MVP centered on local import, repair, and trustworthy 
 1. **Open to the next useful action.** A new user sees one clear import action. A returning listener sees Continue Listening.
 2. **No invisible work.** Copying, extracting, inspecting, grouping, committing, retrying, and failing are distinct observable states.
 3. **Show the evidence.** A proposed title or order identifies whether it came from embedded tags, a filename, a folder, or manual input.
-4. **Keep originals immutable.** Every edit changes Player’s library record. The selected source is never renamed, retagged, moved, or deleted.
+4. **Keep originals immutable.** Every edit changes Bookshelf’s library record. The selected source is never renamed, retagged, moved, or deleted.
 5. **Make mistakes cheap.** A listener can undo a committed import, restore a previous field value, or return to a recent playback position.
 6. **Present books, not audio tracks.** File boundaries appear only where they help inspection or repair.
 7. **Offline is normal.** No screen in the MVP has a required network state.
@@ -392,7 +392,7 @@ Position writes occur:
 - before replacing the current book;
 - when the sleep timer stops playback.
 
-The current position is a compact snapshot backed by a recent append-only event journal. On launch, Player selects the newest internally consistent event, not merely the last database row written. A material jump can be undone from recent history.
+The current position is a compact snapshot backed by a recent append-only event journal. On launch, Bookshelf selects the newest internally consistent event, not merely the last database row written. A material jump can be undone from recent history.
 
 Acceptance tolerance is at most 500 milliseconds behind the last acknowledged position and never ahead of it after orderly pause. Crash recovery may resume slightly behind, never beyond audio the listener heard.
 

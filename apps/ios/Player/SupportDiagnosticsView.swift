@@ -50,7 +50,7 @@ struct StartupRecoveryView: View {
               )
             }
             Text(
-              "Player preserves the unreadable database in quarantine before restoring or starting over. Managed audiobook files are not deleted."
+              "Bookshelf preserves the unreadable database in quarantine before restoring or starting over. Managed audiobook files are not deleted."
             )
             .font(.footnote)
             .foregroundStyle(.secondary)
@@ -124,11 +124,11 @@ struct StartupRecoveryView: View {
   private var recoveryExplanation: String {
     switch status.issue {
     case .unreadableLibrary:
-      "Player could not validate the local catalog. Your audio and every recovery copy remain untouched."
+      "Bookshelf could not validate the local catalog. Your audio and every recovery copy remain untouched."
     case .newerLibraryVersion:
-      "This catalog was written by a newer Player version. Reinstall that version or restore a compatible local copy."
+      "This catalog was written by a newer Bookshelf version. Reinstall that version or restore a compatible local copy."
     case .storageUnavailable:
-      "Player could not safely read its local catalog. Try again before choosing a recovery action."
+      "Bookshelf could not safely read its local catalog. Try again before choosing a recovery action."
     }
   }
 
@@ -214,7 +214,7 @@ struct SupportDiagnosticsView: View {
               .foregroundStyle(.green)
           }
           Text(
-            "Player identifies staging, trash, and managed-media ownership from database IDs and app manifests. It never guesses ownership from audiobook filenames."
+            "Bookshelf identifies staging, trash, and managed-media ownership from database IDs and app manifests. It never guesses ownership from audiobook filenames."
           )
           .font(.footnote)
           .foregroundStyle(.secondary)

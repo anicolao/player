@@ -42,8 +42,8 @@ record for `com.spnss.player`.
 
 - All uploaded builds use marketing version `0.1.0`; App Store version `1.0`
   therefore has no selectable build.
-- User-visible `Player` branding remains in the app, share extension, receiver,
-  recovery, backup, and diagnostic copy.
+- Bookshelf branding has been applied across the app, share extension, receiver,
+  recovery, backup, diagnostics, exported filenames, and current documentation.
 - The App Store description and support URL are drafted in
   `app-store/listing.json`; the privacy-policy URL is still empty.
 - Seven App Store screenshots are designed but not yet uploaded.
@@ -78,19 +78,19 @@ pages, and release behavior.
 
 ## Phase 1 — Complete the Bookshelf product identity
 
-Replace user-visible `Player` branding with `Bookshelf` before producing store
-screenshots or the final build.
+Bookshelf branding must remain consistent before producing store screenshots or
+the final build.
 
 ### Change user-visible identity
 
-- [ ] Share extension display name and success/error messages
-- [ ] Local-network permission explanation
-- [ ] Nearby-computer receiver service name, instructions, and errors
-- [ ] Import and metadata-editor explanations
-- [ ] Backup, restore, recovery, and support-diagnostic copy
-- [ ] User-visible backup and support-bundle filenames where compatibility
+- [x] Share extension display name and success/error messages
+- [x] Local-network permission explanation
+- [x] Nearby-computer receiver service name, instructions, and errors
+- [x] Import and metadata-editor explanations
+- [x] Backup, restore, recovery, and support-diagnostic copy
+- [x] User-visible backup and support-bundle filenames where compatibility
       permits
-- [ ] Documentation and reviewer-facing terminology
+- [x] Documentation and reviewer-facing terminology
 
 ### Preserve compatibility identifiers
 
@@ -109,7 +109,7 @@ labels may change while their underlying identifiers remain stable.
 
 ### Exit criteria
 
-- [ ] A repository search finds no unintended user-visible `Player` copy.
+- [x] A repository search finds no unintended user-visible `Player` copy.
 - [ ] Upgrade testing preserves a library created by a current `0.1.0` build.
 - [ ] The app, share extension, receiver, exported files, and screenshots
       present a coherent Bookshelf identity.

@@ -70,7 +70,7 @@ For every commit below:
 1. Begin from the exact green head of this branch.
 2. Implement production behavior, nonvisual tests, E2E semantics, screenshots,
    migrations, and documentation together.
-3. Run focused tests and the full Player unit suite locally.
+3. Run focused tests and the full Bookshelf unit suite locally.
 4. Commit and push exactly one milestone.
 5. Record the commit SHA and its GitHub Actions run ID in the release ledger.
 6. Do not commit the next milestone until CI is green for that exact SHA.

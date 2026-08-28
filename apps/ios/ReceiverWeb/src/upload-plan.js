@@ -2,7 +2,7 @@ export function buildUploadPlan(selection, offsets = []) {
   return selection.flatMap((item, index) => {
     const offset = Number.isFinite(offsets[index]) ? offsets[index] : 0;
     if (!Number.isInteger(offset) || offset < 0 || offset > item.file.size) {
-      throw new Error(`Player reported an invalid resume point for ${item.file.name}.`);
+      throw new Error(`Bookshelf reported an invalid resume point for ${item.file.name}.`);
     }
     if (offset === item.file.size) return [];
     return [{ index, item, offset, body: item.file.slice(offset) }];

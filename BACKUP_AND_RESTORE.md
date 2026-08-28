@@ -6,12 +6,12 @@ Status: implemented for MVP in TestFlight Build 15
 
 Open **Settings → Backup**. Choose either **With audio** (the portable default)
 or **Metadata only**, then tap **Export Library Backup** and choose a
-destination in the system document picker. Player prepares a
+destination in the system document picker. Bookshelf prepares a
 `.playerbackup` package and removes its temporary working copy when the picker
 closes.
 
-To restore, tap **Choose Player Backup**, select one package, review the replace
-confirmation, and tap **Restore Backup**. Player does not change the current
+To restore, tap **Choose Bookshelf Backup**, select one package, review the replace
+confirmation, and tap **Restore Backup**. Bookshelf does not change the current
 library until the manifest, artwork, and all included audio pass integrity
 checks.
 

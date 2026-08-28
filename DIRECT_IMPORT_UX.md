@@ -7,15 +7,15 @@ Related architecture: [DIRECT_IMPORT_ALTERNATIVES.md](DIRECT_IMPORT_ALTERNATIVES
 ## Product decision
 
 `Receive from Computer` is the primary direct-import experience in every
-country and on every supported desktop platform. Player hosts a private upload
+country and on every supported desktop platform. Bookshelf hosts a private upload
 page on the local network while the receiver screen is open. The listener opens
-that page on a computer, drags a book, folder tree, or ZIP onto it, and Player
+that page on a computer, drags a book, folder tree, or ZIP onto it, and Bookshelf
 adds valid books to Library automatically.
 
 iPhone Mirroring is an optional Mac shortcut, not a primary or required route.
 When Apple makes Mirroring available in the listener's region, the receiver
 screen explains that the same files can be dragged directly onto the mirrored
-Player window. That card is absent in the European Union and whenever regional
+Bookshelf window. That card is absent in the European Union and whenever regional
 eligibility is unknown.
 
 ## Build 7 implementation scope
@@ -102,7 +102,7 @@ Build 12 expands Finder provider negotiation to URL-object, folder, audio,
 archive, file, data, and item representations instead of assuming the first
 advertised representation is readable. Build 13 fixes the remaining physical
 transport lifetime issue: every provider request begins synchronously inside
-`UIDropInteraction.performDrop`, and Player retains the `UIDropSession` until
+`UIDropInteraction.performDrop`, and Bookshelf retains the `UIDropSession` until
 materialization ends. A real mirrored iPhone and Finder folder drag verified
 the route after Simulator coverage passed. The temporary provider URL is copied
 or linked during its callback because Finder does not promise that URL remains
@@ -123,7 +123,7 @@ test cases are deferred unless the active completion plan promotes them. The
 shipped source sheet exposes only working receiver and Files actions.
 
 For the shipped web route, Build 14 keeps acknowledged partial bytes while the
-receiver remains active. The browser asks Player for per-file offsets, sends
+receiver remains active. The browser asks Bookshelf for per-file offsets, sends
 only each remaining `Blob.slice`, and exposes Retry plus Cancel and Clean Up
 instead of silently discarding a multi-gigabyte transfer. Sealed imports remain
 owned by the durable importer if the browser or receiver view closes.
@@ -156,7 +156,7 @@ alerts take precedence during implementation.
 A direct import is successful when:
 
 1. the computer reports that all selected bytes were sent;
-2. Player verifies and groups the complete selection;
+2. Bookshelf verifies and groups the complete selection;
 3. every warning-free proposal commits without another user decision;
 4. the resulting books are visible in Library;
 5. the computer originals remain unchanged; and
@@ -173,14 +173,14 @@ Network permission are session/setup actions, not repeated file-copy steps.
 
 | Situation | Listener actions |
 | --- | --- |
-| First web import | Open Player; tap Receive from Computer; tap Allow on Apple's Local Network alert; open the displayed address on the computer; enter the displayed code; drag the source |
-| Later web import | Open Player; tap Receive from Computer; open or resume the receiver page; enter the new session code; drag the source |
+| First web import | Open Bookshelf; tap Receive from Computer; tap Allow on Apple's Local Network alert; open the displayed address on the computer; enter the displayed code; drag the source |
+| Later web import | Open Bookshelf; tap Receive from Computer; open or resume the receiver page; enter the new session code; drag the source |
 | Another import in the same active session | Drag the next source |
-| Supported-region iPhone Mirroring | Open Player in iPhone Mirroring; open Receive from Computer; drag the source onto the mirrored window |
-| Finder/Apple Devices fallback | Drag the source into Player's Import Drop Box; open Player now or later |
+| Supported-region iPhone Mirroring | Open Bookshelf in iPhone Mirroring; open Receive from Computer; drag the source onto the mirrored window |
+| Finder/Apple Devices fallback | Drag the source into Bookshelf's Import Drop Box; open Bookshelf now or later |
 
 There is no supported way for a purely local iOS receiver to accept a new
-inbound connection while Player is suspended indefinitely. The UI says `Keep
+inbound connection while Bookshelf is suspended indefinitely. The UI says `Keep
 this screen open while books transfer` and pauses cleanly rather than implying
 otherwise.
 
@@ -262,19 +262,19 @@ Tapping `Receive from Computer` pushes the receiver screen and immediately asks
 the receiver service to start. On first use, iOS presents its Local Network
 permission alert using this `NSLocalNetworkUsageDescription`:
 
-> Player uses your local network to receive audiobooks directly from your
+> Bookshelf uses your local network to receive audiobooks directly from your
 > computer.
 
-Player does not show a look-alike permission pre-prompt. The visible receiver
+Bookshelf does not show a look-alike permission pre-prompt. The visible receiver
 screen supplies context behind the system alert.
 
-If the listener taps Allow, Player continues into `Ready for uploads`. If they
-tap Don't Allow, Player shows the denied state specified below; it does not fall
+If the listener taps Allow, Bookshelf continues into `Ready for uploads`. If they
+tap Don't Allow, Bookshelf shows the denied state specified below; it does not fall
 back silently to a public Internet service.
 
 ### Starting state
 
-While Player is connecting to Wi-Fi and binding its local listener:
+While Bookshelf is connecting to Wi-Fi and binding its local listener:
 
 ```text
 Receive from Computer
@@ -333,10 +333,10 @@ VoiceOver reads the code as six individual digits, not as a six-digit number.
 
 ### Handoff discovery on Mac
 
-While the receiver is ready, Player publishes an eligible `NSUserActivity` for
+While the receiver is ready, Bookshelf publishes an eligible `NSUserActivity` for
 the local receiver URL. When Handoff is available, a compact help row says:
 
-> On a Mac, open Player from Handoff in the Dock.
+> On a Mac, open Bookshelf from Handoff in the Dock.
 
 Choosing the Handoff activity opens the same local web page. Handoff is an
 address-discovery shortcut only; the browser still pairs with the phone unless
@@ -359,7 +359,7 @@ Receiving`, so it is discoverable but subordinate to the global web flow.
 
 ```text
 Using a Mac?
-In supported regions, you can also drag books straight into this Player window
+In supported regions, you can also drag books straight into this Bookshelf window
 with iPhone Mirroring.
 ```
 
@@ -397,7 +397,7 @@ message.
 
 ### Drag behavior through Mirroring
 
-When a file drag enters the mirrored Player window, the receiver screen becomes
+When a file drag enters the mirrored Bookshelf window, the receiver screen becomes
 a full-window drop target:
 
 ```text
@@ -420,7 +420,7 @@ The web address and code remain available as the reliable fallback.
 
 ## Computer web experience
 
-The upload application is bundled in Player and served entirely from the phone.
+The upload application is bundled in Bookshelf and served entirely from the phone.
 It has no third-party scripts, fonts, analytics, trackers, or Internet
 dependencies.
 
@@ -430,12 +430,12 @@ The listener uses one of:
 
 - type the displayed `.local` address;
 - tap `Copy Address` and send/paste it using their preferred continuity method;
-- choose Player through Handoff on a Mac; or
+- choose Bookshelf through Handoff on a Mac; or
 - use the numeric address in Connection Help if `.local` does not resolve.
 
-If the page cannot contact Player, it says:
+If the page cannot contact Bookshelf, it says:
 
-> Player could not be reached. Keep Receive from Computer open on your iPhone
+> Bookshelf could not be reached. Keep Receive from Computer open on your iPhone
 > and make sure both devices are on the same local network.
 
 Actions are `Try Again` and `Connection Help`.
@@ -446,9 +446,9 @@ Before authentication, the browser exposes no file list, device metadata, or
 upload endpoint. Its page contains:
 
 ```text
-Player
+Bookshelf
 
-Connect to Player
+Connect to Bookshelf
 Enter the pairing code shown on your iPhone.
 
 [ _ ] [ _ ] [ _ ] [ _ ] [ _ ] [ _ ]
@@ -462,7 +462,7 @@ Behavior:
 - numeric input advances automatically but supports paste of all six digits;
 - Backspace moves to the preceding box when empty;
 - Return submits once all digits exist;
-- an invalid code says `That code did not match. Check Player and try again.`;
+- an invalid code says `That code did not match. Check Bookshelf and try again.`;
 - an expired code says `That code expired. Restart Receive from Computer for a
   new code.`; and
 - successful pairing replaces the browser URL so the code is absent from
@@ -477,10 +477,10 @@ first release and must include a visible `Forget paired computers` control.
 After pairing:
 
 ```text
-Player
+Bookshelf
 Connected to <device name>
 
-Send audiobooks to Player
+Send audiobooks to Bookshelf
 
 Drop books or folders here
 M4B, M4A, MP3, ZIP, or an entire directory tree
@@ -502,7 +502,7 @@ presented as failures.
 ### Preflight
 
 Before sending bytes, the browser enumerates the complete selection and sends a
-manifest containing relative paths and byte counts. Player returns one of:
+manifest containing relative paths and byte counts. Bookshelf returns one of:
 
 - `accepted` with upload offsets;
 - `insufficient storage` with required and available space;
@@ -560,10 +560,10 @@ to:
 
 ```text
 Upload complete
-Player is checking 30 files and adding valid books to your Library.
+Bookshelf is checking 30 files and adding valid books to your Library.
 ```
 
-Player changes the phone card from `Receiving` to the existing import phases:
+Bookshelf changes the phone card from `Receiving` to the existing import phases:
 
 - `Checking files`;
 - `Reading book details`;
@@ -597,7 +597,7 @@ selection unless another selection is already queued; this limits the exposure
 of an unattended listener. `Receive from Computer` can be started again at any
 time.
 
-The browser shows `Sent to Player` and may be closed. It must not tell the user
+The browser shows `Sent to Bookshelf` and may be closed. It must not tell the user
 to finish the import on the phone when every proposal committed successfully.
 
 ### Mixed completion
@@ -617,9 +617,9 @@ The listener is not forced into Inbox.
 
 | Condition | iPhone copy | Primary action |
 | --- | --- | --- |
-| Local Network denied | `Local Network Access is Off. Allow access so Player can receive books directly from your computer.` | `Open Settings` |
+| Local Network denied | `Local Network Access is Off. Allow access so Bookshelf can receive books directly from your computer.` | `Open Settings` |
 | No usable local interface | `Connect this iPhone and your computer to the same local network, then try again.` | `Try Again` |
-| Address not reachable | `Player could not be reached. Keep Receive from Computer open and check the network.` | `Try Again` |
+| Address not reachable | `Bookshelf could not be reached. Keep Receive from Computer open and check the network.` | `Try Again` |
 | Invalid pairing code | `That code did not match.` | Re-enter code |
 | Receiver backgrounded before sealing | `Transfer paused. Reopen Receive from Computer to continue.` | `Resume Receiving` |
 | Browser disconnected | `Connection lost. Waiting for the computer to reconnect…` | `Cancel Transfer` |
@@ -640,7 +640,7 @@ delete command to the computer source.
 - Active byte transfer prevents idle expiry.
 - The iPhone idle timer is disabled only while the receiver screen is visible
   and a transfer is active.
-- Leaving Player pauses new inbound reads. A transfer already sealed continues
+- Leaving Bookshelf pauses new inbound reads. A transfer already sealed continues
   through the durable local import pipeline when iOS execution time permits and
   resumes on next launch otherwise.
 - `Stop Receiving` closes the listener, invalidates credentials, and cancels
@@ -660,8 +660,8 @@ Actions: `Keep Receiving`, `Stop and Clean Up`.
 Use precise claims:
 
 - `Private to this local network` means the web page is served by the phone and
-  is not a public Player service.
-- `Your originals stay on this computer` means Player reads/uploads without
+  is not a public Bookshelf service.
+- `Your originals stay on this computer` means Bookshelf reads/uploads without
   modifying or deleting the source.
 - Do not claim end-to-end encryption if the first implementation uses plain
   local HTTP. Pairing prevents unsolicited upload but does not itself make the

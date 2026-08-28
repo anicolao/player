@@ -68,12 +68,12 @@ final class ShareViewController: UIViewController {
         )
       }
       try handoffWriter.publish()
-      statusLabel.text = "Added to Player Inbox"
+      statusLabel.text = "Added to Bookshelf Inbox"
       try? await Task.sleep(for: .seconds(1))
       extensionContext?.completeRequest(returningItems: nil)
     } catch {
       writer?.cancel()
-      statusLabel.text = "Couldn’t add these files to Player\n\n\(error.localizedDescription)"
+      statusLabel.text = "Couldn’t add these files to Bookshelf\n\n\(error.localizedDescription)"
       closeButton.isHidden = false
     }
   }
@@ -253,7 +253,7 @@ private enum ShareViewError: LocalizedError {
   var errorDescription: String? {
     switch self {
     case .noSupportedFiles: "No supported audiobook files were shared."
-    case .appGroupUnavailable: "The Player shared container is unavailable."
+    case .appGroupUnavailable: "The Bookshelf shared container is unavailable."
     case .missingFileRepresentation: "A shared file could not be read."
     case .userClosedFailure: "The failed share request was closed."
     }

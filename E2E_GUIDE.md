@@ -1,6 +1,6 @@
 # iOS end-to-end testing
 
-Player uses XCTest/XCUIAutomation for semantic verification and full-screen screenshots for exact visual regression testing. The test and its generated walkthrough are both executable product specifications.
+Bookshelf uses XCTest/XCUIAutomation for semantic verification and full-screen screenshots for exact visual regression testing. The test and its generated walkthrough are both executable product specifications.
 
 ## Non-negotiable contract
 

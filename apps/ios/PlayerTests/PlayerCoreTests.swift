@@ -809,7 +809,7 @@ final class PlayerCoreTests: XCTestCase {
     XCTAssertEqual(outcome.state, .failed)
     XCTAssertEqual(
       outcome.message,
-      "Player's import task stopped unexpectedly. Try sending the audiobook again."
+      "Bookshelf's import task stopped unexpectedly. Try sending the audiobook again."
     )
     let job = try XCTUnwrap(model.library.importJobs.first)
     XCTAssertEqual(job.phase, .failed)

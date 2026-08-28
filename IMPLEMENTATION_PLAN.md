@@ -139,7 +139,7 @@ Verification:
 
 Listener journey:
 
-- Play, seek, pause, terminate Player, and relaunch.
+- Play, seek, pause, terminate Bookshelf, and relaunch.
 - Resume from the last acknowledged position and inspect recent position recovery.
 
 Production slice:

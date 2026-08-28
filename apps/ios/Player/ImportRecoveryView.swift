@@ -229,7 +229,7 @@ struct ImportRecoveryView: View {
       return "Review storage, choose a smaller selection, or cancel without changing your files."
     }
     if plan.canContinueWithAcceptedFiles {
-      return "Fix or remove individual files, then continue with everything Player can safely read."
+      return "Fix or remove individual files, then continue with everything Bookshelf can safely read."
     }
     return "Retry recoverable files, remove them, or choose another selection."
   }
@@ -278,7 +278,7 @@ struct StorageSettingsView: View {
   var body: some View {
     List {
       if let summary = model.storageSummary {
-        Section("Player storage") {
+        Section("Bookshelf storage") {
           storageRow("Audiobooks", bytes: summary.managedMediaBytes, id: "storage-managed")
           storageRow("Imports in progress", bytes: summary.stagingBytes, id: "storage-staging")
           storageRow("Trash", bytes: summary.trashBytes, id: "storage-trash")

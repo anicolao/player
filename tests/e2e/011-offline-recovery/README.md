@@ -1,6 +1,6 @@
 # Test: A damaged offline library recovers without exposing private data
 
-> As a listener, I want Player to preserve a damaged catalog, recover the latest valid copy, reconcile interrupted storage, and create a support report that contains no audiobook identity or listening history.
+> As a listener, I want Bookshelf to preserve a damaged catalog, recover the latest valid copy, reconcile interrupted storage, and create a support report that contains no audiobook identity or listening history.
 
 ## Deterministic preconditions
 

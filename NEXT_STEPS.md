@@ -205,7 +205,7 @@ is broken, too short, or simply undiscoverable.
 
 ### Work
 
-1. Lead the Settings row and Backup screen with the purpose: Player is local, so
+1. Lead the Settings row and Backup screen with the purpose: Bookshelf is local, so
    an exported backup protects the library and can move or restore it after loss
    or replacement of a phone.
 2. Distinguish the three concepts before presenting actions:
@@ -215,7 +215,7 @@ is broken, too short, or simply undiscoverable.
    - `Automatic database backups`: up to three on-device catalog safety copies;
      they are not portable and do not duplicate audio.
 3. State where exported backups go (a Files destination chosen by the listener),
-   that Player does not upload them, and that restore verifies a package before
+   that Bookshelf does not upload them, and that restore verifies a package before
    replacing the current library.
 4. Keep destructive restore confirmation concise and explicit about what will be
    replaced.

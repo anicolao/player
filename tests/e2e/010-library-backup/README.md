@@ -26,7 +26,7 @@
 - [x] Metadata only makes its dependency on the original audio explicit
 - [x] Automatic copies are distinguished from portable exports
 - [x] A system-destination export begins here
-- [x] A Player backup can be selected from Files
+- [x] A Bookshelf backup can be selected from Files
 - [x] The deterministic production export action is available
 
 ## A media-inclusive package preserves one checksum-verified audio payload

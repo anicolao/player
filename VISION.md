@@ -2,7 +2,7 @@
 
 ## In one sentence
 
-Player makes a personal audiobook collection feel as effortless and dependable as a first-party library, without taking ownership or control away from the listener.
+Bookshelf makes a personal audiobook collection feel as effortless and dependable as a first-party library, without taking ownership or control away from the listener.
 
 ## Why this should exist
 
@@ -13,7 +13,7 @@ People who own DRM-free audiobooks face an odd split in today’s iOS market:
 - self-hosted systems offer rich server-side management, but add infrastructure and can make mobile browsing, downloads, or progress dependent on successful synchronization;
 - desktop tools can repair tags, chapters, and file structure, but turn “listen to this book” into a multi-app maintenance job.
 
-The opportunity is to join two products that are usually separate: a great audiobook player and a humane personal-library manager. Player should accept the collection the listener already has—one M4B, seventy poorly named MP3s, or anything in between—and guide it into shape on the device where it will be heard.
+The opportunity is to join two products that are usually separate: a great audiobook player and a humane personal-library manager. Bookshelf should accept the collection the listener already has—one M4B, seventy poorly named MP3s, or anything in between—and guide it into shape on the device where it will be heard.
 
 This is not a bet that nobody has built a good iOS audiobook player. Several have. It is a bet that **import certainty, reversible metadata management, and local-first ownership can form a better center of gravity** than either playback alone or a server connection alone.
 
@@ -37,13 +37,13 @@ The lesson is not “automate every field.” It is “make the common cleanup p
 
 #### 3. “Never lose my place.”
 
-Position memory is foundational. People switch apps specifically because a general media player loses their position. Self-hosted users report sync gaps between downloaded mobile playback and browser playback, and describe sync as a major class of open issues. Player must first make local position storage exceptionally durable; cross-device sync should arrive only with explicit conflict handling and inspectable status. ([local-player discussion](https://www.reddit.com/r/audiobooks/comments/13t5ea1/looking_for_audiobook_app_for_iphone/), [Audiobookshelf sync discussion](https://www.reddit.com/r/audiobookshelf/comments/1kig06p/progress_sync_failure_between_ios_app_downloaded/))
+Position memory is foundational. People switch apps specifically because a general media player loses their position. Self-hosted users report sync gaps between downloaded mobile playback and browser playback, and describe sync as a major class of open issues. Bookshelf must first make local position storage exceptionally durable; cross-device sync should arrive only with explicit conflict handling and inspectable status. ([local-player discussion](https://www.reddit.com/r/audiobooks/comments/13t5ea1/looking_for_audiobook_app_for_iphone/), [Audiobookshelf sync discussion](https://www.reddit.com/r/audiobookshelf/comments/1kig06p/progress_sync_failure_between_ios_app_downloaded/))
 
 #### 4. “Offline means the whole useful experience.”
 
 An audio download alone is not enough. Listeners want to browse covers, descriptions, authors, series, progress, and history while a server is asleep or unreachable. Community discussions explicitly call out libraries that disappear away from the network and ask for full metadata caching. ([offline-library discussion](https://www.reddit.com/r/audiobookshelf/comments/1sdb8na/ios_app_with_cached_metadata/), [offline-use discussion](https://www.reddit.com/r/audiobookshelf/comments/1g13yof/how_am_i_supposed_to_use_the_app_offline/))
 
-For Player, the local database is therefore the primary experience, not a temporary cache. Remote sources synchronize into it; they do not define whether the library exists.
+For Bookshelf, the local database is therefore the primary experience, not a temporary cache. Remote sources synchronize into it; they do not define whether the library exists.
 
 #### 5. “Give me audiobook controls, everywhere I listen.”
 
@@ -67,9 +67,9 @@ The market is active, and the bar is high:
 | Prologue/Plex + Audiobookshelf | Excellent server-backed library, playback, CarPlay, and Watch support | A complete server-free workflow for local files and on-device management |
 | Audiobookshelf/server | Rich matching, chapter editing, merging, multi-user sync | No-server setup, iOS-native local ownership, and reliable offline-first simplicity |
 
-Audiobookshelf itself demonstrates that lookup, cover matching, chapter editing, metadata embedding, and multi-file M4B merging are valued parts of audiobook management. Player should bring the highest-frequency parts of that workflow to iPhone without trying to reproduce an entire home server. ([Audiobookshelf overview](https://audiobookshelf.org/docs/documentation/introduction/))
+Audiobookshelf itself demonstrates that lookup, cover matching, chapter editing, metadata embedding, and multi-file M4B merging are valued parts of audiobook management. Bookshelf should bring the highest-frequency parts of that workflow to iPhone without trying to reproduce an entire home server. ([Audiobookshelf overview](https://audiobookshelf.org/docs/documentation/introduction/))
 
-## Who Player is for
+## Who Bookshelf is for
 
 ### The file owner
 
@@ -100,9 +100,9 @@ These are modes, not mutually exclusive market segments. One person may be a cur
 
 ## North-star experience
 
-A listener receives a ZIP containing 23 MP3 files. They share it to Player.
+A listener receives a ZIP containing 23 MP3 files. They share it to Bookshelf.
 
-Player immediately shows an import card with extraction and analysis progress. It recognizes one likely book, sorts the files despite inconsistent zero-padding, reads the available tags, and flags two uncertain track positions. It proposes a cover and series match, clearly labeling which values came from the files, folder name, and online catalog. The listener swaps the two tracks, accepts the match, and taps Add.
+Bookshelf immediately shows an import card with extraction and analysis progress. It recognizes one likely book, sorts the files despite inconsistent zero-padding, reads the available tags, and flags two uncertain track positions. It proposes a cover and series match, clearly labeling which values came from the files, folder name, and online catalog. The listener swaps the two tracks, accepts the match, and taps Add.
 
 The book appears in Continue Listening and plays from chapter one. The listener changes speed to 1.35×; that preference stays with the book. At bedtime they choose “End of chapter.” The next morning, Smart Rewind restores a little context. In Airplane Mode, the cover, chapter list, bookmarks, and library search all still work. Months later, the listener can export a backup containing the original media plus portable library metadata.
 
@@ -116,7 +116,7 @@ Playback never waits for login, metadata lookup, or sync. Network services enric
 
 ### Make uncertainty visible
 
-Metadata has provenance and confidence. Player says “from embedded tag,” “inferred from filename,” or “matched online,” and asks for review when evidence conflicts.
+Metadata has provenance and confidence. Bookshelf says “from embedded tag,” “inferred from filename,” or “matched online,” and asks for review when evidence conflicts.
 
 ### Automate reversibly
 
@@ -224,7 +224,7 @@ Silence shortening and audio processing should be off by default, measurable for
 
 Remote systems are adapters, never special cases threaded through the UI. An adapter can discover items, acquire audio, push/pull progress, and map metadata. Its capabilities are explicit; unsupported operations remain local.
 
-Sync needs a visible state and conflict policy. A newer timestamp alone is not always authoritative: a long offline session can be newer in meaning but older in server receipt time. Position events should retain device, book edition/file identity, listening interval, and monotonic sequence where available. On a material conflict, Player offers both positions with surrounding chapter/time context.
+Sync needs a visible state and conflict policy. A newer timestamp alone is not always authoritative: a long offline session can be newer in meaning but older in server receipt time. Position events should retain device, book edition/file identity, listening interval, and monotonic sequence where available. On a material conflict, Bookshelf offers both positions with surrounding chapter/time context.
 
 ## Priorities
 
@@ -332,7 +332,7 @@ Add series and collection browsing, search/filter, bookmarks, speed, smart
 rewind, sleep timer, backup/export, storage tools, accessibility coverage,
 startup recovery, sanitized diagnostics, and large-library evidence.
 
-**Gate:** A test cohort can use Player as its primary local audiobook app for four weeks with no position loss or source-file damage.
+**Gate:** A test cohort can use Bookshelf as its primary local audiobook app for four weeks with no position loss or source-file damage.
 
 ### Phase 4 — 1.0 integration quality
 
@@ -367,7 +367,7 @@ The same title may exist in different encodings with different durations or chap
 
 ### Destructive convenience
 
-Writing tags and merging files feels convenient until a crash, provider mismatch, or storage failure damages the only copy. Player starts with an immutable managed copy plus reversible database metadata. Cleaned-media export can be added later as a separate transaction.
+Writing tags and merging files feels convenient until a crash, provider mismatch, or storage failure damages the only copy. Bookshelf starts with an immutable managed copy plus reversible database metadata. Cleaned-media export can be added later as a separate transaction.
 
 ### Sustainability
 
@@ -375,7 +375,7 @@ A no-subscription preference must coexist with ongoing maintenance across iOS re
 
 ## Open product questions
 
-- What working name should replace “Player,” and what identity best communicates ownership plus calm listening?
+- What working name should replace “Bookshelf,” and what identity best communicates ownership plus calm listening?
 - What minimum iOS version balances modern audio/background APIs against device longevity?
 - Which metadata providers offer the best legal, stable coverage for editions, narrators, series, and covers?
 - Should the MVP support linked external files as an expert option, or only managed copies with predictable availability?

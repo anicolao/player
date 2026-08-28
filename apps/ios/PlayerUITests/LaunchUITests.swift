@@ -76,9 +76,9 @@ final class LaunchUITests: XCTestCase {
     let app = makeApplication()
     let tester = TestStepHelper(testCase: self)
     tester.setMetadata(
-      title: "Player launches into an empty local library",
+      title: "Bookshelf launches into an empty local library",
       narrative:
-        "As a new listener, I want Player to open into a ready and understandable library so I can add my first audiobook.",
+        "As a new listener, I want Bookshelf to open into a ready and understandable library so I can add my first audiobook.",
       fixture: "empty-library"
     )
 
@@ -86,7 +86,7 @@ final class LaunchUITests: XCTestCase {
 
     try tester.step(
       "empty-library",
-      description: "Player launches into the ready empty-library state",
+      description: "Bookshelf launches into the ready empty-library state",
       verifications: [
         .exists(app.otherElements["library-screen"], "The Library screen is visible"),
         .valueEquals(

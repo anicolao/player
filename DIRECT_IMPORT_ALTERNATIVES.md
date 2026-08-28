@@ -8,18 +8,18 @@ Last updated: 2026-08-23
 The architecture considers three complementary direct-import routes, all
 feeding the existing durable import pipeline:
 
-1. **Receive from Computer**, a local web uploader hosted by Player while the
+1. **Receive from Computer**, a local web uploader hosted by Bookshelf while the
    app is open, is the primary global experience for Mac, Windows, and Linux.
-2. **Player Import Drop Box**, a deferred Finder/Apple Devices file-sharing
+2. **Bookshelf Import Drop Box**, a deferred Finder/Apple Devices file-sharing
    route for large wired transfers and imports that should be waiting the next
-   time Player opens.
-3. **Drag directly onto Player through iPhone Mirroring** as an optional shortcut
+   time Bookshelf opens.
+3. **Drag directly onto Bookshelf through iPhone Mirroring** as an optional shortcut
    advertised on the receiver screen only in regions where Apple makes iPhone
    Mirroring available.
 
 An optional Mac companion can later reduce discovery and pairing to one Finder
 action. A hosted encrypted relay is the only route that can reliably begin with
-Player closed and the phone away from the computer, but it adds a service,
+Bookshelf closed and the phone away from the computer, but it adds a service,
 accounts, privacy obligations, and temporary remote storage. It should not be
 the first implementation.
 
@@ -34,7 +34,7 @@ are specified in [DIRECT_IMPORT_UX.md](DIRECT_IMPORT_UX.md).
 
 A listener who has audiobook files on a computer performs one import action --
 normally dragging a file or folder -- and the resulting book or books appear in
-Player's Library. The listener does not copy the same files again in Files, tap
+Bookshelf's Library. The listener does not copy the same files again in Files, tap
 Add on every valid import, or clean up transport copies afterward.
 
 Supported input shapes are:
@@ -62,7 +62,7 @@ managed copy and library transaction are durable.
   enables iOS file sharing. Apple documents this as dragging files onto the app
   in the connected device's Files view.
 - A user can grant persistent access to a directory selected with the document
-  picker. Player can store the security-scoped bookmark and scan new contents on
+  picker. Bookshelf can store the security-scoped bookmark and scan new contents on
   later launches.
 - A background `URLSession` can continue downloads from an HTTP server even if
   the app is suspended and can relaunch the app after a system termination.
@@ -70,9 +70,9 @@ managed copy and library transaction are durable.
 
 ### What is not possible to promise
 
-- Player cannot install a Shortcut or personal automation without the user's
+- Bookshelf cannot install a Shortcut or personal automation without the user's
   participation.
-- Player cannot register itself as a silent catch-all for every AirDrop. AirDrop
+- Bookshelf cannot register itself as a silent catch-all for every AirDrop. AirDrop
   decides where received items go, and a Share Extension runs only after the
   user chooses it.
 - A normal iOS app cannot remain an always-on inbound web server while
@@ -81,20 +81,20 @@ managed copy and library transaction are durable.
 - An iPhone app cannot make Safari spontaneously open a page on a Mac. Handoff
   can advertise the receiver page, but the listener still chooses the Handoff
   activity. A Mac companion can make discovery automatic.
-- Exposing Player's private `Application Support/Media` directory for direct
+- Exposing Bookshelf's private `Application Support/Media` directory for direct
   writes would bypass validation and database transactions. Only a dedicated
   ingress drop box should ever be externally writable.
 
 The unavoidable tradeoff is therefore:
 
-- **Local and private:** Player must be active to receive immediately, or it
+- **Local and private:** Bookshelf must be active to receive immediately, or it
   processes a system file-sharing drop the next time it launches.
 - **Phone may be closed or remote:** use an Internet relay and background pull,
   accepting the service and temporary remote-storage costs.
 
 ## Current foundation
 
-Player already has the import core. Build 14 includes the direct transport,
+Bookshelf already has the import core. Build 14 includes the direct transport,
 single-storage receiver ingestion, resumable web uploads, and the physically
 verified iPhone Mirroring provider path:
 
@@ -126,7 +126,7 @@ reports a durable byte offset for every selected file, and accepts only a retry
 that begins at the server-confirmed offset. Temporary connection failures leave
 the selection in a retryable browser state; explicit cancellation removes the
 partial session. The browser and phone both offer a deliberate “another book”
-path after completion, so repeated imports do not require restarting Player.
+path after completion, so repeated imports do not require restarting Bookshelf.
 
 ## Common direct-import contract
 
@@ -212,7 +212,7 @@ durable receipt                         present, small metadata only
 
 An app-owned source may be deleted only after the media move and persisted
 Library record both succeed. External watched folders are read-only by default
-and are never cleaned by Player. Failed transfers retain only bytes needed for
+and are never cleaned by Bookshelf. Failed transfers retain only bytes needed for
 Retry and are subject to a visible expiry policy, for example automatic cleanup
 after seven days.
 
@@ -220,10 +220,10 @@ after seven days.
 
 ### Experience
 
-1. The listener opens Player in iPhone Mirroring.
+1. The listener opens Bookshelf in iPhone Mirroring.
 2. They drag a book folder, a directory tree, a ZIP, or audio files from Finder
-   onto the Player window.
-3. Player shows upload/import progress and adds valid books automatically.
+   onto the Bookshelf window.
+3. Bookshelf shows upload/import progress and adds valid books automatically.
 
 After iPhone Mirroring has been configured, the recurring import gesture is one
 drag. Apple explicitly supports dragging files from a Mac into supported iPhone
@@ -255,7 +255,7 @@ apps through iPhone Mirroring.
 - Requires a compatible Mac, iOS 18 or later, macOS 15 or later, the same Apple
   Account, proximity, and a region where iPhone Mirroring is available.
 - Folder representations and very large directory trees must be proven on real
-  hardware; Apple documents file drag broadly but not Player's exact folder
+  hardware; Apple documents file drag broadly but not Bookshelf's exact folder
   provider behavior. If a folder is not vended as a readable provider, ZIP
   remains the fallback for this route.
 - It is not a Windows or Linux solution.
@@ -272,7 +272,7 @@ real-device tests prove folder and large-file behavior.
 
 ### Experience
 
-1. In Player, the listener taps `Receive from Computer` and leaves that screen
+1. In Bookshelf, the listener taps `Receive from Computer` and leaves that screen
    open.
 2. On the computer, they open the shown local address. Handoff can offer the
    same page on a nearby Mac to avoid typing it.
@@ -317,9 +317,9 @@ automatically launch Safari on the Mac.
 
 In regions where iPhone Mirroring is available, the same receiver screen also
 shows a concise `Using a Mac?` card explaining that books can be dragged directly
-onto the mirrored Player window. Eligibility comes from a remotely maintainable
+onto the mirrored Bookshelf window. Eligibility comes from a remotely maintainable
 regional allowlist with a shipped EU denylist; unknown regions fail closed and
-hide the card. Player must not request location permission for this tip, and the
+hide the card. Bookshelf must not request location permission for this tip, and the
 web instructions remain visually primary when it is shown.
 
 ### Security
@@ -343,11 +343,11 @@ web instructions remain visually primary when it is shown.
 - Works from Mac, Windows, Linux, and Chromebooks without installing software.
 - Handles complete directory trees and large files with a purpose-built,
   resumable protocol.
-- Streams directly into Player-owned staging and leaves no transport copy.
+- Streams directly into Bookshelf-owned staging and leaves no transport copy.
 
 ### Limitations
 
-- Player must be active to advertise and accept the connection reliably.
+- Bookshelf must be active to advertise and accept the connection reliably.
 - The first Local Network permission prompt is unavoidable.
 - Browser security and local-address discovery need careful UX and real-network
   testing, including guest Wi-Fi, VPNs, IPv6-only networks, and client isolation.
@@ -364,9 +364,9 @@ iPhone Mirroring.
 
 1. During one-time device pairing, the listener opens their iPhone's Files view
    in Finder on Mac or Apple Devices on Windows.
-2. They drag a file, ZIP, book folder, or directory tree onto Player's
+2. They drag a file, ZIP, book folder, or directory tree onto Bookshelf's
    `Import Drop Box`.
-3. If Player is open, it imports after the copy settles. Otherwise, it imports
+3. If Bookshelf is open, it imports after the copy settles. Otherwise, it imports
    automatically the next time it opens.
 4. The drop box becomes empty after successful commit.
 
@@ -382,7 +382,7 @@ is configured, over Wi-Fi.
   and needs regression testing for document-open behavior.
 - Create only `Documents/Import Drop Box`; keep Library data and managed media
   in private Application Support.
-- Scan the drop box at restore, scene activation, and while Player is active.
+- Scan the drop box at restore, scene activation, and while Bookshelf is active.
 - Treat uncontrolled Finder copies as unsealed until two recursive snapshots of
   path, size, and modification date are stable and a coordinated read confirms
   the same snapshot after hashing.
@@ -395,15 +395,15 @@ is configured, over Wi-Fi.
 
 - Official system transport with excellent throughput and no local web security
   surface.
-- Works with Player closed; processing waits safely for the next launch.
+- Works with Bookshelf closed; processing waits safely for the next launch.
 - A cable is dependable for very large libraries and constrained Wi-Fi.
 - After claim and commit, only managed media remains on the phone.
 
 ### Limitations
 
 - Initial Finder/Apple Devices discovery is less obvious than a web page.
-- The system does not launch Player merely because Finder copied a file. The
-  result appears when Player next runs unless it was already active.
+- The system does not launch Bookshelf merely because Finder copied a file. The
+  result appears when Bookshelf next runs unless it was already active.
 - Folder-tree behavior should be hardware-tested on both Finder and Apple
   Devices; ZIP is a reliable fallback if a client flattens or rejects folders.
 - Exposing Documents means users can see and delete drop-box content. That is
@@ -415,12 +415,12 @@ is configured, over Wi-Fi.
 Ship as the reliable large-transfer fallback. It is low complexity and directly
 addresses connected-phone workflows.
 
-## Route: AirDrop directly to Player
+## Route: AirDrop directly to Bookshelf
 
 ### Experience
 
 The listener AirDrops a supported file from Finder to the iPhone. When iOS
-offers Player as the destination, document-open starts import and auto-commit.
+offers Bookshelf as the destination, document-open starts import and auto-commit.
 Items sent between devices on the same Apple Account are automatically accepted
 by AirDrop, but Apple notes that received files may be saved in Files or another
 app depending on type.
@@ -438,7 +438,7 @@ app depending on type.
 ### Why it is a fallback
 
 - There is no public API for installing an automation that silently routes all
-  AirDropped files to Player.
+  AirDropped files to Bookshelf.
 - A generic audio file or ZIP may land in Files or require choosing an app.
 - Directories and large multi-file selections do not have a dependable
   app-targeting contract.
@@ -452,11 +452,11 @@ answer to one-action directory-tree import.
 
 ### Experience
 
-During setup, the listener chooses an `Audiobooks` or `Player Inbox` directory
+During setup, the listener chooses an `Audiobooks` or `Bookshelf Inbox` directory
 from Files. It may be in iCloud Drive, Dropbox, another File Provider, or an SMB
-server already connected in Files. Player saves the granted directory bookmark.
+server already connected in Files. Bookshelf saves the granted directory bookmark.
 Thereafter, the listener places books in that directory from the computer and
-Player imports unseen content when it can access the directory.
+Bookshelf imports unseen content when it can access the directory.
 
 ### Implementation
 
@@ -478,12 +478,12 @@ Player imports unseen content when it can access the directory.
 - **iCloud Drive:** easiest Mac integration but consumes iCloud quota and may
   temporarily retain cloud and device-provider copies. It is unsuitable as the
   only route for users with limited iCloud storage.
-- **SMB share on the computer/NAS:** Player reads the user's existing library
+- **SMB share on the computer/NAS:** Bookshelf reads the user's existing library
   without a cloud copy, but availability, credentials, and File Provider
   bookmark restoration vary.
 - **Dropbox/OneDrive/etc.:** convenient for existing customers of those
   providers, but storage and download behavior are controlled by a third party.
-- **On My iPhone/Player:** useful as a visible drop area, but the computer still
+- **On My iPhone/Bookshelf:** useful as a visible drop area, but the computer still
   needs Finder file sharing, iPhone Mirroring, or another transport to reach it.
 
 ### Recommendation
@@ -497,8 +497,8 @@ iOS.
 
 ### Experience
 
-After one-time pairing, the listener drags a book onto a small Player Receiver
-Mac app or chooses `Send to Player` in Finder. The companion discovers an active
+After one-time pairing, the listener drags a book onto a small Bookshelf Receiver
+Mac app or chooses `Send to Bookshelf` in Finder. The companion discovers an active
 phone over Bonjour and sends the directory manifest and bytes. No browser or
 address is involved.
 
@@ -511,7 +511,7 @@ address is involved.
 - Reuse the local web receiver's sealed-manifest and resumable-chunk semantics.
 - When the phone is unavailable, retain a security-scoped bookmark to the
   original Mac source rather than making a queued copy. Clearly report that the
-  transfer is waiting for Player to open.
+  transfer is waiting for Bookshelf to open.
 - Optionally add a Finder Quick Action. A Finder Sync extension is unnecessary
   unless deeper Finder integration is justified.
 
@@ -527,7 +527,7 @@ address is involved.
 - Adds another shipped product, signing/notarization, update path, support
   matrix, and Windows gap.
 - It still cannot wake an ordinary suspended iOS listener for an arbitrary large
-  inbound transfer. It waits for Player to become active unless paired with a
+  inbound transfer. It waits for Bookshelf to become active unless paired with a
   hosted relay.
 
 ### Recommendation
@@ -539,9 +539,9 @@ web protocol so this client can reuse it.
 
 ### Experience
 
-The listener pairs Player with a web page once. Later they drag a directory onto
-that page from any computer, even when the phone is elsewhere or Player is
-closed. The service notifies the phone; Player downloads, imports, and deletes
+The listener pairs Bookshelf with a web page once. Later they drag a directory onto
+that page from any computer, even when the phone is elsewhere or Bookshelf is
+closed. The service notifies the phone; Bookshelf downloads, imports, and deletes
 the remote payload after a durable receipt.
 
 ### Implementation
@@ -549,7 +549,7 @@ the remote payload after a durable receipt.
 - Encrypt files in the browser with a device-held key before upload.
 - Store only ciphertext in object storage with a short mandatory TTL.
 - Send APNs notification of the sealed remote manifest.
-- Have Player schedule all files in one background `URLSession` so the system
+- Have Bookshelf schedule all files in one background `URLSession` so the system
   can continue downloads while the app is suspended and relaunch after a
   system termination.
 - Verify end-to-end hashes, commit locally, acknowledge the receipt, and delete
@@ -566,7 +566,7 @@ the remote payload after a durable receipt.
 ### Limitations
 
 - Silent push and background scheduling are best effort. If the user force-quits
-  Player, iOS may require a later manual launch.
+  Bookshelf, iOS may require a later manual launch.
 - Adds authentication, APNs, storage, abuse prevention, bandwidth bills,
   privacy disclosures, deletion audits, and operational support.
 - Encrypted bytes exist temporarily off-device, which is a larger trust surface
@@ -579,7 +579,7 @@ need.
 
 ## Route: Shortcuts and App Intents
 
-Player can expose an `Import Audiobooks` App Intent accepting files and folders.
+Bookshelf can expose an `Import Audiobooks` App Intent accepting files and folders.
 That makes Share Sheet, Siri, and user-created Shortcuts more convenient and can
 support a Mac Finder Quick Action when combined with a real transport.
 
@@ -587,17 +587,17 @@ This is a convenience layer, not a transport:
 
 - an iPhone Shortcut still requires the files to be reachable on the iPhone;
 - a Mac Shortcut cannot directly write into a suspended iPhone app;
-- a personal automation cannot be silently installed by Player; and
+- a personal automation cannot be silently installed by Bookshelf; and
 - AirDrop does not provide a general "run this intent for every received file"
-  trigger that Player can configure.
+  trigger that Bookshelf can configure.
 
 Implement App Intents after the direct-import coordinator so they become one
 more thin ingress adapter.
 
-## Route: mount Player as WebDAV/SMB storage
+## Route: mount Bookshelf as WebDAV/SMB storage
 
-An active Player could expose a WebDAV-like server that Finder mounts as a
-volume. The listener would drag folders to a mounted `Player` drive.
+An active Bookshelf could expose a WebDAV-like server that Finder mounts as a
+volume. The listener would drag folders to a mounted `Bookshelf` drive.
 
 This is technically possible over the same foreground local listener as the web
 uploader, but it is not recommended initially:
@@ -605,7 +605,7 @@ uploader, but it is not recommended initially:
 - mounting and credential prompts are more work than opening a page;
 - Finder WebDAV behavior and partial-write semantics require another large
   compatibility surface;
-- the mount disappears when iOS suspends Player; and
+- the mount disappears when iOS suspends Bookshelf; and
 - exposing filesystem semantics increases the risk of users mutating ingress
   while it is being processed.
 
@@ -616,7 +616,7 @@ transaction boundary and better progress/recovery.
 
 ### File Provider extension
 
-A File Provider extension can present a Player-backed domain in Files, but it
+A File Provider extension can present a Bookshelf-backed domain in Files, but it
 does not make the phone's local sandbox appear on a Mac by itself. It needs a
 sync service or another transport, at which point the hosted relay is the actual
 solution. The complexity is not justified for local ingress.
@@ -624,7 +624,7 @@ solution. The complexity is not justified for local ingress.
 ### Writing directly to managed media
 
 Neither Finder nor Files should write into `Media/`. A book is not valid merely
-because bytes exist: Player also needs checksums, grouping, metadata, chapters,
+because bytes exist: Bookshelf also needs checksums, grouping, metadata, chapters,
 and an atomic Library record. Direct writes would make crashes and partial
 copies indistinguishable from valid books.
 
@@ -636,7 +636,7 @@ Finder/Apple Devices file sharing provides the supported USB path.
 
 ## Comparison
 
-| Route | Recurring action | Tree support | Player active for receipt? | Extra remote copy | Platforms | Priority |
+| Route | Recurring action | Tree support | Bookshelf active for receipt? | Extra remote copy | Platforms | Priority |
 | --- | --- | --- | --- | --- | --- | --- |
 | Local web receiver | Start receiver, then drag | Implemented; interruption recovery pending | Yes | No | Any modern desktop | Shipped P0 |
 | Finder/Apple Devices drop box | One drag | Deferred; validate clients | No; imports next launch | No after cleanup | Mac/Windows | Post-MVP |
@@ -708,7 +708,7 @@ Every shipped route must pass the same conformance suite:
 - after relaunch, the Library record and every managed asset agree.
 
 Hardware release gates should cover Finder USB, Finder Wi-Fi, and Apple Devices
-for Windows. A route-specific gate covers iPhone Mirroring wherever Player
+for Windows. A route-specific gate covers iPhone Mirroring wherever Bookshelf
 enables its regional promotion; Mirroring does not block the global web receiver
 release. Simulator tests cannot validate Local Network privacy or the real
 cross-device item-provider behavior.

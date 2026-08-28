@@ -263,7 +263,7 @@ final class ComputerReceiverTests: XCTestCase {
     let rawResponse = String(decoding: response, as: UTF8.self)
     XCTAssertTrue(rawResponse.hasPrefix("HTTP/1.1 200 OK\r\n"))
     XCTAssertTrue(rawResponse.contains("Content-Type: text/html; charset=utf-8\r\n"))
-    XCTAssertTrue(rawResponse.contains("Send audiobooks to Player"))
+    XCTAssertTrue(rawResponse.contains("Send audiobooks to Bookshelf"))
   }
 
   func testDeterministicPausedBindingDrivesProductionInterruptedUploadEvents() async throws {
@@ -621,7 +621,7 @@ final class ComputerReceiverTests: XCTestCase {
 
     let (page, pageResponse) = try await URLSession.shared.data(from: baseURL)
     XCTAssertEqual((pageResponse as? HTTPURLResponse)?.statusCode, 200)
-    XCTAssertTrue(String(decoding: page, as: UTF8.self).contains("Send audiobooks to Player"))
+    XCTAssertTrue(String(decoding: page, as: UTF8.self).contains("Send audiobooks to Bookshelf"))
 
     let pairBody = try JSONEncoder().encode(["code": ready.pairingCode])
     let (pairData, pairResponse) = try await request(

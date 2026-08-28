@@ -167,6 +167,8 @@ final class OfflineRecoveryTests: XCTestCase {
       ),
       automaticBackupCount: 2
     )
+    XCTAssertTrue(prepared.url.lastPathComponent.hasPrefix("Bookshelf Support "))
+    XCTAssertEqual(prepared.url.pathExtension, "playersupport")
     let data = try Data(contentsOf: prepared.url)
     let text = try XCTUnwrap(String(data: data, encoding: .utf8))
     for value in forbidden {

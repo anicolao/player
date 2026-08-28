@@ -1,6 +1,6 @@
-# Player for iOS
+# Bookshelf for iOS
 
-This directory contains the native SwiftUI app, its imported-media core, and deterministic launch/import/playback tests. The project is generated from `project.yml`; the generated `Player.xcodeproj` is committed so it can be opened directly and checked for reproducibility.
+This directory contains the native SwiftUI app, its imported-media core, and deterministic launch/import/playback tests. The project is generated from `project.yml`; the internally named `Player.xcodeproj` is committed so it can be opened directly and checked for reproducibility.
 
 ## Pinned environment
 

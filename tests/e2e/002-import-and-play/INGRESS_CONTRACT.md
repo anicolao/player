@@ -4,7 +4,7 @@
 
 This extends Story 002 through two real production ingress boundaries:
 
-1. opening an audiobook document in Player, followed by process termination at
+1. opening an audiobook document in Bookshelf, followed by process termination at
    deterministic acquisition and inspection checkpoints; and
 2. consuming an atomic App Group handoff written by a Share Extension.
 

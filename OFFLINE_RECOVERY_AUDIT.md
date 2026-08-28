@@ -2,7 +2,7 @@
 
 Status: implemented and executable in Story 011
 
-Player's core library has no account, server, metadata provider, telemetry, or
+Bookshelf's core library has no account, server, metadata provider, telemetry, or
 cloud synchronization dependency. The only networking API in the app target is
 the listener owned by `ComputerReceiver`, which binds a private local receiver
 only while the listener has explicitly opened **Receive from Computer**. Closing

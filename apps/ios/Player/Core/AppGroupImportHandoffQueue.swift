@@ -196,7 +196,7 @@ final class AppGroupImportHandoffWriter: @unchecked Sendable {
   private func copyAndHash(from source: URL, to destination: URL) throws -> String {
     guard fileManager.createFile(atPath: destination.path, contents: nil) else {
       throw ShareImportHandoffError.fileOperation(
-        "Player could not create storage for \(source.lastPathComponent)."
+        "Bookshelf could not create storage for \(source.lastPathComponent)."
       )
     }
     let input = try FileHandle(forReadingFrom: source)

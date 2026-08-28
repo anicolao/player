@@ -34,7 +34,7 @@ This board establishes the listening hierarchy, explicit chapter context, audiob
 
 ## Product posture
 
-Player should feel like a quiet personal library, not a music service or file manager.
+Bookshelf should feel like a quiet personal library, not a music service or file manager.
 
 - **Calm:** one strong action per state, restrained decoration, no engagement feed.
 - **Legible:** meaningful type hierarchy, plain labels, generous targets, visible state.
@@ -348,13 +348,13 @@ Sections appear only when populated, in this order:
 
 The mockup’s `Needs Review` and `In Progress` states are canonical examples. `Review` is a button only when the rest of the card remains a navigation target; otherwise make the whole card the action and use a trailing chevron.
 
-Empty copy: `No imports waiting` and `Books you add will appear here while Player checks them.`
+Empty copy: `No imports waiting` and `Books you add will appear here while Bookshelf checks them.`
 
 ### Review Import
 
 The first viewport answers:
 
-- What book does Player think this is?
+- What book does Bookshelf think this is?
 - Is it safe and complete enough to add?
 - What needs attention?
 - Where did the important values come from?
@@ -461,7 +461,7 @@ Errors use an inline card where work can continue, or a full state only when the
 - Routine reversible actions use immediate completion plus Undo.
 - Irreversible deletion uses confirmation with exact item and storage scope.
 - Adding a valid book does not require confirmation.
-- Cancelling an import with completed acquisition explains that only Player’s staged copy is removed.
+- Cancelling an import with completed acquisition explains that only Bookshelf’s staged copy is removed.
 
 ### Haptics
 

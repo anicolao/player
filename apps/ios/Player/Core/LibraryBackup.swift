@@ -61,11 +61,11 @@ enum LibraryBackupError: LocalizedError, Equatable, Sendable {
   var errorDescription: String? {
     switch self {
     case .unsupportedFormat(let version):
-      "This backup uses unsupported format version \(version). Update Player before restoring it."
+      "This backup uses unsupported format version \(version). Update Bookshelf before restoring it."
     case .unsupportedLibrarySchema(let version):
-      "This backup contains library schema \(version), which this version of Player cannot read."
+      "This backup contains library schema \(version), which this version of Bookshelf cannot read."
     case .invalidPackage(let detail):
-      "This Player backup is invalid: \(detail)"
+      "This Bookshelf backup is invalid: \(detail)"
     case .missingPayload(let path):
       "This backup is missing \(path)."
     case .invalidPayload(let path):
@@ -125,7 +125,7 @@ actor FileSystemLibraryBackupManager: LibraryBackupManaging {
     let exportRoot = rootURL.appending(path: "BackupExports", directoryHint: .isDirectory)
     try fileManager.createDirectory(at: exportRoot, withIntermediateDirectories: true)
     let packageURL = exportRoot.appending(
-      path: "Player Library \(Self.filenameTimestamp(clock.now())).playerbackup",
+      path: "Bookshelf Library \(Self.filenameTimestamp(clock.now())).playerbackup",
       directoryHint: .isDirectory
     )
     guard !fileManager.fileExists(atPath: packageURL.path) else {

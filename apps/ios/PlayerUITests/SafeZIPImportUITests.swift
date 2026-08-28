@@ -11,7 +11,7 @@ final class SafeZIPImportUITests: XCTestCase {
     tester.setMetadata(
       title: "ZIP imports reject unsafe entries and keep recovery actionable",
       narrative:
-        "As a listener importing archives, I want Player to reject unsafe content without touching my source and help me cancel, choose another file, or retry a temporary failure.",
+        "As a listener importing archives, I want Bookshelf to reject unsafe content without touching my source and help me cancel, choose another file, or retry a temporary failure.",
       fixture: "safe-zip-import",
       additionalPreconditions: [
         "Every archive and payload is deterministic, synthetic, legal test material",

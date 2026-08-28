@@ -31,7 +31,7 @@ struct BackupSettingsView: View {
             BackupSettingsSection("Protect your library") {
               BackupSettingsRow {
                 Text(
-                  "Player keeps your library on this iPhone. Export a backup to Files to protect it or move it to another iPhone. Player never uploads your backup."
+                  "Bookshelf keeps your library on this iPhone. Export a backup to Files to protect it or move it to another iPhone. Bookshelf never uploads your backup."
                 )
                 .font(.subheadline)
                 .accessibilityIdentifier("backup-purpose")
@@ -110,7 +110,7 @@ struct BackupSettingsView: View {
                 Button {
                   isChoosingRestore = true
                 } label: {
-                  Label("Choose Player Backup", systemImage: "square.and.arrow.down")
+                  Label("Choose Bookshelf Backup", systemImage: "square.and.arrow.down")
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .buttonStyle(.plain)
@@ -121,7 +121,7 @@ struct BackupSettingsView: View {
               BackupSettingsDivider()
               BackupSettingsRow {
                 Text(
-                  "Before replacing your current library, Player checks the backup and every included file. If the check fails, nothing changes."
+                  "Before replacing your current library, Bookshelf checks the backup and every included file. If the check fails, nothing changes."
                 )
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -361,7 +361,7 @@ struct BackupSettingsView: View {
     defer { isWorking = false }
     do {
       try await model.restoreLibraryBackup(from: url)
-      message = "Library restored from the verified Player backup."
+      message = "Library restored from the verified Bookshelf backup."
       await reloadAutomaticBackups()
     } catch {
       presentRecoveryError(error)

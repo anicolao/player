@@ -50,7 +50,7 @@ committed or uploaded.
 
 The [mockup comparison](MOCKUP_COMPARISON.md) reviews all 50 stable native
 screenshots produced by Stories 001–011 against the five approved mockup
-boards. The only product correction required by that audit moves the Player
+boards. The only product correction required by that audit moves the Bookshelf
 accent tint to the scene boundary, preventing system-blue controls from leaking
 into presented playback, receiver, sleep, recovery, and mini-player surfaces.
 Every remaining difference is intentional, implemented, and covered by the

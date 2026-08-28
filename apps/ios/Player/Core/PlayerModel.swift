@@ -557,7 +557,7 @@ final class PlayerModel {
       return DirectImportOutcome(
         state: .failed,
         message: consumePresentationError(in: .importFlow, owner: .computerReceiver)?.message
-          ?? "Player could not import these files.",
+          ?? "Bookshelf could not import these files.",
         addedBookCount: 0,
         cleanupIncomingFiles: false
       )
@@ -568,7 +568,7 @@ final class PlayerModel {
         return DirectImportOutcome(
           state: .failed,
           message: consumePresentationError(in: .importFlow, owner: .computerReceiver)?.message
-            ?? "Player could not add this audiobook.",
+            ?? "Bookshelf could not add this audiobook.",
           addedBookCount: 0,
           cleanupIncomingFiles: true
         )
@@ -596,14 +596,14 @@ final class PlayerModel {
     case .failed:
       return DirectImportOutcome(
         state: .failed,
-        message: job.failure?.message ?? "Player could not import these files.",
+        message: job.failure?.message ?? "Bookshelf could not import these files.",
         addedBookCount: 0,
         cleanupIncomingFiles: true
       )
     default:
       return DirectImportOutcome(
         state: .failed,
-        message: "Player did not finish checking these files.",
+        message: "Bookshelf did not finish checking these files.",
         addedBookCount: 0,
         cleanupIncomingFiles: false
       )
@@ -3264,7 +3264,7 @@ final class PlayerModel {
       guard interrupted.phase != .cancelled else { return }
       interrupted.phase = .failed
       interrupted.failure = ImportFailure(
-        message: "Player's import task stopped unexpectedly. Try sending the audiobook again.",
+        message: "Bookshelf's import task stopped unexpectedly. Try sending the audiobook again.",
         affectedFilename: interrupted.sourceFilename,
         sourceIsUnchanged: true,
         isRecoverable: false,

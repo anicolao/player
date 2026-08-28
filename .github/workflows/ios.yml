@@ -134,6 +134,10 @@ jobs:
         if: matrix.run_core
         run: apps/ios/scripts/verify-e2e-hygiene.sh
 
+      - name: Enforce Bookshelf product branding
+        if: matrix.run_core
+        run: apps/ios/scripts/verify-bookshelf-branding.sh
+
       - name: Generate Xcode project
         run: apps/ios/scripts/generate-project.sh
 

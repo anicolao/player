@@ -39,7 +39,7 @@
       history.replaceState({}, '', '/');
       phase = 'ready';
     } catch (caught) {
-      error = caught instanceof Error ? caught.message : 'Player could not be reached.';
+      error = caught instanceof Error ? caught.message : 'Bookshelf could not be reached.';
     }
   }
 
@@ -155,7 +155,7 @@
         })
       });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.message || 'Player rejected this selection.');
+      if (!response.ok) throw new Error(payload.message || 'Bookshelf rejected this selection.');
       importID = payload.id;
       await transferActiveImport();
     } catch (caught) {
@@ -174,11 +174,11 @@
     for (const { index, item, offset, body } of plan) {
       statusMessage = offset > 0
         ? `Resuming ${index + 1} of ${selection.length} files at ${formatBytes(offset)}`
-        : `Sending ${index + 1} of ${selection.length} files · waiting for Player to confirm each file`;
+        : `Sending ${index + 1} of ${selection.length} files · waiting for Bookshelf to confirm each file`;
       await uploadFile(importID, index, item.file, offset, body);
       await fetchImportStatus();
     }
-    statusMessage = 'Player is checking your files…';
+    statusMessage = 'Bookshelf is checking your files…';
     const complete = await fetch(`/api/imports/${importID}/complete`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}` }
@@ -207,20 +207,20 @@
       try {
         const status = await fetchImportStatus();
         if (canResumeImport(status, selection)) {
-          error = `${message} Player kept the confirmed bytes; retry to continue.`;
+          error = `${message} Bookshelf kept the confirmed bytes; retry to continue.`;
           statusMessage = 'Transfer paused safely.';
           phase = 'retry';
           return;
         }
         if (status.state === 'importing') {
-          statusMessage = status.message || 'Player is checking your files…';
+          statusMessage = status.message || 'Bookshelf is checking your files…';
           activeRequest = null;
           phase = 'importing';
           await pollResult();
           return;
         }
         if (status.state === 'completed' || status.state === 'needsReview') {
-          statusMessage = status.message || 'Your audiobook is ready in Player.';
+          statusMessage = status.message || 'Your audiobook is ready in Bookshelf.';
           importID = '';
           selection = [];
           phase = 'completed';
@@ -236,7 +236,7 @@
     if (/not paired|no longer has|failed to fetch|load failed|network|connection|could not be reached/i.test(message)) {
       token = '';
       code = '';
-      error = 'This receiver session ended. Enter the new code shown in Player, then choose the book again.';
+      error = 'This receiver session ended. Enter the new code shown in Bookshelf, then choose the book again.';
       phase = 'pairing';
     } else {
       error = message;
@@ -249,7 +249,7 @@
       headers: { 'Authorization': `Bearer ${token}` }
     });
     const payload = await response.json();
-    if (!response.ok) throw new Error(payload.message || 'Player lost this import.');
+    if (!response.ok) throw new Error(payload.message || 'Bookshelf lost this import.');
     if (Number.isFinite(payload.completedBytes)) completedBytes = payload.completedBytes;
     if (Number.isFinite(payload.totalBytes)) totalBytes = payload.totalBytes;
     return payload;
@@ -321,8 +321,8 @@
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.message || 'Player lost this import.');
-      statusMessage = payload.message || 'Player is checking your files…';
+      if (!response.ok) throw new Error(payload.message || 'Bookshelf lost this import.');
+      statusMessage = payload.message || 'Bookshelf is checking your files…';
       if (payload.state === 'completed') {
         importID = '';
         selection = [];
@@ -335,7 +335,7 @@
         phase = 'completed';
         return;
       }
-      if (payload.state === 'failed') throw new Error(payload.message || 'Player could not import these files.');
+      if (payload.state === 'failed') throw new Error(payload.message || 'Bookshelf could not import these files.');
     }
   }
 
@@ -374,14 +374,14 @@
     : selectionName || `${selection.length} audio files`;
 </script>
 
-<svelte:head><title>Send audiobooks to Player</title></svelte:head>
+<svelte:head><title>Send audiobooks to Bookshelf</title></svelte:head>
 
 <main>
-  <header><span class="mark" aria-hidden="true">▥</span><strong>Player</strong></header>
+  <header><span class="mark" aria-hidden="true">▥</span><strong>Bookshelf</strong></header>
 
   {#if phase === 'pairing'}
     <section class="panel pairing" aria-labelledby="pair-title">
-      <h1 id="pair-title">Connect to Player</h1>
+      <h1 id="pair-title">Connect to Bookshelf</h1>
       <p>Enter the pairing code shown on your iPhone.</p>
       <input
         class="code"
@@ -401,7 +401,7 @@
   {:else if phase === 'ready'}
     <section class="panel" aria-labelledby="send-title">
       <p class="connected">✓ Connected to {deviceName}</p>
-      <h1 id="send-title">Send audiobooks to Player</h1>
+      <h1 id="send-title">Send audiobooks to Bookshelf</h1>
       <div
         class:dragging
         class="drop-zone"
@@ -443,7 +443,7 @@
         {:else if phase === 'uploading'}
           <button class="secondary" onclick={cancelTransfer}>Cancel</button>
         {:else}
-          <p class="privacy">The transfer is sealed; Player will finish even if this page closes.</p>
+          <p class="privacy">The transfer is sealed; Bookshelf will finish even if this page closes.</p>
         {/if}
       </article>
       <p class="success-note">✓ Valid books appear automatically in your Library.</p>
@@ -451,7 +451,7 @@
   {:else}
     <section class="panel completed" aria-labelledby="complete-title">
       <div class="complete-icon" aria-hidden="true">✓</div>
-      <h1 id="complete-title">Sent to Player</h1>
+      <h1 id="complete-title">Sent to Bookshelf</h1>
       <p>{statusMessage || 'Your audiobook is ready in Library.'}</p>
       <button class="primary compact" onclick={sendAnother}>Send another book</button>
       <p class="privacy">Or close this page when you are finished.</p>

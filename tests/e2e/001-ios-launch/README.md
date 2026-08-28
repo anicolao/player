@@ -1,6 +1,6 @@
-# Test: Player launches into an empty local library
+# Test: Bookshelf launches into an empty local library
 
-> As a new listener, I want Player to open into a ready and understandable library so I can add my first audiobook.
+> As a new listener, I want Bookshelf to open into a ready and understandable library so I can add my first audiobook.
 
 ## Deterministic preconditions
 
@@ -13,9 +13,9 @@
 - Network and clock data: unused by this story
 
 
-## Player launches into the ready empty-library state
+## Bookshelf launches into the ready empty-library state
 
-![Player launches into the ready empty-library state](./screenshots/ios/000-empty-library.png)
+![Bookshelf launches into the ready empty-library state](./screenshots/ios/000-empty-library.png)
 
 **Verifications:**
 

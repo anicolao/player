@@ -14,7 +14,7 @@ final class SmartRewindUITests: XCTestCase {
     let tester = TestStepHelper(testCase: self, startIndex: 3)
     tester.setMetadata(
       title: "Smart Rewind resumes safely and remains exactly undoable",
-      narrative: "As a listener returning after time away, I want Player to rewind by a predictable amount without crossing the current chapter, explain the adjustment, and let me undo it exactly.",
+      narrative: "As a listener returning after time away, I want Bookshelf to rewind by a predictable amount without crossing the current chapter, explain the adjustment, and let me undo it exactly.",
       fixture: "smart-rewind",
       additionalPreconditions: [
         "The fixture contains one deterministic 180-second book with a logical chapter beginning at 100,000 milliseconds",

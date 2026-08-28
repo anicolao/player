@@ -20,7 +20,7 @@ final class MultifileGroupingUITests: XCTestCase {
     tester.setMetadata(
       title: "Messy Unicode files become one intentionally ordered audiobook",
       narrative:
-        "As a listener importing a folder and several files, I want to understand Player's grouping guess, repair it, and commit one complete book.",
+        "As a listener importing a folder and several files, I want to understand Bookshelf's grouping guess, repair it, and commit one complete book.",
       fixture: "messy-multifile-unicode",
       additionalPreconditions: [
         "All eight audio files are generated tones with deterministic identifiers and checksums",

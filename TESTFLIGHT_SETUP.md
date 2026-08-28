@@ -1,7 +1,7 @@
 # TestFlight developer handoff and release configuration
 
 This is the one-time Apple Developer Program setup required before the release
-automation can sign, upload, and distribute Player builds without pausing for
+automation can sign, upload, and distribute Bookshelf builds without pausing for
 credentials or two-factor authentication. Once the local handoff is installed,
 the same configuration is reused for later builds until its API key is rotated
 or revoked.
@@ -60,8 +60,8 @@ In **Certificates, Identifiers & Profiles** at
 <https://developer.apple.com/account/resources/identifiers/list>, create or
 verify these two explicit App IDs:
 
-- `Audiobook Player` — `com.spnss.player`
-- `Audiobook Player Share Extension` — `com.spnss.player.share`
+- `Audiobook Bookshelf` — `com.spnss.player`
+- `Audiobook Bookshelf Share Extension` — `com.spnss.player.share`
 
 For each one, choose **App IDs → App**, **Explicit**, and leave unrelated
 capabilities unchanged. The primary App ID must exist before the App Store
@@ -70,7 +70,7 @@ Connect app record can be created.
 Next, return to the Identifiers list, click add (`+`), choose **App Groups**,
 and register:
 
-- Description: `Player Shared Imports`
+- Description: `Bookshelf Shared Imports`
 - Identifier: `group.com.spnss.player`
 
 Finally, open each App ID, enable **App Groups**, click **Configure**, select
@@ -88,7 +88,7 @@ In **App Store Connect → Apps**, click the add button and choose **New App**.
 Use:
 
 - Platforms: **iOS**
-- Name: **Player** (if unavailable, choose the final name you want and record
+- Name: **Bookshelf Offline Audio Player** (if unavailable, choose the final name you want and record
   it for the helper)
 - Primary language: **English (Canada)**, or your preferred English locale
 - Bundle ID: `com.spnss.player`
@@ -108,7 +108,7 @@ API**:
    Access**, accept the terms, and wait for Apple to approve the request. Stop
    here if approval is pending.
 2. Open **Team Keys** and click **Generate API Key** (`+`).
-3. Name: `Player TestFlight Bootstrap` (or another name that clearly identifies
+3. Name: `Bookshelf TestFlight Bootstrap` (or another name that clearly identifies
    this repository's automation key)
 4. Access: **Admin**
 5. Generate and download the key. Apple permits the private key to be
@@ -171,7 +171,7 @@ Report the exact on-screen error, but no secrets, if:
 
 - an identifier is owned by another team;
 - the App Group cannot be registered or selected for both App IDs;
-- `Player` is unavailable as an App Store Connect name;
+- `Bookshelf Offline Audio Player` is unavailable as an App Store Connect name;
 - API access is pending or denied;
 - the app record cannot be created;
 - your intended tester is not an App Store Connect user.

@@ -1,6 +1,6 @@
 # Test: A paused listening position survives app termination
 
-> As a listener, I want Player to return at audio I have already heard after I close and reopen the app.
+> As a listener, I want Bookshelf to return at audio I have already heard after I close and reopen the app.
 
 ## Deterministic preconditions
 
@@ -77,7 +77,7 @@
 
 # Test: Smart Rewind resumes safely and remains exactly undoable
 
-> As a listener returning after time away, I want Player to rewind by a predictable amount without crossing the current chapter, explain the adjustment, and let me undo it exactly.
+> As a listener returning after time away, I want Bookshelf to rewind by a predictable amount without crossing the current chapter, explain the adjustment, and let me undo it exactly.
 
 ## Deterministic preconditions
 

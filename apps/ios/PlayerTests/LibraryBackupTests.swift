@@ -22,6 +22,8 @@ final class LibraryBackupTests: XCTestCase {
       library: fixture.library,
       kind: .includingMedia
     )
+    XCTAssertTrue(prepared.url.lastPathComponent.hasPrefix("Bookshelf Library "))
+    XCTAssertEqual(prepared.url.pathExtension, "playerbackup")
 
     let oldMedia = destinationRoot.appending(path: "Media/old/old.m4b")
     try FileManager.default.createDirectory(
@@ -144,6 +146,7 @@ final class LibraryBackupTests: XCTestCase {
       XCTFail("Expected unsupported format")
     } catch let error as LibraryBackupError {
       XCTAssertEqual(error, .unsupportedFormat(2))
+      XCTAssertTrue(error.localizedDescription.contains("Update Bookshelf"))
     }
 
     value["formatVersion"] = 1
@@ -160,6 +163,7 @@ final class LibraryBackupTests: XCTestCase {
         error,
         .unsupportedLibrarySchema(CodableLibraryStore.currentSchemaVersion + 1)
       )
+      XCTAssertTrue(error.localizedDescription.contains("Bookshelf cannot read"))
     }
   }
 

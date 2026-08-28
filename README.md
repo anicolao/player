@@ -1,11 +1,11 @@
-# Player
+# Bookshelf
 
 > A local-first audiobook player for iPhone that turns scattered, imperfect audio files into a clean, dependable library.
 
-**Player** is a working title for an iOS app for people who bring their own DRM-free audiobooks. Its defining feature is not another play button: it is a forgiving path from “these files are somewhere on my phone or cloud drive” to “this is one correctly ordered, beautifully presented book.”
+**Bookshelf** is an iOS app for people who bring their own DRM-free audiobooks. Its defining feature is not another play button: it is a forgiving path from “these files are somewhere on my phone or cloud drive” to “this is one correctly ordered, beautifully presented book.”
 
 The repository contains the native SwiftUI product, its local import and
-playback core, and eleven deterministic end-to-end product journeys. The MVP
+playback core, and thirteen deterministic end-to-end product journeys. The MVP
 completion gates are closed, and the verified app is distributed to the
 internal TestFlight group. [VISION.md](VISION.md) explains the product direction,
 [MVP_DESIGN.md](MVP_DESIGN.md) defines the first useful target,
@@ -23,7 +23,7 @@ maps every tracer and scale budget to executable evidence.
 ## The product promise
 
 1. **Getting a book in is easy.** Import an M4B, a folder of MP3s, or a ZIP from Files, iCloud Drive, AirDrop, the share sheet, or a nearby computer.
-2. **Player makes a good first guess and shows its work.** It groups tracks, determines order, reads embedded chapters and tags, detects duplicates, and proposes metadata without silently overwriting anything.
+2. **Bookshelf makes a good first guess and shows its work.** It groups tracks, determines order, reads embedded chapters and tags, detects duplicates, and proposes metadata without silently overwriting anything.
 3. **Fixing a library takes seconds, not a desktop toolchain.** Edit title, author, narrator, series, sequence, cover, and chapter names on the phone, individually or in batches.
 4. **Playback never loses the listener’s place.** Position, bookmarks, settings, and sleep history are durable. Downloads remain useful without a network connection.
 5. **The listener stays in control.** Originals are preserved, metadata changes are reversible, broad cloud-drive access is unnecessary, and core local playback does not require an account or subscription.
@@ -43,11 +43,11 @@ maps every tracer and scale budget to executable evidence.
 - Explicit local-network receiving while its on-device screen is open; no
   Internet upload or account is required
 
-Files selected through Apple’s document picker are copied into Player’s managed storage. The source is never modified. A future export flow may write cleaned metadata or produce a consolidated M4B, but only as an explicit action.
+Files selected through Apple’s document picker are copied into Bookshelf’s managed storage. The source is never modified. A future export flow may write cleaned metadata or produce a consolidated M4B, but only as an explicit action.
 
 ### A real import inbox
 
-Every new item lands in an inbox before joining the library. Player proposes:
+Every new item lands in an inbox before joining the library. Bookshelf proposes:
 
 - which files belong to the same book;
 - track and chapter order, using tags, filenames, folder structure, and duration;
@@ -108,7 +108,7 @@ The roadmap is capability-based, not a release-date promise. Reliability gates a
 - **Observable failure.** Imports and syncs have inspectable state, useful errors, and retry controls.
 - **Performance is a feature.** Library interactions should remain responsive with thousands of books and imports should not monopolize battery, memory, or storage.
 
-## What Player will not do
+## What Bookshelf will not do
 
 - Circumvent DRM or import protected files from commercial services
 - Sell audiobooks or become a discovery storefront
@@ -121,7 +121,7 @@ The roadmap is capability-based, not a release-date promise. Reliability gates a
 
 The iPhone app lives in `apps/ios/` and is generated reproducibly with XcodeGen. The pinned local setup is Xcode 26.6, iOS 26.5, iPhone 17, and XcodeGen 2.46.0.
 
-With Nix installed, generate the project, build the app, boot a persistent development simulator, install Player, and launch it with one command:
+With Nix installed, generate the project, build the app, boot a persistent development simulator, install Bookshelf, and launch it with one command:
 
 ```bash
 nix develop
@@ -148,7 +148,7 @@ rounding; no pixel may move, be masked, or exceed that channel allowance:
 apps/ios/scripts/run-e2e.sh
 ```
 
-The runner creates and deletes its own `Player E2E` simulator. See [apps/ios/README.md](apps/ios/README.md) for native project details and [E2E_GUIDE.md](E2E_GUIDE.md) for the semantic and canonical-pixel verification contract.
+The runner creates and deletes its own internal `Player E2E` simulator. See [apps/ios/README.md](apps/ios/README.md) for native project details and [E2E_GUIDE.md](E2E_GUIDE.md) for the semantic and canonical-pixel verification contract.
 
 ## Contributing
 
@@ -160,6 +160,6 @@ Contributions should align with the priorities and non-goals in
 
 ## Legal and license
 
-Player is intended for DRM-free audio that a listener owns or is authorized to use. It will not include DRM circumvention.
+Bookshelf is intended for DRM-free audio that a listener owns or is authorized to use. It will not include DRM circumvention.
 
-Player is free software licensed under the [GNU General Public License v3.0](LICENSE).
+Bookshelf is free software licensed under the [GNU General Public License v3.0](LICENSE).

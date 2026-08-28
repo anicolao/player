@@ -1,6 +1,6 @@
 # Test: ZIP imports reject unsafe entries and keep recovery actionable
 
-> As a listener importing archives, I want Player to reject unsafe content without touching my source and help me cancel, choose another file, or retry a temporary failure.
+> As a listener importing archives, I want Bookshelf to reject unsafe content without touching my source and help me cancel, choose another file, or retry a temporary failure.
 
 ## Deterministic preconditions
 
@@ -42,7 +42,7 @@
 
 # Test: Import recovery keeps every source safe and makes storage actionable
 
-> As a listener importing a messy selection, I want Player to explain each problem, preserve the usable files, and show exactly what storage I can safely reclaim.
+> As a listener importing a messy selection, I want Bookshelf to explain each problem, preserve the usable files, and show exactly what storage I can safely reclaim.
 
 ## Deterministic preconditions
 
@@ -58,9 +58,9 @@
 - The mixed selection contains valid, transiently corrupt, unsupported, selection-duplicate, and library-duplicate files
 - Every source checksum is observed before and after production retry, remove, cancel, and commit boundaries
 
-## Settings shows what Player uses and what can be reclaimed safely
+## Settings shows what Bookshelf uses and what can be reclaimed safely
 
-![Settings shows what Player uses and what can be reclaimed safely](./screenshots/ios/002-storage-recovery.png)
+![Settings shows what Bookshelf uses and what can be reclaimed safely](./screenshots/ios/002-storage-recovery.png)
 
 **Verifications:**
 

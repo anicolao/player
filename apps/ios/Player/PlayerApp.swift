@@ -177,7 +177,7 @@ private struct LaunchStorageUnavailableView: View {
       Label("Local Storage Unavailable", systemImage: "externaldrive.badge.exclamationmark")
     } description: {
       Text(
-        "Player could not reach its private local folder. No library files were changed."
+        "Bookshelf could not reach its private local folder. No library files were changed."
       )
     } actions: {
       Button("Try Again", action: retry)

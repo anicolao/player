@@ -70,7 +70,7 @@ Risks:
 
 This version keeps the physical shelf cue but makes cover art the primary object.
 Each named shelf is an ordinary horizontal carousel whose items rest on a thin
-decorative ledge. It is substantially closer to Player's current data and view
+decorative ledge. It is substantially closer to Bookshelf's current data and view
 architecture than rendered spines: existing artwork, title, progress, and tap
 behavior can be reused while the shelf supplies grouping and depth.
 
@@ -90,7 +90,7 @@ and A–Z provides a predictable route to the complete collection.
 
 Strengths:
 
-- Uses the square artwork Player already stores and renders.
+- Uses the square artwork Bookshelf already stores and renders.
 - Can be built from native stacks, lazy containers, and scroll views without
   synthesizing spine art or rotating text.
 - Keeps titles readable and preserves familiar artwork recognition.
@@ -109,7 +109,7 @@ Risks:
 
 This revision keeps Concept D's implementation-friendly structure while making
 the physical metaphor more intentional. Strictly square audiobook cases rest on
-a reddish walnut ledge derived from Player's burnt-orange accent. A darker front
+a reddish walnut ledge derived from Bookshelf's burnt-orange accent. A darker front
 lip, fine grain, and restrained top highlight give the shelf depth without
 turning it into decorative furniture. Soft contact and right-edge shadows make
 each cover feel like a thin case sitting on the shelf rather than a flat image
@@ -125,7 +125,7 @@ so they can respond to accessibility settings.
 ## Recommended direction
 
 Prototype Concept E first. It preserves Concept D's practical square-cover
-geometry while tying the shelf material directly to Player's visual language.
+geometry while tying the shelf material directly to Bookshelf's visual language.
 Concept A and B
 remain useful long-term explorations for a more literal personal-bookcase mode;
 they should not block the practical square-cover prototype. Concept C supplies
@@ -180,5 +180,5 @@ selected-state outlines.
 ## Mockup note
 
 These images are generated concept artifacts. Book art, typography, exact
-spacing, and rendered titles are illustrative; implementation should use Player's
+spacing, and rendered titles are illustrative; implementation should use Bookshelf's
 design tokens, real metadata, native controls, and tested accessibility labels.

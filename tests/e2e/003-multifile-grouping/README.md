@@ -1,6 +1,6 @@
 # Test: Messy Unicode files become one intentionally ordered audiobook
 
-> As a listener importing a folder and several files, I want to understand Player's grouping guess, repair it, and commit one complete book.
+> As a listener importing a folder and several files, I want to understand Bookshelf's grouping guess, repair it, and commit one complete book.
 
 ## Deterministic preconditions
 

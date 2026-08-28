@@ -124,7 +124,7 @@ actor FileSystemSupportDiagnosticsManager: SupportDiagnosticsManaging {
     let directory = rootURL.appending(path: "SupportExports", directoryHint: .isDirectory)
     try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
     let url = directory.appending(
-      path: "Player Support \(Self.filenameTimestamp(clock.now())).playersupport"
+      path: "Bookshelf Support \(Self.filenameTimestamp(clock.now())).playersupport"
     )
     let report = SanitizedSupportReport(
       formatVersion: SanitizedSupportReport.currentFormatVersion,
