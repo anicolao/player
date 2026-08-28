@@ -27,6 +27,8 @@ struct MetadataEditorView: View {
   @State private var cropY = 0.5
   @State private var localError: PlayerPresentationError?
   @State private var isSaving = false
+  @State private var coverSelectionRevision = 0
+  @State private var coverSelectionOutcome = "idle"
 
   var body: some View {
     ZStack {
@@ -65,6 +67,10 @@ struct MetadataEditorView: View {
         StateProbe(
           id: "metadata-validation-state",
           value: validationError.map { "invalid=\($0.localizedDescription)" } ?? "valid"
+        )
+        StateProbe(
+          id: "metadata-cover-selection-state",
+          value: "revision=\(coverSelectionRevision):outcome=\(coverSelectionOutcome)"
         )
         StateProbe(id: "metadata-committed-state", value: committedMetadataProbeValue)
       #endif
@@ -107,7 +113,7 @@ struct MetadataEditorView: View {
     }
     .confirmationDialog("Change Cover", isPresented: $isChoosingCoverSource) {
       Button("Choose Photo") { chooseCoverPhoto() }
-      Button("Choose File") { isChoosingCoverFile = true }
+      Button("Choose File") { chooseCoverFile() }
       if draft.cover != nil { Button("Crop") { openCrop() } }
       Button("Remove", role: .destructive) { removeCover() }
     }
@@ -121,26 +127,19 @@ struct MetadataEditorView: View {
       allowedContentTypes: [.image],
       allowsMultipleSelection: false
     ) { result in
-      guard case .success(let urls) = result, let url = urls.first else { return }
-      replaceCover(from: url)
+      handleCoverSelection(
+        CoverArtworkSelectionAdapter().acquireFile(result),
+        source: .file
+      )
     }
     .sheet(isPresented: $isCroppingCover) { cropSheet }
     .task(id: selectedPhoto) {
       guard let selectedPhoto else { return }
       defer { self.selectedPhoto = nil }
-      do {
-        guard let data = try await selectedPhoto.loadTransferable(type: Data.self), !data.isEmpty else {
-          presentLocalError(
-            "The selected photo did not contain a readable image. Choose another photo."
-          )
-          return
-        }
-        setCover(data: data, mediaType: imageMediaType(data), source: .photoLibrary)
-      } catch {
-        presentLocalError(
-          "The selected photo could not be read. Download it in Photos, then try again."
-        )
+      let outcome = await CoverArtworkSelectionAdapter().acquirePhoto {
+        try await selectedPhoto.loadTransferable(type: Data.self)
       }
+      handleCoverSelection(outcome, source: .photoLibrary)
     }
     .onAppear { loadIfNeeded() }
     .accessibilityElement(children: .contain)
@@ -516,27 +515,62 @@ struct MetadataEditorView: View {
     dismiss()
   }
 
-  private func replaceCover(from url: URL) {
-    let accessed = url.startAccessingSecurityScopedResource()
-    defer { if accessed { url.stopAccessingSecurityScopedResource() } }
-    do {
-      let data = try Data(contentsOf: url)
-      setCover(data: data, mediaType: UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? imageMediaType(data), source: .file)
-    } catch {
-      presentLocalError("The selected cover file could not be read. Choose another image.")
-    }
-  }
-
   private func chooseCoverPhoto() {
     #if E2E
-      guard let data = E2EMetadataRepairBridge.shared.replacementCoverData else {
-        presentLocalError("The deterministic replacement photo is unavailable.")
-        return
-      }
-      setCover(data: data, mediaType: "image/png", source: .photoLibrary)
+      handleCoverSelection(
+        CoverArtworkSelectionAdapter().acquirePhoto(
+          E2EMetadataRepairBridge.shared.nextPhotoSelection()
+        ),
+        source: .photoLibrary
+      )
     #else
       isChoosingCoverPhoto = true
     #endif
+  }
+
+  private func chooseCoverFile() {
+    #if E2E
+      handleCoverSelection(
+        CoverArtworkSelectionAdapter().acquireFile(
+          E2EMetadataRepairBridge.shared.nextFileSelection()
+        ),
+        source: .file
+      )
+    #else
+      isChoosingCoverFile = true
+    #endif
+  }
+
+  private func handleCoverSelection(
+    _ outcome: SystemSelectionOutcome<AcquiredCoverArtwork>,
+    source: CoverSource
+  ) {
+    coverSelectionRevision += 1
+    switch outcome {
+    case .selected:
+      coverSelectionOutcome = "selected-\(source.rawValue)"
+    case .cancelled:
+      coverSelectionOutcome = "cancelled-\(source.rawValue)"
+    case .failed:
+      coverSelectionOutcome = "failed-\(source.rawValue)"
+    }
+    if let failure = CoverArtworkSelectionIntegration.apply(
+      outcome,
+      source: source,
+      mutation: setCover
+    ) {
+      presentCoverSelectionFailure(failure, source: source)
+    }
+  }
+
+  private func presentCoverSelectionFailure(
+    _ failure: SystemSelectionFailure,
+    source: CoverSource
+  ) {
+    let recovery = source == .photoLibrary
+      ? "Download it in Photos or choose another image, then try again."
+      : "Download it in Files or choose another image, then try again."
+    presentLocalError("\(failure.message) \(recovery)")
   }
 
   private func presentLocalError(_ message: String) {
@@ -550,9 +584,8 @@ struct MetadataEditorView: View {
     localError = nil
   }
 
-  private func setCover(data: Data, mediaType: String, source: CoverSource) {
-    guard !data.isEmpty else { return }
-    draft.cover = CoverArtwork(originalData: data, mediaType: mediaType, source: source)
+  private func setCover(_ cover: CoverArtwork) {
+    draft.cover = cover
     explicitlyCleared.remove(.cover)
     touchedFields.insert(.cover)
     lockOverrides[.cover] = true

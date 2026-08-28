@@ -44,10 +44,13 @@ PLAYER_E2E_METADATA_REPLACEMENT_COVER_BASE64
 The bootstrap writes the audio into the isolated source root and seeds the
 production proposal/revision model with deterministic inspection evidence. It
 must not implement editing, locking, commit, undo, checksum, or view state.
-Replacement-cover injection substitutes only after the production source
-chooser is shown and `Choose Photo` is tapped. `Replace Cover` may not bypass
-that chooser in E2E. The injected bytes call the same production setter as a
-normal picked image and retain photo-library provenance.
+The deterministic provider boundary is available only after the production
+source chooser is shown and one of its actions is tapped. `Replace Cover` may
+not bypass that chooser in E2E. In order, it returns photo cancellation, Files
+provider failure, and a selected synthetic PNG. All three travel through the
+same acquisition adapters as their system-picker counterparts; successful
+bytes are decoded and safety-validated before the production draft setter is
+called and retain photo-library provenance.
 
 ## Initial proposal and provenance
 
@@ -88,6 +91,17 @@ cleared fields use `confidence=user`, never a fabricated percentage.
 
 ## Repair and lock semantics
 
+The test first proves system artwork selection is transactional while the
+original cover and unrelated title, narrator, and series edits are present:
+
+1. `Choose Photo` returns cancellation. The completed cancellation is observed
+   without a fixed wait, no alert is presented, and no draft field changes.
+2. `Choose File` returns an offline-provider failure. A metadata-editor-owned
+   `Couldn’t Save Details` alert tells the listener to download the image in
+   Files or choose another. The original cover and unrelated edits remain.
+3. After dismissing the alert, a successful `Choose Photo` result passes the
+   checked-in bytes through production image validation before draft mutation.
+
 The test performs six editing actions in one editor draft; they resolve to five
 field mutations because replacement and cropping are one final cover value:
 
@@ -101,7 +115,7 @@ field mutations because replacement and cropping are one final cover value:
    `cover=none|source=user-clear|locked=true`.
 5. Tap `metadata-replace-cover`, require the source chooser again, then tap
    `Choose Photo`. This consumes the injected synthetic PNG through the normal
-   photo-library cover setter and produces
+   photo-library acquisition and validation boundary and produces
    `cover=replacement|source=user|locked=true`.
 6. Open `Crop`, set the production zoom and horizontal sliders to their
    deterministic end positions, and require

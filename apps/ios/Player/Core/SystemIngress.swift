@@ -177,6 +177,92 @@ struct AcquiredCoverArtwork: Equatable, Sendable {
   var wasNormalized: Bool
 }
 
+/// Converts both system artwork providers into the same validated result. The
+/// caller owns editor state and must only apply the `.selected` value.
+struct CoverArtworkSelectionAdapter: Sendable {
+  let acquirer: CoverArtworkAcquirer
+  let resourceAccess: SecurityScopedResourceAccess
+
+  init(
+    acquirer: CoverArtworkAcquirer = CoverArtworkAcquirer(),
+    resourceAccess: SecurityScopedResourceAccess = .system
+  ) {
+    self.acquirer = acquirer
+    self.resourceAccess = resourceAccess
+  }
+
+  @MainActor
+  func acquirePhoto(
+    loadingData: () async throws -> Data?
+  ) async -> SystemSelectionOutcome<AcquiredCoverArtwork> {
+    do {
+      return acquirePhoto(.success(try await loadingData()))
+    } catch {
+      return acquirePhoto(.failure(error))
+    }
+  }
+
+  func acquirePhoto(
+    _ result: Result<Data?, any Error>
+  ) -> SystemSelectionOutcome<AcquiredCoverArtwork> {
+    do {
+      guard let data = try result.get() else {
+        return .failed(SystemSelectionFailure(CoverArtworkAcquisitionError.emptyData))
+      }
+      return .selected(try acquirer.acquire(data: data))
+    } catch {
+      return SystemSelectionCancellation.isCancellation(error)
+        ? .cancelled
+        : .failed(SystemSelectionFailure(error))
+    }
+  }
+
+  func acquireFile(
+    _ result: Result<[URL], any Error>
+  ) -> SystemSelectionOutcome<AcquiredCoverArtwork> {
+    switch SystemFileSelectionClassifier.classify(result) {
+    case .selected(let urls):
+      guard let url = urls.first else { return .cancelled }
+      do {
+        return .selected(try acquirer.acquire(fileURL: url, resourceAccess: resourceAccess))
+      } catch {
+        return SystemSelectionCancellation.isCancellation(error)
+          ? .cancelled
+          : .failed(SystemSelectionFailure(error))
+      }
+    case .cancelled:
+      return .cancelled
+    case .failed(let failure):
+      return .failed(failure)
+    }
+  }
+}
+
+enum CoverArtworkSelectionIntegration {
+  /// Deliberately invokes the mutation only for a validated selection. This is
+  /// the transaction boundary that keeps cancellation and provider failures
+  /// from clearing or partially replacing an existing cover draft.
+  static func apply(
+    _ outcome: SystemSelectionOutcome<AcquiredCoverArtwork>,
+    source: CoverSource,
+    mutation: (CoverArtwork) -> Void
+  ) -> SystemSelectionFailure? {
+    switch outcome {
+    case .selected(let acquired):
+      mutation(CoverArtwork(
+        originalData: acquired.data,
+        mediaType: acquired.mediaType,
+        source: source
+      ))
+      return nil
+    case .cancelled:
+      return nil
+    case .failed(let failure):
+      return failure
+    }
+  }
+}
+
 enum CoverArtworkAcquisitionError: LocalizedError, Equatable, Sendable {
   case emptyData
   case encodedDataTooLarge(maximumBytes: Int)

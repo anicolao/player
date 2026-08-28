@@ -172,6 +172,116 @@ final class SystemIngressTests: XCTestCase {
     XCTAssertEqual(probe.stoppedNames, ["valid.png", "corrupt.png", "large.png"])
   }
 
+  func testPhotoSelectionAdapterValidatesSuccessBeforeIntegratingTheDraft() async throws {
+    let png = try imageData(type: .png, width: 5, height: 4)
+    let outcome = await CoverArtworkSelectionAdapter().acquirePhoto {
+      png
+    }
+    var cover: CoverArtwork?
+    let failure = CoverArtworkSelectionIntegration.apply(
+      outcome,
+      source: .photoLibrary
+    ) { cover = $0 }
+
+    XCTAssertNil(failure)
+    XCTAssertEqual(cover?.originalData, png)
+    XCTAssertEqual(cover?.mediaType, "image/png")
+    XCTAssertEqual(cover?.source, .photoLibrary)
+  }
+
+  func testPhotoCancellationAndProviderFailureDoNotMutateExistingDraftState() async throws {
+    let original = CoverArtwork(
+      originalData: try imageData(type: .png, width: 2, height: 2),
+      mediaType: "image/png",
+      source: .embedded
+    )
+    let unrelatedTitle = "Uncommitted title"
+    var cover = original
+    var mutationCount = 0
+    let cancellation = await CoverArtworkSelectionAdapter().acquirePhoto {
+      throw CancellationError()
+    }
+    XCTAssertNil(CoverArtworkSelectionIntegration.apply(
+      cancellation,
+      source: .photoLibrary
+    ) {
+      mutationCount += 1
+      cover = $0
+    })
+
+    let provider = NSError(domain: NSItemProvider.errorDomain, code: -1, userInfo: [
+      NSLocalizedDescriptionKey: "The photo is not downloaded.",
+    ])
+    let providerFailure = await CoverArtworkSelectionAdapter().acquirePhoto {
+      throw provider
+    }
+    let failure = CoverArtworkSelectionIntegration.apply(
+      providerFailure,
+      source: .photoLibrary
+    ) {
+      mutationCount += 1
+      cover = $0
+    }
+
+    XCTAssertEqual(mutationCount, 0)
+    XCTAssertEqual(cover, original)
+    XCTAssertEqual(unrelatedTitle, "Uncommitted title")
+    XCTAssertEqual(failure, SystemSelectionFailure(provider))
+  }
+
+  func testFileSelectionAdapterOwnsScopeAndUsesValidatedActualImageType() throws {
+    let root = temporaryRoot("cover-selection-file")
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let file = root.appending(path: "cover.jpg")
+    let png = try imageData(type: .png, width: 6, height: 3)
+    try png.write(to: file)
+    let scope = SecurityScopeProbe(accessibleNames: [file.lastPathComponent])
+
+    let outcome = CoverArtworkSelectionAdapter(resourceAccess: scope.access).acquireFile(
+      .success([file])
+    )
+    guard case .selected(let acquired) = outcome else {
+      return XCTFail("A readable selected file should be acquired")
+    }
+    XCTAssertEqual(acquired.data, png)
+    XCTAssertEqual(acquired.mediaType, "image/png")
+    XCTAssertEqual(scope.startedNames, ["cover.jpg"])
+    XCTAssertEqual(scope.stoppedNames, ["cover.jpg"])
+  }
+
+  func testFileCancellationProviderFailureAndInvalidImageNeverIntegrateTheDraft() throws {
+    let root = temporaryRoot("cover-selection-failures")
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let invalid = root.appending(path: "invalid.png")
+    try Data("not an image".utf8).write(to: invalid)
+    let scope = SecurityScopeProbe(accessibleNames: [invalid.lastPathComponent])
+    let adapter = CoverArtworkSelectionAdapter(resourceAccess: scope.access)
+    let provider = NSError(domain: "FixtureFilesProvider", code: 42, userInfo: [
+      NSLocalizedDescriptionKey: "The cloud item is offline.",
+    ])
+    let outcomes = [
+      adapter.acquireFile(.success([])),
+      adapter.acquireFile(.failure(CancellationError())),
+      adapter.acquireFile(.failure(provider)),
+      adapter.acquireFile(.success([invalid])),
+    ]
+    var mutationCount = 0
+    let failures = outcomes.compactMap { outcome in
+      CoverArtworkSelectionIntegration.apply(outcome, source: .file) { _ in
+        mutationCount += 1
+      }
+    }
+
+    XCTAssertEqual(mutationCount, 0)
+    XCTAssertEqual(failures.count, 2)
+    XCTAssertEqual(failures.first, SystemSelectionFailure(provider))
+    XCTAssertTrue(failures.last?.message.contains("readable image") == true)
+    XCTAssertEqual(scope.startedNames, ["invalid.png"])
+    XCTAssertEqual(scope.stoppedNames, ["invalid.png"])
+  }
+
   func testMediaReferencesAndAcquiresSingleMultipleFolderAndZIPWithoutChangingSources() async throws {
     let root = temporaryRoot("files-routes")
     defer { try? FileManager.default.removeItem(at: root) }

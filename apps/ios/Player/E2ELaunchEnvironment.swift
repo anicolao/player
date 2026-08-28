@@ -3391,6 +3391,7 @@ extension PlayerEnvironment {
     private var managedURL: URL?
     private var libraryURL: URL?
     private var checksum: String?
+    private var coverSelectionStep = 0
     private(set) var replacementCoverData: Data?
 
     var isConfigured: Bool {
@@ -3415,6 +3416,53 @@ extension PlayerEnvironment {
       self.libraryURL = libraryURL
       self.checksum = checksum
       self.replacementCoverData = replacementCoverData
+      coverSelectionStep = 0
+    }
+
+    func nextPhotoSelection() -> Result<Data?, any Error> {
+      switch coverSelectionStep {
+      case 0:
+        coverSelectionStep = 1
+        return .failure(CancellationError())
+      case 2:
+        coverSelectionStep = 3
+        guard let replacementCoverData else {
+          return .failure(NSError(
+            domain: "PlayerE2ECoverProvider",
+            code: 3,
+            userInfo: [NSLocalizedDescriptionKey: "The replacement photo is unavailable."]
+          ))
+        }
+        return .success(replacementCoverData)
+      default:
+        return .failure(unexpectedCoverSelectionError(expected: "photo"))
+      }
+    }
+
+    func nextFileSelection() -> Result<[URL], any Error> {
+      guard coverSelectionStep == 1 else {
+        return .failure(unexpectedCoverSelectionError(expected: "file"))
+      }
+      coverSelectionStep = 2
+      return .failure(NSError(
+        domain: NSItemProvider.errorDomain,
+        code: -1,
+        userInfo: [
+          NSLocalizedDescriptionKey:
+            "The selected cover is stored in iCloud and is not downloaded.",
+        ]
+      ))
+    }
+
+    private func unexpectedCoverSelectionError(expected: String) -> NSError {
+      NSError(
+        domain: "PlayerE2ECoverProvider",
+        code: 4,
+        userInfo: [
+          NSLocalizedDescriptionKey:
+            "The deterministic \(expected) selection occurred out of order.",
+        ]
+      )
     }
 
     var integrityValue: String {

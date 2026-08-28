@@ -34,6 +34,7 @@ final class MetadataRepairUITests: XCTestCase {
     let narrators = anyElement(app, "metadata-provenance-narrators")
     let series = anyElement(app, "metadata-provenance-seriesName")
     let cover = anyElement(app, "metadata-cover-state")
+    let coverSelection = anyElement(app, "metadata-cover-selection-state")
     let integrity = anyElement(app, "metadata-integrity-probe")
     let editorScroll = anyElement(app, "metadata-editor-scroll")
     let editorReadiness = anyElement(app, "metadata-editor-scroll-readiness")
@@ -146,13 +147,59 @@ final class MetadataRepairUITests: XCTestCase {
       "value=Night Signals #4|source=embedded-tag|confidence=high|locked=true|cleared=false"
     )
 
-    app.buttons["metadata-remove-cover"].tap()
-    try requireValue(cover, "cover=none|source=user-clear|locked=true")
+    // Cancellation is an observable completed provider outcome, not a delay.
+    // It must preserve the original cover and every unrelated draft edit.
     app.buttons["metadata-replace-cover"].tap()
     let choosePhoto = app.buttons["Choose Photo"]
     XCTAssertTrue(choosePhoto.waitForExistence(timeout: 2))
     XCTAssertTrue(app.buttons["Choose File"].exists)
     choosePhoto.tap()
+    try requireValue(coverSelection, "revision=1:outcome=cancelled-photoLibrary")
+    try requireValue(cover, "cover=original|source=embedded-artwork|locked=false")
+    try requireValue(
+      title,
+      "value=The Amber Signal|source=user|confidence=user|locked=true|cleared=false"
+    )
+    try requireValue(
+      narrators,
+      "value=empty|source=user-clear|confidence=user|locked=true|cleared=true"
+    )
+    try requireValue(
+      series,
+      "value=Night Signals #4|source=embedded-tag|confidence=high|locked=true|cleared=false"
+    )
+    XCTAssertFalse(app.alerts.firstMatch.exists)
+
+    // A provider failure is metadata-editor-owned, actionable, and equally
+    // transactional: the cover and unrelated draft fields remain unchanged.
+    app.buttons["metadata-replace-cover"].tap()
+    let chooseFile = app.buttons["Choose File"]
+    XCTAssertTrue(chooseFile.waitForExistence(timeout: 2))
+    chooseFile.tap()
+    try requireValue(coverSelection, "revision=2:outcome=failed-file")
+    let coverFailure = app.alerts["Couldn’t Save Details"]
+    XCTAssertTrue(coverFailure.waitForExistence(timeout: 2))
+    XCTAssertTrue(coverFailure.staticTexts[
+      "The selected cover is stored in iCloud and is not downloaded. Download it in Files or choose another image, then try again."
+    ].exists)
+    try requireValue(cover, "cover=original|source=embedded-artwork|locked=false")
+    try requireValue(
+      title,
+      "value=The Amber Signal|source=user|confidence=user|locked=true|cleared=false"
+    )
+    try requireValue(
+      narrators,
+      "value=empty|source=user-clear|confidence=user|locked=true|cleared=true"
+    )
+    coverFailure.buttons["OK"].tap()
+    XCTAssertTrue(coverFailure.waitForNonExistence(timeout: 2))
+
+    app.buttons["metadata-remove-cover"].tap()
+    try requireValue(cover, "cover=none|source=user-clear|locked=true")
+    app.buttons["metadata-replace-cover"].tap()
+    XCTAssertTrue(choosePhoto.waitForExistence(timeout: 2))
+    choosePhoto.tap()
+    try requireValue(coverSelection, "revision=3:outcome=selected-photoLibrary")
     try requireValue(cover, "cover=replacement|source=user|locked=true")
     app.buttons["metadata-replace-cover"].tap()
     let cropButton = app.buttons["Crop"]
