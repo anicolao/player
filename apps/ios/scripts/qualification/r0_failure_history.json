@@ -672,6 +672,30 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This fixture-contract failure preceded the formal exact-SHA R0 qualification sequence, so no qualification count existed to reset."
+    },
+    {
+      "signature": "screenshot:009-accessible-core-journeys:first-compositor-observation-exhausted-deadline",
+      "story": "009-accessible-core-journeys",
+      "evidence": {
+        "workflowRun": 33178247201,
+        "workflowAttempt": 1,
+        "artifact": "/tmp/player-ci33178247201-lane2.uZ41Og/009",
+        "url": "https://github.com/anicolao/player/actions/runs/33178247201",
+        "commit": "169ebc7bcaef8c333dff644a14939bc7325ac3cc",
+        "observation": "The Book Detail semantic and geometry predicates were ready near test time 81.29 seconds, but the first synchronous XCUIScreen screenshot inside the bounded compositor predicate did not return before the two-second EventDeadline expired near 87.16 seconds. Capture 002 and all later captures were therefore absent even though the UI state was ready."
+      },
+      "rootCause": "The compositor gate started its first expensive screen acquisition inside the already-running readiness deadline. It therefore required both the first acquisition and a second comparison acquisition to fit within the same two-second product-transition budget, and a slow initial simulator screenshot could consume the entire budget before comparable frame evidence existed.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Prime the first decoded-pixel compositor observation before starting the bounded readiness deadline, retain the later verified stable XCUIScreenshot, and attach that exact prepared frame with no fresh or unverified fallback capture.",
+        "commits": [
+          "6465d34893701799b54bbcfbd8e7637bb0456c34"
+        ],
+        "validation": "Exact clean-commit shard apps/ios/DerivedData/E2EShards/r0-ci33178247201-exact at 6465d34893701799b54bbcfbd8e7637bb0456c34 passed Story 009 UI 2/2 in 161 seconds, matched all 7 canonical screenshots pixel-exact, matched the reviewed README exactly, and produced a passing EvidenceManifest."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "The formal exact-SHA qualification dispatch was cancelled during preflight after this preceding PR failure was confirmed, before any qualification story lane began, so no consecutive qualification count existed to reset."
     }
   ]
 }
