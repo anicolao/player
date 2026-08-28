@@ -81,24 +81,25 @@ final class MonetizationTests: XCTestCase {
     guard let defaults = UserDefaults(suiteName: suiteName) else {
       return XCTFail("Could not create isolated defaults")
     }
-    removeKeychainItems(forService: suiteName)
     defer {
       defaults.removePersistentDomain(forName: suiteName)
-      removeKeychainItems(forService: suiteName)
     }
+    let keychain = TestPlaybackAllowanceKeychain()
 
     let sandbox = PlaybackAllowancePersistence(
       storeEnvironment: .sandbox,
       userDefaults: defaults,
-      keychainService: suiteName
+      keychainService: suiteName,
+      keychain: keychain
     )
     let production = PlaybackAllowancePersistence(
       storeEnvironment: .production,
       userDefaults: defaults,
-      keychainService: suiteName
+      keychainService: suiteName,
+      keychain: keychain
     )
 
-    sandbox.saveConsumedPlaybackSeconds(12_345)
+    XCTAssertEqual(sandbox.saveConsumedPlaybackSeconds(12_345), errSecSuccess)
     sandbox.saveCachedUnlock(true)
 
     XCTAssertEqual(sandbox.loadConsumedPlaybackSeconds(), 12_345, accuracy: 0.001)
@@ -107,22 +108,30 @@ final class MonetizationTests: XCTestCase {
     XCTAssertFalse(production.loadCachedUnlock())
   }
 
-  private func removeKeychainItems(
-    forService service: String,
-    file: StaticString = #filePath,
-    line: UInt = #line
-  ) {
-    let status = SecItemDelete([
-      kSecClass as String: kSecClassGenericPassword,
-      kSecAttrService as String: service,
-    ] as CFDictionary)
+  func testKeychainWriteFailureIsReportedToPersistenceAndManager() async {
+    let suiteName = "MonetizationTests-\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+      return XCTFail("Could not create isolated defaults")
+    }
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    let keychain = TestPlaybackAllowanceKeychain()
+    keychain.saveStatus = errSecInteractionNotAllowed
+    let persistence = PlaybackAllowancePersistence(
+      storeEnvironment: .sandbox,
+      userDefaults: defaults,
+      keychainService: suiteName,
+      keychain: keychain
+    )
+
+    XCTAssertEqual(
+      persistence.saveConsumedPlaybackSeconds(12),
+      errSecInteractionNotAllowed
+    )
+    let manager = StoreKitMonetizationManager(persistence: persistence)
+    await manager.recordPlayback(seconds: 1)
+    XCTAssertEqual(manager.snapshot.consumedPlaybackSeconds, 13)
     XCTAssertTrue(
-      status == errSecSuccess
-        || status == errSecItemNotFound
-        || status == errSecMissingEntitlement,
-      "Unexpected keychain cleanup status: \(status)",
-      file: file,
-      line: line
+      manager.snapshot.feedbackMessage?.contains("couldn't securely save") == true
     )
   }
 
@@ -191,4 +200,24 @@ private struct MonetizationHarness {
   let manager: DeterministicMonetizationManager
   let uptime: MutablePlaybackUptime
   let bookID: UUID
+}
+
+@MainActor
+private final class TestPlaybackAllowanceKeychain: PlaybackAllowanceKeychain {
+  var saveStatus = errSecSuccess
+  private var values: [String: TimeInterval] = [:]
+
+  func loadSeconds(service: String, account: String) -> TimeInterval? {
+    values["\(service)|\(account)"]
+  }
+
+  func saveSeconds(
+    _ seconds: TimeInterval,
+    service: String,
+    account: String
+  ) -> OSStatus {
+    guard saveStatus == errSecSuccess else { return saveStatus }
+    values["\(service)|\(account)"] = seconds
+    return errSecSuccess
+  }
 }

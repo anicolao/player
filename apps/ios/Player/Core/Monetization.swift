@@ -182,7 +182,14 @@ final class StoreKitMonetizationManager: MonetizationManaging {
       MonetizationSnapshot.includedPlaybackSeconds,
       snapshot.consumedPlaybackSeconds + seconds
     )
-    persistence.saveConsumedPlaybackSeconds(snapshot.consumedPlaybackSeconds)
+    let persistenceStatus = persistence.saveConsumedPlaybackSeconds(
+      snapshot.consumedPlaybackSeconds
+    )
+    if persistenceStatus != errSecSuccess {
+      snapshot.feedbackMessage =
+        "Bookshelf couldn't securely save your included playback usage. "
+        + "Your library is unchanged; restart Bookshelf before continuing playback."
+    }
   }
 
   func purchaseFullUnlock() async {
@@ -293,59 +300,18 @@ private enum StoreKitMonetizationError: Error {
 }
 
 @MainActor
-final class PlaybackAllowancePersistence {
-  private static let keychainService = "com.spnss.player.monetization"
+protocol PlaybackAllowanceKeychain {
+  func loadSeconds(service: String, account: String) -> TimeInterval?
+  func saveSeconds(_ seconds: TimeInterval, service: String, account: String) -> OSStatus
+}
 
-  private let userDefaults: UserDefaults
-  private let cachedUnlockKey: String
-  private let defaultsSecondsKey: String
-  private let keychainService: String
-  private let keychainAccount: String
-
-  init(
-    storeEnvironment: MonetizationStoreEnvironment = .current,
-    userDefaults: UserDefaults = .standard,
-    keychainService: String = PlaybackAllowancePersistence.keychainService
-  ) {
-    self.userDefaults = userDefaults
-    self.keychainService = keychainService
-    let namespace = storeEnvironment.rawValue
-    cachedUnlockKey = "monetization.\(namespace).full-unlock.cached-v1"
-    defaultsSecondsKey = "monetization.\(namespace).playback-seconds-v1"
-    keychainAccount = "\(namespace).included-playback-seconds-v1"
-  }
-
-  func loadConsumedPlaybackSeconds() -> TimeInterval {
-    let defaultsValue = userDefaults.double(forKey: defaultsSecondsKey)
-    let keychainValue = loadKeychainSeconds() ?? 0
-    return min(
-      MonetizationSnapshot.includedPlaybackSeconds,
-      max(0, max(defaultsValue, keychainValue))
-    )
-  }
-
-  func saveConsumedPlaybackSeconds(_ seconds: TimeInterval) {
-    let normalized = min(
-      MonetizationSnapshot.includedPlaybackSeconds,
-      max(0, seconds.isFinite ? seconds : 0)
-    )
-    userDefaults.set(normalized, forKey: defaultsSecondsKey)
-    saveKeychainSeconds(normalized)
-  }
-
-  func loadCachedUnlock() -> Bool {
-    userDefaults.bool(forKey: cachedUnlockKey)
-  }
-
-  func saveCachedUnlock(_ isUnlocked: Bool) {
-    userDefaults.set(isUnlocked, forKey: cachedUnlockKey)
-  }
-
-  private func loadKeychainSeconds() -> TimeInterval? {
+@MainActor
+struct SystemPlaybackAllowanceKeychain: PlaybackAllowanceKeychain {
+  func loadSeconds(service: String, account: String) -> TimeInterval? {
     let query: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
-      kSecAttrService as String: keychainService,
-      kSecAttrAccount as String: keychainAccount,
+      kSecAttrService as String: service,
+      kSecAttrAccount as String: account,
       kSecReturnData as String: true,
       kSecMatchLimit as String: kSecMatchLimitOne,
     ]
@@ -358,21 +324,83 @@ final class PlaybackAllowancePersistence {
     return seconds
   }
 
-  private func saveKeychainSeconds(_ seconds: TimeInterval) {
+  func saveSeconds(_ seconds: TimeInterval, service: String, account: String) -> OSStatus {
     let data = Data(String(format: "%.3f", seconds).utf8)
     let lookup: [String: Any] = [
       kSecClass as String: kSecClassGenericPassword,
-      kSecAttrService as String: keychainService,
-      kSecAttrAccount as String: keychainAccount,
+      kSecAttrService as String: service,
+      kSecAttrAccount as String: account,
     ]
     let attributes: [String: Any] = [kSecValueData as String: data]
     let status = SecItemUpdate(lookup as CFDictionary, attributes as CFDictionary)
-    guard status == errSecItemNotFound else { return }
+    guard status == errSecItemNotFound else { return status }
     var addition = lookup
     addition[kSecValueData as String] = data
     addition[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-    SecItemAdd(addition as CFDictionary, nil)
+    return SecItemAdd(addition as CFDictionary, nil)
   }
+}
+
+@MainActor
+final class PlaybackAllowancePersistence {
+  private static let keychainService = "com.spnss.player.monetization"
+
+  private let userDefaults: UserDefaults
+  private let cachedUnlockKey: String
+  private let defaultsSecondsKey: String
+  private let keychainService: String
+  private let keychainAccount: String
+  private let keychain: any PlaybackAllowanceKeychain
+
+  init(
+    storeEnvironment: MonetizationStoreEnvironment = .current,
+    userDefaults: UserDefaults = .standard,
+    keychainService: String = PlaybackAllowancePersistence.keychainService,
+    keychain: any PlaybackAllowanceKeychain = SystemPlaybackAllowanceKeychain()
+  ) {
+    self.userDefaults = userDefaults
+    self.keychainService = keychainService
+    self.keychain = keychain
+    let namespace = storeEnvironment.rawValue
+    cachedUnlockKey = "monetization.\(namespace).full-unlock.cached-v1"
+    defaultsSecondsKey = "monetization.\(namespace).playback-seconds-v1"
+    keychainAccount = "\(namespace).included-playback-seconds-v1"
+  }
+
+  func loadConsumedPlaybackSeconds() -> TimeInterval {
+    let defaultsValue = userDefaults.double(forKey: defaultsSecondsKey)
+    let keychainValue = keychain.loadSeconds(
+      service: keychainService,
+      account: keychainAccount
+    ) ?? 0
+    return min(
+      MonetizationSnapshot.includedPlaybackSeconds,
+      max(0, max(defaultsValue, keychainValue))
+    )
+  }
+
+  @discardableResult
+  func saveConsumedPlaybackSeconds(_ seconds: TimeInterval) -> OSStatus {
+    let normalized = min(
+      MonetizationSnapshot.includedPlaybackSeconds,
+      max(0, seconds.isFinite ? seconds : 0)
+    )
+    userDefaults.set(normalized, forKey: defaultsSecondsKey)
+    return keychain.saveSeconds(
+      normalized,
+      service: keychainService,
+      account: keychainAccount
+    )
+  }
+
+  func loadCachedUnlock() -> Bool {
+    userDefaults.bool(forKey: cachedUnlockKey)
+  }
+
+  func saveCachedUnlock(_ isUnlocked: Bool) {
+    userDefaults.set(isUnlocked, forKey: cachedUnlockKey)
+  }
+
 }
 
 protocol PlaybackUptimeProviding: Sendable {
