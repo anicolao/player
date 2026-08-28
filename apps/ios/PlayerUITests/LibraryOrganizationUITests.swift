@@ -133,9 +133,9 @@ final class LibraryOrganizationUITests: XCTestCase {
     app.buttons["mark-finished-\(books[2])"].tap()
     let finishedAlert = app.alerts["Mark as finished?"]
     XCTAssertTrue(finishedAlert.waitForExistence(timeout: 2))
-    let confirmFinishedQuery = finishedAlert.buttons
-      .matching(identifier: "confirm-mark-finished")
-      .matching(NSPredicate(format: "hittable == true"))
+    let confirmFinishedQuery = finishedAlert.buttons.matching(
+      NSPredicate(format: "label == %@", "Mark Finished")
+    )
     let confirmFinished = confirmFinishedQuery.element
     XCTAssertTrue(confirmFinished.waitForExistence(timeout: 2))
     XCTAssertEqual(
@@ -143,6 +143,7 @@ final class LibraryOrganizationUITests: XCTestCase {
       1,
       "The finished confirmation must expose one scoped confirm action"
     )
+    XCTAssertEqual(confirmFinished.identifier, "confirm-mark-finished")
     confirmFinished.tap()
     try requireValue(
       anyElement(app, "book-state-probe"),
