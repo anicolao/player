@@ -11,6 +11,13 @@ final class ImportRecoveryStorageUITests: XCTestCase {
   private let selectionDuplicateFileID = "61000000-0000-0000-0000-000000000104"
   private let libraryDuplicateFileID = "61000000-0000-0000-0000-000000000105"
   private let existingBookID = "61000000-0000-0000-0000-000000000201"
+  private let committedBookID = "61000000-0000-0000-0000-000000000405"
+  private let retriedAssetID = "61000000-0000-0000-0000-000000000401"
+  private let acceptedAssetID = "61000000-0000-0000-0000-000000000421"
+  private let clearSignalChecksum = "bd9cf89da9aad835bb8902137a799cfe81c1656c31baed769bcd287ef28cca93"
+  private let retrySignalChecksum = "eabc23a50152767064ae70f7813751690b503879a75f7952b8f220b2f0208733"
+  private let orphanStagingChecksum = "c4053cd1c5a027b2e26c9d45fc8a74e86322765e7c1dfc05302b03117203906b"
+  private let existingPartChecksum = "5ed68394ddd546329bf8af093a1ec472ea786b5b9e5461479d77c3c4738743f7"
 
   func testRecoversMixedImportsAndExplainsStorageWithoutTouchingSources() throws {
     continueAfterFailure = false
@@ -31,8 +38,23 @@ final class ImportRecoveryStorageUITests: XCTestCase {
 
     try proveLowSpaceRecoveryAndStorage(tester: tester)
     try proveMixedPartialRecovery()
+    try proveDuplicateManagedCopyFailsClosed()
     try proveCancelPreservesAllCorruptSources()
     tester.generateDocs()
+  }
+
+  private func proveDuplicateManagedCopyFailsClosed() throws {
+    let app = makeApplication(scenario: "managed-duplicate")
+    app.launch()
+    let duplicateEvidence = [
+      "Media/\(existingBookID)/part-1.m4b@2048@\(existingPartChecksum)",
+      "Media/61000000-0000-0000-0000-000000000999/duplicate-part-1.m4b@2048@\(existingPartChecksum)",
+    ].joined(separator: ",")
+    try requireValue(
+      anyElement(app, "import-recovery-integrity-probe"),
+      "scenario=managed-duplicate:state=invalid:accepted=1:excluded=4:managed-files=3:managed-duplicates=1:duplicate-evidence=\(duplicateEvidence):source-unchanged=true:order=\(validFileID)"
+    )
+    XCTAssertTrue(terminateAndWait(app))
   }
 
   private func proveLowSpaceRecoveryAndStorage(tester: TestStepHelper) throws {
@@ -112,7 +134,7 @@ final class ImportRecoveryStorageUITests: XCTestCase {
     )
     try requireValue(
       anyElement(app, "import-recovery-integrity-probe"),
-      "scenario=low-space:source-unchanged=true:staging-cleared=768:managed-unchanged=true:database-unchanged=true"
+      "scenario=low-space:state=valid:source-unchanged=true:staging-cleared=768:staging-path=Staging/\(stagingJobID)/orphan.partial:staging-checksum=\(orphanStagingChecksum):managed-baseline-intact=true"
     )
 
     navigateBack(app, label: "Settings", destination: app.buttons["settings-storage"])
@@ -191,9 +213,23 @@ final class ImportRecoveryStorageUITests: XCTestCase {
     )
     try requireValue(
       anyElement(app, "import-recovery-integrity-probe"),
-      "scenario=mixed:accepted=2:excluded=3:managed-duplicates=0:source-unchanged=true:order=\(validFileID),\(corruptFileID)"
+      "scenario=mixed:state=staged:accepted=2:excluded=3:managed-files=2:managed-duplicates=0:duplicate-evidence=none:source-unchanged=true:order=\(validFileID),\(corruptFileID)"
     )
-    XCTAssertTrue(app.buttons["add-import-to-library"].exists)
+    let addToLibrary = app.buttons["add-import-to-library"]
+    XCTAssertTrue(addToLibrary.exists)
+    addToLibrary.tap()
+    try requireValue(
+      anyElement(app, "import-recovery-probe"),
+      "scenario=mixed:job=\(mixedJobID):phase=committed:accepted=2:source-unchanged=true"
+    )
+    let expectedManaged = [
+      "Media/\(committedBookID)/\(retriedAssetID).m4a@112@\(retrySignalChecksum)",
+      "Media/\(committedBookID)/\(acceptedAssetID).m4a@96@\(clearSignalChecksum)",
+    ].joined(separator: ",")
+    try requireValue(
+      anyElement(app, "import-recovery-integrity-probe"),
+      "scenario=mixed:state=valid:book=\(committedBookID):managed-files=4:new-managed=2:managed-duplicates=0:duplicate-evidence=none:source-unchanged=true:baseline-intact=true:inventory-exact=true:source-checksums-match=true:managed=\(expectedManaged)"
+    )
     XCTAssertTrue(terminateAndWait(app))
   }
 

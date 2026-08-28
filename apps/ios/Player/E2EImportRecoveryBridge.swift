@@ -7,11 +7,19 @@
   @MainActor
   @Observable
   final class E2EImportRecoveryBridge {
+    struct FileEvidence: Equatable {
+      let relativePath: String
+      let byteCount: Int64
+      let checksum: String
+    }
+
     static let shared = E2EImportRecoveryBridge()
 
     private(set) var scenario: String?
     private(set) var rootURL: URL?
     private var sourceChecksums: [URL: String] = [:]
+    private var initialManagedEvidence: [FileEvidence] = []
+    private var initialStagingEvidence: [FileEvidence] = []
     private(set) var filesystemProjectionRevision = 0
     var sourceCount: Int { sourceChecksums.count }
 
@@ -23,10 +31,12 @@
       sourceChecksums = try Dictionary(uniqueKeysWithValues: sourceURLs.map {
         ($0, try Self.checksum($0))
       })
+      initialManagedEvidence = try filesystemInventory(in: "Media")
+      initialStagingEvidence = try filesystemInventory(in: "Staging")
     }
 
     var sourcesAreUnchanged: Bool {
-      sourceChecksums.allSatisfy { url, expected in
+      !sourceChecksums.isEmpty && sourceChecksums.allSatisfy { url, expected in
         (try? Self.checksum(url)) == expected
       }
     }
@@ -42,6 +52,147 @@
 
     func invalidateFilesystemProjection() {
       filesystemProjectionRevision &+= 1
+    }
+
+    func lowSpaceIntegrity(stagingJobID: UUID) -> String {
+      let expectedPath = "Staging/\(stagingJobID.uuidString.lowercased())/orphan.partial"
+      guard let initial = initialStagingEvidence.first(where: { $0.relativePath == expectedPath })
+      else {
+        return "state=invalid:reason=missing-initial-staging-evidence"
+      }
+      do {
+        let currentStaging = try filesystemInventory(in: "Staging")
+        let currentManaged = try filesystemInventory(in: "Media")
+        let cleared = currentStaging.contains(where: { $0.relativePath == expectedPath })
+          ? 0 : initial.byteCount
+        let baselineIntact = currentManaged == initialManagedEvidence
+        let valid = sourcesAreUnchanged && cleared == initial.byteCount && baselineIntact
+        return [
+          "state=\(valid ? "valid" : "invalid")",
+          "source-unchanged=\(sourcesAreUnchanged)",
+          "staging-cleared=\(cleared)",
+          "staging-path=\(initial.relativePath)",
+          "staging-checksum=\(initial.checksum)",
+          "managed-baseline-intact=\(baselineIntact)",
+        ].joined(separator: ":")
+      } catch {
+        return "state=invalid:reason=filesystem-inventory-unavailable"
+      }
+    }
+
+    func managedIntegrity(model: PlayerModel, jobID: UUID) -> String {
+      do {
+        let managed = try filesystemInventory(in: "Media")
+        let duplicates = Self.duplicateCount(in: managed)
+        let duplicateEvidence = Self.duplicateEvidence(in: managed)
+        guard let job = model.library.importJobs.first(where: { $0.id == jobID }) else {
+          return "state=invalid:reason=missing-job:managed-duplicates=\(duplicates)"
+        }
+        let accepted = job.recoveryPlan?.files.filter { $0.disposition == .accepted } ?? []
+        let order = accepted.map { $0.file.id.uuidString.lowercased() }.joined(separator: ",")
+        let excluded = sourceCount - accepted.count
+        guard job.phase == .committed, let bookID = job.committedBookID,
+          let book = model.library.books.first(where: { $0.id == bookID })
+        else {
+          let valid = sourcesAreUnchanged && duplicates == 0
+          return [
+            "state=\(valid ? "staged" : "invalid")",
+            "accepted=\(accepted.count)",
+            "excluded=\(excluded)",
+            "managed-files=\(managed.count)",
+            "managed-duplicates=\(duplicates)",
+            "duplicate-evidence=\(duplicateEvidence)",
+            "source-unchanged=\(sourcesAreUnchanged)",
+            "order=\(order)",
+          ].joined(separator: ":")
+        }
+
+        let initialByPath = Dictionary(
+          uniqueKeysWithValues: initialManagedEvidence.map { ($0.relativePath, $0) }
+        )
+        let managedByPath = Dictionary(uniqueKeysWithValues: managed.map { ($0.relativePath, $0) })
+        let committedPaths = Set(book.assets.map(\.managedRelativePath))
+        let expectedPaths = Set(initialByPath.keys).union(committedPaths)
+        let baselineIntact = initialByPath.allSatisfy { managedByPath[$0.key] == $0.value }
+        let committedMatchSources = book.assets.allSatisfy { asset in
+          guard let evidence = managedByPath[asset.managedRelativePath],
+            let source = sourceChecksums.first(where: {
+              $0.key.lastPathComponent == asset.originalFilename
+            })?.value
+          else { return false }
+          return evidence.checksum == source
+        }
+        let inventoryExact = Set(managedByPath.keys) == expectedPaths
+        let valid = sourcesAreUnchanged && duplicates == 0 && baselineIntact
+          && committedMatchSources && inventoryExact
+        let committedEvidence = managed.filter { committedPaths.contains($0.relativePath) }
+          .map(Self.encoded).joined(separator: ",")
+        return [
+          "state=\(valid ? "valid" : "invalid")",
+          "book=\(bookID.uuidString.lowercased())",
+          "managed-files=\(managed.count)",
+          "new-managed=\(committedEvidence.isEmpty ? 0 : committedPaths.count)",
+          "managed-duplicates=\(duplicates)",
+          "duplicate-evidence=\(duplicateEvidence)",
+          "source-unchanged=\(sourcesAreUnchanged)",
+          "baseline-intact=\(baselineIntact)",
+          "inventory-exact=\(inventoryExact)",
+          "source-checksums-match=\(committedMatchSources)",
+          "managed=\(committedEvidence)",
+        ].joined(separator: ":")
+      } catch {
+        return "state=invalid:reason=filesystem-inventory-unavailable"
+      }
+    }
+
+    private func filesystemInventory(in directory: String) throws -> [FileEvidence] {
+      guard let rootURL else { throw PlayerCoreError.fileOperation("Missing recovery root.") }
+      let dataRoot = rootURL.appending(path: "PlayerData", directoryHint: .isDirectory)
+      let directoryURL = dataRoot.appending(path: directory, directoryHint: .isDirectory)
+      guard FileManager.default.fileExists(atPath: directoryURL.path) else { return [] }
+      guard let enumerator = FileManager.default.enumerator(
+        at: directoryURL,
+        includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey],
+        options: [.skipsHiddenFiles]
+      ) else { throw PlayerCoreError.fileOperation("Could not enumerate recovery storage.") }
+      var evidence: [FileEvidence] = []
+      for case let url as URL in enumerator {
+        let values = try url.resourceValues(forKeys: [
+          .isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey,
+        ])
+        guard values.isSymbolicLink != true else {
+          throw PlayerCoreError.fileOperation("Recovery storage contains a symbolic link.")
+        }
+        guard values.isRegularFile == true else { continue }
+        let prefix = dataRoot.path + "/"
+        guard url.path.hasPrefix(prefix) else {
+          throw PlayerCoreError.fileOperation("Recovery storage escaped its fixture root.")
+        }
+        evidence.append(FileEvidence(
+          relativePath: String(url.path.dropFirst(prefix.count)),
+          byteCount: Int64(values.fileSize ?? 0),
+          checksum: try Self.checksum(url)
+        ))
+      }
+      return evidence.sorted { $0.relativePath < $1.relativePath }
+    }
+
+    private static func duplicateCount(in evidence: [FileEvidence]) -> Int {
+      Dictionary(grouping: evidence, by: \.checksum).values.reduce(0) {
+        $0 + max(0, $1.count - 1)
+      }
+    }
+
+    private static func duplicateEvidence(in evidence: [FileEvidence]) -> String {
+      let duplicates = Dictionary(grouping: evidence, by: \.checksum).values
+        .filter { $0.count > 1 }
+        .flatMap { $0 }
+        .sorted { $0.relativePath < $1.relativePath }
+      return duplicates.isEmpty ? "none" : duplicates.map(encoded).joined(separator: ",")
+    }
+
+    private static func encoded(_ evidence: FileEvidence) -> String {
+      "\(evidence.relativePath)@\(evidence.byteCount)@\(evidence.checksum)"
     }
 
     private static func checksum(_ url: URL) throws -> String {
@@ -94,18 +245,11 @@
       let bridge = E2EImportRecoveryBridge.shared
       switch bridge.scenario {
       case "low-space":
-        guard let summary = model.storageSummary else {
-          return "scenario=low-space:source-unchanged=\(bridge.sourcesAreUnchanged):staging-cleared=0:managed-unchanged=false:database-unchanged=false"
-        }
-        let cleared = summary.stagingBytes == 0 ? 768 : 0
-        return "scenario=low-space:source-unchanged=\(bridge.sourcesAreUnchanged):staging-cleared=\(cleared):managed-unchanged=\(summary.managedMediaBytes == 4096):database-unchanged=\(summary.databaseBytes == 256)"
-      case "mixed":
+        let stagingJobID = UUID(uuidString: "61000000-0000-0000-0000-000000000003")!
+        return "scenario=low-space:\(bridge.lowSpaceIntegrity(stagingJobID: stagingJobID))"
+      case "mixed", "managed-duplicate":
         let jobID = UUID(uuidString: "61000000-0000-0000-0000-000000000002")!
-        let plan = model.recoveryPlan(for: jobID)
-        let accepted = plan?.files.filter { $0.disposition == .accepted } ?? []
-        let order = accepted.map { $0.file.id.uuidString.lowercased() }.joined(separator: ",")
-        let excluded = bridge.sourceCount - accepted.count
-        return "scenario=mixed:accepted=\(accepted.count):excluded=\(excluded):managed-duplicates=0:source-unchanged=\(bridge.sourcesAreUnchanged):order=\(order)"
+        return "scenario=\(bridge.scenario!):\(bridge.managedIntegrity(model: model, jobID: jobID))"
       default:
         return "scenario=\(bridge.scenario ?? "none"):source-unchanged=\(bridge.sourcesAreUnchanged)"
       }
@@ -161,6 +305,9 @@
         seed = try mixedSnapshot(sourceURLs: sourceURLs, existing: existing, root: dataRoot)
       }
       try createRecoverableStorage(root: dataRoot, existing: existing)
+      if scenario == "managed-duplicate" {
+        try createDuplicateManagedCopy(root: dataRoot, existing: existing)
+      }
       try E2EImportRecoveryBridge.shared.configure(
         scenario: scenario,
         rootURL: root,
@@ -388,6 +535,20 @@
       try Data(repeating: 0x54, count: 512).write(to: trash)
     }
 
+    private static func createDuplicateManagedCopy(root: URL, existing: Book) throws {
+      guard let first = existing.assets.first else {
+        throw PlayerCoreError.fileOperation("Missing duplicate source asset.")
+      }
+      let source = root.appending(path: first.managedRelativePath)
+      let duplicate = root.appending(
+        path: "Media/61000000-0000-0000-0000-000000000999/duplicate-part-1.m4b"
+      )
+      try FileManager.default.createDirectory(
+        at: duplicate.deletingLastPathComponent(), withIntermediateDirectories: true
+      )
+      try Data(contentsOf: source).write(to: duplicate, options: .atomic)
+    }
+
     private static func stagedAssessment(
       id: UUID, jobID: UUID, sourceURL: URL, checksum: String,
       validity: ImportFileValidity, root: URL
@@ -571,7 +732,9 @@
       try await base.stagedURL(for: relativePath)
     }
     func commit(_ staged: StagedAudio, bookID: UUID, assetID: UUID) async throws -> ManagedAudio {
-      try await base.commit(staged, bookID: bookID, assetID: assetID)
+      let managed = try await base.commit(staged, bookID: bookID, assetID: assetID)
+      await E2EImportRecoveryBridge.shared.invalidateFilesystemProjection()
+      return managed
     }
     func rollback(_ managed: ManagedAudio) async throws { try await base.rollback(managed) }
     func managedURL(for relativePath: String) async throws -> URL {
@@ -610,6 +773,7 @@
       try await base.discardStorage(scope: scope)
       if case .stagingJob(let id) = scope, id == stagingJobID { stagingPresent = false }
       if case .trashTransaction(let id) = scope, id == trashID { trashPresent = false }
+      await E2EImportRecoveryBridge.shared.invalidateFilesystemProjection()
     }
     func storageInventory() async throws -> StorageInventorySnapshot {
       var manifests: [StorageManifest] = [

@@ -354,6 +354,7 @@ private final class E2EFixtureResetLease: @unchecked Sendable {
 
     case lowSpace = "low-space"
     case mixed
+    case managedDuplicate = "managed-duplicate"
     case allCorrupt = "all-corrupt"
 
     static func parseRequired(arguments: [String]) throws -> E2EImportRecoveryScenario {
