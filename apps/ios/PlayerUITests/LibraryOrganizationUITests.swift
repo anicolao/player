@@ -69,9 +69,7 @@ final class LibraryOrganizationUITests: XCTestCase {
         .exists(app.buttons["browse-authors"], "Author browsing is available"),
         .exists(app.buttons["browse-narrators"], "Narrator browsing is available"),
         .exists(addAudiobook, "The tab pill includes the Add Audiobook action"),
-        StepVerification(specification: "The pill-integrated Add Audiobook action is directly tappable") {
-          addAudiobook.isHittable
-        },
+        .hittable(addAudiobook, "The pill-integrated Add Audiobook action is directly tappable"),
       ],
       captureReadiness: organizationCaptureReadiness(
         app: app,
@@ -102,7 +100,11 @@ final class LibraryOrganizationUITests: XCTestCase {
             identifierPrefix: "recent-book-",
             within: app
           ).count >= 3
-          && elementIsFullyVisible(addAudiobook, within: app.tabBars.firstMatch)
+          && elementIsFullyVisible(
+            addAudiobook,
+            within: app.tabBars.firstMatch,
+            requiresHittable: false
+          )
       }
     )
 

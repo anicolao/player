@@ -475,6 +475,22 @@ struct StepVerification {
     }
   }
 
+  static func hittable(
+    _ element: XCUIElement,
+    _ specification: String
+  ) -> StepVerification {
+    StepVerification(specification: specification) {
+      let expectation = XCTNSPredicateExpectation(
+        predicate: NSPredicate(format: "exists == true AND hittable == true"),
+        object: element
+      )
+      return XCTWaiter.wait(
+        for: [expectation],
+        timeout: TestStepHelper.conditionTimeout
+      ) == .completed
+    }
+  }
+
   static func notExists(
     _ element: XCUIElement,
     _ specification: String
