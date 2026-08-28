@@ -995,7 +995,10 @@ final class AccessibilityUITests: XCTestCase {
       matching: { $0.isIdle && $0.geometryReady }
     ) else { return false }
 
-    while deadline.remaining > 0 {
+    // Readiness and each user gesture are distinct observable events. A slow
+    // accessibility query must not consume the correction gesture's budget,
+    // and one settled correction must leave room for a bounded fine adjustment.
+    for _ in 0..<3 {
       guard let before = surface.state(), before.isIdle else { return false }
       let anchor = framing.anchor()
       guard let screenY = anchorScreenY(anchor, windowMinY: windowMinY) else {
@@ -1027,12 +1030,12 @@ final class AccessibilityUITests: XCTestCase {
         }
         direction = .towardStart
       }
-      guard deadline.remaining >= 0.2 else { return false }
+      let actionDeadline = EventDeadline()
       performAccessibilityFramingGesture(displacement: displacement, in: surface.container)
       var settledState: ScrollReadinessState?
       let settled = waitForScrollReadiness(
         surface,
-        deadline: deadline,
+        deadline: actionDeadline,
         matching: { after in
           let progressed = direction == .towardEnd
             ? after.offset > before.offset + 0.5
@@ -1058,7 +1061,7 @@ final class AccessibilityUITests: XCTestCase {
       guard let updatedY = waitForCaptureAnchor(
         framing,
         windowMinY: windowMinY,
-        deadline: deadline,
+        deadline: actionDeadline,
         matching: anchorProgressed,
         failureReason: "the settled scroll geometry did not reach the accessibility tree"
       ) else { return false }
