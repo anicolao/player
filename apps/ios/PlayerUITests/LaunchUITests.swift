@@ -282,7 +282,7 @@ final class LaunchUITests: XCTestCase {
 
     XCTAssertTrue(terminateAndWait(pausedApp))
     let completedApp = makeApplication(
-      fixture: "single-audiobook-ready",
+      fixture: "receiver-completion-baseline",
       additionalArguments: ["-e2e-computer-receiver-completed"]
     )
     completedApp.launch()

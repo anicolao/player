@@ -35,6 +35,7 @@ struct E2EPlaybackControlConfiguration: Equatable {
 enum E2EFixture: String, CaseIterable {
   case emptyLibrary = "empty-library"
   case singleAudiobookReady = "single-audiobook-ready"
+  case receiverCompletionBaseline = "receiver-completion-baseline"
   case committedCurrentBook = "committed-current-book"
   case monetizationExhausted = "monetization-exhausted"
   case zeroDurationCurrentBook = "zero-duration-current-book"
@@ -689,6 +690,8 @@ extension PlayerEnvironment {
           return try emptyLibraryEnvironment(reset: reset)
         case .singleAudiobookReady:
           return try singleAudiobookReadyEnvironment(reset: reset)
+        case .receiverCompletionBaseline:
+          return try receiverCompletionBaselineEnvironment(reset: reset)
         case .committedCurrentBook:
           return try committedCurrentBookEnvironment(
             reset: reset,
@@ -834,6 +837,90 @@ extension PlayerEnvironment {
         ids: DeterministicPlayerIDGenerator(
           values: (1...4).map {
             UUID(uuidString: String(format: "11000000-0000-0000-0000-%012d", $0))!
+          }
+        )
+      )
+    }
+
+    private static func receiverCompletionBaselineEnvironment(reset: Bool) throws
+      -> PlayerEnvironment
+    {
+      let root = FileManager.default.temporaryDirectory.appending(
+        path: "PlayerE2EReceiverCompletionBaseline",
+        directoryHint: .isDirectory
+      )
+      if reset { try resetE2EFixtureRoot(root) }
+
+      let bookID = UUID(uuidString: "12000000-0000-0000-0000-000000000001")!
+      let assetID = UUID(uuidString: "12000000-0000-0000-0000-000000000002")!
+      let proposalID = UUID(uuidString: "12000000-0000-0000-0000-000000000003")!
+      let jobID = UUID(uuidString: "12000000-0000-0000-0000-000000000004")!
+      let managedRelativePath = "Media/baseline/lighthouse-signal.m4a"
+      let managedURL = root.appending(path: managedRelativePath)
+      try FileManager.default.createDirectory(
+        at: managedURL.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+      )
+      try Data("receiver baseline media".utf8).write(to: managedURL, options: .atomic)
+
+      let date = Date(timeIntervalSince1970: 1_700_000_000)
+      let asset = AudioAsset(
+        id: assetID,
+        originalFilename: "lighthouse-signal.m4a",
+        managedRelativePath: managedRelativePath,
+        checksumSHA256: "e2e-receiver-completion-baseline",
+        byteCount: 23,
+        durationSeconds: 1_113,
+        container: "M4A"
+      )
+      let proposal = BookProposal(
+        id: proposalID,
+        proposedBookID: bookID,
+        title: "The Lighthouse Signal",
+        authors: ["Mara Vale"],
+        durationSeconds: 1_113,
+        artworkData: nil,
+        asset: asset,
+        warnings: []
+      )
+      let book = Book(
+        id: bookID,
+        title: proposal.title,
+        authors: proposal.authors,
+        durationSeconds: proposal.durationSeconds,
+        artworkData: nil,
+        assets: [asset],
+        dateAdded: date
+      )
+      let job = ImportJob(
+        id: jobID,
+        sourceFilename: asset.originalFilename,
+        phase: .committed,
+        progress: ImportProgress(completed: asset.byteCount, total: asset.byteCount),
+        stagedRelativePath: nil,
+        proposal: proposal,
+        committedBookID: bookID,
+        failure: nil,
+        createdAt: date,
+        updatedAt: date
+      )
+      return PlayerEnvironment(
+        persistence: InMemoryLibraryStore(
+          snapshot: LibrarySnapshot(books: [book], importJobs: [job], currentBookID: nil)
+        ),
+        media: FileSystemMediaManager(rootURL: root),
+        inspector: DeterministicAudioInspector(result: .success(InspectedAudio(
+          title: "Project Hail Mary",
+          authors: ["Andy Weir"],
+          durationSeconds: 32,
+          artworkData: nil,
+          container: "M4A"
+        ))),
+        playback: DeterministicPlaybackController(),
+        clock: FixedPlayerClock(value: date),
+        ids: DeterministicPlayerIDGenerator(
+          values: (1...32).map {
+            UUID(uuidString: String(format: "13000000-0000-0000-0000-%012d", $0))!
           }
         )
       )
