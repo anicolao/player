@@ -91,7 +91,29 @@ final class LaunchUITests: XCTestCase {
         .exists(app.tabBars.buttons["Inbox"], "The Inbox tab is available"),
         .exists(app.tabBars.buttons["Settings"], "The Settings tab is available"),
         .notExists(app.otherElements["mini-player"], "No mini-player appears without a book"),
-      ]
+      ],
+      captureReadiness: launchCaptureReadiness(
+        app: app,
+        specification: "At capture, the exact empty Library layout is settled with every first-run action fully visible and no transient presentation",
+        anchor: app.otherElements["library-screen"]
+      ) {
+        let screen = app.otherElements["library-screen"]
+        return self.hasExactValue(screen, "ready:library-empty")
+          && self.hasSettledScreenGeometry(screen, in: app)
+          && elementIsFullyVisible(
+            app.staticTexts["Build your listening library"],
+            within: screen,
+            requiresHittable: false
+          )
+          && elementIsFullyVisible(
+            app.buttons["receive-from-computer-empty-library"], within: screen
+          )
+          && elementIsFullyVisible(
+            app.buttons["choose-from-files-empty-library"], within: screen
+          )
+          && app.tabBars.buttons["Library"].isSelected
+          && !app.otherElements["mini-player"].exists
+      }
     )
 
     app.buttons["receive-from-computer-empty-library"].tap()
@@ -122,7 +144,29 @@ final class LaunchUITests: XCTestCase {
           anyElement(app, "mirroring-import-tip"),
           "Supported locales also see the optional iPhone Mirroring path"
         ),
-      ]
+      ],
+      captureReadiness: receiverCaptureReadiness(
+        app: app,
+        specification: "At capture, the exact ready receiver is idle at the top with stable pairing, address, and import guidance",
+        state: "receiver:ready"
+      ) {
+        self.hasExactValue(
+          self.anyElement(app, "computer-receiver-http-probe"),
+          "http:GET:/:status=200"
+        )
+          && app.staticTexts["computer-receiver-address"].label
+            == "http://192.168.1.42:49152"
+          && elementIsFullyVisible(
+            app.staticTexts["computer-receiver-pairing-code"],
+            within: app.scrollViews["computer-receiver-screen"],
+            requiresHittable: false
+          )
+          && elementIsFullyVisible(
+            self.anyElement(app, "mirroring-import-tip"),
+            within: app.scrollViews["computer-receiver-screen"],
+            requiresHittable: false
+          )
+      }
     )
 
     XCTAssertTrue(terminateAndWait(app))
@@ -146,7 +190,23 @@ final class LaunchUITests: XCTestCase {
           receivingApp.staticTexts["Project Hail Mary"],
           "The progress view identifies the book currently being received"
         ),
-      ]
+      ],
+      captureReadiness: receiverCaptureReadiness(
+        app: receivingApp,
+        specification: "At capture, the mirrored-drop receiver is idle at the top with its exact preparation phase and visible progress item",
+        state: "receiver:preparing-mirrored-drop"
+      ) {
+        elementIsFullyVisible(
+          receivingApp.progressIndicators["mirroring-drop-progress"],
+          within: receivingApp.scrollViews["computer-receiver-screen"],
+          requiresHittable: false
+        )
+          && elementIsFullyVisible(
+            receivingApp.staticTexts["Project Hail Mary"],
+            within: receivingApp.scrollViews["computer-receiver-screen"],
+            requiresHittable: false
+          )
+      }
     )
 
     XCTAssertTrue(terminateAndWait(receivingApp))
@@ -173,7 +233,24 @@ final class LaunchUITests: XCTestCase {
           ],
           "The listener is told that retry continues from confirmed progress"
         ),
-      ]
+      ],
+      captureReadiness: receiverCaptureReadiness(
+        app: pausedApp,
+        specification: "At capture, the paused receiver is idle at the top with its exact confirmed-byte state and retry guidance visible",
+        state: "receiver:paused"
+      ) {
+        self.hasExactValue(
+          pausedApp.descendants(matching: .any)["computer-receiver-transfer"],
+          "receiving:734003200-of-1468006400"
+        )
+          && elementIsFullyVisible(
+            pausedApp.staticTexts[
+              "The computer can retry from the confirmed progress shown here."
+            ],
+            within: pausedApp.scrollViews["computer-receiver-screen"],
+            requiresHittable: false
+          )
+      }
     )
 
     XCTAssertTrue(terminateAndWait(pausedApp))
@@ -197,7 +274,21 @@ final class LaunchUITests: XCTestCase {
           completedApp.buttons["finish-computer-receiver"],
           "The listener explicitly decides when receiving is finished"
         ),
-      ]
+      ],
+      captureReadiness: receiverCaptureReadiness(
+        app: completedApp,
+        specification: "At capture, the completed receiver is idle at the top with its exact completion count and both next actions visible",
+        state: "receiver:completed:1"
+      ) {
+        elementIsFullyVisible(
+          completedApp.buttons["receive-another-audiobook"],
+          within: completedApp.scrollViews["computer-receiver-screen"]
+        )
+          && elementIsFullyVisible(
+            completedApp.buttons["finish-computer-receiver"],
+            within: completedApp.scrollViews["computer-receiver-screen"]
+          )
+      }
     )
 
     completedApp.buttons["receive-another-audiobook"].tap()
@@ -214,7 +305,23 @@ final class LaunchUITests: XCTestCase {
           completedApp.staticTexts["computer-receiver-pairing-code"],
           "The active receiver keeps its discoverable pairing details"
         ),
-      ]
+      ],
+      captureReadiness: receiverCaptureReadiness(
+        app: completedApp,
+        specification: "At capture, Receive Another has returned the same receiver to its idle ready layout with pairing details visible",
+        state: "receiver:ready"
+      ) {
+        elementIsFullyVisible(
+          completedApp.staticTexts["computer-receiver-pairing-code"],
+          within: completedApp.scrollViews["computer-receiver-screen"],
+          requiresHittable: false
+        )
+          && elementIsFullyVisible(
+            completedApp.staticTexts["computer-receiver-address"],
+            within: completedApp.scrollViews["computer-receiver-screen"],
+            requiresHittable: false
+          )
+      }
     )
 
     tester.generateDocs()
@@ -241,5 +348,84 @@ final class LaunchUITests: XCTestCase {
 
   private func anyElement(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {
     app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+  }
+
+  private func launchCaptureReadiness(
+    app: XCUIApplication,
+    specification: String,
+    anchor: XCUIElement,
+    intendedSheetContentID: String? = nil,
+    checkNow: @escaping @MainActor () -> Bool
+  ) -> CaptureReadiness {
+    CaptureReadiness(specification: specification, anchor: anchor) {
+      checkNow()
+        && !app.keyboards.firstMatch.exists
+        && !app.alerts.firstMatch.exists
+        && !self.hasUnintendedSheet(app, intendedContentID: intendedSheetContentID)
+    }
+  }
+
+  private func receiverCaptureReadiness(
+    app: XCUIApplication,
+    specification: String,
+    state: String,
+    checkNow: @escaping @MainActor () -> Bool
+  ) -> CaptureReadiness {
+    let screen = app.scrollViews["computer-receiver-screen"]
+    let readiness = anyElement(app, "computer-receiver-scroll-readiness")
+    return launchCaptureReadiness(
+      app: app,
+      specification: specification,
+      anchor: readiness,
+      intendedSheetContentID: "computer-receiver-screen"
+    ) {
+      self.hasExactValue(screen, state)
+        && self.isSettledAtTop(
+          readiness,
+          containerID: "computer-receiver-scroll"
+        )
+        && checkNow()
+    }
+  }
+
+  private func hasExactValue(_ element: XCUIElement, _ expected: String) -> Bool {
+    element.exists && element.value.map(String.init(describing:)) == expected
+  }
+
+  private func hasSettledScreenGeometry(
+    _ screen: XCUIElement,
+    in app: XCUIApplication
+  ) -> Bool {
+    guard screen.exists, app.windows.firstMatch.exists else { return false }
+    let screenFrame = screen.frame
+    let windowFrame = app.windows.firstMatch.frame
+    return !screenFrame.isEmpty
+      && screenFrame.width >= windowFrame.width - 2
+      && windowFrame.intersects(screenFrame)
+  }
+
+  private func isSettledAtTop(_ probe: XCUIElement, containerID: String) -> Bool {
+    guard let state = ScrollReadinessState(probe.value) else { return false }
+    let completionIsCorrelated = state.interactionID == 0
+      ? state.completionID == 0
+      : state.completionID == state.interactionID
+        && state.completionGeometryID == state.geometryID
+    return state.containerID == containerID
+      && state.axis == .vertical
+      && state.isIdle
+      && state.geometryReady
+      && completionIsCorrelated
+      && state.atTop
+  }
+
+  private func hasUnintendedSheet(
+    _ app: XCUIApplication,
+    intendedContentID: String?
+  ) -> Bool {
+    app.sheets.allElementsBoundByIndex.contains { sheet in
+      guard let intendedContentID else { return true }
+      return sheet.identifier != intendedContentID
+        && !sheet.descendants(matching: .any)[intendedContentID].exists
+    }
   }
 }
