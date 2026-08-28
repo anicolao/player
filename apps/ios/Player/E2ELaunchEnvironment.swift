@@ -50,6 +50,38 @@ import UIKit
       )
     }
   }
+
+  enum E2ESleepTimerNamespace: String, CaseIterable {
+    static let argument = "-e2e-sleep-timer-namespace"
+
+    case preset10 = "preset-10"
+    case preset15 = "preset-15"
+    case preset30 = "preset-30"
+    case preset45 = "preset-45"
+    case preset60 = "preset-60"
+    case custom25 = "custom-25"
+    case endChapter = "end-chapter"
+    case endTrack = "end-track"
+    case replaceCancel = "replace-cancel"
+    case persistent
+
+    static func parseRequired(arguments: [String]) throws -> E2ESleepTimerNamespace {
+      let markers = arguments.indices.filter { arguments[$0] == argument }
+      guard markers.count == 1 else {
+        let reason = markers.isEmpty ? "Missing" : "Duplicate"
+        throw PlayerCoreError.fileOperation("\(reason) Sleep Timer E2E namespace.")
+      }
+      let marker = markers[0]
+      guard arguments.indices.contains(marker + 1) else {
+        throw PlayerCoreError.fileOperation("Missing Sleep Timer E2E namespace value.")
+      }
+      let value = arguments[marker + 1]
+      guard !value.isEmpty, !value.hasPrefix("-"), let namespace = Self(rawValue: value) else {
+        throw PlayerCoreError.fileOperation("Invalid Sleep Timer E2E namespace: \(value)")
+      }
+      return namespace
+    }
+  }
 #endif
 
 @MainActor
@@ -100,7 +132,7 @@ extension PlayerEnvironment {
         case "sleep-timer":
           return try sleepTimerEnvironment(
             reset: arguments.contains("-e2e-reset"),
-            namespace: sleepTimerNamespace(in: arguments)
+            namespace: E2ESleepTimerNamespace.parseRequired(arguments: arguments).rawValue
           )
         case "bookmarks":
           return try bookmarksEnvironment(reset: arguments.contains("-e2e-reset"))
@@ -377,14 +409,6 @@ extension PlayerEnvironment {
         let marker = arguments.firstIndex(of: "-e2e-smart-rewind-scenario"),
         arguments.indices.contains(marker + 1)
       else { return "chapter-clamp" }
-      return arguments[marker + 1]
-    }
-
-    private static func sleepTimerNamespace(in arguments: [String]) -> String {
-      guard
-        let marker = arguments.firstIndex(of: "-e2e-sleep-timer-namespace"),
-        arguments.indices.contains(marker + 1)
-      else { return "persistent" }
       return arguments[marker + 1]
     }
 

@@ -3,6 +3,58 @@ import XCTest
 
 @MainActor
 final class SleepTimerTests: XCTestCase {
+  func testE2ESleepTimerNamespaceAcceptsEveryCanonicalScenario() throws {
+    for namespace in E2ESleepTimerNamespace.allCases {
+      let parsed = try E2ESleepTimerNamespace.parseRequired(arguments: [
+        "Player",
+        "-e2e",
+        "-e2e-sleep-timer-namespace", namespace.rawValue,
+        "-AppleLanguages", "(en)",
+      ])
+      XCTAssertEqual(parsed, namespace)
+    }
+  }
+
+  func testE2ESleepTimerNamespaceRequiresExactlyOneValue() {
+    let invalidArguments = [
+      ["Player", "-e2e"],
+      ["Player", "-e2e-sleep-timer-namespace"],
+      ["Player", "-e2e-sleep-timer-namespace", "-e2e-reset"],
+      [
+        "Player",
+        "-e2e-sleep-timer-namespace", "persistent",
+        "-e2e-sleep-timer-namespace", "preset-10",
+      ],
+    ]
+
+    for arguments in invalidArguments {
+      XCTAssertThrowsError(
+        try E2ESleepTimerNamespace.parseRequired(arguments: arguments),
+        "Expected strict namespace parsing to reject \(arguments)"
+      )
+    }
+  }
+
+  func testE2ESleepTimerNamespaceRejectsUnknownAndOutOfDomainValues() {
+    let invalidValues = [
+      "preset-90",
+      "Persistent",
+      "../persistent",
+      "persistent/other",
+      "",
+      String(repeating: "a", count: 65),
+    ]
+
+    for value in invalidValues {
+      XCTAssertThrowsError(
+        try E2ESleepTimerNamespace.parseRequired(arguments: [
+          "Player", "-e2e-sleep-timer-namespace", value,
+        ]),
+        "Expected strict namespace parsing to reject \(value.debugDescription)"
+      )
+    }
+  }
+
   func testEveryPresetAndCustomDurationProduceExactDeadlines() throws {
     let now = Date(timeIntervalSince1970: 1_800_000_000)
     let book = makeBook()
