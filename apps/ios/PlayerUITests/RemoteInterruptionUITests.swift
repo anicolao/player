@@ -204,19 +204,21 @@ final class RemoteInterruptionUITests: XCTestCase {
     sequence: Int,
     reason: String
   ) throws -> PlaybackJournalProbe {
+    func matches(_ state: PlaybackJournalProbe) -> Bool {
+      state.status == status
+        && state.positionMilliseconds == positionMilliseconds
+        && state.sequence == sequence
+        && state.reason == reason
+    }
     let predicate = NSPredicate { object, _ in
       guard let element = object as? XCUIElement,
-        let state = PlaybackJournalProbe(element.value as? String),
-         state.status == status,
-         state.positionMilliseconds == positionMilliseconds,
-         state.sequence == sequence,
-         state.reason == reason
+        let state = PlaybackJournalProbe(element.value as? String)
       else { return false }
-      return true
+      return matches(state)
     }
-    let expectation = XCTNSPredicateExpectation(predicate: predicate, object: element)
-    if XCTWaiter.wait(for: [expectation], timeout: 2) == .completed,
-      let state = PlaybackJournalProbe(element.value as? String)
+    _ = waitForPredicate(predicate, on: element)
+    if let state = PlaybackJournalProbe(element.value as? String),
+      matches(state)
     { return state }
 
     XCTFail(

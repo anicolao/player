@@ -292,11 +292,13 @@ final class AccessibilityUITests: XCTestCase {
   }
 
   private func waitUntilHittable(_ element: XCUIElement) {
-    let expectation = XCTNSPredicateExpectation(
-      predicate: NSPredicate(format: "exists == true AND hittable == true"),
-      object: element
+    XCTAssertTrue(
+      waitForPredicate(
+        NSPredicate(format: "exists == true AND hittable == true"),
+        on: element
+      ),
+      "Expected \(element.identifier) to become visible and hittable"
     )
-    XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: 2), .completed)
   }
 
   private func visibleControl(

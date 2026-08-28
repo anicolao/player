@@ -9,12 +9,28 @@ func dismissAppleIntelligenceNotificationIfPresent(
   let notificationTitle = springboard.staticTexts["Ready for Apple Intelligence"]
   guard notificationTitle.waitForExistence(timeout: 0.5) else { return }
   notificationTitle.swipeUp()
-  XCTAssertFalse(
-    notificationTitle.waitForExistence(timeout: 1),
+  XCTAssertTrue(
+    waitForPredicate(
+      NSPredicate(format: "exists == false"),
+      on: notificationTitle,
+      timeout: 1
+    ),
     "The simulator's Apple Intelligence notification should not obscure the walkthrough",
     file: file,
     line: line
   )
+}
+
+@MainActor
+func waitForPredicate(
+  _ predicate: NSPredicate,
+  on element: XCUIElement,
+  timeout: TimeInterval = TestStepHelper.conditionTimeout
+) -> Bool {
+  if predicate.evaluate(with: element) { return true }
+  let expectation = XCTNSPredicateExpectation(predicate: predicate, object: element)
+  _ = XCTWaiter.wait(for: [expectation], timeout: timeout)
+  return predicate.evaluate(with: element)
 }
 
 @MainActor

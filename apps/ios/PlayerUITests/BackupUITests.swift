@@ -142,11 +142,8 @@ final class BackupUITests: XCTestCase {
         && headingFrame.maxY <= viewport.maxY
         && purpose.frame.maxY <= viewport.maxY
     }
-    if aligned.evaluate(with: purpose) { return }
-    let expectation = XCTNSPredicateExpectation(predicate: aligned, object: purpose)
-    if XCTWaiter.wait(for: [expectation], timeout: 2) == .completed { return }
     XCTAssertTrue(
-      aligned.evaluate(with: purpose),
+      waitForPredicate(aligned, on: purpose),
       "The Backup heading and purpose row must be inside the visible viewport"
     )
   }
@@ -154,10 +151,10 @@ final class BackupUITests: XCTestCase {
   private func tapWalkthroughAction(_ identifier: String, in app: XCUIApplication) {
     let trigger = app.buttons["e2e-trigger-\(identifier)"]
     XCTAssertTrue(trigger.waitForExistence(timeout: 2))
-    let enabled = XCTNSPredicateExpectation(
-      predicate: NSPredicate(format: "enabled == true"), object: trigger
+    XCTAssertTrue(
+      waitForPredicate(NSPredicate(format: "enabled == true"), on: trigger),
+      "Expected \(identifier) to become enabled"
     )
-    XCTAssertEqual(XCTWaiter.wait(for: [enabled], timeout: 2), .completed)
     trigger.tap()
   }
 

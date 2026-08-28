@@ -99,11 +99,12 @@ final class BookmarkUITests: XCTestCase {
       app,
       "bookmarks:query=:sort=label:count=2:order=\(secondBookmarkID),\(boundaryBookmarkID)"
     )
-    if app.keyboards.firstMatch.exists {
+    let keyboard = app.keyboards.firstMatch
+    if keyboard.exists {
       search.typeKey(.return, modifierFlags: [])
     }
-    XCTAssertFalse(
-      app.keyboards.firstMatch.waitForExistence(timeout: 1),
+    XCTAssertTrue(
+      waitForPredicate(NSPredicate(format: "exists == false"), on: keyboard),
       "Bookmark walkthrough must not capture the search keyboard"
     )
     try prepareBookmarkWalkthroughFrame(
@@ -221,7 +222,13 @@ final class BookmarkUITests: XCTestCase {
     try focusAndType("Return to the café clue", into: note, in: app)
     XCTAssertTrue(save.isEnabled)
     save.tap()
-    XCTAssertFalse(app.descendants(matching: .any)["bookmark-editor"].waitForExistence(timeout: 1))
+    XCTAssertTrue(
+      waitForPredicate(
+        NSPredicate(format: "exists == false"),
+        on: app.descendants(matching: .any)["bookmark-editor"]
+      ),
+      "The bookmark editor must finish dismissing after Save"
+    )
   }
 
   private func waitForEmptyFieldValue(
@@ -264,12 +271,19 @@ final class BookmarkUITests: XCTestCase {
     let menu = app.buttons["bookmark-sort"]
     try tapWhenHittable(menu, in: app)
     let option = app.buttons[optionID]
-    if option.waitForExistence(timeout: 1) { option.tap() }
-    else {
+    let selectedOption: XCUIElement
+    if option.waitForExistence(timeout: 1) {
+      selectedOption = option
+    } else {
       let fallbackOption = app.buttons[fallback]
       XCTAssertTrue(fallbackOption.waitForExistence(timeout: 2))
-      fallbackOption.tap()
+      selectedOption = fallbackOption
     }
+    selectedOption.tap()
+    XCTAssertTrue(
+      waitForPredicate(NSPredicate(format: "exists == false"), on: selectedOption),
+      "The bookmark sort menu must dismiss after selecting \(fallback)"
+    )
     try requireBookmarksScreen(app, expected)
   }
 
