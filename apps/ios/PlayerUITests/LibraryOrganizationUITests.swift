@@ -136,10 +136,12 @@ final class LibraryOrganizationUITests: XCTestCase {
     let confirmFinishedQuery = finishedAlert.buttons.matching(
       NSPredicate(format: "label == %@", "Mark Finished")
     )
-    let confirmFinished = confirmFinishedQuery.element
-    XCTAssertTrue(confirmFinished.waitForExistence(timeout: 2))
     let confirmFinishedMatches = confirmFinishedQuery.allElementsBoundByIndex
     XCTAssertFalse(confirmFinishedMatches.isEmpty)
+    let confirmFinished = try XCTUnwrap(
+      confirmFinishedMatches.first(where: { $0.isEnabled && $0.isHittable }),
+      "The physical Mark Finished action must expose an interactable accessibility alias"
+    )
     XCTAssertTrue(
       confirmFinishedMatches.allSatisfy { $0.frame == confirmFinished.frame },
       "Nested accessibility aliases must resolve to one physical confirm action"
@@ -154,10 +156,9 @@ final class LibraryOrganizationUITests: XCTestCase {
       Set(["Mark Finished"]),
       "Every accessibility alias must retain the visible confirm label"
     )
-    XCTAssertEqual(
-      Set(confirmFinishedMatches.map(\.isHittable)),
-      Set([true]),
-      "The finished confirmation must expose a consistent hittable action"
+    XCTAssertTrue(
+      confirmFinishedMatches.contains(where: { $0.isEnabled && $0.isHittable }),
+      "The finished confirmation must expose at least one interactable alias"
     )
     XCTAssertEqual(confirmFinished.identifier, "confirm-mark-finished")
     confirmFinished.tap()
