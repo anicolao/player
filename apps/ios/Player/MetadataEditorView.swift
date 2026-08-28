@@ -24,7 +24,7 @@ struct MetadataEditorView: View {
   @State private var cropZoom = 1.0
   @State private var cropX = 0.5
   @State private var cropY = 0.5
-  @State private var errorMessage: String?
+  @State private var localError: PlayerPresentationError?
   @FocusState private var isTitleFocused: Bool
 
   var body: some View {
@@ -76,13 +76,13 @@ struct MetadataEditorView: View {
           .accessibilityIdentifier("save-metadata-repair")
       }
     }
-    .alert("Couldn’t save details", isPresented: Binding(
-      get: { errorMessage != nil },
-      set: { if !$0 { errorMessage = nil } }
+    .alert(localError?.title ?? "Couldn’t Save Details", isPresented: Binding(
+      get: { localError != nil },
+      set: { if !$0 { dismissLocalError() } }
     )) {
-      Button("OK", role: .cancel) { errorMessage = nil }
+      Button("OK", role: .cancel) { dismissLocalError() }
     } message: {
-      Text(errorMessage ?? "Try again.")
+      Text(localError?.message ?? "Try again.")
     }
     .confirmationDialog("Change Cover", isPresented: $isChoosingCoverSource) {
       Button("Choose Photo") { chooseCoverPhoto() }
@@ -109,12 +109,16 @@ struct MetadataEditorView: View {
       defer { self.selectedPhoto = nil }
       do {
         guard let data = try await selectedPhoto.loadTransferable(type: Data.self), !data.isEmpty else {
-          errorMessage = "The selected photo did not contain a readable image. Choose another photo."
+          presentLocalError(
+            "The selected photo did not contain a readable image. Choose another photo."
+          )
           return
         }
         setCover(data: data, mediaType: imageMediaType(data), source: .photoLibrary)
       } catch {
-        errorMessage = "The selected photo could not be read. Download it in Photos, then try again."
+        presentLocalError(
+          "The selected photo could not be read. Download it in Photos, then try again."
+        )
       }
     }
     .onAppear { loadIfNeeded() }
@@ -426,7 +430,11 @@ struct MetadataEditorView: View {
     guard !mutations.isEmpty else { dismiss(); return }
     Task {
       guard await model.repairMetadata(target: target, mutations: mutations) != nil else {
-        errorMessage = model.lastErrorMessage ?? "The metadata transaction could not be saved."
+        localError = model.presentationError(in: .metadata)
+          ?? PlayerPresentationError.presenting(
+            "The metadata transaction could not be saved. Try again.",
+            in: .metadata
+          )
         return
       }
       UIAccessibility.post(notification: .announcement, argument: "Audiobook details saved")
@@ -541,20 +549,31 @@ struct MetadataEditorView: View {
       let data = try Data(contentsOf: url)
       setCover(data: data, mediaType: UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? imageMediaType(data), source: .file)
     } catch {
-      errorMessage = "The selected cover file could not be read."
+      presentLocalError("The selected cover file could not be read. Choose another image.")
     }
   }
 
   private func chooseCoverPhoto() {
     #if E2E
       guard let data = E2EMetadataRepairBridge.shared.replacementCoverData else {
-        errorMessage = "The deterministic replacement photo is unavailable."
+        presentLocalError("The deterministic replacement photo is unavailable.")
         return
       }
       setCover(data: data, mediaType: "image/png", source: .photoLibrary)
     #else
       isChoosingCoverPhoto = true
     #endif
+  }
+
+  private func presentLocalError(_ message: String) {
+    localError = PlayerPresentationError.presenting(message, in: .metadata)
+  }
+
+  private func dismissLocalError() {
+    if let id = localError?.id {
+      model.clearPresentedError(id: id)
+    }
+    localError = nil
   }
 
   private func setCover(data: Data, mediaType: String, source: CoverSource) {

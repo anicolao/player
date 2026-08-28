@@ -8,7 +8,7 @@ final class PlayerModel {
   private(set) var library: LibrarySnapshot = .empty
   private(set) var playbackState: PlaybackState = .unloaded
   private(set) var isRestored = false
-  private(set) var lastErrorMessage: String?
+  private(set) var presentationErrors: [PlayerPresentationError] = []
   private(set) var storageSummary: StorageSummary?
   private(set) var startupRecoveryStatus: StartupRecoveryStatus?
   private(set) var startupReconciliation: StartupStorageReconciliation?
@@ -18,6 +18,8 @@ final class PlayerModel {
 
   @ObservationIgnored private let environment: PlayerEnvironment
   @ObservationIgnored private var playbackIntegrationsConfigured = false
+  @ObservationIgnored private var audioSessionConfigured = false
+  private(set) var playbackSetupError: PlayerPresentationError?
   @ObservationIgnored private var wasPlayingBeforeInterruption = false
   @ObservationIgnored private var importTasks: [UUID: Task<Void, Never>] = [:]
   @ObservationIgnored private var cancellingImportIDs: Set<UUID> = []
@@ -37,6 +39,67 @@ final class PlayerModel {
     self.environment = environment
     self.playbackState = environment.playback.state
     self.monetization = environment.monetization.snapshot
+  }
+
+  var presentedError: PlayerPresentationError? {
+    presentationErrors.first { $0.owner == .root }
+  }
+
+  func presentationError(in domain: PlayerErrorDomain) -> PlayerPresentationError? {
+    presentationErrors.last { $0.domain == domain }
+  }
+
+  func presentationError(
+    in domain: PlayerErrorDomain,
+    owner: PlayerErrorPresentationOwner
+  ) -> PlayerPresentationError? {
+    presentationErrors.last { $0.domain == domain && $0.owner == owner }
+  }
+
+  private func present(
+    _ error: any Error,
+    in domain: PlayerErrorDomain,
+    owner: PlayerErrorPresentationOwner? = nil,
+    recoveryAction: PlayerErrorRecoveryAction? = nil
+  ) {
+    present(PlayerPresentationError.presenting(
+      error,
+      in: domain,
+      owner: owner,
+      recoveryAction: recoveryAction
+    ))
+  }
+
+  private func present(
+    _ message: String,
+    in domain: PlayerErrorDomain,
+    owner: PlayerErrorPresentationOwner? = nil,
+    recoveryAction: PlayerErrorRecoveryAction? = nil
+  ) {
+    present(PlayerPresentationError.presenting(
+      message,
+      in: domain,
+      owner: owner,
+      recoveryAction: recoveryAction
+    ))
+  }
+
+  private func present(_ error: PlayerPresentationError) {
+    presentationErrors.append(error)
+  }
+
+  func clearPresentedError(id: UUID) {
+    presentationErrors.removeAll { $0.id == id }
+  }
+
+  private func consumePresentationError(
+    in domain: PlayerErrorDomain,
+    owner: PlayerErrorPresentationOwner
+  ) -> PlayerPresentationError? {
+    guard let index = presentationErrors.lastIndex(where: {
+      $0.domain == domain && $0.owner == owner
+    }) else { return nil }
+    return presentationErrors.remove(at: index)
   }
 
   func restore() async {
@@ -87,7 +150,6 @@ final class PlayerModel {
       }
       isRestored = true
       startupRecoveryStatus = nil
-      lastErrorMessage = nil
       applyCurrentTransportConfiguration()
       publishNowPlaying()
       scheduleSleepTimerMonitor()
@@ -103,7 +165,6 @@ final class PlayerModel {
     } catch {
       isRestored = false
       startupRecoveryStatus = await environment.persistence.startupRecoveryStatus()
-      lastErrorMessage = nil
       environment.nowPlaying.clear()
     }
   }
@@ -161,7 +222,8 @@ final class PlayerModel {
     await restore()
     guard isRestored else {
       throw PlayerCoreError.fileOperation(
-        lastErrorMessage ?? "The restored library could not be opened."
+        presentationError(in: .recovery)?.message
+          ?? "The restored library could not be opened."
       )
     }
   }
@@ -178,7 +240,8 @@ final class PlayerModel {
     await restore()
     guard isRestored else {
       throw PlayerCoreError.fileOperation(
-        lastErrorMessage ?? "The automatic backup could not be opened."
+        presentationError(in: .recovery)?.message
+          ?? "The automatic backup could not be opened."
       )
     }
   }
@@ -230,10 +293,8 @@ final class PlayerModel {
   }
 
   func configurePlaybackIntegrations() {
-    guard !playbackIntegrationsConfigured else { return }
-    schedulePlaybackProgressMonitor()
-    do {
-      try environment.audioSession.configure()
+    if !playbackIntegrationsConfigured {
+      schedulePlaybackProgressMonitor()
       environment.audioSession.installEventHandler { [weak self] event in
         await self?.handleAudioSessionEvent(event)
       }
@@ -241,12 +302,30 @@ final class PlayerModel {
         await self?.handleRemoteCommand(command)
       }
       playbackIntegrationsConfigured = true
-      lastErrorMessage = nil
+    }
+    guard !audioSessionConfigured else { return }
+    do {
+      try environment.audioSession.configure()
+      audioSessionConfigured = true
+      playbackSetupError = nil
       applyCurrentTransportConfiguration()
       publishNowPlaying()
     } catch {
-      lastErrorMessage = error.localizedDescription
+      playbackSetupError = PlayerPresentationError.presenting(
+        error,
+        in: .playback,
+        recoveryAction: .contactSupport
+      )
     }
+  }
+
+  private func prepareAudioSessionForPlayback() throws {
+    if !audioSessionConfigured {
+      try environment.audioSession.configure()
+      audioSessionConfigured = true
+      playbackSetupError = nil
+    }
+    try environment.audioSession.activate()
   }
 
   func prepareMonetization() async {
@@ -399,12 +478,11 @@ final class PlayerModel {
       library = previousLibrary
       try await environment.persistence.save(committedLibrary)
       library = committedLibrary
-      lastErrorMessage = nil
       publishNowPlaying()
       return transactionID
     } catch {
       library = previousLibrary
-      lastErrorMessage = error.localizedDescription
+      present(error, in: .metadata)
       return nil
     }
   }
@@ -414,7 +492,12 @@ final class PlayerModel {
     guard let transaction = library.metadataTransactions.last(where: {
       $0.target == target && $0.status == .applied
     }) else {
-      lastErrorMessage = "There is no metadata edit to undo."
+      present(
+        "There is no metadata edit to undo.",
+        in: .metadata,
+        owner: .root,
+        recoveryAction: .acknowledge
+      )
       return false
     }
     return await undoMetadataTransaction(id: transaction.id)
@@ -424,7 +507,7 @@ final class PlayerModel {
   func undoMetadataTransaction(id: UUID) async -> Bool {
     guard let transactionIndex = library.metadataTransactions.firstIndex(where: { $0.id == id })
     else {
-      lastErrorMessage = MetadataRepairError.transactionNotApplied(id).localizedDescription
+      present(MetadataRepairError.transactionNotApplied(id), in: .metadata, owner: .root)
       return false
     }
     let transaction = library.metadataTransactions[transactionIndex]
@@ -433,7 +516,7 @@ final class PlayerModel {
         $0.target == transaction.target && $0.status == .applied
       })
     else {
-      lastErrorMessage = MetadataRepairError.transactionNotApplied(id).localizedDescription
+      present(MetadataRepairError.transactionNotApplied(id), in: .metadata, owner: .root)
       return false
     }
 
@@ -446,12 +529,11 @@ final class PlayerModel {
       library = previousLibrary
       try await environment.persistence.save(committedLibrary)
       library = committedLibrary
-      lastErrorMessage = nil
       publishNowPlaying()
       return true
     } catch {
       library = previousLibrary
-      lastErrorMessage = error.localizedDescription
+      present(error, in: .metadata, owner: .root)
       return false
     }
   }
@@ -468,23 +550,25 @@ final class PlayerModel {
 
   func importFromComputer(_ selectedURLs: [URL]) async -> DirectImportOutcome {
     let previousBookIDs = Set(library.books.map(\.id))
-    guard let jobID = await enqueueImport(ImportRequest(
-      entryPoint: .computerReceiver,
-      selectedURLs: selectedURLs
-    )), let job = library.importJobs.first(where: { $0.id == jobID }) else {
+    guard let jobID = await enqueueImport(
+      ImportRequest(entryPoint: .computerReceiver, selectedURLs: selectedURLs),
+      errorOwner: .computerReceiver
+    ), let job = library.importJobs.first(where: { $0.id == jobID }) else {
       return DirectImportOutcome(
         state: .failed,
-        message: lastErrorMessage ?? "Player could not import these files.",
+        message: consumePresentationError(in: .importFlow, owner: .computerReceiver)?.message
+          ?? "Player could not import these files.",
         addedBookCount: 0,
         cleanupIncomingFiles: false
       )
     }
     switch job.phase {
     case .ready where job.proposals.allSatisfy({ $0.warnings.isEmpty }):
-      guard await addImportToLibrary(jobID: jobID) != nil else {
+      guard await addImportToLibrary(jobID: jobID, errorOwner: .computerReceiver) != nil else {
         return DirectImportOutcome(
           state: .failed,
-          message: lastErrorMessage ?? "Player could not add this audiobook.",
+          message: consumePresentationError(in: .importFlow, owner: .computerReceiver)?.message
+            ?? "Player could not add this audiobook.",
           addedBookCount: 0,
           cleanupIncomingFiles: true
         )
@@ -545,11 +629,14 @@ final class PlayerModel {
     }) {
       guard receipt.payloadFingerprint == fingerprint else {
         try? await queue.acknowledge(claimed.handoff.id)
-        lastErrorMessage = "A share request reused an identifier with different content."
+        present(
+          "A share request reused an identifier with different content.",
+          in: .importFlow,
+          recoveryAction: .reviewInbox
+        )
         return nil
       }
       try? await queue.acknowledge(claimed.handoff.id)
-      lastErrorMessage = nil
       return receipt.jobID
     }
     let jobID = await enqueueImport(ImportRequest(
@@ -579,7 +666,7 @@ final class PlayerModel {
       } catch {
         library.shareImportReceipts.removeAll { $0.handoffID == claimed.handoff.id }
         try? await queue.returnForRetry(claimed.handoff.id)
-        lastErrorMessage = error.localizedDescription
+        present(error, in: .importFlow)
         return nil
       }
       do {
@@ -589,7 +676,7 @@ final class PlayerModel {
         // cleanup fails so an immediate replay deduplicates instead of importing
         // the same payload a second time.
         try? await queue.returnForRetry(claimed.handoff.id)
-        lastErrorMessage = error.localizedDescription
+        present(error, in: .importFlow)
         return nil
       }
     } else {
@@ -599,9 +686,12 @@ final class PlayerModel {
   }
 
   @discardableResult
-  func enqueueImport(_ request: ImportRequest) async -> UUID? {
+  func enqueueImport(
+    _ request: ImportRequest,
+    errorOwner: PlayerErrorPresentationOwner = .root
+  ) async -> UUID? {
     guard !request.selectedURLs.isEmpty else {
-      lastErrorMessage = PlayerCoreError.invalidAssetSelection.localizedDescription
+      present(PlayerCoreError.invalidAssetSelection, in: .importFlow, owner: errorOwner)
       return nil
     }
     let securityScopedURLs = request.selectedURLs.filter {
@@ -649,7 +739,7 @@ final class PlayerModel {
       await executeQueuedImport(jobID: jobID, initialURLs: request.selectedURLs)
       return jobID
     } catch {
-      lastErrorMessage = error.localizedDescription
+      present(error, in: .importFlow, owner: errorOwner)
       return nil
     }
   }
@@ -742,7 +832,6 @@ final class PlayerModel {
       job.phase = .ready
       job.failure = nil
       try await replaceAndPersist(job)
-      lastErrorMessage = nil
       return jobID
     } catch {
       job.phase = .failed
@@ -753,7 +842,7 @@ final class PlayerModel {
         isRecoverable: true
       )
       try? await replaceAndPersist(job)
-      lastErrorMessage = error.localizedDescription
+      present(error, in: .importFlow)
       return jobID
     }
   }
@@ -764,14 +853,14 @@ final class PlayerModel {
   @discardableResult
   private func legacyImportAudioSelection(from selectedURLs: [URL]) async -> UUID? {
     guard !selectedURLs.isEmpty else {
-      lastErrorMessage = PlayerCoreError.invalidAssetSelection.localizedDescription
+      present(PlayerCoreError.invalidAssetSelection, in: .importFlow)
       return nil
     }
 
     let archiveURLs = selectedURLs.filter { $0.pathExtension.lowercased() == "zip" }
     if !archiveURLs.isEmpty {
       guard selectedURLs.count == 1, archiveURLs.count == 1 else {
-        lastErrorMessage = "Import one ZIP archive at a time."
+        present("Import one ZIP archive at a time.", in: .importFlow)
         return nil
       }
       return await importZipArchive(from: archiveURLs[0])
@@ -899,7 +988,6 @@ final class PlayerModel {
       job.phase = proposals.contains(where: { !$0.warnings.isEmpty }) ? .needsReview : .ready
       job.failure = nil
       try await replaceAndPersist(job)
-      lastErrorMessage = nil
       return jobID
     } catch {
       job.phase = .failed
@@ -910,7 +998,7 @@ final class PlayerModel {
         isRecoverable: true
       )
       try? await replaceAndPersist(job)
-      lastErrorMessage = error.localizedDescription
+      present(error, in: .importFlow)
       return jobID
     }
   }
@@ -918,7 +1006,7 @@ final class PlayerModel {
   @discardableResult
   func retryImport(jobID: UUID) async -> Bool {
     guard let job = library.importJobs.first(where: { $0.id == jobID }), job.phase == .failed else {
-      lastErrorMessage = PlayerCoreError.missingImport(jobID).localizedDescription
+      present(PlayerCoreError.missingImport(jobID), in: .importFlow)
       return false
     }
     if job.zipStatus?.retryAllowed == true {
@@ -929,7 +1017,7 @@ final class PlayerModel {
     {
       await executeQueuedImport(jobID: jobID, initialURLs: nil)
     } else {
-      lastErrorMessage = PlayerCoreError.importNotReady(jobID).localizedDescription
+      present(PlayerCoreError.importNotReady(jobID), in: .importFlow)
       return false
     }
     return library.importJobs.first(where: { $0.id == jobID }).map {
@@ -953,7 +1041,7 @@ final class PlayerModel {
       plan.files[statusIndex].issue?.isRecoverable == true,
       job.queueCheckpoint != nil
     else {
-      lastErrorMessage = PlayerCoreError.importNotReady(jobID).localizedDescription
+      present(PlayerCoreError.importNotReady(jobID), in: .importFlow)
       return false
     }
     let previousLibrary = library
@@ -974,7 +1062,7 @@ final class PlayerModel {
       } ?? false
     } catch {
       library = previousLibrary
-      lastErrorMessage = error.localizedDescription
+      present(error, in: .importFlow)
       return false
     }
   }
@@ -987,7 +1075,7 @@ final class PlayerModel {
       let status = previousJob.recoveryPlan?.files.first(where: { $0.file.id == fileID }),
       var checkpoint = previousJob.queueCheckpoint
     else {
-      lastErrorMessage = PlayerCoreError.importNotReady(jobID).localizedDescription
+      present(PlayerCoreError.importNotReady(jobID), in: .importFlow)
       return false
     }
     let path = status.file.relativePath
@@ -1012,7 +1100,7 @@ final class PlayerModel {
         .recoveryPlan?.files.contains(where: { $0.file.id == fileID }) == false
     } catch {
       library = previousLibrary
-      lastErrorMessage = error.localizedDescription
+      present(error, in: .importFlow)
       return false
     }
   }
@@ -1025,7 +1113,7 @@ final class PlayerModel {
       job.recoveryPlan?.canContinueWithAcceptedFiles == true,
       !job.proposals.isEmpty
     else {
-      lastErrorMessage = PlayerCoreError.importNotReady(jobID).localizedDescription
+      present(PlayerCoreError.importNotReady(jobID), in: .importFlow)
       return false
     }
     let previousLibrary = library
@@ -1033,11 +1121,10 @@ final class PlayerModel {
     job.failure = nil
     do {
       try await replaceAndPersist(job)
-      lastErrorMessage = nil
       return true
     } catch {
       library = previousLibrary
-      lastErrorMessage = error.localizedDescription
+      present(error, in: .importFlow)
       return false
     }
   }
@@ -1055,11 +1142,10 @@ final class PlayerModel {
         manifests: inventory.manifests,
         availableBytes: inventory.availableBytes
       )
-      lastErrorMessage = nil
       return storageSummary
     } catch {
       library = previousLibrary
-      lastErrorMessage = error.localizedDescription
+      present(error, in: .storage)
       return nil
     }
   }
@@ -1073,7 +1159,7 @@ final class PlayerModel {
     switch scope {
     case .stagingJob(let jobID):
       guard let index = updated.importJobs.firstIndex(where: { $0.id == jobID }) else {
-        lastErrorMessage = PlayerCoreError.missingImport(jobID).localizedDescription
+        present(PlayerCoreError.missingImport(jobID), in: .storage)
         return false
       }
       updated.importJobs[index].phase = .cancelled
@@ -1091,14 +1177,17 @@ final class PlayerModel {
       }
     case .trashTransaction(let transactionID):
       guard let index = updated.trashTransactions.firstIndex(where: { $0.id == transactionID }) else {
-        lastErrorMessage = LibraryOrganizationError.missingTrashTransaction(transactionID)
-          .localizedDescription
+        present(LibraryOrganizationError.missingTrashTransaction(transactionID), in: .storage)
         return false
       }
       updated.trashTransactions[index].status = .purged
       updated.trashTransactions[index].mediaManifest = nil
     case .managedBook, .database:
-      lastErrorMessage = "Only staging and Trash can be cleared from recoverable storage."
+      present(
+        "Only staging and Trash can be cleared from recoverable storage.",
+        in: .storage,
+        recoveryAction: .acknowledge
+      )
       return false
     }
 
@@ -1116,7 +1205,7 @@ final class PlayerModel {
       return true
     } catch {
       library = previousLibrary
-      lastErrorMessage = error.localizedDescription
+      present(error, in: .storage)
       return false
     }
   }
@@ -1155,7 +1244,7 @@ final class PlayerModel {
     do {
       try await environment.persistence.save(cancelledLibrary)
     } catch {
-      lastErrorMessage = error.localizedDescription
+      present(error, in: .importFlow)
       return
     }
     if job.zipStatus != nil, let workspace = try? await environment.media.zipWorkspace(for: jobID) {
@@ -1166,7 +1255,6 @@ final class PlayerModel {
     }
     await environment.media.discardStaging(for: jobID)
     library = cancelledLibrary
-    lastErrorMessage = nil
   }
 
   /// Permanently removes an Inbox record and all of its app-owned temporary
@@ -1175,11 +1263,15 @@ final class PlayerModel {
   @discardableResult
   func abandonImport(jobID: UUID) async -> Bool {
     guard let job = library.importJobs.first(where: { $0.id == jobID }) else {
-      lastErrorMessage = PlayerCoreError.missingImport(jobID).localizedDescription
+      present(PlayerCoreError.missingImport(jobID), in: .importFlow)
       return false
     }
     guard job.phase != .committing else {
-      lastErrorMessage = "Wait for this audiobook to finish adding before dismissing it."
+      present(
+        "Wait for this audiobook to finish adding before dismissing it.",
+        in: .importFlow,
+        recoveryAction: .acknowledge
+      )
       return false
     }
 
@@ -1198,7 +1290,7 @@ final class PlayerModel {
       try await persist()
     } catch {
       library = previousLibrary
-      lastErrorMessage = error.localizedDescription
+      present(error, in: .importFlow)
       return false
     }
 
@@ -1210,22 +1302,19 @@ final class PlayerModel {
     }
     await environment.media.discardStaging(for: jobID)
     _ = await refreshStorageSummary()
-    lastErrorMessage = nil
     return true
   }
 
-  func clearLastError() {
-    lastErrorMessage = nil
-  }
-
   @discardableResult
-  func addImportToLibrary(jobID: UUID) async -> UUID? {
+  func addImportToLibrary(
+    jobID: UUID,
+    errorOwner: PlayerErrorPresentationOwner = .root
+  ) async -> UUID? {
     guard var job = library.importJobs.first(where: { $0.id == jobID }) else {
-      lastErrorMessage = PlayerCoreError.missingImport(jobID).localizedDescription
+      present(PlayerCoreError.missingImport(jobID), in: .importFlow, owner: errorOwner)
       return nil
     }
     if job.phase == .committed, let committedBookID = job.committedBookID {
-      lastErrorMessage = nil
       return committedBookID
     }
     if job.phase == .committing {
@@ -1236,7 +1325,7 @@ final class PlayerModel {
       job.phase == .ready || job.phase == .needsReview,
       !proposals.isEmpty
     else {
-      lastErrorMessage = PlayerCoreError.importNotReady(jobID).localizedDescription
+      present(PlayerCoreError.importNotReady(jobID), in: .importFlow, owner: errorOwner)
       return nil
     }
 
@@ -1304,13 +1393,12 @@ final class PlayerModel {
       replace(job)
       try await persist()
       await environment.media.discardStaging(for: jobID)
-      lastErrorMessage = nil
       return books.first?.id
     } catch {
       for item in managed.reversed() { try? await environment.media.rollback(item) }
       library = previousLibrary
       try? await environment.persistence.save(library)
-      lastErrorMessage = error.localizedDescription
+      present(error, in: .importFlow, owner: errorOwner)
       return nil
     }
   }
@@ -1654,7 +1742,7 @@ final class PlayerModel {
   @discardableResult
   func addBookmark(note: String? = nil) async -> UUID? {
     guard let book = currentBook else {
-      lastErrorMessage = BookmarkError.noCurrentBook.localizedDescription
+      present(BookmarkError.noCurrentBook, in: .bookmark)
       return nil
     }
     do {
@@ -1670,10 +1758,9 @@ final class PlayerModel {
       candidate.bookmarks.append(bookmark)
       try await environment.persistence.save(candidate)
       library = candidate
-      lastErrorMessage = nil
       return bookmarkID
     } catch {
-      lastErrorMessage = error.localizedDescription
+      present(error, in: .bookmark)
       return nil
     }
   }
@@ -1684,7 +1771,7 @@ final class PlayerModel {
     label: String,
     note: String?
   ) async -> Bool {
-    await applyLibraryOrganizationMutation { candidate in
+    await applyLibraryOrganizationMutation(in: .bookmark) { candidate in
       guard let index = candidate.bookmarks.firstIndex(where: { $0.id == bookmarkID }) else {
         throw BookmarkError.missingBookmark(bookmarkID)
       }
@@ -1700,7 +1787,7 @@ final class PlayerModel {
   @discardableResult
   func deleteBookmark(id bookmarkID: UUID) async -> UUID? {
     guard let bookmarkIndex = library.bookmarks.firstIndex(where: { $0.id == bookmarkID }) else {
-      lastErrorMessage = BookmarkError.missingBookmark(bookmarkID).localizedDescription
+      present(BookmarkError.missingBookmark(bookmarkID), in: .bookmark)
       return nil
     }
     let transactionID = await environment.ids.next()
@@ -1717,17 +1804,16 @@ final class PlayerModel {
     do {
       try await environment.persistence.save(candidate)
       library = candidate
-      lastErrorMessage = nil
       return transactionID
     } catch {
-      lastErrorMessage = error.localizedDescription
+      present(error, in: .bookmark)
       return nil
     }
   }
 
   @discardableResult
   func undoDeleteBookmark(transactionID: UUID) async -> Bool {
-    await applyLibraryOrganizationMutation { candidate in
+    await applyLibraryOrganizationMutation(in: .bookmark) { candidate in
       guard let transactionIndex = candidate.bookmarkDeletionTransactions.firstIndex(where: {
         $0.id == transactionID && $0.status == .deleted
       }) else {
@@ -1749,11 +1835,11 @@ final class PlayerModel {
   @discardableResult
   func jumpToBookmark(id bookmarkID: UUID) async -> Bool {
     guard let bookmark = library.bookmarks.first(where: { $0.id == bookmarkID }) else {
-      lastErrorMessage = BookmarkError.missingBookmark(bookmarkID).localizedDescription
+      present(BookmarkError.missingBookmark(bookmarkID), in: .bookmark)
       return false
     }
     guard let book = library.books.first(where: { $0.id == bookmark.bookID }) else {
-      lastErrorMessage = PlayerCoreError.missingBook(bookmark.bookID).localizedDescription
+      present(PlayerCoreError.missingBook(bookmark.bookID), in: .bookmark)
       return false
     }
     let wasPlaying = playbackState.status == .playing
@@ -1774,10 +1860,9 @@ final class PlayerModel {
         playbackState.elapsedSeconds = currentBookPositionSeconds
         publishNowPlaying()
       }
-      lastErrorMessage = nil
       return true
     } catch {
-      lastErrorMessage = error.localizedDescription
+      present(error, in: .bookmark)
       return false
     }
   }
@@ -1788,7 +1873,7 @@ final class PlayerModel {
     mediaPolicy: LibraryRemovalMediaPolicy
   ) async -> UUID? {
     guard let originalBookIndex = library.books.firstIndex(where: { $0.id == bookID }) else {
-      lastErrorMessage = PlayerCoreError.missingBook(bookID).localizedDescription
+      present(PlayerCoreError.missingBook(bookID), in: .storage)
       return nil
     }
     let transactionID = await environment.ids.next()
@@ -1853,14 +1938,13 @@ final class PlayerModel {
         loadedAssetID = nil
         loadedAssetTimelineStartSeconds = 0
       }
-      lastErrorMessage = nil
       publishNowPlaying()
       return transactionID
     } catch {
       if let mediaManifest {
         try? await environment.media.restoreManagedMediaFromTrash(mediaManifest)
       }
-      lastErrorMessage = error.localizedDescription
+      present(error, in: .storage)
       return nil
     }
   }
@@ -1870,19 +1954,19 @@ final class PlayerModel {
     guard let transactionIndex = library.trashTransactions.firstIndex(where: {
       $0.id == transactionID
     }) else {
-      lastErrorMessage = LibraryOrganizationError.missingTrashTransaction(transactionID)
-        .localizedDescription
+      present(LibraryOrganizationError.missingTrashTransaction(transactionID), in: .storage)
       return false
     }
     let transaction = library.trashTransactions[transactionIndex]
     guard transaction.status == .recoverable else {
-      lastErrorMessage = LibraryOrganizationError.trashTransactionNotRecoverable(transactionID)
-        .localizedDescription
+      present(
+        LibraryOrganizationError.trashTransactionNotRecoverable(transactionID),
+        in: .storage
+      )
       return false
     }
     guard !library.books.contains(where: { $0.id == transaction.book.id }) else {
-      lastErrorMessage = LibraryOrganizationError.bookAlreadyExists(transaction.book.id)
-        .localizedDescription
+      present(LibraryOrganizationError.bookAlreadyExists(transaction.book.id), in: .storage)
       return false
     }
 
@@ -1949,7 +2033,6 @@ final class PlayerModel {
         // immediately (for example while protected files are unavailable).
         try? await loadCurrentBookIntoPlayback()
       }
-      lastErrorMessage = nil
       publishNowPlaying()
       return true
     } catch {
@@ -1959,7 +2042,7 @@ final class PlayerModel {
           transactionID: transactionID
         )
       }
-      lastErrorMessage = error.localizedDescription
+      present(error, in: .storage)
       return false
     }
   }
@@ -1980,10 +2063,14 @@ final class PlayerModel {
   @discardableResult
   func setGlobalTransportPreferences(_ preferences: TransportPreferences) async -> Bool {
     guard preferences.isValid else {
-      lastErrorMessage = TransportPreferencesError.invalidPreferences.localizedDescription
+      present(
+        TransportPreferencesError.invalidPreferences,
+        in: .playback,
+        recoveryAction: .openSettings
+      )
       return false
     }
-    let changed = await applyLibraryOrganizationMutation { candidate in
+    let changed = await applyLibraryOrganizationMutation(in: .playback) { candidate in
       candidate.globalTransportPreferences = preferences
     }
     if changed { applyCurrentTransportConfiguration() }
@@ -2017,10 +2104,14 @@ final class PlayerModel {
     for bookID: UUID
   ) async -> Bool {
     guard preferenceOverride.isValid else {
-      lastErrorMessage = TransportPreferencesError.invalidPreferences.localizedDescription
+      present(
+        TransportPreferencesError.invalidPreferences,
+        in: .playback,
+        recoveryAction: .openSettings
+      )
       return false
     }
-    let changed = await applyLibraryOrganizationMutation { candidate in
+    let changed = await applyLibraryOrganizationMutation(in: .playback) { candidate in
       guard let index = candidate.books.firstIndex(where: { $0.id == bookID }) else {
         throw PlayerCoreError.missingBook(bookID)
       }
@@ -2039,7 +2130,11 @@ final class PlayerModel {
   @discardableResult
   func setPlaybackRate(_ rate: Double, for bookID: UUID) async -> Bool {
     guard TransportPreferences.isValidPlaybackRate(rate) else {
-      lastErrorMessage = TransportPreferencesError.invalidPreferences.localizedDescription
+      present(
+        TransportPreferencesError.invalidPreferences,
+        in: .playback,
+        recoveryAction: .openSettings
+      )
       return false
     }
     var preferenceOverride = library.books.first(where: { $0.id == bookID })?
@@ -2055,7 +2150,11 @@ final class PlayerModel {
     for bookID: UUID
   ) async -> Bool {
     guard backward.isFinite, backward > 0, forward.isFinite, forward > 0 else {
-      lastErrorMessage = TransportPreferencesError.invalidPreferences.localizedDescription
+      present(
+        TransportPreferencesError.invalidPreferences,
+        in: .playback,
+        recoveryAction: .openSettings
+      )
       return false
     }
     var preferenceOverride = library.books.first(where: { $0.id == bookID })?
@@ -2132,7 +2231,11 @@ final class PlayerModel {
     fadeEnabled: Bool = true
   ) async -> UUID? {
     guard let book = currentBook else {
-      lastErrorMessage = SleepTimerError.noCurrentBook.localizedDescription
+      present(
+        SleepTimerError.noCurrentBook,
+        in: .sleepTimer,
+        recoveryAction: .acknowledge
+      )
       return nil
     }
     let previousLibrary = library
@@ -2169,12 +2272,11 @@ final class PlayerModel {
       library.activeSleepTimer = timer
       try await persist()
       environment.playback.cancelSleepFade()
-      lastErrorMessage = nil
       scheduleSleepTimerMonitor()
       return timerID
     } catch {
       library = previousLibrary
-      lastErrorMessage = error.localizedDescription
+      present(error, in: .sleepTimer)
       return nil
     }
   }
@@ -2182,7 +2284,11 @@ final class PlayerModel {
   @discardableResult
   func cancelSleepTimer() async -> Bool {
     guard let timer = library.activeSleepTimer else {
-      lastErrorMessage = SleepTimerError.noActiveTimer.localizedDescription
+      present(
+        SleepTimerError.noActiveTimer,
+        in: .sleepTimer,
+        recoveryAction: .acknowledge
+      )
       return false
     }
     let previousLibrary = library
@@ -2208,11 +2314,10 @@ final class PlayerModel {
       environment.playback.cancelSleepFade()
       sleepTimerMonitorTask?.cancel()
       sleepTimerMonitorTask = nil
-      lastErrorMessage = nil
       return true
     } catch {
       library = previousLibrary
-      lastErrorMessage = error.localizedDescription
+      present(error, in: .sleepTimer)
       return false
     }
   }
@@ -2237,7 +2342,7 @@ final class PlayerModel {
         try await persist()
       } catch {
         library = previousLibrary
-        lastErrorMessage = error.localizedDescription
+        present(error, in: .sleepTimer, owner: .root)
         return
       }
       environment.playback.beginSleepFade(durationSeconds: timer.fadeDurationSeconds)
@@ -2266,12 +2371,17 @@ final class PlayerModel {
       let history = library.sleepTimerHistory.first(where: { $0.id == context.historyID }),
       let book = library.books.first(where: { $0.id == context.bookID })
     else {
-      lastErrorMessage = SleepTimerError.noResumeContext.localizedDescription
+      present(
+        SleepTimerError.noResumeContext,
+        in: .sleepTimer,
+        owner: .root,
+        recoveryAction: .acknowledge
+      )
       return false
     }
     guard allowNewPlaybackSession() else { return false }
     do {
-      try environment.audioSession.activate()
+      try prepareAudioSessionForPlayback()
       let stoppedSeconds = history.actualStopSeconds
       try await load(book: book, at: stoppedSeconds)
       applyCurrentTransportConfiguration(for: book.id)
@@ -2301,7 +2411,7 @@ final class PlayerModel {
       }
       return true
     } catch {
-      lastErrorMessage = error.localizedDescription
+      present(error, in: .sleepTimer, owner: .root)
       return false
     }
   }
@@ -2328,10 +2438,14 @@ final class PlayerModel {
   @discardableResult
   func setSmartRewindPreferences(_ preferences: SmartRewindPreferences) async -> Bool {
     guard preferences.isValid else {
-      lastErrorMessage = SmartRewindError.invalidPreferences.localizedDescription
+      present(
+        SmartRewindError.invalidPreferences,
+        in: .smartRewind,
+        recoveryAction: .openSettings
+      )
       return false
     }
-    return await applyLibraryOrganizationMutation { candidate in
+    return await applyLibraryOrganizationMutation(in: .smartRewind) { candidate in
       candidate.smartRewindPreferences = preferences
     }
   }
@@ -2353,7 +2467,11 @@ final class PlayerModel {
   @discardableResult
   func undoResumeRewind() async -> Bool {
     guard let transaction = pendingResumeRewind else {
-      lastErrorMessage = SmartRewindError.noRewindToUndo.localizedDescription
+      present(
+        SmartRewindError.noRewindToUndo,
+        in: .smartRewind,
+        recoveryAction: .acknowledge
+      )
       return false
     }
     guard let undoEvent = await seekToBookPosition(
@@ -2369,11 +2487,10 @@ final class PlayerModel {
       library.resumeRewindTransactions[index].undoneAt = undoEvent.acknowledgedAt
       library.resumeRewindTransactions[index].undoEventID = undoEvent.id
       try await persist()
-      lastErrorMessage = nil
       return true
     } catch {
       library = previousLibrary
-      lastErrorMessage = error.localizedDescription
+      present(error, in: .smartRewind)
       return false
     }
   }
@@ -2381,22 +2498,25 @@ final class PlayerModel {
   func loadCurrentBook() async {
     do {
       try await loadCurrentBookIntoPlayback()
-      lastErrorMessage = nil
     } catch {
-      lastErrorMessage = error.localizedDescription
+      present(error, in: .playback)
     }
   }
 
   func play(bookID: UUID, at seconds: Double? = nil) async {
     guard let book = library.books.first(where: { $0.id == bookID }) else {
-      lastErrorMessage = PlayerCoreError.missingBook(bookID).localizedDescription
+      present(
+        PlayerCoreError.missingBook(bookID),
+        in: .playback,
+        recoveryAction: .acknowledge
+      )
       return
     }
     guard allowNewPlaybackSession() else { return }
     let rewindPlan = seconds == nil ? smartRewindPlan(for: bookID) : nil
 
     do {
-      try environment.audioSession.activate()
+      try prepareAudioSessionForPlayback()
       let startSeconds = seconds
         ?? (library.playbackPosition?.bookID == bookID ? library.playbackPosition?.seconds : nil)
         ?? (book.listeningState.status == .finished ? 0 : book.listeningState.positionSeconds)
@@ -2415,7 +2535,7 @@ final class PlayerModel {
         reason: .play
       )
     } catch {
-      lastErrorMessage = error.localizedDescription
+      present(error, in: .playback)
     }
   }
 
@@ -2498,7 +2618,7 @@ final class PlayerModel {
     guard allowNewPlaybackSession() else { return }
     if environment.playback.state.loadedBookID == bookID {
       do {
-        try environment.audioSession.activate()
+        try prepareAudioSessionForPlayback()
         applyCurrentTransportConfiguration(for: bookID)
         if let rewindPlan = smartRewindPlan(for: bookID) {
           _ = await applySmartRewind(rewindPlan)
@@ -2512,7 +2632,7 @@ final class PlayerModel {
           reason: .play
         )
       } catch {
-        lastErrorMessage = error.localizedDescription
+        present(error, in: .playback)
       }
     } else {
       await play(bookID: bookID)
@@ -2646,10 +2766,9 @@ final class PlayerModel {
     library.resumeRewindTransactions[index].dismissedAt = environment.clock.now()
     do {
       try await persist()
-      lastErrorMessage = nil
     } catch {
       library = previousLibrary
-      lastErrorMessage = error.localizedDescription
+      present(error, in: .smartRewind)
     }
   }
 
@@ -2723,7 +2842,7 @@ final class PlayerModel {
         preRewindEventID: preRewindEventID
       )
     } catch {
-      lastErrorMessage = error.localizedDescription
+      present(error, in: .playback)
       return nil
     }
   }
@@ -2827,12 +2946,11 @@ final class PlayerModel {
     }
     do {
       try await persist()
-      lastErrorMessage = nil
       publishNowPlaying()
       return event
     } catch {
       library = previousLibrary
-      lastErrorMessage = error.localizedDescription
+      present(error, in: .playback)
       return nil
     }
   }
@@ -2904,12 +3022,11 @@ final class PlayerModel {
     playbackState.elapsedSeconds = position.seconds
     do {
       try await persist()
-      lastErrorMessage = nil
       publishNowPlaying()
       return event
     } catch {
       library = previousLibrary
-      lastErrorMessage = error.localizedDescription
+      present(error, in: .sleepTimer, owner: .root)
       return nil
     }
   }
@@ -3139,7 +3256,6 @@ final class PlayerModel {
         completed.failure = importFailure(from: plan, fallbackFilename: completed.sourceFilename)
       }
       try await replaceAndPersist(completed)
-      lastErrorMessage = completed.failure?.message
     } catch is CancellationError {
       guard var interrupted = library.importJobs.first(where: { $0.id == jobID }) else { return }
       // A user-requested cancellation has already persisted its terminal state.
@@ -3156,7 +3272,6 @@ final class PlayerModel {
         recoveryAction: .changeSelection
       )
       try? await replaceAndPersist(interrupted)
-      lastErrorMessage = interrupted.failure?.message
       logger.error("Import task \(jobID.uuidString, privacy: .public) was cancelled unexpectedly")
     } catch {
       guard var failed = library.importJobs.first(where: { $0.id == jobID }) else { return }
@@ -3176,7 +3291,6 @@ final class PlayerModel {
         failed.phase = .failed
         failed.failure = importFailure(from: plan, fallbackFilename: failed.sourceFilename)
         try? await replaceAndPersist(failed)
-        lastErrorMessage = error.localizedDescription
         return
       }
       failed.phase = .failed
@@ -3190,7 +3304,6 @@ final class PlayerModel {
         recoveryAction: .retry
       )
       try? await replaceAndPersist(failed)
-      lastErrorMessage = error.localizedDescription
     }
   }
 
@@ -3321,7 +3434,7 @@ final class PlayerModel {
     )
     library.importJobs.append(job)
     do { try await persist() }
-    catch { lastErrorMessage = error.localizedDescription }
+    catch { present(error, in: .importFlow) }
     await executeZipImport(jobID: jobID, sourceURL: sourceURL)
     return jobID
   }
@@ -3408,7 +3521,6 @@ final class PlayerModel {
         ? .needsReview : .ready
       completed.failure = nil
       try await replaceAndPersist(completed)
-      lastErrorMessage = nil
     } catch is CancellationError {
       await cancelImport(jobID: jobID)
     } catch {
@@ -3440,7 +3552,6 @@ final class PlayerModel {
         recoveryAction: canRetry ? .retry : .changeSelection
       )
       try? await replaceAndPersist(failed)
-      lastErrorMessage = error.localizedDescription
     }
   }
 
@@ -3604,11 +3715,19 @@ final class PlayerModel {
     mutation: (inout ImportJob) throws -> Void
   ) async -> Bool {
     guard var job = library.importJobs.first(where: { $0.id == jobID }) else {
-      lastErrorMessage = PlayerCoreError.missingImport(jobID).localizedDescription
+      present(
+        PlayerCoreError.missingImport(jobID),
+        in: .importFlow,
+        recoveryAction: .acknowledge
+      )
       return false
     }
     guard job.phase == .ready || job.phase == .needsReview else {
-      lastErrorMessage = PlayerCoreError.importNotReady(jobID).localizedDescription
+      present(
+        PlayerCoreError.importNotReady(jobID),
+        in: .importFlow,
+        recoveryAction: .acknowledge
+      )
       return false
     }
     let previousLibrary = library
@@ -3617,11 +3736,10 @@ final class PlayerModel {
       job.reviewRevision += 1
       job.phase = job.proposals.contains(where: { !$0.warnings.isEmpty }) ? .needsReview : .ready
       try await replaceAndPersist(job)
-      lastErrorMessage = nil
       return true
     } catch {
       library = previousLibrary
-      lastErrorMessage = error.localizedDescription
+      present(error, in: .importFlow)
       return false
     }
   }
@@ -3639,6 +3757,7 @@ final class PlayerModel {
   }
 
   private func applyLibraryOrganizationMutation(
+    in domain: PlayerErrorDomain = .library,
     _ mutation: (inout LibrarySnapshot) throws -> Void
   ) async -> Bool {
     var candidate = library
@@ -3646,10 +3765,9 @@ final class PlayerModel {
       try mutation(&candidate)
       try await environment.persistence.save(candidate)
       library = candidate
-      lastErrorMessage = nil
       return true
     } catch {
-      lastErrorMessage = error.localizedDescription
+      present(error, in: domain)
       return false
     }
   }

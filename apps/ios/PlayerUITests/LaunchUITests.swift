@@ -2,6 +2,25 @@ import XCTest
 
 @MainActor
 final class LaunchUITests: XCTestCase {
+  func testAudioSessionConfigurationWarningDoesNotPresentImportAlertAtStartup() {
+    continueAfterFailure = false
+    let app = makeApplication(additionalArguments: [
+      "-e2e-audio-session-configure-osstatus", "-50",
+    ])
+
+    app.launch()
+
+    let setup = anyElement(app, "playback-setup-probe")
+    XCTAssertTrue(setup.waitForExistence(timeout: 2))
+    XCTAssertEqual(
+      setup.value.map(String.init(describing:)),
+      "setup=warning:domain=playback:diagnostic=OSStatus -50"
+    )
+    XCTAssertEqual(app.alerts.count, 0)
+    XCTAssertFalse(app.staticTexts["Couldn’t Complete Import"].exists)
+    XCTAssertTrue(app.otherElements["library-screen"].exists)
+  }
+
   func testRejectsUnknownDynamicTypeConfigurationInsteadOfUsingMedium() {
     continueAfterFailure = false
     let app = XCUIApplication()

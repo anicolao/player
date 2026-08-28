@@ -18,7 +18,7 @@ struct BackupSettingsView: View {
   @State private var confirmsAutomaticRestore = false
   @State private var automaticBackups: [AutomaticLibraryBackup] = []
   @State private var message: String?
-  @State private var errorMessage: String?
+  @State private var localError: PlayerPresentationError?
   #if E2E
     @State private var e2eRevision = 0
   #endif
@@ -274,7 +274,7 @@ struct BackupSettingsView: View {
       allowsMultipleSelection: false
     ) { result in
       guard case .success(let urls) = result, let url = urls.first else {
-        if case .failure(let error) = result { errorMessage = error.localizedDescription }
+        if case .failure(let error) = result { presentRecoveryError(error) }
         return
       }
       pendingRestoreURL = url
@@ -314,15 +314,15 @@ struct BackupSettingsView: View {
         .ignoresSafeArea()
     }
     .alert(
-      "Backup Couldn’t Be Completed",
+      localError?.title ?? "Couldn’t Complete Backup",
       isPresented: Binding(
-        get: { errorMessage != nil },
-        set: { if !$0 { errorMessage = nil } }
+        get: { localError != nil },
+        set: { if !$0 { localError = nil } }
       )
     ) {
-      Button("OK") { errorMessage = nil }
+      Button("OK") { localError = nil }
     } message: {
-      Text(errorMessage ?? "The backup operation failed.")
+      Text(localError?.message ?? "The backup operation failed.")
     }
   }
 
@@ -344,7 +344,7 @@ struct BackupSettingsView: View {
       preparedBackupToDiscard = backup
       preparedBackup = backup
     } catch {
-      errorMessage = error.localizedDescription
+      localError = PlayerPresentationError.presenting(error, in: .backup)
     }
   }
 
@@ -364,7 +364,7 @@ struct BackupSettingsView: View {
       message = "Library restored from the verified Player backup."
       await reloadAutomaticBackups()
     } catch {
-      errorMessage = error.localizedDescription
+      presentRecoveryError(error)
     }
   }
 
@@ -377,7 +377,7 @@ struct BackupSettingsView: View {
       message = "Library restored from the latest valid database backup."
       await reloadAutomaticBackups()
     } catch {
-      errorMessage = error.localizedDescription
+      presentRecoveryError(error)
     }
   }
 
@@ -396,7 +396,7 @@ struct BackupSettingsView: View {
       do {
         try await action()
       } catch {
-        errorMessage = error.localizedDescription
+        localError = PlayerPresentationError.presenting(error, in: .backup)
       }
     }
 
@@ -417,6 +417,14 @@ struct BackupSettingsView: View {
       .disabled(isWorking)
     }
   #endif
+
+  private func presentRecoveryError(_ error: any Error) {
+    localError = PlayerPresentationError.presenting(
+      error,
+      in: .recovery,
+      owner: .backupSettings
+    )
+  }
 }
 
 private struct BackupSettingsSection<Content: View>: View {

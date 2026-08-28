@@ -207,6 +207,14 @@ struct ContentView: View {
           E2EPlaybackControlSurface(model: model)
         }
       }
+      .overlay(alignment: .topLeading) {
+        StateProbe(
+          id: "playback-setup-probe",
+          value: model.playbackSetupError.map {
+            "setup=warning:domain=\($0.domain.rawValue):diagnostic=\($0.diagnosticDetail ?? "none")"
+          } ?? "setup=ready"
+        )
+      }
       .overlay(alignment: .topTrailing) {
         if E2EMultifileAcquisition.shared.isConfigured {
           E2EMultifileTransactionProbes(model: model)
@@ -274,15 +282,21 @@ struct ContentView: View {
       }
     }
     .alert(
-      "Couldn’t Complete Import",
+      model.presentedError?.title ?? "Bookshelf",
       isPresented: Binding(
-        get: { model.lastErrorMessage != nil },
-        set: { if !$0 { model.clearLastError() } }
+        get: { model.presentedError != nil },
+        set: { isPresented in
+          if !isPresented, let id = model.presentedError?.id {
+            model.clearPresentedError(id: id)
+          }
+        }
       )
     ) {
-      Button("OK") { model.clearLastError() }
+      if let error = model.presentedError {
+        presentedErrorActions(error)
+      }
     } message: {
-      Text(model.lastErrorMessage ?? "The audiobook could not be imported.")
+      Text(model.presentedError?.message ?? "Bookshelf couldn’t complete that action.")
     }
     .alert(
       "Included Listening",
@@ -298,6 +312,29 @@ struct ContentView: View {
       }
     } message: {
       Text(model.monetizationNotice ?? "")
+    }
+  }
+
+  @ViewBuilder
+  private func presentedErrorActions(_ error: PlayerPresentationError) -> some View {
+    switch error.recoveryAction {
+    case .reviewInbox:
+      Button("Review Inbox") {
+        model.clearPresentedError(id: error.id)
+        selection = .inbox
+      }
+    case .openSettings:
+      Button("Open Settings") {
+        model.clearPresentedError(id: error.id)
+        selection = .settings
+      }
+    case .contactSupport:
+      Button("Open Support") {
+        model.clearPresentedError(id: error.id)
+        selection = .settings
+      }
+    case .acknowledge, .retry:
+      Button("OK") { model.clearPresentedError(id: error.id) }
     }
   }
 

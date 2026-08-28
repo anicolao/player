@@ -25,11 +25,13 @@ struct E2EPersistedLibrary {
 struct E2EPlaybackControlConfiguration: Equatable {
   static let disabled = E2EPlaybackControlConfiguration(
     eventControls: false,
-    rewindExpiryControl: false
+    rewindExpiryControl: false,
+    configurationOSStatus: nil
   )
 
   let eventControls: Bool
   let rewindExpiryControl: Bool
+  let configurationOSStatus: Int?
 }
 
 enum E2EFixture: String, CaseIterable {
@@ -109,7 +111,9 @@ struct E2ELaunchConfiguration: Equatable {
         throw PlayerCoreError.fileOperation("Missing E2E launch value for: \(argument)")
       }
       let value = arguments[index + 1]
-      guard !value.isEmpty, !value.hasPrefix("-") else {
+      let acceptsSignedInteger = argument == E2EPlaybackControlConfiguration
+        .configurationOSStatusArgument && Int(value) != nil
+      guard !value.isEmpty, !value.hasPrefix("-") || acceptsSignedInteger else {
         throw PlayerCoreError.fileOperation("Invalid E2E launch value for: \(argument)")
       }
     }
@@ -155,6 +159,7 @@ struct E2ELaunchConfiguration: Equatable {
     "-e2e-zip-fail-once",
     "-e2e-import-channel",
     "-e2e-import-pause",
+    E2EPlaybackControlConfiguration.configurationOSStatusArgument,
     "-e2e-stage-share-handoff",
     "-e2e-start-section",
     "-e2e-start-settings-route",
@@ -495,6 +500,7 @@ private final class E2EFixtureResetLease: @unchecked Sendable {
   extension E2EPlaybackControlConfiguration {
     static let eventControlsArgument = "-e2e-event-controls"
     static let rewindExpiryControlArgument = "-e2e-rewind-expiry-control"
+    static let configurationOSStatusArgument = "-e2e-audio-session-configure-osstatus"
 
     static func parse(arguments: [String]) throws -> E2EPlaybackControlConfiguration {
       guard let launch = try E2ELaunchConfiguration.parse(arguments: arguments) else {
@@ -509,6 +515,27 @@ private final class E2EFixtureResetLease: @unchecked Sendable {
 
       let eventControls = arguments.contains(eventControlsArgument)
       let rewindExpiryControl = arguments.contains(rewindExpiryControlArgument)
+      let statusMarkers = arguments.indices.filter {
+        arguments[$0] == configurationOSStatusArgument
+      }
+      guard statusMarkers.count <= 1 else {
+        throw PlayerCoreError.fileOperation(
+          "Duplicate E2E audio-session configuration status."
+        )
+      }
+      let configurationOSStatus: Int?
+      if let marker = statusMarkers.first {
+        guard arguments.indices.contains(marker + 1),
+          let parsed = Int(arguments[marker + 1])
+        else {
+          throw PlayerCoreError.fileOperation(
+            "Invalid E2E audio-session configuration status."
+          )
+        }
+        configurationOSStatus = parsed
+      } else {
+        configurationOSStatus = nil
+      }
       let fixture = launch.fixture
 
       guard !eventControls || fixture == .committedCurrentBook else {
@@ -529,10 +556,16 @@ private final class E2EFixtureResetLease: @unchecked Sendable {
           )
         }
       }
+      guard configurationOSStatus == nil || fixture == .emptyLibrary else {
+        throw PlayerCoreError.fileOperation(
+          "An E2E audio-session configuration failure requires the empty-library fixture."
+        )
+      }
 
       return E2EPlaybackControlConfiguration(
         eventControls: eventControls,
-        rewindExpiryControl: rewindExpiryControl
+        rewindExpiryControl: rewindExpiryControl,
+        configurationOSStatus: configurationOSStatus
       )
     }
   }
@@ -672,6 +705,27 @@ private final class E2EFixtureResetLease: @unchecked Sendable {
       }
     }
   }
+
+  @MainActor
+  final class E2EConfigurableAudioSessionController: AudioSessionControlling {
+    private let configurationOSStatus: Int?
+
+    init(configurationOSStatus: Int?) {
+      self.configurationOSStatus = configurationOSStatus
+    }
+
+    func configure() throws {
+      if let configurationOSStatus {
+        throw NSError(domain: NSOSStatusErrorDomain, code: configurationOSStatus)
+      }
+    }
+
+    func activate() throws {}
+
+    func installEventHandler(
+      _ handler: @escaping @MainActor @Sendable (AudioSessionEvent) async -> Void
+    ) {}
+  }
 #endif
 
 @MainActor
@@ -687,7 +741,7 @@ extension PlayerEnvironment {
         let reset = launch.consumeReset()
         switch fixture {
         case .emptyLibrary:
-          return try emptyLibraryEnvironment(reset: reset)
+          return try emptyLibraryEnvironment(reset: reset, playbackControls: playbackControls)
         case .singleAudiobookReady:
           return try singleAudiobookReadyEnvironment(reset: reset)
         case .receiverCompletionBaseline:
@@ -744,7 +798,10 @@ extension PlayerEnvironment {
   }
 
   #if E2E
-    private static func emptyLibraryEnvironment(reset: Bool) throws -> PlayerEnvironment {
+    private static func emptyLibraryEnvironment(
+      reset: Bool,
+      playbackControls: E2EPlaybackControlConfiguration
+    ) throws -> PlayerEnvironment {
       let root = FileManager.default.temporaryDirectory.appending(
         path: "PlayerE2EEmptyLibrary",
         directoryHint: .isDirectory
@@ -756,6 +813,9 @@ extension PlayerEnvironment {
         media: FileSystemMediaManager(rootURL: root),
         inspector: DeterministicAudioInspector(result: .failure(.unreadableAudio("unused"))),
         playback: DeterministicPlaybackController(),
+        audioSession: E2EConfigurableAudioSessionController(
+          configurationOSStatus: playbackControls.configurationOSStatus
+        ),
         clock: FixedPlayerClock(value: Date(timeIntervalSince1970: 1_700_000_000)),
         ids: DeterministicPlayerIDGenerator(
           values: (1...32).map {

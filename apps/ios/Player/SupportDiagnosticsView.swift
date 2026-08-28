@@ -11,7 +11,7 @@ struct StartupRecoveryView: View {
   let status: StartupRecoveryStatus
   @State private var isWorking = false
   @State private var confirmsFreshLibrary = false
-  @State private var errorMessage: String?
+  @State private var localError: PlayerPresentationError?
   @State private var preparedSupportBundle: PreparedSupportBundle?
   @State private var preparedSupportBundleToDiscard: PreparedSupportBundle?
 
@@ -109,15 +109,15 @@ struct StartupRecoveryView: View {
         .ignoresSafeArea()
     }
     .alert(
-      "Recovery Couldn’t Be Completed",
+      localError?.title ?? "Couldn’t Restore Library",
       isPresented: Binding(
-        get: { errorMessage != nil },
-        set: { if !$0 { errorMessage = nil } }
+        get: { localError != nil },
+        set: { if !$0 { localError = nil } }
       )
     ) {
-      Button("OK") { errorMessage = nil }
+      Button("OK") { localError = nil }
     } message: {
-      Text(errorMessage ?? "The local recovery operation failed.")
+      Text(localError?.message ?? "The local recovery operation failed.")
     }
   }
 
@@ -143,7 +143,7 @@ struct StartupRecoveryView: View {
     do {
       try await model.recoverFromLatestAutomaticBackup()
     } catch {
-      errorMessage = error.localizedDescription
+      localError = PlayerPresentationError.presenting(error, in: .recovery)
     }
   }
 
@@ -153,7 +153,7 @@ struct StartupRecoveryView: View {
     do {
       try await model.beginFreshLibraryAfterRecovery()
     } catch {
-      errorMessage = error.localizedDescription
+      localError = PlayerPresentationError.presenting(error, in: .recovery)
     }
   }
 
@@ -165,7 +165,11 @@ struct StartupRecoveryView: View {
       preparedSupportBundleToDiscard = bundle
       preparedSupportBundle = bundle
     } catch {
-      errorMessage = error.localizedDescription
+      localError = PlayerPresentationError.presenting(
+        error,
+        in: .diagnostics,
+        owner: .startupRecovery
+      )
     }
   }
 
@@ -179,7 +183,7 @@ struct StartupRecoveryView: View {
 struct SupportDiagnosticsView: View {
   @Bindable var model: PlayerModel
   @State private var isWorking = false
-  @State private var errorMessage: String?
+  @State private var localError: PlayerPresentationError?
   @State private var preparedSupportBundle: PreparedSupportBundle?
   @State private var preparedSupportBundleToDiscard: PreparedSupportBundle?
   #if E2E
@@ -269,15 +273,15 @@ struct SupportDiagnosticsView: View {
         .ignoresSafeArea()
     }
     .alert(
-      "Support Bundle Couldn’t Be Created",
+      localError?.title ?? "Couldn’t Create Support Bundle",
       isPresented: Binding(
-        get: { errorMessage != nil },
-        set: { if !$0 { errorMessage = nil } }
+        get: { localError != nil },
+        set: { if !$0 { localError = nil } }
       )
     ) {
-      Button("OK") { errorMessage = nil }
+      Button("OK") { localError = nil }
     } message: {
-      Text(errorMessage ?? "The support report could not be prepared.")
+      Text(localError?.message ?? "The support report could not be prepared.")
     }
   }
 
@@ -294,7 +298,7 @@ struct SupportDiagnosticsView: View {
       preparedSupportBundleToDiscard = bundle
       preparedSupportBundle = bundle
     } catch {
-      errorMessage = error.localizedDescription
+      localError = PlayerPresentationError.presenting(error, in: .diagnostics)
     }
   }
 
@@ -316,7 +320,7 @@ struct SupportDiagnosticsView: View {
         try E2EOfflineRecoveryBridge.shared.verify(bundle)
         await model.discardPreparedSupportBundle(bundle)
       } catch {
-        errorMessage = error.localizedDescription
+        localError = PlayerPresentationError.presenting(error, in: .diagnostics)
       }
     }
   #endif

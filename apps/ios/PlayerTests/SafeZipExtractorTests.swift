@@ -311,7 +311,7 @@ final class SafeZipExtractorTests: XCTestCase {
     let repeatedBookID = await model.addImportToLibrary(jobID: jobID)
     XCTAssertEqual(repeatedBookID, firstBookID)
     XCTAssertEqual(model.library.books.count, 1)
-    XCTAssertNil(model.lastErrorMessage)
+    XCTAssertTrue(model.presentationErrors.isEmpty)
     XCTAssertEqual(try Data(contentsOf: source), sourceData)
   }
 

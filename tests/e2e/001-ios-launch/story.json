@@ -3,6 +3,7 @@
   "platform": "ios",
   "test": "PlayerUITests/LaunchUITests/testLaunchesIntoEmptyLibrary",
   "nonvisualTests": [
+    "PlayerUITests/LaunchUITests/testAudioSessionConfigurationWarningDoesNotPresentImportAlertAtStartup",
     "PlayerUITests/LaunchUITests/testRejectsInvalidNavigationBeforeConstructingTheFixtureEnvironment",
     "PlayerUITests/LaunchUITests/testRejectsUnknownDynamicTypeConfigurationInsteadOfUsingMedium",
     "PlayerUITests/LaunchUITests/testRejectsUnknownFixtureWithoutFallingBackToProduction"

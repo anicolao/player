@@ -816,6 +816,22 @@ final class PlayerCoreTests: XCTestCase {
     XCTAssertEqual(job.failure?.reasonCode, "unexpected-task-cancellation")
   }
 
+  func testComputerReceiverConsumesItsLocalFailureAfterReturningOutcome() async {
+    let model = PlayerModel(environment: PlayerEnvironment(
+      persistence: InMemoryLibraryStore(),
+      media: StubMediaManager(),
+      inspector: DeterministicAudioInspector(result: .failure(.unreadableAudio("unused"))),
+      playback: DeterministicPlaybackController()
+    ))
+    await model.restore()
+
+    let outcome = await model.importFromComputer([])
+
+    XCTAssertEqual(outcome.state, .failed)
+    XCTAssertEqual(outcome.message, PlayerCoreError.invalidAssetSelection.localizedDescription)
+    XCTAssertTrue(model.presentationErrors.isEmpty)
+  }
+
   func testRealImporterCommitsImmutableCopyAndLoadsPlayback() async throws {
     let temporaryRoot = FileManager.default.temporaryDirectory.appending(
       path: "PlayerCoreTests-\(UUID().uuidString)",
@@ -1834,18 +1850,36 @@ final class PlayerCoreTests: XCTestCase {
   func testAudioSessionConfigurationAndActivationFailuresAreObservable() async throws {
     let configurationHarness = makeBackgroundPlaybackHarness()
     await configurationHarness.model.restore()
-    configurationHarness.audioSession.configureError = PlayerCoreError.fileOperation(
-      "Audio session configuration failed."
+    configurationHarness.audioSession.configureError = NSError(
+      domain: NSOSStatusErrorDomain,
+      code: -50
     )
 
     configurationHarness.model.configurePlaybackIntegrations()
 
     XCTAssertEqual(configurationHarness.audioSession.configureCount, 1)
-    XCTAssertEqual(configurationHarness.remoteCommands.installationCount, 0)
-    XCTAssertEqual(
-      configurationHarness.model.lastErrorMessage,
-      "Audio session configuration failed."
+    XCTAssertEqual(configurationHarness.remoteCommands.installationCount, 1)
+    XCTAssertNil(
+      configurationHarness.model.presentedError,
+      "A browsing-safe startup configuration warning must not masquerade as an import failure"
     )
+    let setupError = try XCTUnwrap(configurationHarness.model.playbackSetupError)
+    XCTAssertEqual(setupError.domain, .playback)
+    XCTAssertEqual(setupError.title, "Playback Isn’t Available")
+    XCTAssertFalse(setupError.message.contains("-50"))
+    XCTAssertFalse(setupError.title.localizedCaseInsensitiveContains("import"))
+    XCTAssertEqual(setupError.diagnosticDetail, "OSStatus -50")
+    XCTAssertEqual(setupError.recoveryAction, .contactSupport)
+
+    await configurationHarness.model.play(bookID: configurationHarness.book.id)
+
+    XCTAssertEqual(configurationHarness.audioSession.configureCount, 2)
+    XCTAssertEqual(configurationHarness.model.playbackState.status, .paused)
+    let presentedSetupError = try XCTUnwrap(configurationHarness.model.presentedError)
+    XCTAssertEqual(presentedSetupError.domain, .playback)
+    XCTAssertEqual(presentedSetupError.title, "Playback Isn’t Available")
+    XCTAssertEqual(presentedSetupError.diagnosticDetail, "OSStatus -50")
+    XCTAssertEqual(presentedSetupError.recoveryAction, .contactSupport)
 
     let activationHarness = makeBackgroundPlaybackHarness()
     await activationHarness.model.restore()
@@ -1858,11 +1892,97 @@ final class PlayerCoreTests: XCTestCase {
 
     XCTAssertEqual(activationHarness.model.playbackState.status, .paused)
     XCTAssertTrue(activationHarness.model.library.positionJournal.isEmpty)
-    XCTAssertEqual(activationHarness.model.lastErrorMessage, "Audio session activation failed.")
+    let activationError = try XCTUnwrap(activationHarness.model.presentedError)
+    XCTAssertEqual(activationError.domain, .playback)
+    XCTAssertEqual(activationError.title, "Playback Isn’t Available")
+    XCTAssertEqual(activationError.message, "Audio session activation failed.")
   }
 
   func testPlaybackAudioSessionDoesNotRequestPlayAndRecordOnlyRoutingOptions() {
     XCTAssertTrue(AVAudioSessionController.playbackCategoryOptions.isEmpty)
+  }
+
+  func testPresentationErrorsAreDistinctOccurrencesAndDismissExactlyOne() async throws {
+    let harness = makeBackgroundPlaybackHarness()
+    await harness.model.restore()
+    let invalid = TransportPreferences(
+      playbackRate: 9,
+      backwardSkipSeconds: 0,
+      forwardSkipSeconds: 0,
+      seekContext: .chapter
+    )
+
+    let firstSucceeded = await harness.model.setGlobalTransportPreferences(invalid)
+    let secondSucceeded = await harness.model.setGlobalTransportPreferences(invalid)
+    XCTAssertFalse(firstSucceeded)
+    XCTAssertFalse(secondSucceeded)
+    XCTAssertEqual(harness.model.presentationErrors.count, 2)
+    let first = try XCTUnwrap(harness.model.presentationErrors.first)
+    let second = try XCTUnwrap(harness.model.presentationErrors.last)
+    XCTAssertNotEqual(first.id, second.id)
+    XCTAssertEqual(first.domain, .playback)
+    XCTAssertEqual(second.domain, .playback)
+
+    harness.model.clearPresentedError(id: first.id)
+
+    XCTAssertEqual(harness.model.presentationErrors.map(\.id), [second.id])
+    let unrelatedSucceeded = await harness.model.setLibrarySearchPreferences(.default)
+    XCTAssertTrue(unrelatedSucceeded)
+    XCTAssertEqual(
+      harness.model.presentationErrors.map(\.id),
+      [second.id],
+      "An unrelated success must not clear a pending failure"
+    )
+  }
+
+  func testPresentationErrorsMapDomainsOwnersRecoveryAndSanitizedDiagnostics() {
+    let metadata = PlayerPresentationError.presenting(
+      MetadataRepairError.transactionNotApplied(UUID()),
+      in: .metadata
+    )
+    XCTAssertEqual(metadata.title, "Couldn’t Save Details")
+    XCTAssertEqual(metadata.owner, .metadataEditor)
+    XCTAssertEqual(metadata.recoveryAction, .acknowledge)
+
+    let sleep = PlayerPresentationError.presenting(
+      SleepTimerError.invalidDuration,
+      in: .sleepTimer
+    )
+    XCTAssertEqual(sleep.title, "Couldn’t Update Sleep Timer")
+    XCTAssertEqual(sleep.owner, .sleepTimer)
+    XCTAssertEqual(sleep.recoveryAction, .retry)
+
+    let backup = PlayerPresentationError.presenting(
+      NSError(
+        domain: NSCocoaErrorDomain,
+        code: NSFileReadNoSuchFileError,
+        userInfo: [NSFilePathErrorKey: "/Users/private/Secret Book.m4b"]
+      ),
+      in: .backup
+    )
+    XCTAssertEqual(backup.title, "Couldn’t Complete Backup")
+    XCTAssertEqual(backup.owner, .backupSettings)
+    XCTAssertFalse(backup.message.contains("Secret Book"))
+    XCTAssertFalse(backup.diagnosticDetail?.contains("/Users/private") == true)
+    XCTAssertEqual(backup.diagnosticDetail, "NSCocoaErrorDomain 260")
+
+    let recovery = PlayerPresentationError.presenting("Try again.", in: .recovery)
+    XCTAssertEqual(recovery.title, "Couldn’t Restore Library")
+    XCTAssertEqual(recovery.owner, .startupRecovery)
+
+    let purchase = PlayerPresentationError.presenting("Try again.", in: .monetization)
+    XCTAssertEqual(purchase.title, "Couldn’t Update Purchase")
+    XCTAssertEqual(purchase.owner, .fullUnlock)
+  }
+
+  func testE2EPlaybackConfigurationParsesInjectedOSStatus() throws {
+    let configuration = try E2EPlaybackControlConfiguration.parse(arguments: [
+      "Player", "-e2e", "-e2e-fixture", "empty-library",
+      "-e2e-audio-session-configure-osstatus", "-50",
+    ])
+
+    XCTAssertEqual(configuration.configurationOSStatus, -50)
+    XCTAssertFalse(configuration.eventControls)
   }
 
   func testPlaybackAudioSessionConfigurationIsAcceptedBySystem() {

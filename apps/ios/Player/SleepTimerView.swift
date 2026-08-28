@@ -5,7 +5,7 @@ struct SleepTimerView: View {
   @Bindable var model: PlayerModel
   @State private var fadeEnabled: Bool
   @State private var customMinutes = 25
-  @State private var errorMessage: String?
+  @State private var localError: PlayerPresentationError?
 
   init(model: PlayerModel) {
     self.model = model
@@ -34,7 +34,11 @@ struct SleepTimerView: View {
 
             Button("Cancel Sleep Timer", role: .destructive) {
               Task {
-                if await model.cancelSleepTimer() { dismiss() }
+                if await model.cancelSleepTimer() {
+                  dismiss()
+                } else {
+                  localError = model.presentationError(in: .sleepTimer)
+                }
               }
             }
             .accessibilityIdentifier("cancel-sleep-timer")
@@ -123,18 +127,18 @@ struct SleepTimerView: View {
         containerID: "sleep-timer-screen",
         axis: .vertical
       )
-      .alert("Sleep Timer", isPresented: errorIsPresented) {
-        Button("OK", role: .cancel) {}
+      .alert(localError?.title ?? "Couldn’t Update Sleep Timer", isPresented: errorIsPresented) {
+        Button("OK", role: .cancel) { dismissLocalError() }
       } message: {
-        Text(errorMessage ?? "The timer could not be started.")
+        Text(localError?.message ?? "The timer could not be updated.")
       }
     }
   }
 
   private var errorIsPresented: Binding<Bool> {
     Binding(
-      get: { errorMessage != nil },
-      set: { if !$0 { errorMessage = nil } }
+      get: { localError != nil },
+      set: { if !$0 { dismissLocalError() } }
     )
   }
 
@@ -157,7 +161,12 @@ struct SleepTimerView: View {
         if await model.startSleepTimer(selection: selection, fadeEnabled: fadeEnabled) != nil {
           dismiss()
         } else {
-          errorMessage = "Choose a timer that ends after the current listening position."
+          localError = model.presentationError(in: .sleepTimer)
+            ?? PlayerPresentationError.presenting(
+              "Choose a timer that ends after the current listening position.",
+              in: .sleepTimer,
+              recoveryAction: .acknowledge
+            )
         }
       }
     } label: {
@@ -165,6 +174,13 @@ struct SleepTimerView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
     .accessibilityIdentifier(identifier)
+  }
+
+  private func dismissLocalError() {
+    if let id = localError?.id {
+      model.clearPresentedError(id: id)
+    }
+    localError = nil
   }
 
   private func activeDetail(_ projection: SleepTimerProjection) -> String {
