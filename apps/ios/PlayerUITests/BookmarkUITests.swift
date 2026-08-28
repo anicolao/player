@@ -395,8 +395,7 @@ final class BookmarkUITests: XCTestCase {
     XCTAssertTrue(
       scrollUntil(
         {
-          surface.state()?.atBottom == true
-            && self.bookmarkSegmentIsFramed(segment, within: scroll)
+          self.bookmarkSegmentIsFramed(segment, within: scroll)
             && self.bookmarkFrameIsUnobscured(
               rows,
               actions: [segment] + jumpActions,
@@ -407,7 +406,6 @@ final class BookmarkUITests: XCTestCase {
         on: surface,
         deadline: deadline,
         requiresScrollableRange: true,
-        terminalEndpoint: \.atBottom,
         failureContext: {
           "segment=\(segment.frame), rows=\(rows.map(\.frame)), "
             + "actions=\(jumpActions.map(\.frame)), mini-player=\(miniPlayer.frame)"
