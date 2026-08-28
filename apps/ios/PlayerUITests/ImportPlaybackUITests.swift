@@ -101,10 +101,23 @@ final class ImportPlaybackUITests: XCTestCase {
     XCTAssertTrue(addAudiobook.isHittable)
 
     app.tabBars.buttons["Inbox"].tap()
+    let inboxScreen = app.descendants(matching: .any)["inbox-screen"]
     let clearInbox = app.staticTexts["Inbox is clear"]
-    XCTAssertTrue(clearInbox.waitForExistence(timeout: 2))
-    let completedImportIsAbsent = !app.buttons["review-import-job-\(jobID)"].exists
-    XCTAssertTrue(completedImportIsAbsent)
+    let completedImport = app.buttons["review-import-job-\(jobID)"]
+    let inboxSettledWithoutCompletedImport = waitForPredicate(
+        NSPredicate { _, _ in
+          inboxScreen.exists
+            && inboxScreen.value.map(String.init(describing:))
+              == "import:0-review:0-processing:0"
+            && clearInbox.exists
+            && !completedImport.exists
+        },
+        on: inboxScreen
+      )
+    XCTAssertTrue(
+      inboxSettledWithoutCompletedImport,
+      "The active Inbox must settle empty without retaining a successful import"
+    )
     app.tabBars.buttons["Library"].tap()
     XCTAssertTrue(libraryScreen.waitForStringValue("ready:library-1-books", timeout: 2))
 
@@ -122,7 +135,7 @@ final class ImportPlaybackUITests: XCTestCase {
         StepVerification(
           specification: "The completed import is absent from Inbox and its triage state is clear"
         ) {
-          completedImportIsAbsent
+          inboxSettledWithoutCompletedImport
         },
         StepVerification(
           specification: "The larger Add Audiobook action is available beside the tab switcher"

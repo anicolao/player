@@ -20,9 +20,20 @@ final class TransportControlsUITests: XCTestCase {
       preferencesScreen,
       "transport:scope=global:rate=1.00:back=15:forward=30:seek=chapter"
     )
-    choose(app, picker: "transport-rate-picker", option: "1.10×")
-    choose(app, picker: "transport-backward-picker", option: "20 seconds")
-    choose(app, picker: "transport-forward-picker", option: "45 seconds")
+    try choose(
+      app, picker: "transport-rate-picker", option: "1.10×", preferences: preferencesScreen,
+      expected: "transport:scope=global:rate=1.10:back=15:forward=30:seek=chapter"
+    )
+    try choose(
+      app, picker: "transport-backward-picker", option: "20 seconds",
+      preferences: preferencesScreen,
+      expected: "transport:scope=global:rate=1.10:back=20:forward=30:seek=chapter"
+    )
+    try choose(
+      app, picker: "transport-forward-picker", option: "45 seconds",
+      preferences: preferencesScreen,
+      expected: "transport:scope=global:rate=1.10:back=20:forward=45:seek=chapter"
+    )
     app.buttons["Whole book"].tap()
     try requireValue(
       preferencesScreen,
@@ -52,9 +63,20 @@ final class TransportControlsUITests: XCTestCase {
 
     transport.tap()
     XCTAssertTrue(preferencesScreen.waitForExistence(timeout: 2))
-    choose(app, picker: "transport-rate-picker", option: "1.25×")
-    choose(app, picker: "transport-backward-picker", option: "10 seconds")
-    choose(app, picker: "transport-forward-picker", option: "30 seconds")
+    try choose(
+      app, picker: "transport-rate-picker", option: "1.25×", preferences: preferencesScreen,
+      expected: "transport:scope=book:rate=1.25:back=20:forward=45:seek=whole-book"
+    )
+    try choose(
+      app, picker: "transport-backward-picker", option: "10 seconds",
+      preferences: preferencesScreen,
+      expected: "transport:scope=book:rate=1.25:back=10:forward=45:seek=whole-book"
+    )
+    try choose(
+      app, picker: "transport-forward-picker", option: "30 seconds",
+      preferences: preferencesScreen,
+      expected: "transport:scope=book:rate=1.25:back=10:forward=30:seek=whole-book"
+    )
     app.buttons["Current chapter"].tap()
     try requireValue(
       preferencesScreen,
@@ -63,7 +85,7 @@ final class TransportControlsUITests: XCTestCase {
     app.buttons["save-transport-preferences"].tap()
     try requireValue(transport, "rate=1.25:back=10:forward=30:seek=chapter:source=book")
 
-    app.terminate()
+    XCTAssertTrue(terminateAndWait(app))
 
     let restored = makeApplication(reset: false)
     restored.launch()
@@ -137,13 +159,32 @@ final class TransportControlsUITests: XCTestCase {
     return app
   }
 
-  private func choose(_ app: XCUIApplication, picker identifier: String, option: String) {
-    let picker = app.buttons[identifier]
-    XCTAssertTrue(picker.waitForExistence(timeout: 2), "Missing picker \(identifier)")
+  private func choose(
+    _ app: XCUIApplication,
+    picker identifier: String,
+    option: String,
+    preferences: XCUIElement,
+    expected: String
+  ) throws {
+    let deadline = EventDeadline()
+    let pickers = app.buttons.matching(identifier: identifier)
+    let picker = pickers.element
+    XCTAssertTrue(waitForExistence(picker, deadline: deadline), "Missing picker \(identifier)")
+    XCTAssertEqual(pickers.count, 1, "Picker \(identifier) must be unique")
     picker.tap()
-    let choice = app.buttons[option]
-    XCTAssertTrue(choice.waitForExistence(timeout: 2), "Missing picker option \(option)")
+    let choices = app.buttons.matching(NSPredicate(format: "label == %@", option))
+    let choice = choices.element
+    XCTAssertTrue(waitForExistence(choice, deadline: deadline), "Missing picker option \(option)")
+    XCTAssertEqual(choices.count, 1, "Picker option \(option) must be unique")
     choice.tap()
+    XCTAssertTrue(
+      choice.waitForNonExistence(timeout: deadline.remaining),
+      "Picker option \(option) must disappear after selection"
+    )
+    guard preferences.waitForStringValue(expected, timeout: deadline.remaining) else {
+      XCTFail("Picker \(identifier) did not publish \(expected); actual=\(preferences.value ?? "nil")")
+      throw TransportControlsTestError.valueUnavailable
+    }
   }
 
   private func requireValue(

@@ -87,7 +87,7 @@ final class LaunchUITests: XCTestCase {
       ]
     )
 
-    app.terminate()
+    XCTAssertTrue(terminateAndWait(app))
     let receivingApp = makeApplication(additionalArguments: ["-e2e-mirroring-drop-progress"])
     receivingApp.launch()
     receivingApp.buttons["receive-from-computer-empty-library"].tap()
@@ -111,7 +111,7 @@ final class LaunchUITests: XCTestCase {
       ]
     )
 
-    receivingApp.terminate()
+    XCTAssertTrue(terminateAndWait(receivingApp))
     let pausedApp = makeApplication(additionalArguments: ["-e2e-computer-receiver-paused"])
     pausedApp.launch()
     pausedApp.buttons["receive-from-computer-empty-library"].tap()
@@ -138,7 +138,7 @@ final class LaunchUITests: XCTestCase {
       ]
     )
 
-    pausedApp.terminate()
+    XCTAssertTrue(terminateAndWait(pausedApp))
     let completedApp = makeApplication(additionalArguments: ["-e2e-computer-receiver-completed"])
     completedApp.launch()
     completedApp.buttons["receive-from-computer-empty-library"].tap()

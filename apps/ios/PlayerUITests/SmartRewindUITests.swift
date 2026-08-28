@@ -68,7 +68,7 @@ final class SmartRewindUITests: XCTestCase {
       "restore=110000"
     )
 
-    app.terminate()
+    XCTAssertTrue(terminateAndWait(app))
 
     let restored = makeApplication(scenario: clamp.name, reset: false)
     restored.launch()
@@ -167,7 +167,7 @@ final class SmartRewindUITests: XCTestCase {
     } else {
       try assertApplied(probe, scenario: scenario)
     }
-    app.terminate()
+    XCTAssertTrue(terminateAndWait(app))
   }
 
   private func assertConfiguredMaximumScenario() throws {
@@ -186,21 +186,20 @@ final class SmartRewindUITests: XCTestCase {
     let maximumPicker = configuring.buttons["smart-rewind-maximum"]
     XCTAssertTrue(maximumPicker.waitForExistence(timeout: 2))
     maximumPicker.tap()
-    let twentySeconds = configuring.buttons["smart-rewind-maximum-20"]
-    if twentySeconds.waitForExistence(timeout: 1) {
-      twentySeconds.tap()
-    } else {
-      let fallback = configuring.buttons["20 seconds"]
-      XCTAssertTrue(fallback.waitForExistence(timeout: 2))
-      fallback.tap()
-    }
+    let twentySecondOptions = configuring.buttons.matching(
+      identifier: "smart-rewind-maximum-20"
+    )
+    let twentySeconds = twentySecondOptions.element
+    XCTAssertTrue(twentySeconds.waitForExistence(timeout: 2))
+    XCTAssertEqual(twentySecondOptions.count, 1, "The picker option identifier must be unique.")
+    twentySeconds.tap()
     try requireValue(initialSettings, settingsValue(enabled: true, maximum: 20))
 
     let enabledToggle = configuring.switches["smart-rewind-enabled"]
     XCTAssertTrue(enabledToggle.waitForExistence(timeout: 2))
     tapTrailingSwitchControl(enabledToggle)
     try requireValue(initialSettings, settingsValue(enabled: false, maximum: 20))
-    configuring.terminate()
+    XCTAssertTrue(terminateAndWait(configuring))
 
     let disabledRestored = makeApplication(scenario: scenario.name, reset: false)
     disabledRestored.launch()
@@ -210,7 +209,7 @@ final class SmartRewindUITests: XCTestCase {
     XCTAssertTrue(restoredToggle.waitForExistence(timeout: 2))
     tapTrailingSwitchControl(restoredToggle)
     try requireValue(disabledSettings, settingsValue(enabled: true, maximum: 20))
-    disabledRestored.terminate()
+    XCTAssertTrue(terminateAndWait(disabledRestored))
 
     let enabledRestored = makeApplication(scenario: scenario.name, reset: false)
     enabledRestored.launch()
@@ -219,7 +218,7 @@ final class SmartRewindUITests: XCTestCase {
     enabledRestored.tabBars.buttons["Library"].tap()
     let probe = try openAndResume(enabledRestored, scenario: scenario)
     try assertApplied(probe, scenario: scenario)
-    enabledRestored.terminate()
+    XCTAssertTrue(terminateAndWait(enabledRestored))
   }
 
   private func openSmartRewindSettings(_ app: XCUIApplication) throws -> XCUIElement {
@@ -357,19 +356,128 @@ private struct Scenario {
 }
 
 private struct ProbeState {
-  var fields: [String: String]
+  private enum SchemaVersion: String {
+    case v1 = "smart-rewind"
+  }
+
+  private static let baseKeys: Set<String> = [
+    "schema", "enabled", "maximum", "transactions", "latest", "position", "journal",
+  ]
+  private static let transactionKeys: Set<String> = [
+    "transaction", "from", "to", "by", "away", "clamped", "pre", "rewind", "undo",
+  ]
+  private static let statuses: Set<String> = ["none", "applied", "undone", "superseded", "dismissed"]
+  private static let journalReasons: Set<String> = [
+    "pause", "preResumeRewind", "resumeRewind", "play", "seek", "undoResumeRewind",
+  ]
+
+  private var fields: [String: String]
 
   init?(_ rawValue: String) {
     let tokens = rawValue.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
-    guard tokens.first == "smart-rewind" else { return nil }
-    fields = Dictionary(uniqueKeysWithValues: tokens.dropFirst().compactMap { token in
+    guard let discriminator = tokens.first,
+      SchemaVersion(rawValue: discriminator) == .v1
+    else { return nil }
+    var parsed: [String: String] = [:]
+    for token in tokens.dropFirst() {
       guard let separator = token.firstIndex(of: "=") else { return nil }
-      return (String(token[..<separator]), String(token[token.index(after: separator)...]))
-    })
+      let key = String(token[..<separator])
+      let value = String(token[token.index(after: separator)...])
+      guard !key.isEmpty, (!value.isEmpty || key == "journal"), parsed[key] == nil else {
+        return nil
+      }
+      parsed[key] = value
+    }
+
+    guard parsed["schema"] == "1",
+      Self.bool(parsed["enabled"]) != nil,
+      let maximum = Self.nonnegativeInt64(parsed["maximum"]), maximum <= 30_000,
+      let transactionCount = Self.nonnegativeInt(parsed["transactions"]),
+      let latest = parsed["latest"], Self.statuses.contains(latest),
+      Self.nonnegativeInt64(parsed["position"]) != nil,
+      let journal = parsed["journal"], Self.validJournal(journal)
+    else { return nil }
+
+    let expectedKeys: Set<String>
+    if transactionCount == 0 {
+      guard latest == "none" else { return nil }
+      expectedKeys = Self.baseKeys
+    } else {
+      guard latest != "none", !journal.isEmpty,
+        Self.uuid(parsed["transaction"]),
+        Self.nonnegativeInt64(parsed["from"]) != nil,
+        Self.nonnegativeInt64(parsed["to"]) != nil,
+        Self.nonnegativeInt64(parsed["by"]) != nil,
+        Self.nonnegativeInt(parsed["away"]) != nil,
+        Self.bool(parsed["clamped"]) != nil,
+        Self.uuid(parsed["pre"]),
+        Self.uuid(parsed["rewind"]),
+        parsed["undo"] == "none" || Self.uuid(parsed["undo"])
+      else { return nil }
+      expectedKeys = Self.baseKeys.union(Self.transactionKeys)
+    }
+    guard Set(parsed.keys) == expectedKeys else { return nil }
+    fields = parsed
   }
 
   subscript(_ key: String) -> String? { fields[key] }
   var journal: String? { fields["journal"] }
+
+  private static func bool(_ value: String?) -> Bool? {
+    switch value {
+    case "true": true
+    case "false": false
+    default: nil
+    }
+  }
+
+  private static func nonnegativeInt(_ value: String?) -> Int? {
+    guard let value, let parsed = Int(value), parsed >= 0, String(parsed) == value else { return nil }
+    return parsed
+  }
+
+  private static func nonnegativeInt64(_ value: String?) -> Int64? {
+    guard let value, let parsed = Int64(value), parsed >= 0, String(parsed) == value else {
+      return nil
+    }
+    return parsed
+  }
+
+  private static func uuid(_ value: String?) -> Bool {
+    guard let value, let parsed = UUID(uuidString: value) else { return false }
+    return parsed.uuidString.lowercased() == value
+  }
+
+  private static func validJournal(_ value: String) -> Bool {
+    // A current book can render before its first acknowledged position event,
+    // so an empty journal is a valid v1 state only when no rewind exists.
+    if value.isEmpty { return true }
+    let events = value.split(separator: ",", omittingEmptySubsequences: false)
+    guard !events.isEmpty else { return false }
+    var previousSequence = 0
+    for event in events {
+      let sequenceAndEvent = event.split(
+        separator: ":",
+        maxSplits: 1,
+        omittingEmptySubsequences: false
+      )
+      guard sequenceAndEvent.count == 2,
+        let sequence = nonnegativeInt(String(sequenceAndEvent[0])),
+        sequence > previousSequence
+      else { return false }
+      let reasonAndPosition = sequenceAndEvent[1].split(
+        separator: "@",
+        maxSplits: 1,
+        omittingEmptySubsequences: false
+      )
+      guard reasonAndPosition.count == 2,
+        journalReasons.contains(String(reasonAndPosition[0])),
+        nonnegativeInt64(String(reasonAndPosition[1])) != nil
+      else { return false }
+      previousSequence = sequence
+    }
+    return true
+  }
 }
 
 private enum SmartRewindUITestError: Error {

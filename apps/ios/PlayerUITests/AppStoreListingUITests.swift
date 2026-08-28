@@ -32,7 +32,7 @@ final class AppStoreListingUITests: XCTestCase {
         .exists(library.otherElements["mini-player"], "The current book stays within reach"),
       ]
     )
-    library.terminate()
+    XCTAssertTrue(terminateAndWait(library))
 
     let receiver = makeApplication(
       fixture: "empty-library",
@@ -49,7 +49,7 @@ final class AppStoreListingUITests: XCTestCase {
         .exists(receiver.buttons["choose-from-files-computer-receiver"], "Files remains available"),
       ]
     )
-    receiver.terminate()
+    XCTAssertTrue(terminateAndWait(receiver))
 
     let progress = makeApplication(
       fixture: "empty-library",
@@ -69,7 +69,7 @@ final class AppStoreListingUITests: XCTestCase {
         .exists(progress.staticTexts["Project Hail Mary"], "The incoming audiobook is named"),
       ]
     )
-    progress.terminate()
+    XCTAssertTrue(terminateAndWait(progress))
 
     let playback = makeApplication(
       fixture: "metadata-rich-book",
@@ -84,9 +84,25 @@ final class AppStoreListingUITests: XCTestCase {
     playbackDefaults.tap()
     let preferences = anyElement(playback, "transport-preferences-screen")
     XCTAssertTrue(preferences.waitForExistence(timeout: 2))
-    choose(playback, picker: "transport-rate-picker", option: "1.25×")
-    choose(playback, picker: "transport-backward-picker", option: "10 seconds")
-    choose(playback, picker: "transport-forward-picker", option: "30 seconds")
+    try choose(
+      playback, picker: "transport-rate-picker", option: "1.25×", preferences: preferences,
+      expected: "transport:scope=global:rate=1.25:back=15:forward=30:seek=chapter"
+    )
+    try choose(
+      playback, picker: "transport-backward-picker", option: "10 seconds",
+      preferences: preferences,
+      expected: "transport:scope=global:rate=1.25:back=10:forward=30:seek=chapter"
+    )
+    try choose(
+      playback, picker: "transport-forward-picker", option: "45 seconds",
+      preferences: preferences,
+      expected: "transport:scope=global:rate=1.25:back=10:forward=45:seek=chapter"
+    )
+    try choose(
+      playback, picker: "transport-forward-picker", option: "30 seconds",
+      preferences: preferences,
+      expected: "transport:scope=global:rate=1.25:back=10:forward=30:seek=chapter"
+    )
     try tester.step(
       "playback-settings",
       description: "Playback defaults make speed, skips, and seeking personal",
@@ -123,7 +139,7 @@ final class AppStoreListingUITests: XCTestCase {
         .exists(playback.switches["sleep-timer-fade"], "Gentle fade is configurable"),
       ]
     )
-    playback.terminate()
+    XCTAssertTrue(terminateAndWait(playback))
 
     let unlock = makeApplication(
       fixture: "monetization-exhausted",
@@ -143,7 +159,7 @@ final class AppStoreListingUITests: XCTestCase {
         .exists(unlock.buttons["full-unlock-restore"], "Purchase restoration is available"),
       ]
     )
-    unlock.terminate()
+    XCTAssertTrue(terminateAndWait(unlock))
 
     tester.generateDocs()
   }
@@ -189,16 +205,36 @@ final class AppStoreListingUITests: XCTestCase {
     return try Data(contentsOf: url)
   }
 
-  private func choose(_ app: XCUIApplication, picker identifier: String, option: String) {
-    let picker = app.buttons[identifier]
-    XCTAssertTrue(picker.waitForExistence(timeout: 2))
+  private func choose(
+    _ app: XCUIApplication,
+    picker identifier: String,
+    option: String,
+    preferences: XCUIElement,
+    expected: String
+  ) throws {
+    let deadline = EventDeadline()
+    let pickers = app.buttons.matching(identifier: identifier)
+    let picker = pickers.element
+    XCTAssertTrue(waitForExistence(picker, deadline: deadline))
+    XCTAssertEqual(pickers.count, 1, "Picker \(identifier) must be unique")
     picker.tap()
-    let choice = app.buttons[option]
-    XCTAssertTrue(choice.waitForExistence(timeout: 2))
+    let choices = app.buttons.matching(NSPredicate(format: "label == %@", option))
+    let choice = choices.element
+    XCTAssertTrue(waitForExistence(choice, deadline: deadline))
+    XCTAssertEqual(choices.count, 1, "Picker option \(option) must be unique")
     choice.tap()
+    XCTAssertTrue(choice.waitForNonExistence(timeout: deadline.remaining))
+    guard preferences.waitForStringValue(expected, timeout: deadline.remaining) else {
+      XCTFail("Picker \(identifier) did not publish \(expected); actual=\(preferences.value ?? "nil")")
+      throw AppStoreListingTestError.valueUnavailable
+    }
   }
 
   private func anyElement(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {
     app.descendants(matching: .any).matching(identifier: identifier).firstMatch
   }
+}
+
+private enum AppStoreListingTestError: Error {
+  case valueUnavailable
 }

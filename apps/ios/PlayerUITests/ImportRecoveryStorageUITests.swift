@@ -108,7 +108,7 @@ final class ImportRecoveryStorageUITests: XCTestCase {
       anyElement(app, "import-recovery-probe"),
       "scenario=low-space:job=\(lowSpaceJobID):phase=ready:accepted=1:source-unchanged=true"
     )
-    app.terminate()
+    XCTAssertTrue(terminateAndWait(app))
   }
 
   private func proveMixedPartialRecovery() throws {
@@ -175,7 +175,7 @@ final class ImportRecoveryStorageUITests: XCTestCase {
       "scenario=mixed:accepted=2:excluded=3:managed-duplicates=0:source-unchanged=true:order=\(validFileID),\(corruptFileID)"
     )
     XCTAssertTrue(app.buttons["add-import-to-library"].exists)
-    app.terminate()
+    XCTAssertTrue(terminateAndWait(app))
   }
 
   private func proveCancelPreservesAllCorruptSources() throws {

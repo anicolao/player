@@ -2205,6 +2205,7 @@ private struct NowPlayingView: View {
       }.joined(separator: ",")
       var tokens = [
         "smart-rewind",
+        "schema=1",
         "enabled=\(rewindPreferences.isEnabled)",
         "maximum=\(Int64((rewindPreferences.maximumRewindSeconds * 1_000).rounded(.down)))",
         "transactions=\(transactions.count)",

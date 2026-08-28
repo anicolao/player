@@ -66,7 +66,7 @@ final class PositionRestoreUITests: XCTestCase {
       seekPositionMilliseconds
     )
 
-    app.terminate()
+    XCTAssertTrue(terminateAndWait(app))
 
     let restoredApp = makeApplication(reset: false)
     let tester = TestStepHelper(testCase: self)

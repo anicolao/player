@@ -116,6 +116,26 @@ if rg -n --pcre2 'timeout:\s*(?:[3-9]|[1-9][0-9]+)(?:\.0+)?\b' \
   fail "UI-test transition timeouts may not exceed two seconds"
 fi
 
+termination_helper="${ui_test_root}/TestStepHelper.swift"
+if rg -n '\.terminate\(\)' \
+  "${ui_test_root}" --glob '*.swift' --glob '!TestStepHelper.swift'; then
+  fail "UI tests must use terminateAndWait instead of terminating an app without observing .notRunning"
+fi
+helper_termination="$(rg -n '^[[:space:]]*application\.terminate\(\)[[:space:]]*$' \
+  "${termination_helper}" || true)"
+[[ "$(printf '%s\n' "${helper_termination}" | sed '/^$/d' | wc -l | tr -d ' ')" -eq 1 ]] \
+  || fail "terminateAndWait must contain the only direct application termination"
+helper_start="$(rg -n '^func terminateAndWait\(' "${termination_helper}" | cut -d: -f1)"
+helper_end="$(awk -v start="${helper_start}" 'NR > start && /^}$/ { print NR; exit }' \
+  "${termination_helper}")"
+helper_termination_line="${helper_termination%%:*}"
+[[ -n "${helper_start}" && -n "${helper_end}" \
+  && "${helper_termination_line}" -gt "${helper_start}" \
+  && "${helper_termination_line}" -lt "${helper_end}" ]] \
+  || fail "the sole direct application termination must be scoped inside terminateAndWait"
+[[ "$(rg -c '\.terminate\(\)' "${termination_helper}")" -eq 1 ]] \
+  || fail "TestStepHelper may not terminate applications outside terminateAndWait"
+
 if rg -n 'continue-on-error:|nick-fields/retry|retry-action' "${workflow}"; then
   fail "CI may not hide an E2E failure behind a retry"
 fi

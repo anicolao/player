@@ -30,8 +30,7 @@ final class ImportIngressResilienceUITests: XCTestCase {
       anyElement(acquiringApp, "import-ingress-probe"),
       "ingress:document:acquiring:job=\(documentJobID):jobs=1:staged=0:inspected=0:duplicates=0:source-unchanged=true"
     )
-    acquiringApp.terminate()
-    XCTAssertTrue(acquiringApp.wait(for: .notRunning, timeout: 2))
+    XCTAssertTrue(terminateAndWait(acquiringApp))
 
     let inspectingApp = makeApplication(
       reset: false,
@@ -43,8 +42,7 @@ final class ImportIngressResilienceUITests: XCTestCase {
       anyElement(inspectingApp, "import-ingress-probe"),
       "ingress:document:inspecting:job=\(documentJobID):jobs=1:staged=1:inspected=0:duplicates=0:source-unchanged=true"
     )
-    inspectingApp.terminate()
-    XCTAssertTrue(inspectingApp.wait(for: .notRunning, timeout: 2))
+    XCTAssertTrue(terminateAndWait(inspectingApp))
 
     let resumedApp = makeApplication(reset: false, channel: "document-open")
     resumedApp.launch()
@@ -82,8 +80,7 @@ final class ImportIngressResilienceUITests: XCTestCase {
       anyElement(consumingApp, "share-handoff-probe"),
       "handoff:share-extension:consumed:id=\(handoffID):job=\(shareJobID):jobs=1:staged=1:proposals=1:receipt=recorded:pending=0:processing=0:source-unchanged=true"
     )
-    consumingApp.terminate()
-    XCTAssertTrue(consumingApp.wait(for: .notRunning, timeout: 2))
+    XCTAssertTrue(terminateAndWait(consumingApp))
 
     let replayApp = makeShareApplication(
       reset: false,
