@@ -1,9 +1,18 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'vitest';
 import { buildUploadPlan, canResumeImport } from '../src/upload-plan.js';
 
 function item(name, contents) {
   return { file: new Blob([contents]), path: name };
+}
+
+function blobText(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(blob);
+  });
 }
 
 test('buildUploadPlan sends only bytes after each server-confirmed offset', async () => {
@@ -14,8 +23,8 @@ test('buildUploadPlan sends only bytes after each server-confirmed offset', asyn
     { index: 0, offset: 4 },
     { index: 1, offset: 0 },
   ]);
-  assert.equal(await plan[0].body.text(), '456789');
-  assert.equal(await plan[1].body.text(), 'abc');
+  assert.equal(await blobText(plan[0].body), '456789');
+  assert.equal(await blobText(plan[1].body), 'abc');
 });
 
 test('buildUploadPlan skips files already confirmed in full', () => {

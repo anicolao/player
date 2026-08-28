@@ -16,6 +16,7 @@
   let statusMessage = '';
   let activeRequest = null;
   let cancelling = false;
+  let fileInput;
 
   const supportedExtensions = new Set(['m4a', 'm4b', 'mp3', 'zip']);
 
@@ -133,6 +134,12 @@
         : 'That folder could not be read. Try Choose Folder instead.';
       phase = 'ready';
     }
+  }
+
+  function openFilePickerFromKeyboard(event) {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    fileInput?.click();
   }
 
   async function beginUpload() {
@@ -316,7 +323,6 @@
 
   async function pollResult() {
     while (true) {
-      await new Promise((resolve) => setTimeout(resolve, 700));
       const response = await fetch(`/api/imports/${importID}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -336,6 +342,7 @@
         return;
       }
       if (payload.state === 'failed') throw new Error(payload.message || 'Bookshelf could not import these files.');
+      await new Promise((resolve) => setTimeout(resolve, 400));
     }
   }
 
@@ -412,12 +419,13 @@
         ondragover={(event) => event.preventDefault()}
         ondragleave={() => dragging = false}
         ondrop={dropped}
+        onkeydown={openFilePickerFromKeyboard}
       >
         <div class="drop-icons" aria-hidden="true">▱ ♫</div>
         <h2>Drop books or folders here</h2>
         <p>M4B, M4A, MP3, ZIP, or an entire directory tree</p>
         <div class="choices">
-          <label class="secondary">Choose Files<input type="file" multiple accept=".m4b,.m4a,.mp3,.zip" onchange={(event) => fromInput(event, false)} /></label>
+          <label class="secondary">Choose Files<input bind:this={fileInput} type="file" multiple accept=".m4b,.m4a,.mp3,.zip" onchange={(event) => fromInput(event, false)} /></label>
           <label class="secondary">Choose Folder<input type="file" webkitdirectory multiple onchange={(event) => fromInput(event, true)} /></label>
         </div>
       </div>

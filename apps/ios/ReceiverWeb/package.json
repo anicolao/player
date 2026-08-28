@@ -6,13 +6,16 @@
   "scripts": {
     "build": "vite build",
     "check": "svelte-check --tsconfig ./jsconfig.json",
-    "test": "node --test"
+    "test": "vitest run"
   },
   "devDependencies": {
+    "@testing-library/svelte": "5.4.2",
     "@sveltejs/vite-plugin-svelte": "7.3.0",
+    "jsdom": "27.0.0",
     "svelte": "5.56.10",
     "svelte-check": "4.7.6",
     "typescript": "5.9.3",
-    "vite": "8.2.2"
+    "vite": "8.2.2",
+    "vitest": "4.1.11"
   }
 }
