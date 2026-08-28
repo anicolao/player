@@ -22,15 +22,49 @@ final class AppStoreListingUITests: XCTestCase {
 
     let library = try makePopulatedLibraryApplication()
     library.launch()
+    let libraryScreen = library.otherElements["library-screen"]
+    let libraryScrollReadiness = anyElement(library, "library-root-scroll-readiness")
+    let recentShelf = library.scrollViews["library-home-recent-shelf-scroll"]
+    let recentShelfReadiness = anyElement(
+      library,
+      "library-home-recent-shelf-scroll-readiness"
+    )
     try tester.step(
       "library",
       description: "The library gives owned audiobooks a warm, useful home",
       verifications: [
-        .exists(library.otherElements["library-screen"], "The Library screen is visible"),
+        .exists(libraryScreen, "The Library screen is visible"),
         .exists(library.staticTexts["Continue Listening"], "Listening progress is immediately useful"),
         .exists(library.staticTexts["Recently Added"], "Recent cover artwork is visible"),
         .exists(library.otherElements["mini-player"], "The current book stays within reach"),
-      ]
+      ],
+      captureReadiness: marketingCaptureReadiness(
+        app: library,
+        specification: "At capture, the exact five-book Library and cover shelf are idle at their starts with visible cover-bearing cards and paused mini-player",
+        anchor: recentShelfReadiness
+      ) {
+        let visibleRecentCovers = library.descendants(matching: .any)
+          .matching(NSPredicate(format: "identifier BEGINSWITH %@", "recent-book-"))
+          .allElementsBoundByIndex
+          .filter {
+            elementIsFullyVisible($0, within: recentShelf, requiresHittable: false)
+          }
+        return self.hasExactValue(libraryScreen, "ready:library-5-books")
+          && self.hasExactValue(
+            library.otherElements["mini-player"],
+            "player:paused:90000000-0000-0000-0000-000000000001:0:45000"
+          )
+          && self.isSettledAtTop(
+            libraryScrollReadiness,
+            containerID: "library-root-scroll"
+          )
+          && self.isSettledAtStart(
+            recentShelfReadiness,
+            containerID: "library-home-recent-shelf-scroll",
+            axis: .horizontal
+          )
+          && visibleRecentCovers.count >= 3
+      }
     )
     XCTAssertTrue(terminateAndWait(library))
 
@@ -40,14 +74,41 @@ final class AppStoreListingUITests: XCTestCase {
     )
     receiver.launch()
     receiver.buttons["receive-from-computer-empty-library"].tap()
+    let receiverScreen = receiver.scrollViews["computer-receiver-screen"]
+    let receiverScrollReadiness = anyElement(receiver, "computer-receiver-scroll-readiness")
+    let pairingCode = receiver.staticTexts["computer-receiver-pairing-code"]
+    let chooseFromFiles = receiver.buttons["choose-from-files-computer-receiver"]
     try tester.step(
       "receiver-ready",
       description: "The private receiver accepts books through a browser on any computer",
       verifications: [
-        .valueEquals(receiver.scrollViews["computer-receiver-screen"], "receiver:ready", "The receiver is ready"),
-        .exists(receiver.staticTexts["computer-receiver-pairing-code"], "The pairing code is visible"),
-        .exists(receiver.buttons["choose-from-files-computer-receiver"], "Files remains available"),
-      ]
+        .valueEquals(receiverScreen, "receiver:ready", "The receiver is ready"),
+        .exists(pairingCode, "The pairing code is visible"),
+        .exists(chooseFromFiles, "Files remains available"),
+      ],
+      captureReadiness: marketingCaptureReadiness(
+        app: receiver,
+        specification: "At capture, the ready receiver has settled pairing, Mirroring guidance, and fully visible file controls",
+        anchor: receiverScreen,
+        intendedSheetContentID: "computer-receiver-screen"
+      ) {
+        self.hasExactValue(receiverScreen, "receiver:ready")
+          && self.isSettledAtTop(
+            receiverScrollReadiness,
+            containerID: "computer-receiver-scroll"
+          )
+          && elementIsFullyVisible(pairingCode, within: receiverScreen, requiresHittable: false)
+          && elementIsFullyVisible(
+            receiver.otherElements["mirroring-import-tip"],
+            within: receiverScreen,
+            requiresHittable: false
+          )
+          && elementIsFullyVisible(chooseFromFiles, within: receiverScreen)
+          && elementIsFullyVisible(
+            receiver.buttons["stop-computer-receiver"],
+            within: receiverScreen
+          )
+      }
     )
     XCTAssertTrue(terminateAndWait(receiver))
 
@@ -60,14 +121,37 @@ final class AppStoreListingUITests: XCTestCase {
     )
     progress.launch()
     progress.buttons["receive-from-computer-empty-library"].tap()
+    let progressScreen = progress.scrollViews["computer-receiver-screen"]
+    let progressScrollReadiness = anyElement(progress, "computer-receiver-scroll-readiness")
+    let dropProgress = progress.progressIndicators["mirroring-drop-progress"]
+    let incomingTitle = progress.staticTexts["Project Hail Mary"]
     try tester.step(
       "mirroring-drop-progress",
       description: "iPhone Mirroring makes Finder drag-and-drop the fastest Mac path",
       verifications: [
-        .valueEquals(progress.scrollViews["computer-receiver-screen"], "receiver:preparing-mirrored-drop", "The mirrored drop is being prepared"),
-        .exists(progress.progressIndicators["mirroring-drop-progress"], "Import progress is visible"),
-        .exists(progress.staticTexts["Project Hail Mary"], "The incoming audiobook is named"),
-      ]
+        .valueEquals(progressScreen, "receiver:preparing-mirrored-drop", "The mirrored drop is being prepared"),
+        .exists(dropProgress, "Import progress is visible"),
+        .exists(incomingTitle, "The incoming audiobook is named"),
+      ],
+      captureReadiness: marketingCaptureReadiness(
+        app: progress,
+        specification: "At capture, the exact mirrored-drop phase and item-two-of-three progress layout are settled",
+        anchor: progressScreen,
+        intendedSheetContentID: "computer-receiver-screen"
+      ) {
+        self.hasExactValue(progressScreen, "receiver:preparing-mirrored-drop")
+          && self.isSettledAtTop(
+            progressScrollReadiness,
+            containerID: "computer-receiver-scroll"
+          )
+          && elementIsFullyVisible(dropProgress, within: progressScreen, requiresHittable: false)
+          && elementIsFullyVisible(incomingTitle, within: progressScreen, requiresHittable: false)
+          && elementIsFullyVisible(
+            progress.staticTexts["Preparing dropped item 2 of 3…"],
+            within: progressScreen,
+            requiresHittable: false
+          )
+      }
     )
     XCTAssertTrue(terminateAndWait(progress))
 
@@ -106,6 +190,7 @@ final class AppStoreListingUITests: XCTestCase {
       preferences: preferences,
       expected: "transport:scope=global:rate=1.25:back=10:forward=30:seek=chapter"
     )
+    let preferencesReadiness = anyElement(playback, "transport-preferences-scroll-readiness")
     try tester.step(
       "playback-settings",
       description: "Playback defaults make speed, skips, and seeking personal",
@@ -114,33 +199,110 @@ final class AppStoreListingUITests: XCTestCase {
         .exists(playback.buttons["transport-rate-picker"], "Playback speed is configurable"),
         .exists(playback.buttons["transport-backward-picker"], "Backward skip is configurable"),
         .exists(playback.buttons["transport-forward-picker"], "Forward skip is configurable"),
-      ]
+      ],
+      captureReadiness: marketingCaptureReadiness(
+        app: playback,
+        specification: "At capture, the exact personalized playback defaults are idle at the top with every picker fully visible and no menu left open",
+        anchor: preferencesReadiness
+      ) {
+        self.hasExactValue(
+          preferences,
+          "transport:scope=global:rate=1.25:back=10:forward=30:seek=chapter"
+        )
+          && self.isSettledAtTop(
+            preferencesReadiness,
+            containerID: "transport-preferences-screen"
+          )
+          && elementIsFullyVisible(
+            playback.buttons["transport-rate-picker"], within: preferences
+          )
+          && elementIsFullyVisible(
+            playback.buttons["transport-backward-picker"], within: preferences
+          )
+          && elementIsFullyVisible(
+            playback.buttons["transport-forward-picker"], within: preferences
+          )
+      }
     )
     playback.buttons["save-transport-preferences"].tap()
     playback.tabBars.buttons["Library"].tap()
     playback.staticTexts["Harbor at Dawn"].tap()
     XCTAssertTrue(playback.buttons["chapter-2"].waitForExistence(timeout: 2))
     playback.buttons["chapter-2"].tap()
+    let nowPlaying = playback.otherElements["now-playing-screen"]
+    let nowPlayingReadiness = anyElement(playback, "now-playing-layout-readiness")
+    let nowPlayingArtwork = nowPlaying.descendants(matching: .any)["embedded-cover-artwork"]
     try tester.step(
       "now-playing",
       description: "Now Playing keeps chapters and custom controls close",
       verifications: [
-        .exists(playback.otherElements["now-playing-screen"], "Now Playing is visible"),
+        .exists(nowPlaying, "Now Playing is visible"),
         .exists(playback.buttons["player-previous-chapter"], "Previous chapter is available"),
         .exists(playback.buttons["player-next-chapter"], "Next chapter is available"),
         .exists(playback.buttons["open-transport-preferences"], "Playback settings remain close"),
-      ]
+      ],
+      captureReadiness: marketingCaptureReadiness(
+        app: playback,
+        specification: "At capture, chapter two is playing with exact custom transport values, decoded Harbor artwork, and settled Now Playing geometry",
+        anchor: nowPlayingReadiness,
+        intendedSheetContentID: "now-playing-screen"
+      ) {
+        self.hasExactValue(
+          nowPlaying,
+          "player:playing:30000000-0000-0000-0000-000000000001:1:30000"
+        )
+          && self.hasExactValue(
+            playback.buttons["open-transport-preferences"],
+            "rate=1.25:back=10:forward=30:seek=chapter:source=global"
+          )
+          && self.hasSettledLayout(
+            nowPlayingReadiness,
+            containerID: "now-playing-screen"
+          )
+          && elementIsFullyVisible(nowPlayingArtwork, within: nowPlaying, requiresHittable: false)
+          && elementIsFullyVisible(playback.buttons["player-previous-chapter"], within: nowPlaying)
+          && elementIsFullyVisible(playback.buttons["player-next-chapter"], within: nowPlaying)
+          && elementIsFullyVisible(
+            playback.buttons["open-transport-preferences"], within: nowPlaying
+          )
+      }
     )
     playback.buttons["open-sleep-timer"].tap()
+    let sleepTimerScreen = anyElement(playback, "sleep-timer-screen")
+    let sleepTimerReadiness = anyElement(playback, "sleep-timer-scroll-readiness")
     try tester.step(
       "sleep-timer",
       description: "The sleep timer adapts to minutes, chapters, or tracks",
       verifications: [
-        .exists(anyElement(playback, "sleep-timer-screen"), "The Sleep Timer screen is visible"),
+        .exists(sleepTimerScreen, "The Sleep Timer screen is visible"),
         .exists(playback.buttons["sleep-timer-preset-30"], "A 30-minute preset is available"),
         .exists(playback.buttons["sleep-timer-end-chapter"], "End of chapter is available"),
         .exists(playback.switches["sleep-timer-fade"], "Gentle fade is configurable"),
-      ]
+      ],
+      captureReadiness: marketingCaptureReadiness(
+        app: playback,
+        specification: "At capture, the inactive gentle-fade timer is idle at the top with minute and boundary choices fully laid out",
+        anchor: sleepTimerReadiness,
+        intendedSheetContentID: "sleep-timer-screen"
+      ) {
+        self.hasExactValue(
+          sleepTimerScreen,
+          "sleep-timer:active=none:fade=true:history=0"
+        )
+          && self.isSettledAtTop(
+            sleepTimerReadiness,
+            containerID: "sleep-timer-screen"
+          )
+          && elementIsFullyVisible(
+            playback.switches["sleep-timer-fade"], within: sleepTimerScreen
+          )
+          && elementIsFullyVisible(
+            playback.buttons["sleep-timer-preset-30"], within: sleepTimerScreen
+          )
+          && elementIsFullyVisible(
+            playback.buttons["sleep-timer-end-chapter"], within: sleepTimerScreen
+          )
+      }
     )
     XCTAssertTrue(terminateAndWait(playback))
 
@@ -152,15 +314,45 @@ final class AppStoreListingUITests: XCTestCase {
       ]
     )
     unlock.launch()
+    let unlockScreen = unlock.scrollViews["full-unlock-screen"]
+    let purchase = unlock.buttons["full-unlock-purchase"]
+    let unlockReadiness = anyElement(unlock, "full-unlock-scroll-readiness")
     try tester.step(
       "full-unlock",
       description: "The one-time Full Unlock is clear and subscription-free",
       verifications: [
-        .exists(unlock.scrollViews["full-unlock-screen"], "The Full Unlock screen is visible"),
-        .exists(unlock.buttons["full-unlock-purchase"], "The one-time purchase is available"),
+        .exists(unlockScreen, "The Full Unlock screen is visible"),
+        .exists(purchase, "The one-time purchase is available"),
         .exists(unlock.staticTexts["One-time purchase · No subscription"], "The purchase model is explicit"),
         .exists(unlock.buttons["full-unlock-restore"], "Purchase restoration is available"),
-      ]
+      ],
+      captureReadiness: marketingCaptureReadiness(
+        app: unlock,
+        specification: "At capture, the exhausted allowance and exact $9.99 one-time unlock are settled with all purchase actions visible",
+        anchor: purchase
+      ) {
+        purchase.exists
+          && purchase.label == "Unlock Forever — $9.99"
+          && unlock.staticTexts[
+            "0m remaining from the 50 hours included with Bookshelf. Pay once to keep listening without a limit."
+          ].exists
+          && self.isSettledAtTop(
+            unlockReadiness,
+            containerID: "full-unlock-screen"
+          )
+          && elementIsFullyVisible(purchase, within: unlockScreen)
+          && elementIsFullyVisible(
+            unlock.staticTexts["One-time purchase · No subscription"],
+            within: unlockScreen,
+            requiresHittable: false
+          )
+          && elementIsFullyVisible(
+            unlock.buttons["full-unlock-restore"], within: unlockScreen
+          )
+          && elementIsFullyVisible(
+            unlock.buttons["full-unlock-redeem-code"], within: unlockScreen
+          )
+      }
     )
     XCTAssertTrue(terminateAndWait(unlock))
 
@@ -234,6 +426,57 @@ final class AppStoreListingUITests: XCTestCase {
 
   private func anyElement(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {
     app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+  }
+
+  private func marketingCaptureReadiness(
+    app: XCUIApplication,
+    specification: String,
+    anchor: XCUIElement,
+    intendedSheetContentID: String? = nil,
+    checkNow: @escaping @MainActor () -> Bool
+  ) -> CaptureReadiness {
+    CaptureReadiness(specification: specification, anchor: anchor) {
+      checkNow()
+        && !app.keyboards.firstMatch.exists
+        && !app.alerts.firstMatch.exists
+        && !self.hasUnintendedSheet(app, intendedContentID: intendedSheetContentID)
+    }
+  }
+
+  private func hasExactValue(_ element: XCUIElement, _ expected: String) -> Bool {
+    element.exists && element.value.map(String.init(describing:)) == expected
+  }
+
+  private func isSettledAtTop(_ probe: XCUIElement, containerID: String) -> Bool {
+    isSettledAtStart(probe, containerID: containerID, axis: .vertical)
+  }
+
+  private func isSettledAtStart(
+    _ probe: XCUIElement,
+    containerID: String,
+    axis: E2EScrollAxis
+  ) -> Bool {
+    guard let state = ScrollReadinessState(probe.value) else { return false }
+    return state.containerID == containerID
+      && state.axis == axis
+      && state.isIdle
+      && (axis == .vertical ? state.atTop : state.atLeft)
+  }
+
+  private func hasSettledLayout(_ probe: XCUIElement, containerID: String) -> Bool {
+    guard let state = LayoutReadinessState(probe.value) else { return false }
+    return state.containerID == containerID
+  }
+
+  private func hasUnintendedSheet(
+    _ app: XCUIApplication,
+    intendedContentID: String?
+  ) -> Bool {
+    app.sheets.allElementsBoundByIndex.contains { sheet in
+      guard let intendedContentID else { return true }
+      return sheet.identifier != intendedContentID
+        && !sheet.descendants(matching: .any)[intendedContentID].exists
+    }
   }
 }
 

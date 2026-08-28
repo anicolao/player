@@ -70,6 +70,11 @@ struct FullUnlockView: View {
       await model.refreshMonetization()
     }
     .accessibilityIdentifier("full-unlock-screen")
+    .e2eScrollReadiness(
+      id: "full-unlock-scroll-readiness",
+      containerID: "full-unlock-screen",
+      axis: .vertical
+    )
   }
 
   private var subtitle: String {

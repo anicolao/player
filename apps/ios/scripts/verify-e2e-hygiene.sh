@@ -153,6 +153,20 @@ if printf '%s\n' "${smart_rewind_capture}" \
   fail "Smart Rewind capture readiness must remain a nonblocking state snapshot"
 fi
 
+app_store_listing="${ui_test_root}/AppStoreListingUITests.swift"
+app_store_steps="$(rg -c '^[[:space:]]*try tester\.step\(' "${app_store_listing}")"
+app_store_capture_gates="$(rg -c '^[[:space:]]*captureReadiness: marketingCaptureReadiness\(' \
+  "${app_store_listing}")"
+[[ "${app_store_steps}" -eq 7 && "${app_store_capture_gates}" -eq "${app_store_steps}" ]] \
+  || fail "every App Store listing screenshot must have one atomic marketing capture-readiness gate"
+for required_marketing_guard in \
+  '!app.keyboards.firstMatch.exists' \
+  '!app.alerts.firstMatch.exists' \
+  '!self.hasUnintendedSheet'; do
+  rg -Fq "${required_marketing_guard}" "${app_store_listing}" \
+    || fail "App Store listing capture readiness is missing ${required_marketing_guard}"
+done
+
 termination_helper="${ui_test_root}/TestStepHelper.swift"
 if rg -n '\.terminate\(\)' \
   "${ui_test_root}" --glob '*.swift' --glob '!TestStepHelper.swift'; then
