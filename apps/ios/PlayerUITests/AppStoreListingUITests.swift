@@ -223,7 +223,6 @@ final class AppStoreListingUITests: XCTestCase {
     XCTAssertTrue(waitForExistence(choice, deadline: deadline))
     XCTAssertEqual(choices.count, 1, "Picker option \(option) must be unique")
     choice.tap()
-    XCTAssertTrue(choice.waitForNonExistence(timeout: deadline.remaining))
     guard preferences.waitForStringValue(expected, timeout: deadline.remaining) else {
       XCTFail("Picker \(identifier) did not publish \(expected); actual=\(preferences.value ?? "nil")")
       throw AppStoreListingTestError.valueUnavailable

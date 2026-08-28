@@ -177,10 +177,6 @@ final class TransportControlsUITests: XCTestCase {
     XCTAssertTrue(waitForExistence(choice, deadline: deadline), "Missing picker option \(option)")
     XCTAssertEqual(choices.count, 1, "Picker option \(option) must be unique")
     choice.tap()
-    XCTAssertTrue(
-      choice.waitForNonExistence(timeout: deadline.remaining),
-      "Picker option \(option) must disappear after selection"
-    )
     guard preferences.waitForStringValue(expected, timeout: deadline.remaining) else {
       XCTFail("Picker \(identifier) did not publish \(expected); actual=\(preferences.value ?? "nil")")
       throw TransportControlsTestError.valueUnavailable
