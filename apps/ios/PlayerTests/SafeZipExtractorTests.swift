@@ -54,6 +54,7 @@ final class SafeZipExtractorTests: XCTestCase {
     let destination = root.appending(path: "Extracted")
     let checkpointURL = root.appending(path: "checkpoint.json")
     let reachedCheckpoint = AsyncSignal()
+    let releaseCheckpoint = AsyncSignal()
     let extractor = SafeZipExtractor()
     let task = Task {
       try await extractor.extract(
@@ -63,12 +64,13 @@ final class SafeZipExtractorTests: XCTestCase {
       ) { value in
         if value.completedEntries == 1 {
           await reachedCheckpoint.signal()
-          try? await Task.sleep(for: .seconds(30))
+          await releaseCheckpoint.wait()
         }
       }
     }
     await reachedCheckpoint.wait()
     task.cancel()
+    await releaseCheckpoint.signal()
     do {
       _ = try await task.value
       XCTFail("Cancellation should stop extraction")

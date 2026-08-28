@@ -1,3 +1,4 @@
+import Security
 import XCTest
 @testable import Player
 
@@ -80,7 +81,11 @@ final class MonetizationTests: XCTestCase {
     guard let defaults = UserDefaults(suiteName: suiteName) else {
       return XCTFail("Could not create isolated defaults")
     }
-    defer { defaults.removePersistentDomain(forName: suiteName) }
+    removeKeychainItems(forService: suiteName)
+    defer {
+      defaults.removePersistentDomain(forName: suiteName)
+      removeKeychainItems(forService: suiteName)
+    }
 
     let sandbox = PlaybackAllowancePersistence(
       storeEnvironment: .sandbox,
@@ -100,6 +105,25 @@ final class MonetizationTests: XCTestCase {
     XCTAssertTrue(sandbox.loadCachedUnlock())
     XCTAssertEqual(production.loadConsumedPlaybackSeconds(), 0, accuracy: 0.001)
     XCTAssertFalse(production.loadCachedUnlock())
+  }
+
+  private func removeKeychainItems(
+    forService service: String,
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) {
+    let status = SecItemDelete([
+      kSecClass as String: kSecClassGenericPassword,
+      kSecAttrService as String: service,
+    ] as CFDictionary)
+    XCTAssertTrue(
+      status == errSecSuccess
+        || status == errSecItemNotFound
+        || status == errSecMissingEntitlement,
+      "Unexpected keychain cleanup status: \(status)",
+      file: file,
+      line: line
+    )
   }
 
   private func makeHarness(consumedSeconds: TimeInterval) throws -> MonetizationHarness {

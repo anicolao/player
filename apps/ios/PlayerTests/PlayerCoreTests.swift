@@ -1,5 +1,6 @@
 import CryptoKit
 import MediaPlayer
+import Observation
 import XCTest
 @testable import Player
 
@@ -107,7 +108,6 @@ final class PlayerCoreTests: XCTestCase {
       transferredArtwork.size,
       CGSize(width: 128, height: 128)
     )
-    try await Task.sleep(for: .milliseconds(500))
   }
 
   func testComputerReceiverUsesOnePhysicalCopyAndCompletesRealImporter() async throws {
@@ -1185,11 +1185,18 @@ final class PlayerCoreTests: XCTestCase {
     await harness.model.play(bookID: harness.book.id)
     let journalCount = harness.model.library.positionJournal.count
 
+    let progressChanged = expectation(
+      description: "The automatic playback monitor publishes the live engine position"
+    )
+    let progressObservation = PlaybackProgressExpectation(
+      model: harness.model,
+      target: 7.5,
+      expectation: progressChanged
+    )
+    progressObservation.beginObserving()
     await harness.playback.seek(to: 7.5)
-    let deadline = ContinuousClock.now + .seconds(1)
-    while harness.model.playbackState.elapsedSeconds < 7.5, ContinuousClock.now < deadline {
-      try await Task.sleep(for: .milliseconds(50))
-    }
+    await fulfillment(of: [progressChanged], timeout: 2)
+    withExtendedLifetime(progressObservation) {}
 
     XCTAssertEqual(harness.model.playbackState.elapsedSeconds, 7.5, accuracy: 0.001)
     XCTAssertEqual(harness.model.library.positionJournal.count, journalCount)
@@ -1829,6 +1836,32 @@ final class PlayerCoreTests: XCTestCase {
       remoteCommands: remoteCommands,
       nowPlaying: nowPlaying
     )
+  }
+}
+
+private final class PlaybackProgressExpectation: @unchecked Sendable {
+  private weak var model: PlayerModel?
+  private let target: Double
+  private let expectation: XCTestExpectation
+
+  init(model: PlayerModel, target: Double, expectation: XCTestExpectation) {
+    self.model = model
+    self.target = target
+    self.expectation = expectation
+  }
+
+  @MainActor
+  func beginObserving() {
+    guard let model else { return }
+    guard model.playbackState.elapsedSeconds < target else {
+      expectation.fulfill()
+      return
+    }
+    withObservationTracking {
+      _ = model.playbackState.elapsedSeconds
+    } onChange: { [self] in
+      Task { @MainActor in self.beginObserving() }
+    }
   }
 }
 

@@ -387,9 +387,10 @@ final class MirroringDropAdapterTests: XCTestCase {
       try? FileManager.default.removeItem(at: receiverRoot)
     }
     try FileManager.default.createDirectory(at: fixtureRoot, withIntermediateDirectories: true)
-    let source = fixtureRoot.appending(path: "Delayed.mp3")
-    try Data("delayed".utf8).write(to: source)
     let providerProgress = Progress(totalUnitCount: 1)
+    let providerStarted = expectation(
+      description: "The adapter starts the provider request before cancellation"
+    )
     let provider = NSItemProvider()
     provider.suggestedName = "Delayed.mp3"
     let mp3Type = try XCTUnwrap(UTType(filenameExtension: "mp3")?.identifier)
@@ -397,15 +398,13 @@ final class MirroringDropAdapterTests: XCTestCase {
       forTypeIdentifier: mp3Type,
       fileOptions: [.openInPlace],
       visibility: .all
-    ) { completion in
-      DispatchQueue.global().asyncAfter(deadline: .now() + 1) {
-        completion(source, true, nil)
-      }
+    ) { _ in
+      providerStarted.fulfill()
       return providerProgress
     }
     let adapter = MirroringDropAdapter(rootURL: receiverRoot)
     let task = Task { try await adapter.materialize([provider]) }
-    try await Task.sleep(for: .milliseconds(50))
+    await fulfillment(of: [providerStarted], timeout: 2)
 
     task.cancel()
 
