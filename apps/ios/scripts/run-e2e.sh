@@ -136,8 +136,8 @@ if [[ "${PLAYER_RECORD_SCREENSHOTS:-0}" == "1" ]]; then
   exit 2
 fi
 
-derived_data_root="${ios_dir}/DerivedData/E2E"
-story_output="${derived_data_root}/${story_id}"
+story_output="$("${script_dir}/prepare-e2e-output.sh" \
+  "${ios_dir}" "${story_id}" "${PLAYER_E2E_OUTPUT:-}")"
 build_data="${PLAYER_E2E_BUILD_DATA:-${story_output}/Build}"
 result_bundle="${story_output}/Results/Story.xcresult"
 attachments="${story_output}/Attachments"
@@ -150,8 +150,8 @@ if [[ ! -d "${baseline_story}" ]]; then
   exit 1
 fi
 
-rm -rf "${story_output}"
 mkdir -p "${story_output}/Results" "${story_output}/Logs" "${story_output}/Diagnostics"
+echo "E2E output: ${story_output}"
 run_started_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 run_commit="$(git -C "${repository_root}" rev-parse HEAD)"
 jq -n \
@@ -261,9 +261,10 @@ else
 fi
 
 if [[ "${skip_e2e_build}" == "1" ]]; then
-  if ! find "${build_data}/Build/Products" -maxdepth 1 -name '*.xctestrun' -print -quit \
-    | grep -q .; then
-    echo "A prebuilt E2E test bundle is unavailable in ${build_data}." >&2
+  if ! run_logged_phase build-provenance \
+    "${script_dir}/e2e-build-provenance.sh" verify \
+    "${build_data}" "${device_type}" "${runtime}"; then
+    echo "The prebuilt E2E bundle cannot be safely reused; rebuild it." >&2
     exit 1
   fi
   printf 'build-reuse\t%s\t%s\t0\n' "${SECONDS}" "${SECONDS}" \
@@ -277,6 +278,12 @@ else
     -derivedDataPath "${build_data}" \
     CODE_SIGNING_ALLOWED=NO; then
     echo "UI-test build failed; retained diagnostics in ${story_output}" >&2
+    exit 1
+  fi
+  if ! run_logged_phase build-provenance \
+    "${script_dir}/e2e-build-provenance.sh" write \
+    "${build_data}" "${device_type}" "${runtime}"; then
+    echo "Could not bind the E2E build to its source and toolchain." >&2
     exit 1
   fi
 fi

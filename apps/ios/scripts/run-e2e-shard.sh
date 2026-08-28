@@ -167,6 +167,8 @@ run_core_tests() {
 
 for story_index in "${!stories[@]}"; do
   story="${stories[${story_index}]}"
+  story_output="${ios_dir}/DerivedData/E2E/${story}"
+  rm -rf "${story_output}"
   story_start="${SECONDS}"
   skip_build=1
   if [[ "${story_index}" -eq 0 ]]; then skip_build=0; fi
@@ -177,6 +179,7 @@ for story_index in "${!stories[@]}"; do
     PLAYER_SKIP_E2E_BUILD="${skip_build}" \
     PLAYER_SKIP_E2E_ENVIRONMENT_VERIFICATION=1 \
     PLAYER_SKIP_PROJECT_GENERATION=1 \
+    PLAYER_E2E_OUTPUT="${story_output}" \
     "${script_dir}/run-e2e.sh" --story "${story}" || story_status=$?
 
   printf '%s\t%s\t%s\t%s\n' \

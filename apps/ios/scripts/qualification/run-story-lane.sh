@@ -117,15 +117,13 @@ for story in "${stories[@]}"; do
 
     PLAYER_E2E_PARALLEL_WORKERS=1 \
       PLAYER_E2E_BUILD_DATA="${shared_build}" \
+      PLAYER_E2E_OUTPUT="${retained}" \
       PLAYER_SKIP_E2E_BUILD="${skip_build}" \
       PLAYER_SKIP_E2E_ENVIRONMENT_VERIFICATION=1 \
       PLAYER_SKIP_PROJECT_GENERATION=1 \
       "${ios_dir}/scripts/run-e2e.sh" --story "${story}" || attempt_status=$?
 
-    attempt_output="${ios_dir}/DerivedData/E2E/${story}"
-    if [[ -d "${attempt_output}" ]]; then
-      mv "${attempt_output}" "${retained}"
-    else
+    if [[ ! -d "${retained}" ]]; then
       mkdir -p "${retained}"
     fi
     duration=$((SECONDS - attempt_start))

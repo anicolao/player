@@ -24,6 +24,8 @@ jq -e '
 temporary_root="$(mktemp -d /tmp/player-e2e-hygiene.XXXXXX)"
 trap 'rm -rf "${temporary_root}"' EXIT
 
+"${script_dir}/tests/test-e2e-run-support.sh"
+
 jq -r '.[].story' "${manifest}" | sort > "${temporary_root}/manifest-stories"
 find "${repository_root}/tests/e2e" -mindepth 1 -maxdepth 1 -type d \
   -exec basename {} \; | sort > "${temporary_root}/story-directories"

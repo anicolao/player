@@ -92,6 +92,7 @@ for ((attempt = 1; attempt <= attempt_count; attempt += 1)); do
   fi
 
   attempt_name="$(printf 'attempt-%02d' "${attempt}")"
+  retained_output="${run_root}/${attempt_name}"
   attempt_started="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
   attempt_start_seconds="${SECONDS}"
   attempt_status=0
@@ -102,16 +103,13 @@ for ((attempt = 1; attempt <= attempt_count; attempt += 1)); do
   fi
   PLAYER_E2E_PARALLEL_WORKERS=1 \
     PLAYER_E2E_BUILD_DATA="${shared_build_data}" \
+    PLAYER_E2E_OUTPUT="${retained_output}" \
     PLAYER_SKIP_E2E_BUILD="${skip_build}" \
     PLAYER_SKIP_E2E_ENVIRONMENT_VERIFICATION=1 \
     PLAYER_SKIP_PROJECT_GENERATION=1 \
     "${script_dir}/run-e2e.sh" "${story}" || attempt_status=$?
   attempt_duration=$((SECONDS - attempt_start_seconds))
-  attempt_output="${ios_dir}/DerivedData/E2E/${story}"
-  retained_output="${run_root}/${attempt_name}"
-  if [[ -d "${attempt_output}" ]]; then
-    mv "${attempt_output}" "${retained_output}"
-  else
+  if [[ ! -d "${retained_output}" ]]; then
     mkdir -p "${retained_output}"
   fi
 

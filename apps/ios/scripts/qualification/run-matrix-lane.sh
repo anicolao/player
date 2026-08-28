@@ -159,12 +159,12 @@ for ((matrix_index = 1; matrix_index <= matrix_count; matrix_index += 1)); do
     if [[ "${build_manifest_ready}" -eq 0 ]]; then skip_build=0; fi
     PLAYER_E2E_PARALLEL_WORKERS=1 \
       PLAYER_E2E_BUILD_DATA="${shared_build}" \
+      PLAYER_E2E_OUTPUT="${retained}" \
       PLAYER_SKIP_E2E_BUILD="${skip_build}" \
       PLAYER_SKIP_E2E_ENVIRONMENT_VERIFICATION=1 \
       PLAYER_SKIP_PROJECT_GENERATION=1 \
       "${worktree_ios}/scripts/run-e2e.sh" --story "${story}" || story_status=$?
-    attempt_output="${worktree_ios}/DerivedData/E2E/${story}"
-    if [[ -d "${attempt_output}" ]]; then mv "${attempt_output}" "${retained}"; else mkdir -p "${retained}"; fi
+    if [[ ! -d "${retained}" ]]; then mkdir -p "${retained}"; fi
     test_phase_entered=false
     if [[ -f "${retained}/Logs/test.log" || -d "${retained}/Results/Story.xcresult" ]]; then test_phase_entered=true; fi
     if ! jq -e --arg sha "${expected_sha}" \

@@ -42,7 +42,7 @@ apps/ios/scripts/run-e2e.sh \
   PlayerUITests/ImportPlaybackUITests/testReviewsCommitsAndPlaysOneAudiobook
 ```
 
-The runner owns a story-specific temporary simulator, verifies the pinned toolchain, normalizes rendering state, runs semantic assertions, exports every generated step, and requires a canonical pixel match with the committed baseline. The canonical comparator permits at most 8/255 per sRGB channel for decoder rounding and permits no spatial mismatch.
+The runner owns a story-specific temporary simulator, verifies the pinned toolchain, normalizes rendering state, runs semantic assertions, exports every generated step, and requires a canonical pixel match with the committed baseline. Each direct invocation reserves a unique output directory and prints its path, so concurrent runs of the same story cannot overwrite one another. The canonical comparator permits at most 8/255 per sRGB channel for decoder rounding and permits no spatial mismatch.
 
 To intentionally record a reviewed baseline on the pinned environment:
 

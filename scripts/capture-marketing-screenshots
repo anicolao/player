@@ -17,11 +17,14 @@ if [[ "${PLAYER_MARKETING_INSIDE_NIX:-0}" != "1" ]]; then
 fi
 
 cd "${repository_root}"
+story_output="${repository_root}/apps/ios/DerivedData/E2E/${story}"
+rm -rf "${story_output}"
+PLAYER_E2E_OUTPUT="${story_output}" \
 apps/ios/scripts/run-e2e.sh \
   "${story}" \
   "${selector}"
 
-fresh_directory="${repository_root}/apps/ios/DerivedData/E2E/${story}/ActualWalkthrough/screenshots/ios"
+fresh_directory="${story_output}/ActualWalkthrough/screenshots/ios"
 expected=(
   000-library.png
   001-receiver-ready.png

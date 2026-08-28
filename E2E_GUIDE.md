@@ -60,11 +60,14 @@ To intentionally record the initial or a changed baseline, pass the exact story 
 apps/ios/scripts/run-e2e.sh --story 002-import-and-play --record 002-import-and-play
 ```
 
-The current run manifest, phase timings, logs, test result, raw attachments,
-materialized actual walkthrough, and failure diagnostics remain under
-`apps/ios/DerivedData/E2E/<story>/`. A pixel failure includes the expected,
-actual, and red heatmap diff images plus a machine-readable summary. The exact
-image comparator is [compare-walkthrough.swift](apps/ios/scripts/compare-walkthrough.swift).
+The runner prints the collision-free output directory reserved for each direct
+invocation. The run manifest, phase timings, logs, test result, raw attachments,
+materialized actual walkthrough, and failure diagnostics remain there. A pixel
+failure includes the expected, actual, and red heatmap diff images plus a
+machine-readable summary. Orchestrators may set `PLAYER_E2E_OUTPUT` to an
+absolute, nonexistent directory; the runner atomically reserves it and refuses
+to delete or reuse an existing path. The exact image comparator is
+[compare-walkthrough.swift](apps/ios/scripts/compare-walkthrough.swift).
 A document mismatch retains the expected README, actual README, and unified
 diff under the same story's diagnostics directory.
 
@@ -73,8 +76,10 @@ concurrency. Each shard verifies and generates the project once, builds the
 complete test bundle once, and then runs its assigned stories sequentially.
 Only immutable build products are shared: every story still gets a newly
 created simulator, result bundle, logs, comparisons, and separately named
-diagnostics artifact. One shard also runs the fixture checks and core suite
-from the shared build. UI-test classes run serially within each shard because
+diagnostics artifact. Reuse is fail-closed: a stored manifest must match the
+source and generated-project content, commit, Xcode and simulator SDK,
+destination runtime/device, and `.xctestrun` hash. One shard also runs the
+fixture checks and core suite from the shared build. UI-test classes run serially within each shard because
 concurrent XCTest clones contend for simulator accessibility services; the
 safe parallelism boundary is the five independent macOS hosts. The
 `Core tests and exact E2E walkthroughs` aggregate succeeds only when all five
