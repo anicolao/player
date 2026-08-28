@@ -2687,10 +2687,13 @@ func compactPlaybackTime(_ seconds: Double) -> String {
     private var value: String {
       let acquisition = E2EZipAcquisition.shared
       let zipCase = acquisition.zipCase ?? "unknown"
+      let jobID = UUID(uuidString: "60000000-0000-0000-0000-000000000001")!
+      let filesystem = acquisition.filesystemEvidence(jobID: jobID)
+      let outsideWrites = filesystem.outsideWriteCount.map(String.init) ?? "unavailable"
       let integrity =
-        "source-unchanged=\(acquisition.sourceIsUnchanged):outside-writes=0"
+        "source-unchanged=\(acquisition.sourceIsUnchanged):outside-writes=\(outsideWrites)"
       guard let job = model.library.importJobs.first(where: {
-        $0.id == UUID(uuidString: "60000000-0000-0000-0000-000000000001")
+        $0.id == jobID
       }) else {
         return "zip:\(zipCase):idle:entries=0:extracted=0:\(integrity)"
       }
@@ -2704,7 +2707,8 @@ func compactPlaybackTime(_ seconds: Double) -> String {
       case .ready, .needsReview:
         return "zip:\(zipCase):ready:entries=\(entries):extracted=\(extracted):books=\(job.proposals.count):\(integrity)"
       case .cancelled:
-        return "zip:\(zipCase):cancelled:extracted=0:staging=0:\(integrity)"
+        let staging = filesystem.stagingFileCount.map(String.init) ?? "unavailable"
+        return "zip:\(zipCase):cancelled:extracted=\(extracted):staging=\(staging):\(integrity)"
       default:
         return "zip:\(zipCase):processing:entries=\(entries):extracted=\(extracted):\(integrity)"
       }

@@ -1405,4 +1405,88 @@
       }
     }
   }
+
+  @MainActor
+  final class E2EZipFilesystemEvidenceTests: XCTestCase {
+    private let jobID = UUID(uuidString: "60000000-0000-0000-0000-000000000001")!
+
+    func testInventoryAcceptsOnlyProductionZIPWorkspaceMutations() throws {
+      let fixture = try makeFixture()
+      defer { try? FileManager.default.removeItem(at: fixture.root) }
+
+      let jobRoot = fixture.root.appending(
+        path: "PlayerData/Staging/\(jobID.uuidString.lowercased())",
+        directoryHint: .isDirectory
+      )
+      try write(Data("archive".utf8), to: jobRoot.appending(path: "archive.zip"))
+      try write(
+        Data("audio".utf8),
+        to: jobRoot.appending(path: "Extracted/Book/part-01.m4a")
+      )
+      try write(Data("checkpoint".utf8), to: jobRoot.appending(path: "zip-checkpoint.json"))
+      try write(Data("library".utf8), to: fixture.root.appending(path: "Library.json"))
+
+      XCTAssertEqual(
+        fixture.acquisition.filesystemEvidence(jobID: jobID),
+        E2EZipFilesystemEvidence(
+          outsideWriteCount: 0,
+          stagingFileCount: 3,
+          sentinelsPreserved: true
+        )
+      )
+    }
+
+    func testInventoryRejectsEscapedWriteAndChangedSentinel() throws {
+      let fixture = try makeFixture()
+      defer { try? FileManager.default.removeItem(at: fixture.root) }
+
+      try write(Data("escaped".utf8), to: fixture.root.appending(path: "escaped.m4a"))
+      try Data("changed".utf8).write(
+        to: fixture.root.appending(path: "ContainmentSentinels/root-boundary.bin"),
+        options: .atomic
+      )
+
+      let evidence = fixture.acquisition.filesystemEvidence(jobID: jobID)
+      XCTAssertEqual(evidence.outsideWriteCount, 2)
+      XCTAssertEqual(evidence.stagingFileCount, 0)
+      XCTAssertFalse(evidence.sentinelsPreserved)
+    }
+
+    func testStagingEvidenceObservesCleanupInsteadOfAssumingIt() throws {
+      let fixture = try makeFixture()
+      defer { try? FileManager.default.removeItem(at: fixture.root) }
+
+      let jobRoot = fixture.root.appending(
+        path: "PlayerData/Staging/\(jobID.uuidString.lowercased())",
+        directoryHint: .isDirectory
+      )
+      try write(Data("archive".utf8), to: jobRoot.appending(path: "archive.zip"))
+      XCTAssertEqual(fixture.acquisition.filesystemEvidence(jobID: jobID).stagingFileCount, 1)
+
+      try FileManager.default.removeItem(at: jobRoot)
+      XCTAssertEqual(fixture.acquisition.filesystemEvidence(jobID: jobID).stagingFileCount, 0)
+    }
+
+    private func makeFixture() throws -> (root: URL, acquisition: E2EZipAcquisition) {
+      let root = FileManager.default.temporaryDirectory.appending(
+        path: "E2EZipFilesystemEvidenceTests-\(UUID().uuidString)",
+        directoryHint: .isDirectory
+      )
+      try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+      let source = root.appending(path: "selected-audiobook.zip")
+      let bytes = Data("zip fixture".utf8)
+      try bytes.write(to: source, options: .atomic)
+      let acquisition = E2EZipAcquisition()
+      try acquisition.configure(zipCase: "valid", sourceURL: source, sourceBytes: bytes)
+      return (root, acquisition)
+    }
+
+    private func write(_ data: Data, to url: URL) throws {
+      try FileManager.default.createDirectory(
+        at: url.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+      )
+      try data.write(to: url, options: .atomic)
+    }
+  }
 #endif

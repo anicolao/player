@@ -2213,7 +2213,7 @@ extension PlayerEnvironment {
 
       let sourceURL = root.appending(path: "selected-audiobook.zip")
       try bytes.write(to: sourceURL, options: .atomic)
-      E2EZipAcquisition.shared.configure(
+      try E2EZipAcquisition.shared.configure(
         zipCase: options.archiveCase.rawValue,
         sourceURL: sourceURL,
         sourceBytes: bytes
@@ -2515,19 +2515,112 @@ extension PlayerEnvironment {
     private(set) var zipCase: String?
     private(set) var sourceURL: URL?
     private var sourceBytes: Data?
+    private var fixtureRootURL: URL?
+    private var baselineFiles: [String: String] = [:]
 
     var isConfigured: Bool { zipCase != nil && sourceURL != nil }
 
-    func configure(zipCase: String, sourceURL: URL, sourceBytes: Data) {
+    func configure(zipCase: String, sourceURL: URL, sourceBytes: Data) throws {
+      let root = sourceURL.deletingLastPathComponent().standardizedFileURL
+      let sentinel = root.appending(
+        path: "ContainmentSentinels/root-boundary.bin",
+        directoryHint: .notDirectory
+      )
+      try FileManager.default.createDirectory(
+        at: sentinel.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+      )
+      try Data("player safe zip containment sentinel".utf8).write(to: sentinel, options: .atomic)
+
       self.zipCase = zipCase
       self.sourceURL = sourceURL
       self.sourceBytes = sourceBytes
+      fixtureRootURL = root
+      baselineFiles = try Self.regularFileInventory(beneath: root)
     }
 
     var sourceIsUnchanged: Bool {
       guard let sourceURL, let sourceBytes else { return false }
       return (try? Data(contentsOf: sourceURL)) == sourceBytes
     }
+
+    func filesystemEvidence(jobID: UUID) -> E2EZipFilesystemEvidence {
+      guard let fixtureRootURL,
+        let currentFiles = try? Self.regularFileInventory(beneath: fixtureRootURL)
+      else { return .unavailable }
+
+      let jobRoot = "PlayerData/Staging/\(jobID.uuidString.lowercased())"
+      let unexpectedAdditions = currentFiles.keys.filter { relativePath in
+        baselineFiles[relativePath] == nil
+          && !Self.isExpectedMutation(relativePath, jobRoot: jobRoot)
+      }
+      let changedOrRemovedBaselineFiles = baselineFiles.keys.filter {
+        currentFiles[$0] != baselineFiles[$0]
+      }
+      let stagingPrefix = jobRoot + "/"
+      let stagingFileCount = currentFiles.keys.filter { $0.hasPrefix(stagingPrefix) }.count
+      let sentinelPath = "ContainmentSentinels/root-boundary.bin"
+
+      return E2EZipFilesystemEvidence(
+        outsideWriteCount: unexpectedAdditions.count + changedOrRemovedBaselineFiles.count,
+        stagingFileCount: stagingFileCount,
+        sentinelsPreserved: currentFiles[sentinelPath] == baselineFiles[sentinelPath]
+      )
+    }
+
+    private static func isExpectedMutation(_ relativePath: String, jobRoot: String) -> Bool {
+      if relativePath == "Library.json" || relativePath.hasPrefix("AutomaticBackups/") {
+        return true
+      }
+      if relativePath == "\(jobRoot)/archive.zip"
+        || relativePath == "\(jobRoot)/zip-checkpoint.json"
+      {
+        return true
+      }
+      return relativePath.hasPrefix("\(jobRoot)/Extracted/")
+    }
+
+    private static func regularFileInventory(beneath root: URL) throws -> [String: String] {
+      guard let enumerator = FileManager.default.enumerator(
+        at: root,
+        includingPropertiesForKeys: [.isRegularFileKey],
+        options: [.skipsHiddenFiles]
+      ) else {
+        throw PlayerCoreError.fileOperation("The Safe ZIP E2E root could not be inventoried.")
+      }
+      var files: [String: String] = [:]
+      let prefix = root.standardizedFileURL.path + "/"
+      for case let url as URL in enumerator {
+        guard try url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else {
+          continue
+        }
+        let path = url.standardizedFileURL.path
+        guard path.hasPrefix(prefix) else {
+          throw PlayerCoreError.fileOperation("The Safe ZIP E2E inventory escaped its root.")
+        }
+        let relativePath = String(path.dropFirst(prefix.count))
+        guard !relativePath.isEmpty, files[relativePath] == nil else {
+          throw PlayerCoreError.fileOperation("The Safe ZIP E2E inventory is ambiguous.")
+        }
+        let digest = SHA256.hash(data: try Data(contentsOf: url))
+          .map { String(format: "%02x", $0) }
+          .joined()
+        files[relativePath] = digest
+      }
+      return files
+    }
+  }
+
+  struct E2EZipFilesystemEvidence: Equatable {
+    var outsideWriteCount: Int?
+    var stagingFileCount: Int?
+    var sentinelsPreserved: Bool
+
+    static let unavailable = E2EZipFilesystemEvidence(
+      outsideWriteCount: nil,
+      stagingFileCount: nil,
+      sentinelsPreserved: false
+    )
   }
 
   @MainActor
