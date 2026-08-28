@@ -762,6 +762,28 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "The predecessor exact-SHA gate was cancelled as obsolete before producing an authoritative qualification report, so no accepted consecutive count existed to reset."
+    },
+    {
+      "signature": "semantic:006-safe-zip-import:retry-filesystem-evidence-transiently-unavailable",
+      "story": "006-safe-zip-import",
+      "evidence": {
+        "artifact": "apps/ios/DerivedData/E2E/006-safe-zip-import",
+        "url": "local-artifact:apps/ios/DerivedData/E2E/006-safe-zip-import",
+        "commit": "8d7ac77c593328c419f6c8b2edec05241b2f3275",
+        "observation": "After the valid ZIP retry reached its ready model state, the safety probe reported outside-writes=unavailable instead of zero because the recursive inventory threw while retry cleanup removed an already-enumerated extraction child. The retry-ready screenshot was therefore absent."
+      },
+      "rootCause": "The E2E filesystem inventory treated a child disappearing between directory enumeration and resource-value or data access as a failure to inventory the entire root. Retry intentionally replaces the extraction tree, so that ordinary concurrent disappearance could strand the accessibility probe at an unavailable value after the model's last observable mutation.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Treat a child that no longer exists after enumeration as absent from that instantaneous snapshot, retry access once when the path still exists, and continue to fail closed for stable filesystem errors.",
+        "commits": [
+          "b6f39c27a2ddfbb313da336b8f66785222398f37"
+        ],
+        "validation": "Fresh-build shard r0-zip-race-story passed both Story 006 UI tests 2/2, including the valid retry's exact outside-writes=0 readiness value and retained 001-retry-ready.png. Its sole comparison failure was the separately reviewed R4 branding change from Player storage to Bookshelf storage in 002-storage-recovery.png."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "The formal exact-SHA qualification run targets the earlier 81380149114c492cc0e041a508ab1abd6768e24f revision, so this later local discovery did not reset an accepted count at the fix SHA."
     }
   ]
 }
