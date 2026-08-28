@@ -221,6 +221,7 @@ final class AccessibilityUITests: XCTestCase {
     )
     let bookDetailScreen = anyElement(app, "book-detail-screen")
     let bookDetailScrollReadiness = anyElement(app, "book-detail-scroll-readiness")
+    let bookDetailScreenPixels = ConsecutiveAccessibilityScreenObservation()
     try tester.step(
       "large-text-book-detail",
       description: "Book Detail stacks identity and primary actions at the largest text size",
@@ -251,6 +252,7 @@ final class AccessibilityUITests: XCTestCase {
             in: app
           )
           && elementIsFullyVisible(playBook, within: bookDetailScreen)
+          && bookDetailScreenPixels.isStable()
       }
     )
 
@@ -966,10 +968,26 @@ final class AccessibilityUITests: XCTestCase {
       if abs(displacement) <= 1 { return true }
       let direction: ScrollProbeDirection
       if displacement > 0 {
-        guard !before.atBottom else { return false }
+        if before.atBottom {
+          return waitForCaptureAnchor(
+            framing,
+            windowMinY: windowMinY,
+            deadline: deadline,
+            matching: { abs($0 - framing.targetMinY) <= 1 },
+            failureReason: "the scroll probe reported its bottom endpoint"
+          ) != nil
+        }
         direction = .towardEnd
       } else {
-        guard !before.atTop else { return false }
+        if before.atTop {
+          return waitForCaptureAnchor(
+            framing,
+            windowMinY: windowMinY,
+            deadline: deadline,
+            matching: { abs($0 - framing.targetMinY) <= 1 },
+            failureReason: "the scroll probe reported its top endpoint"
+          ) != nil
+        }
         direction = .towardStart
       }
       guard deadline.remaining >= 0.2 else { return false }
@@ -993,9 +1011,21 @@ final class AccessibilityUITests: XCTestCase {
         }
       )
       guard settled, settledState != nil else { return false }
-      if let screenY = anchorScreenY(framing.anchor(), windowMinY: windowMinY),
-        abs(screenY - framing.targetMinY) <= 1
-      {
+      let anchorProgressed: (CGFloat) -> Bool = { updatedY in
+        if abs(updatedY - framing.targetMinY) <= 1 { return true }
+        switch direction {
+        case .towardEnd: return updatedY < screenY - 0.5
+        case .towardStart: return updatedY > screenY + 0.5
+        }
+      }
+      guard let updatedY = waitForCaptureAnchor(
+        framing,
+        windowMinY: windowMinY,
+        deadline: deadline,
+        matching: anchorProgressed,
+        failureReason: "the settled scroll geometry did not reach the accessibility tree"
+      ) else { return false }
+      if abs(updatedY - framing.targetMinY) <= 1 {
         return true
       }
     }
@@ -1005,6 +1035,34 @@ final class AccessibilityUITests: XCTestCase {
         + "container=\(surface.containerID), probe=\(String(describing: surface.readiness.value))"
     )
     return false
+  }
+
+  private func waitForCaptureAnchor(
+    _ framing: AccessibilityCaptureFraming,
+    windowMinY: CGFloat,
+    deadline: EventDeadline,
+    matching condition: @escaping (CGFloat) -> Bool,
+    failureReason: String
+  ) -> CGFloat? {
+    var latestY: CGFloat?
+    func matches() -> Bool {
+      latestY = anchorScreenY(framing.anchor(), windowMinY: windowMinY)
+      return latestY.map(condition) ?? false
+    }
+    if matches() { return latestY }
+    if deadline.remaining > 0 {
+      let expectation = XCTNSPredicateExpectation(
+        predicate: NSPredicate { _, _ in matches() },
+        object: framing.anchor()
+      )
+      _ = XCTWaiter.wait(for: [expectation], timeout: deadline.remaining)
+    }
+    if matches() { return latestY }
+    print(
+      "Capture framing failed because \(failureReason): target=\(framing.targetMinY), "
+        + "actual=\(String(describing: latestY))"
+    )
+    return nil
   }
 
   private func performAccessibilityFramingGesture(
@@ -1199,5 +1257,49 @@ final class AccessibilityUITests: XCTestCase {
     StepVerification(specification: specification) {
       element.waitForExistence(timeout: 2) && element.label.contains(label)
     }
+  }
+}
+
+@MainActor
+private final class ConsecutiveAccessibilityScreenObservation {
+  private var previousObservation: AccessibilityScreenPixelObservation?
+
+  func isStable() -> Bool {
+    guard let observation = AccessibilityScreenPixelObservation(XCUIScreen.main.screenshot()) else {
+      print("Accessibility capture could not decode the composited screen pixels")
+      return false
+    }
+    defer { previousObservation = observation }
+    guard let previousObservation else {
+      print("Accessibility capture observed its first composited screen")
+      return false
+    }
+    if previousObservation == observation { return true }
+    print("Accessibility capture observed a compositor change")
+    return false
+  }
+}
+
+@MainActor
+private struct AccessibilityScreenPixelObservation: Equatable {
+  let width: Int
+  let height: Int
+  let bytesPerRow: Int
+  let bitsPerComponent: Int
+  let bitsPerPixel: Int
+  let bitmapInfo: UInt32
+  let pixels: Data
+
+  init?(_ screenshot: XCUIScreenshot) {
+    guard let image = screenshot.image.cgImage,
+      let providerData = image.dataProvider?.data
+    else { return nil }
+    width = image.width
+    height = image.height
+    bytesPerRow = image.bytesPerRow
+    bitsPerComponent = image.bitsPerComponent
+    bitsPerPixel = image.bitsPerPixel
+    bitmapInfo = image.bitmapInfo.rawValue
+    pixels = providerData as Data
   }
 }
