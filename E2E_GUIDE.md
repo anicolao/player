@@ -115,6 +115,10 @@ apps/ios/scripts/measure-e2e-reliability.sh \
 The command retains every attempt and writes TSV and JSON summaries under
 `apps/ios/DerivedData/E2EQualification/`. A failed attempt is counted and the
 remaining requested measurements still run; there is no retry-to-green path.
+The worktree and commit must remain unchanged throughout the run. The
+environment and generated project are verified once, and immutable test build
+products are reused, but each attempt creates a clean simulator and retains an
+independent result bundle, log set, walkthrough, and comparison diagnostics.
 
 The performance, migration, and tracer mapping is maintained in
 [MVP_ACCEPTANCE_MATRIX.md](MVP_ACCEPTANCE_MATRIX.md).

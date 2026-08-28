@@ -60,22 +60,52 @@ jq -e --arg story "${story}" 'any(.[]; .story == $story)' \
     exit 2
   }
 
-run_id="$(date -u '+%Y%m%dT%H%M%SZ')-$(git -C "${repository_root}" rev-parse --short=12 HEAD)-${story}"
+source_is_clean() {
+  [[ -z "$(git -C "${repository_root}" status --porcelain --untracked-files=normal)" ]]
+}
+
+if ! source_is_clean; then
+  echo "Reliability measurements require a clean worktree." >&2
+  exit 2
+fi
+
+measurement_commit="$(git -C "${repository_root}" rev-parse HEAD)"
+run_id="$(date -u '+%Y%m%dT%H%M%SZ')-${measurement_commit:0:12}-${story}"
 run_root="${qualification_root}/${run_id}"
+shared_build_data="${run_root}/Build"
 mkdir -p "${run_root}"
 : > "${run_root}/attempts.jsonl"
 : > "${run_root}/attempts.tsv"
 printf 'attempt\tresult\tduration_seconds\texit_code\tsignature\n' \
   >> "${run_root}/attempts.tsv"
 
+"${script_dir}/verify-e2e-environment.sh"
+"${script_dir}/generate-project.sh"
+
 pass_count=0
 failure_count=0
 for ((attempt = 1; attempt <= attempt_count; attempt += 1)); do
+  if [[ "$(git -C "${repository_root}" rev-parse HEAD)" != "${measurement_commit}" ]] \
+    || ! source_is_clean; then
+    echo "The source changed during reliability measurement." >&2
+    exit 2
+  fi
+
   attempt_name="$(printf 'attempt-%02d' "${attempt}")"
   attempt_started="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
   attempt_start_seconds="${SECONDS}"
   attempt_status=0
-  "${script_dir}/run-e2e.sh" "${story}" || attempt_status=$?
+  skip_build=0
+  if find "${shared_build_data}/Build/Products" -maxdepth 1 \
+    -name '*.xctestrun' -print -quit 2>/dev/null | grep -q .; then
+    skip_build=1
+  fi
+  PLAYER_E2E_PARALLEL_WORKERS=1 \
+    PLAYER_E2E_BUILD_DATA="${shared_build_data}" \
+    PLAYER_SKIP_E2E_BUILD="${skip_build}" \
+    PLAYER_SKIP_E2E_ENVIRONMENT_VERIFICATION=1 \
+    PLAYER_SKIP_PROJECT_GENERATION=1 \
+    "${script_dir}/run-e2e.sh" "${story}" || attempt_status=$?
   attempt_duration=$((SECONDS - attempt_start_seconds))
   attempt_output="${ios_dir}/DerivedData/E2E/${story}"
   retained_output="${run_root}/${attempt_name}"
@@ -126,12 +156,12 @@ done
 
 jq -s \
   --arg story "${story}" \
-  --arg commit "$(git -C "${repository_root}" rev-parse HEAD)" \
+  --arg commit "${measurement_commit}" \
   --arg runID "${run_id}" \
   --argjson requestedAttempts "${attempt_count}" \
   --argjson passCount "${pass_count}" \
   --argjson failureCount "${failure_count}" \
-  '{story: $story, commit: $commit, runID: $runID,
+  '{story: $story, commit: $commit, runID: $runID, sharedBuild: true,
     requestedAttempts: $requestedAttempts, passCount: $passCount,
     failureCount: $failureCount, attempts: .}' \
   "${run_root}/attempts.jsonl" > "${run_root}/Summary.json"
