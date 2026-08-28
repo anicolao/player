@@ -297,6 +297,119 @@ final class SleepTimerTests: XCTestCase {
     XCTAssertFalse(resumed)
   }
 
+  func testRecentHistoryUsesDurableAppendOrderToBreakEqualCompletionTimes() async {
+    let completedAt = Date(timeIntervalSince1970: 1_800_000_000)
+    let book = makeBook()
+    var seed = snapshot(book: book, positionMilliseconds: 90_000, at: completedAt)
+    let firstAtTie = historyEntry(
+      id: uuid(901),
+      book: book,
+      completedAt: completedAt,
+      stopPositionMilliseconds: 70_000
+    )
+    let older = historyEntry(
+      id: uuid(902),
+      book: book,
+      completedAt: completedAt.addingTimeInterval(-1),
+      stopPositionMilliseconds: 60_000
+    )
+    let secondAtTie = historyEntry(
+      id: uuid(903),
+      book: book,
+      completedAt: completedAt,
+      stopPositionMilliseconds: 80_000
+    )
+    let newest = historyEntry(
+      id: uuid(904),
+      book: book,
+      completedAt: completedAt.addingTimeInterval(1),
+      stopPositionMilliseconds: 90_000
+    )
+    seed.sleepTimerHistory = [firstAtTie, older, secondAtTie, newest]
+    let store = InMemoryLibraryStore(snapshot: seed)
+
+    let model = makeModel(
+      store: store,
+      playback: SleepTimerPlaybackController(),
+      clock: MutableSleepTimerClock(completedAt.addingTimeInterval(2))
+    )
+    await model.restore()
+    XCTAssertEqual(model.recentSleepHistory.map(\.id), [
+      newest.id, secondAtTie.id, firstAtTie.id, older.id,
+    ])
+
+    let restored = makeModel(
+      store: store,
+      playback: SleepTimerPlaybackController(),
+      clock: MutableSleepTimerClock(completedAt.addingTimeInterval(2))
+    )
+    await restored.restore()
+    XCTAssertEqual(restored.recentSleepHistory.map(\.id), [
+      newest.id, secondAtTie.id, firstAtTie.id, older.id,
+    ])
+  }
+
+  func testEqualCompletionTimesChooseLatestAppendedEligibleResumeContext() async {
+    let completedAt = Date(timeIntervalSince1970: 1_800_000_000)
+    let book = makeBook()
+    var seed = snapshot(book: book, positionMilliseconds: 90_000, at: completedAt)
+    let first = historyEntry(
+      id: uuid(911),
+      book: book,
+      completedAt: completedAt,
+      stopPositionMilliseconds: 70_000
+    )
+    let latest = historyEntry(
+      id: uuid(912),
+      book: book,
+      completedAt: completedAt,
+      stopPositionMilliseconds: 90_000
+    )
+    seed.sleepTimerHistory = [first, latest]
+    let store = InMemoryLibraryStore(snapshot: seed)
+    let model = makeModel(
+      store: store,
+      playback: SleepTimerPlaybackController(),
+      clock: MutableSleepTimerClock(completedAt.addingTimeInterval(10))
+    )
+    await model.restore()
+
+    XCTAssertEqual(model.sleepResumeContext?.historyID, latest.id)
+    let resumed = await model.resumeFromSleepWithContext()
+    XCTAssertTrue(resumed)
+    XCTAssertNil(model.library.sleepTimerHistory[0].resumeContextUsedAt)
+    XCTAssertNotNil(model.library.sleepTimerHistory[1].resumeContextUsedAt)
+  }
+
+  func testEqualCompletionTimesSkipNewerIneligibleHistoryForResume() async {
+    let completedAt = Date(timeIntervalSince1970: 1_800_000_000)
+    let book = makeBook()
+    var seed = snapshot(book: book, positionMilliseconds: 90_000, at: completedAt)
+    let completed = historyEntry(
+      id: uuid(921),
+      book: book,
+      completedAt: completedAt,
+      stopPositionMilliseconds: 80_000
+    )
+    var cancelled = historyEntry(
+      id: uuid(922),
+      book: book,
+      completedAt: completedAt,
+      stopPositionMilliseconds: 90_000
+    )
+    cancelled.status = .cancelled
+    seed.sleepTimerHistory = [completed, cancelled]
+    let model = makeModel(
+      store: InMemoryLibraryStore(snapshot: seed),
+      playback: SleepTimerPlaybackController(),
+      clock: MutableSleepTimerClock(completedAt.addingTimeInterval(10))
+    )
+    await model.restore()
+
+    XCTAssertEqual(model.recentSleepHistory.map(\.id), [cancelled.id, completed.id])
+    XCTAssertEqual(model.sleepResumeContext?.historyID, completed.id)
+  }
+
   func testSchemaElevenMigratesSleepDefaultsAndWritesCurrentSchema() async throws {
     let directory = FileManager.default.temporaryDirectory.appending(
       path: "SleepTimerMigration-\(UUID().uuidString)",
@@ -448,6 +561,29 @@ final class SleepTimerTests: XCTestCase {
       resumeContextUsedAt: nil
     )]
     return result
+  }
+
+  private func historyEntry(
+    id: UUID,
+    book: Book,
+    completedAt: Date,
+    stopPositionMilliseconds: Int64
+  ) -> SleepTimerHistoryEntry {
+    SleepTimerHistoryEntry(
+      id: id,
+      timerID: id,
+      bookID: book.id,
+      selection: .endOfTrack,
+      fadeEnabled: true,
+      startedAt: completedAt.addingTimeInterval(-20),
+      expectedDeadline: nil,
+      expectedBoundaryPositionMilliseconds: stopPositionMilliseconds,
+      actualStopPositionMilliseconds: stopPositionMilliseconds,
+      completedAt: completedAt,
+      status: .completed,
+      positionEventID: nil,
+      resumeContextUsedAt: nil
+    )
   }
 
   private func makeModel(

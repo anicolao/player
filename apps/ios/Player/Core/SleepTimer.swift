@@ -83,6 +83,20 @@ struct SleepTimerHistoryEntry: Codable, Equatable, Identifiable, Sendable {
   var resumeContextExpiresAt: Date { completedAt.addingTimeInterval(10 * 60) }
 }
 
+enum SleepTimerHistoryOrdering {
+  static func newestFirst(_ entries: [SleepTimerHistoryEntry]) -> [SleepTimerHistoryEntry] {
+    entries.enumerated().sorted { left, right in
+      if left.element.completedAt != right.element.completedAt {
+        return left.element.completedAt > right.element.completedAt
+      }
+      // History is durably appended in completion order. Preserve that semantic ordering when
+      // the injected clock gives multiple entries the same timestamp instead of relying on the
+      // unspecified order of equal elements (or on their unrelated UUID values).
+      return left.offset > right.offset
+    }.map(\.element)
+  }
+}
+
 struct SleepTimerProjection: Codable, Equatable, Sendable {
   var timerID: UUID
   var selectionLabel: String

@@ -2097,7 +2097,7 @@ final class PlayerModel {
   }
 
   var recentSleepHistory: [SleepTimerHistoryEntry] {
-    library.sleepTimerHistory.sorted { $0.completedAt > $1.completedAt }
+    SleepTimerHistoryOrdering.newestFirst(library.sleepTimerHistory)
   }
 
   var sleepResumeContext: SleepResumeContext? {
