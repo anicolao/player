@@ -16,7 +16,7 @@ enum ComparisonError: LocalizedError {
   var errorDescription: String? {
     switch self {
     case .usage:
-      "usage: compare-walkthrough.swift <baseline-directory> <actual-directory> [diagnostics-directory]"
+      "usage: compare-walkthrough.swift <baseline-directory> <actual-directory> [diagnostics-directory [--retain-all-evidence]]"
     case .directoryUnreadable(let path):
       "Could not read screenshot directory: \(path)"
     case .noImages(let path):
@@ -82,7 +82,8 @@ func differenceImage(
           for channel in 0..<4 {
             let expectedValue = expectedBase[offset + channel]
             let actualValue = actualBase[offset + channel]
-            let delta = expectedValue > actualValue
+            let delta =
+              expectedValue > actualValue
               ? expectedValue - actualValue
               : actualValue - expectedValue
             maximumDelta = max(maximumDelta, delta)
@@ -92,7 +93,8 @@ func differenceImage(
             outputBase[offset + 1] = 0
             outputBase[offset + 2] = 0
           } else {
-            let luminance = UInt16(expectedBase[offset]) + UInt16(expectedBase[offset + 1])
+            let luminance =
+              UInt16(expectedBase[offset]) + UInt16(expectedBase[offset + 1])
               + UInt16(expectedBase[offset + 2])
             let context = UInt8(min(245, 190 + Int(luminance / 15)))
             outputBase[offset] = context
@@ -118,6 +120,17 @@ func pngNames(in directory: URL) throws -> [String] {
     throw ComparisonError.directoryUnreadable(directory.path)
   }
   return names.filter { $0.hasSuffix(".png") }.sorted()
+}
+
+func copyEvidence(from source: URL, to destination: URL) throws {
+  if FileManager.default.fileExists(atPath: destination.path) {
+    try FileManager.default.removeItem(at: destination)
+  }
+  try FileManager.default.copyItem(at: source, to: destination)
+}
+
+func writeEvidencePlaceholder(_ message: String, to destination: URL) throws {
+  try Data((message + "\n").utf8).write(to: destination, options: .atomic)
 }
 
 func canonicalImage(at url: URL) throws -> CanonicalImage {
@@ -190,7 +203,8 @@ func pixelDifference(
         for channel in 0..<4 {
           let expectedValue = expectedBase[offset + channel]
           let actualValue = actualBase[offset + channel]
-          let delta = expectedValue > actualValue
+          let delta =
+            expectedValue > actualValue
             ? expectedValue - actualValue
             : actualValue - expectedValue
           pixelMaximumChannelDelta = max(pixelMaximumChannelDelta, delta)
@@ -210,7 +224,8 @@ func pixelDifference(
           toleratedCount += 1
         }
       }
-      let bounds = count == 0
+      let bounds =
+        count == 0
         ? nil
         : CGRect(
           x: minimumX,
@@ -229,15 +244,22 @@ func pixelDifference(
 }
 
 func compareWalkthrough() throws {
-  guard (3...4).contains(CommandLine.arguments.count) else {
+  guard (3...5).contains(CommandLine.arguments.count) else {
+    throw ComparisonError.usage
+  }
+  if CommandLine.arguments.count == 5,
+    CommandLine.arguments[4] != "--retain-all-evidence"
+  {
     throw ComparisonError.usage
   }
 
   let baselineDirectory = URL(filePath: CommandLine.arguments[1], directoryHint: .isDirectory)
   let actualDirectory = URL(filePath: CommandLine.arguments[2], directoryHint: .isDirectory)
-  let diagnosticsDirectory = CommandLine.arguments.count == 4
+  let diagnosticsDirectory =
+    CommandLine.arguments.count >= 4
     ? URL(filePath: CommandLine.arguments[3], directoryHint: .isDirectory)
     : nil
+  let retainAllEvidence = CommandLine.arguments.count == 5
   if let diagnosticsDirectory {
     try FileManager.default.createDirectory(
       at: diagnosticsDirectory,
@@ -250,18 +272,126 @@ func compareWalkthrough() throws {
   guard !baselineNames.isEmpty else {
     throw ComparisonError.noImages(baselineDirectory.path)
   }
-  guard baselineNames == actualNames else {
-    throw ComparisonError.fileSetDifference(expected: baselineNames, actual: actualNames)
-  }
 
   let allowedChannelDelta: UInt8 = 8
   var summaries: [[String: Any]] = []
   var failureCount = 0
-  for name in baselineNames {
+  let allNames = Set(baselineNames).union(actualNames).sorted()
+  for name in allNames {
     let expectedURL = baselineDirectory.appending(path: name)
     let actualURL = actualDirectory.appending(path: name)
-    let expected = try canonicalImage(at: expectedURL)
-    let actual = try canonicalImage(at: actualURL)
+    let expectedExists = baselineNames.contains(name)
+    let actualExists = actualNames.contains(name)
+    let stem = String(name.dropLast(4))
+
+    if !actualExists {
+      failureCount += 1
+      let message = "Expected screenshot \(name) has no actual capture."
+      FileHandle.standardError.write(Data("\(message)\n".utf8))
+      var summary: [String: Any] = [
+        "name": name,
+        "result": "missing-actual",
+      ]
+      if let diagnosticsDirectory {
+        let expectedName = "\(stem)-expected.png"
+        let actualName = "\(stem)-actual-missing.txt"
+        let diffName = "\(stem)-diff-unavailable.txt"
+        try copyEvidence(
+          from: expectedURL,
+          to: diagnosticsDirectory.appending(path: expectedName)
+        )
+        try writeEvidencePlaceholder(message, to: diagnosticsDirectory.appending(path: actualName))
+        try writeEvidencePlaceholder(
+          "No diff can be rendered because the actual screenshot is missing.",
+          to: diagnosticsDirectory.appending(path: diffName)
+        )
+        summary["expectedArtifact"] = expectedName
+        summary["actualArtifact"] = actualName
+        summary["diffArtifact"] = diffName
+      }
+      summaries.append(summary)
+      continue
+    }
+
+    if !expectedExists {
+      failureCount += 1
+      let message = "Unexpected actual screenshot \(name) has no reviewed baseline."
+      FileHandle.standardError.write(Data("\(message)\n".utf8))
+      var summary: [String: Any] = [
+        "name": name,
+        "result": "unexpected-actual",
+      ]
+      if let diagnosticsDirectory {
+        let expectedName = "\(stem)-expected-missing.txt"
+        let actualName = "\(stem)-actual.png"
+        let diffName = "\(stem)-diff-unavailable.txt"
+        try writeEvidencePlaceholder(
+          message, to: diagnosticsDirectory.appending(path: expectedName))
+        try copyEvidence(
+          from: actualURL,
+          to: diagnosticsDirectory.appending(path: actualName)
+        )
+        try writeEvidencePlaceholder(
+          "No diff can be rendered because the reviewed screenshot is missing.",
+          to: diagnosticsDirectory.appending(path: diffName)
+        )
+        summary["expectedArtifact"] = expectedName
+        summary["actualArtifact"] = actualName
+        summary["diffArtifact"] = diffName
+      }
+      summaries.append(summary)
+      continue
+    }
+
+    var expected: CanonicalImage?
+    var actual: CanonicalImage?
+    var decodeFailures: [String] = []
+    do {
+      expected = try canonicalImage(at: expectedURL)
+    } catch {
+      decodeFailures.append("reviewed image: \(error.localizedDescription)")
+    }
+    do {
+      actual = try canonicalImage(at: actualURL)
+    } catch {
+      decodeFailures.append("actual image: \(error.localizedDescription)")
+    }
+    if !decodeFailures.isEmpty {
+      failureCount += 1
+      let message =
+        "Screenshot \(name) could not be decoded (\(decodeFailures.joined(separator: "; ")))."
+      FileHandle.standardError.write(Data("\(message)\n".utf8))
+      var summary: [String: Any] = [
+        "name": name,
+        "result": "image-unreadable",
+        "errors": decodeFailures,
+      ]
+      if let diagnosticsDirectory {
+        let expectedName = "\(stem)-expected.png"
+        let actualName = "\(stem)-actual.png"
+        let diffName = "\(stem)-diff-unavailable.txt"
+        try copyEvidence(
+          from: expectedURL,
+          to: diagnosticsDirectory.appending(path: expectedName)
+        )
+        try copyEvidence(
+          from: actualURL,
+          to: diagnosticsDirectory.appending(path: actualName)
+        )
+        try writeEvidencePlaceholder(
+          "No pixel diff can be rendered because one or both screenshot files could not be decoded.",
+          to: diagnosticsDirectory.appending(path: diffName)
+        )
+        summary["expectedArtifact"] = expectedName
+        summary["actualArtifact"] = actualName
+        summary["diffArtifact"] = diffName
+      }
+      summaries.append(summary)
+      continue
+    }
+    guard let expected, let actual else {
+      throw ComparisonError.imageUnreadable(name)
+    }
     guard expected.width == actual.width, expected.height == actual.height else {
       failureCount += 1
       let message = ComparisonError.dimensionDifference(
@@ -270,24 +400,35 @@ func compareWalkthrough() throws {
         actual: CGSize(width: CGFloat(actual.width), height: CGFloat(actual.height))
       ).localizedDescription
       FileHandle.standardError.write(Data("\(message)\n".utf8))
-      summaries.append([
+      var summary: [String: Any] = [
         "name": name,
         "result": "dimension-difference",
         "expectedWidth": expected.width,
         "expectedHeight": expected.height,
         "actualWidth": actual.width,
         "actualHeight": actual.height,
-      ])
+      ]
       if let diagnosticsDirectory {
-        try FileManager.default.copyItem(
-          at: expectedURL,
-          to: diagnosticsDirectory.appending(path: "\(name.dropLast(4))-expected.png")
+        let expectedName = "\(stem)-expected.png"
+        let actualName = "\(stem)-actual.png"
+        let diffName = "\(stem)-diff-unavailable.txt"
+        try copyEvidence(
+          from: expectedURL,
+          to: diagnosticsDirectory.appending(path: expectedName)
         )
-        try FileManager.default.copyItem(
-          at: actualURL,
-          to: diagnosticsDirectory.appending(path: "\(name.dropLast(4))-actual.png")
+        try copyEvidence(
+          from: actualURL,
+          to: diagnosticsDirectory.appending(path: actualName)
         )
+        try writeEvidencePlaceholder(
+          "No pixel diff can be rendered for images with different dimensions: expected \(expected.width)x\(expected.height), actual \(actual.width)x\(actual.height).",
+          to: diagnosticsDirectory.appending(path: diffName)
+        )
+        summary["expectedArtifact"] = expectedName
+        summary["actualArtifact"] = actualName
+        summary["diffArtifact"] = diffName
       }
+      summaries.append(summary)
       continue
     }
 
@@ -302,25 +443,27 @@ func compareWalkthrough() throws {
       let boundsDescription = difference.bounds.map(String.init(describing:)) ?? "none"
       let message =
         "Screenshot \(name) differs by \(difference.count) pixels beyond 8/255; "
-          + "bounds=\(boundsDescription), maximumChannelDelta=\(difference.maximumChannelDelta).\n"
+        + "bounds=\(boundsDescription), maximumChannelDelta=\(difference.maximumChannelDelta).\n"
       FileHandle.standardError.write(Data(message.utf8))
-      summaries.append([
+      var summary: [String: Any] = [
         "name": name,
         "result": "pixel-difference",
         "pixelCount": difference.count,
         "toleratedPixelCount": difference.toleratedCount,
         "bounds": boundsDescription,
         "maximumChannelDelta": difference.maximumChannelDelta,
-      ])
+      ]
       if let diagnosticsDirectory {
-        let stem = String(name.dropLast(4))
-        try FileManager.default.copyItem(
-          at: expectedURL,
-          to: diagnosticsDirectory.appending(path: "\(stem)-expected.png")
+        let expectedName = "\(stem)-expected.png"
+        let actualName = "\(stem)-actual.png"
+        let diffName = "\(stem)-diff.png"
+        try copyEvidence(
+          from: expectedURL,
+          to: diagnosticsDirectory.appending(path: expectedName)
         )
-        try FileManager.default.copyItem(
-          at: actualURL,
-          to: diagnosticsDirectory.appending(path: "\(stem)-actual.png")
+        try copyEvidence(
+          from: actualURL,
+          to: diagnosticsDirectory.appending(path: actualName)
         )
         try writePNG(
           differenceImage(
@@ -328,18 +471,38 @@ func compareWalkthrough() throws {
             actual: actual,
             allowedChannelDelta: allowedChannelDelta
           ),
-          to: diagnosticsDirectory.appending(path: "\(stem)-diff.png")
+          to: diagnosticsDirectory.appending(path: diffName)
         )
+        summary["expectedArtifact"] = expectedName
+        summary["actualArtifact"] = actualName
+        summary["diffArtifact"] = diffName
       }
+      summaries.append(summary)
       continue
     }
 
-    summaries.append([
+    var summary: [String: Any] = [
       "name": name,
       "result": difference.toleratedCount == 0 ? "exact" : "canonical",
       "toleratedPixelCount": difference.toleratedCount,
       "maximumChannelDelta": difference.maximumChannelDelta,
-    ])
+    ]
+    if retainAllEvidence, let diagnosticsDirectory {
+      let expectedName = "\(stem)-expected.png"
+      let actualName = "\(stem)-actual.png"
+      try copyEvidence(
+        from: expectedURL,
+        to: diagnosticsDirectory.appending(path: expectedName)
+      )
+      try copyEvidence(
+        from: actualURL,
+        to: diagnosticsDirectory.appending(path: actualName)
+      )
+      summary["expectedArtifact"] = expectedName
+      summary["actualArtifact"] = actualName
+      summary["diffArtifact"] = "not-required"
+    }
+    summaries.append(summary)
     if difference.toleratedCount == 0 {
       print("Exact pixel match: \(name)")
     } else {
@@ -354,9 +517,13 @@ func compareWalkthrough() throws {
     let summary: [String: Any] = [
       "allowedChannelDelta": allowedChannelDelta,
       "failureCount": failureCount,
+      "fileSetMatches": baselineNames == actualNames,
+      "expectedNames": baselineNames,
+      "actualNames": actualNames,
       "images": summaries,
     ]
-    let data = try JSONSerialization.data(withJSONObject: summary, options: [.prettyPrinted, .sortedKeys])
+    let data = try JSONSerialization.data(
+      withJSONObject: summary, options: [.prettyPrinted, .sortedKeys])
     try data.write(to: diagnosticsDirectory.appending(path: "summary.json"), options: .atomic)
   }
   if failureCount > 0 {

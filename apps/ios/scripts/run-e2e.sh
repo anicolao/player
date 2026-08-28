@@ -182,13 +182,42 @@ run_logged_phase() {
 }
 
 capture_failure_diagnostics() {
+  local semantic_evidence
   if [[ -z "${simulator_id}" ]]; then return 0; fi
   xcrun simctl io "${simulator_id}" screenshot \
     "${story_output}/Diagnostics/failure-screen.png" >/dev/null 2>&1 || true
   xcrun simctl spawn "${simulator_id}" log show \
-    --last 5m --style compact --predicate 'process == "Player"' \
+    --start "${run_started_at}" --style compact --info --debug \
+    --predicate 'process == "Player" OR process CONTAINS[c] "PlayerUITests" OR process CONTAINS[c] "ShareExtension"' \
     > "${story_output}/Diagnostics/player.log" 2>&1 || true
+  xcrun simctl spawn "${simulator_id}" log show \
+    --start "${run_started_at}" --style compact --info --debug \
+    --predicate 'process == "SpringBoard" OR process == "backboardd" OR process == "runningboardd" OR process == "launchd_sim" OR subsystem BEGINSWITH "com.apple.FrontBoard" OR subsystem BEGINSWITH "com.apple.CoreSimulator"' \
+    > "${story_output}/Diagnostics/simulator-system.log" 2>&1 || true
+  /usr/bin/log show \
+    --start "${run_started_at}" --style compact --info --debug \
+    --predicate 'process == "CoreSimulatorService" OR process == "CoreSimulatorBridge" OR process == "SimulatorTrampoline"' \
+    > "${story_output}/Diagnostics/coresimulator-host.log" 2>&1 || true
   xcrun simctl list devices --json > "${story_output}/Diagnostics/simulators.json" 2>&1 || true
+
+  semantic_evidence="${story_output}/Diagnostics/semantic-probes.log"
+  if [[ -f "${story_output}/Logs/test.log" ]]; then
+    rg -n -i \
+      'probe|semantic|readiness|geometry|navigation|active alert|latest=|actual=' \
+      "${story_output}/Logs/test.log" > "${semantic_evidence}" || true
+  fi
+  if [[ ! -s "${semantic_evidence}" ]]; then
+    printf '%s\n' \
+      'No semantic probe lines were emitted; inspect the retained Story.xcresult diagnostics.' \
+      > "${semantic_evidence}"
+  fi
+
+  if [[ -d "${result_bundle}" ]]; then
+    xcrun xcresulttool export diagnostics \
+      --path "${result_bundle}" \
+      --output-path "${story_output}/Diagnostics/XCResultDiagnostics" \
+      > "${story_output}/Diagnostics/xcresult-diagnostics-export.log" 2>&1 || true
+  fi
 }
 
 cleanup() {
@@ -340,6 +369,30 @@ if [[ ${export_status} -eq 0 ]]; then
 fi
 
 if [[ ${test_status} -ne 0 ]]; then
+  failure_comparison_status=0
+  result_bundle_available=false
+  if [[ -d "${result_bundle}" ]]; then result_bundle_available=true; fi
+  mkdir -p "${actual_story}/screenshots/ios"
+  run_logged_phase failure-screenshot-evidence \
+    swift "${script_dir}/compare-walkthrough.swift" \
+    "${baseline_story}/screenshots/ios" \
+    "${actual_story}/screenshots/ios" \
+    "${story_output}/Diagnostics/ScreenshotComparison" \
+    --retain-all-evidence || failure_comparison_status=$?
+  jq -n \
+    --argjson testExitCode "${test_status}" \
+    --argjson attachmentExportExitCode "${export_status}" \
+    --argjson materializationExitCode "${materialize_status}" \
+    --argjson screenshotEvidenceExitCode "${failure_comparison_status}" \
+    --argjson resultBundleAvailable "${result_bundle_available}" \
+    --arg resultBundle "Results/Story.xcresult" \
+    '{testExitCode: $testExitCode,
+      attachmentExportExitCode: $attachmentExportExitCode,
+      materializationExitCode: $materializationExitCode,
+      screenshotEvidenceExitCode: $screenshotEvidenceExitCode,
+      resultBundleAvailable: $resultBundleAvailable,
+      resultBundle: $resultBundle}' \
+    > "${story_output}/Diagnostics/FailureEvidence.json"
   echo "UI tests failed; retained diagnostics in ${story_output}" >&2
   exit "${test_status}"
 fi
