@@ -193,6 +193,43 @@
     }
   }
 
+  final class E2EFixtureContractTests: XCTestCase {
+    func testEveryCanonicalFixtureIsAcceptedInE2EMode() throws {
+      for fixture in E2EFixture.allCases {
+        let parsed = try E2EFixture.parseForLaunch(arguments: [
+          "Player", "-AppleLanguages", "(en)", "-e2e", "-e2e-fixture", fixture.rawValue,
+          "-e2e-reset",
+        ])
+        XCTAssertEqual(parsed, fixture)
+      }
+    }
+
+    func testLaunchWithoutE2EModePreservesProductionSelection() throws {
+      XCTAssertNil(try E2EFixture.parseForLaunch(arguments: ["Player"]))
+      XCTAssertNil(try E2EFixture.parseForLaunch(arguments: [
+        "Player", "-e2e-fixture", E2EFixture.bookmarks.rawValue,
+      ]))
+    }
+
+    func testE2EModeRequiresExactlyOneFixtureMarkerAndValue() {
+      let invalidArguments = [
+        ["Player", "-e2e"],
+        ["Player", "-e2e", "-e2e-fixture"],
+        ["Player", "-e2e", "-e2e-fixture", "-e2e-reset"],
+        ["Player", "-e2e", "-e2e-fixture", ""],
+        ["Player", "-e2e", "-e2e-fixture", "unknown-fixture"],
+        [
+          "Player", "-e2e", "-e2e-fixture", E2EFixture.bookmarks.rawValue,
+          "-e2e-fixture", E2EFixture.sleepTimer.rawValue,
+        ],
+      ]
+
+      for arguments in invalidArguments {
+        XCTAssertThrowsError(try E2EFixture.parseForLaunch(arguments: arguments), "\(arguments)")
+      }
+    }
+  }
+
   final class E2EMetadataRichBookNamespaceTests: XCTestCase {
     func testDefaultNamespacePreservesTheCanonicalRoot() throws {
       let support = URL(fileURLWithPath: "/fixture-support", isDirectory: true)

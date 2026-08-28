@@ -136,6 +136,47 @@ import UIKit
       return scenario
     }
   }
+
+  enum E2EFixture: String, CaseIterable {
+    static let argument = "-e2e-fixture"
+    static let modeArgument = "-e2e"
+
+    case emptyLibrary = "empty-library"
+    case singleAudiobookReady = "single-audiobook-ready"
+    case committedCurrentBook = "committed-current-book"
+    case monetizationExhausted = "monetization-exhausted"
+    case zeroDurationCurrentBook = "zero-duration-current-book"
+    case metadataRichBook = "metadata-rich-book"
+    case messyMultifileUnicode = "messy-multifile-unicode"
+    case safeZipImport = "safe-zip-import"
+    case importRecoveryStorage = "import-recovery-storage"
+    case syntheticImportChannels = "synthetic-import-channels"
+    case syntheticMetadataRepair = "synthetic-metadata-repair"
+    case syntheticPopulatedLibrary = "synthetic-populated-library"
+    case smartRewind = "smart-rewind"
+    case sleepTimer = "sleep-timer"
+    case bookmarks
+    case portableBackup = "portable-backup"
+    case offlineRecovery = "offline-recovery"
+
+    static func parseForLaunch(arguments: [String]) throws -> E2EFixture? {
+      guard arguments.contains(modeArgument) else { return nil }
+      let markers = arguments.indices.filter { arguments[$0] == argument }
+      guard markers.count == 1 else {
+        let reason = markers.isEmpty ? "Missing" : "Duplicate"
+        throw PlayerCoreError.fileOperation("\(reason) top-level E2E fixture marker.")
+      }
+      let marker = markers[0]
+      guard arguments.indices.contains(marker + 1) else {
+        throw PlayerCoreError.fileOperation("Missing top-level E2E fixture value.")
+      }
+      let value = arguments[marker + 1]
+      guard !value.isEmpty, !value.hasPrefix("-"), let fixture = Self(rawValue: value) else {
+        throw PlayerCoreError.fileOperation("Invalid top-level E2E fixture: \(value)")
+      }
+      return fixture
+    }
+  }
 #endif
 
 @MainActor
@@ -143,65 +184,58 @@ extension PlayerEnvironment {
   static func launchEnvironment() throws -> PlayerEnvironment {
     #if E2E
       let arguments = ProcessInfo.processInfo.arguments
-      if let marker = arguments.firstIndex(of: "-e2e-fixture"), arguments.indices.contains(marker + 1) {
-        switch arguments[marker + 1] {
-        case "empty-library":
+      if let fixture = try E2EFixture.parseForLaunch(arguments: arguments) {
+        switch fixture {
+        case .emptyLibrary:
           return try emptyLibraryEnvironment(reset: arguments.contains("-e2e-reset"))
-        case "single-audiobook-ready":
+        case .singleAudiobookReady:
           return try singleAudiobookReadyEnvironment()
-        case "committed-current-book":
+        case .committedCurrentBook:
           return try committedCurrentBookEnvironment(
             reset: arguments.contains("-e2e-reset"),
             eventControls: arguments.contains("-e2e-event-controls")
           )
-        case "monetization-exhausted":
+        case .monetizationExhausted:
           return try monetizationExhaustedEnvironment()
-        case "zero-duration-current-book":
+        case .zeroDurationCurrentBook:
           return try zeroDurationCurrentBookEnvironment()
-        case "metadata-rich-book":
+        case .metadataRichBook:
           return try metadataRichBookEnvironment(
             reset: arguments.contains("-e2e-reset"),
             namespace: E2EMetadataRichBookNamespace.parse(arguments: arguments)
           )
-        case "messy-multifile-unicode":
+        case .messyMultifileUnicode:
           return try messyMultifileEnvironment(reset: arguments.contains("-e2e-reset"))
-        case "safe-zip-import":
+        case .safeZipImport:
           return try safeZipEnvironment(reset: arguments.contains("-e2e-reset"))
-        case "import-recovery-storage":
+        case .importRecoveryStorage:
           return try E2EImportRecoveryEnvironment.make(
             reset: arguments.contains("-e2e-reset"),
             scenario: E2EImportRecoveryScenario.parseRequired(arguments: arguments).rawValue
           )
-        case "synthetic-import-channels":
+        case .syntheticImportChannels:
           return try importIngressEnvironment(reset: arguments.contains("-e2e-reset"))
-        case "synthetic-metadata-repair":
+        case .syntheticMetadataRepair:
           return try metadataRepairEnvironment()
-        case "synthetic-populated-library":
+        case .syntheticPopulatedLibrary:
           return try populatedLibraryEnvironment(reset: arguments.contains("-e2e-reset"))
-        case "smart-rewind":
+        case .smartRewind:
           return try smartRewindEnvironment(
             reset: arguments.contains("-e2e-reset"),
             scenario: E2ESmartRewindScenario.parseRequired(arguments: arguments).rawValue
           )
-        case "sleep-timer":
+        case .sleepTimer:
           return try sleepTimerEnvironment(
             reset: arguments.contains("-e2e-reset"),
             namespace: E2ESleepTimerNamespace.parseRequired(arguments: arguments).rawValue
           )
-        case "bookmarks":
+        case .bookmarks:
           return try bookmarksEnvironment(reset: arguments.contains("-e2e-reset"))
-        case "portable-backup":
+        case .portableBackup:
           return try portableBackupEnvironment()
-        case "offline-recovery":
+        case .offlineRecovery:
           return try offlineRecoveryEnvironment(reset: arguments.contains("-e2e-reset"))
-        default:
-          throw PlayerCoreError.fileOperation(
-            "Unknown deterministic E2E fixture: \(arguments[marker + 1])"
-          )
         }
-      }
-      if arguments.contains("-e2e") {
-        throw PlayerCoreError.fileOperation("An E2E launch requires an explicit fixture.")
       }
     #endif
     return try production()
