@@ -59,6 +59,14 @@ protocol MediaManaging: Sendable {
     transactionID: UUID
   ) async throws -> TrashedMediaManifest
   func restoreManagedMediaFromTrash(_ manifest: TrashedMediaManifest) async throws
+  func preparePermanentTrashDeletion(
+    transactionID: UUID,
+    bookID: UUID,
+    mediaPolicy: LibraryRemovalMediaPolicy,
+    manifest: TrashedMediaManifest?
+  ) async throws -> PreparedTrashDeletion
+  func commitPermanentTrashDeletion(_ deletion: PreparedTrashDeletion) async throws
+  func rollbackPermanentTrashDeletion(_ deletion: PreparedTrashDeletion) async throws
   func storageInventory() async throws -> StorageInventorySnapshot
   func discardStagedFile(relativePath: String) async throws
   func discardStorage(scope: StorageScope) async throws
@@ -98,6 +106,23 @@ extension MediaManaging {
     throw PlayerCoreError.fileOperation("This media source does not support trash restoration.")
   }
 
+  func preparePermanentTrashDeletion(
+    transactionID: UUID,
+    bookID: UUID,
+    mediaPolicy: LibraryRemovalMediaPolicy,
+    manifest: TrashedMediaManifest?
+  ) async throws -> PreparedTrashDeletion {
+    throw PlayerCoreError.fileOperation("This media source does not support permanent deletion.")
+  }
+
+  func commitPermanentTrashDeletion(_ deletion: PreparedTrashDeletion) async throws {
+    throw PlayerCoreError.fileOperation("This media source does not support permanent deletion.")
+  }
+
+  func rollbackPermanentTrashDeletion(_ deletion: PreparedTrashDeletion) async throws {
+    throw PlayerCoreError.fileOperation("This media source does not support permanent deletion.")
+  }
+
   func storageInventory() async throws -> StorageInventorySnapshot {
     StorageInventorySnapshot(manifests: [], availableBytes: nil)
   }
@@ -128,6 +153,7 @@ protocol AudioPlaybackControlling: AnyObject {
   var playbackRate: Double { get }
   var isPlaybackAdvancing: Bool { get }
   func load(url: URL, bookID: UUID, at seconds: Double) async throws
+  func unload()
   func seek(to seconds: Double) async
   func setPlaybackRate(_ rate: Double)
   func play()
@@ -139,6 +165,8 @@ protocol AudioPlaybackControlling: AnyObject {
 
 @MainActor
 extension AudioPlaybackControlling {
+  func unload() { pause() }
+
   var playbackRate: Double { 1 }
   var isPlaybackAdvancing: Bool { state.status == .playing }
   func setPlaybackRate(_ rate: Double) {}

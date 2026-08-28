@@ -31,7 +31,10 @@
     "PlayerUITests/SleepTimerUITests/testSleepTimerPersistsFadesStopsAndResumesWithContextExactly",
     "PlayerUITests/BookmarkUITests/testBookmarksCaptureOrganizeSearchJumpDeleteAndUndoExactly"
   ]},
-  {"story":"008-library-search","tests":["PlayerUITests/LibraryOrganizationUITests/testOrganizesDailyLibraryAndRestoresATrashedBook"]},
+  {"story":"008-library-search","tests":[
+    "PlayerUITests/LibraryOrganizationUITests/testOrganizesDailyLibraryAndRestoresATrashedBook",
+    "PlayerUITests/TrashDeletionUITests/testPermanentlyDeletesOnlyTheConfirmedCurrentBook"
+  ]},
   {"story":"009-accessible-core-journeys","tests":[
     "PlayerUITests/AccessibilityUITests/testAccessibilityPreferenceTogglesUpdateAndPersist",
     "PlayerUITests/AccessibilityUITests/testCoreJourneysRemainCompleteAtLargestAccessibilityText"

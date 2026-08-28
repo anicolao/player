@@ -2,6 +2,9 @@
   "id": "008-library-search",
   "platform": "ios",
   "test": "PlayerUITests/LibraryOrganizationUITests/testOrganizesDailyLibraryAndRestoresATrashedBook",
+  "nonvisualTests": [
+    "PlayerUITests/TrashDeletionUITests/testPermanentlyDeletesOnlyTheConfirmedCurrentBook"
+  ],
   "fixture": "synthetic-populated-library",
   "screenshots": [
     "000-populated-library.png",

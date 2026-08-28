@@ -23,6 +23,7 @@ final class PlayerModel {
   @ObservationIgnored private var wasPlayingBeforeInterruption = false
   @ObservationIgnored private var importTasks: [UUID: Task<Void, Never>] = [:]
   @ObservationIgnored private var cancellingImportIDs: Set<UUID> = []
+  @ObservationIgnored private var mutatingTrashTransactionIDs: Set<UUID> = []
   @ObservationIgnored private var sleepTimerMonitorTask: Task<Void, Never>?
   @ObservationIgnored private var playbackProgressMonitorTask: Task<Void, Never>?
   @ObservationIgnored private var monetizationSnapshotTask: Task<Void, Never>?
@@ -1179,10 +1180,12 @@ final class PlayerModel {
     }
   }
 
-  /// Clears only recoverable app-owned staging or trash. The state change is
-  /// persisted first and rolled back if confined filesystem deletion fails.
+  /// Clears only recoverable app-owned staging or trash.
   @discardableResult
   func clearRecoverableStorage(scope: StorageScope) async -> Bool {
+    if case .trashTransaction(let transactionID) = scope {
+      return await permanentlyDeleteTrashTransaction(transactionID)
+    }
     let previousLibrary = library
     var updated = library
     switch scope {
@@ -1204,13 +1207,8 @@ final class PlayerModel {
         checkpoint.acquisitionComplete = false
         updated.importJobs[index].queueCheckpoint = checkpoint
       }
-    case .trashTransaction(let transactionID):
-      guard let index = updated.trashTransactions.firstIndex(where: { $0.id == transactionID }) else {
-        present(LibraryOrganizationError.missingTrashTransaction(transactionID), in: .storage)
-        return false
-      }
-      updated.trashTransactions[index].status = .purged
-      updated.trashTransactions[index].mediaManifest = nil
+    case .trashTransaction:
+      return false
     case .managedBook, .database:
       present(
         "Only staging and Trash can be cleared from recoverable storage.",
@@ -1237,6 +1235,105 @@ final class PlayerModel {
       present(error, in: .storage)
       return false
     }
+  }
+
+  private func permanentlyDeleteTrashTransaction(_ transactionID: UUID) async -> Bool {
+    guard mutatingTrashTransactionIDs.insert(transactionID).inserted else {
+      present(LibraryOrganizationError.trashTransactionNotRecoverable(transactionID), in: .storage)
+      return false
+    }
+    defer { mutatingTrashTransactionIDs.remove(transactionID) }
+
+    guard let index = library.trashTransactions.firstIndex(where: { $0.id == transactionID }) else {
+      present(LibraryOrganizationError.missingTrashTransaction(transactionID), in: .storage)
+      return false
+    }
+    let transaction = library.trashTransactions[index]
+    guard transaction.status == .recoverable, let book = transaction.book else {
+      present(LibraryOrganizationError.trashTransactionNotRecoverable(transactionID), in: .storage)
+      return false
+    }
+
+    let previousLibrary = library
+    var purgingLibrary = library
+    purgingLibrary.trashTransactions[index].beginPurging(at: environment.clock.now())
+    do {
+      try await environment.persistence.save(purgingLibrary)
+      library = purgingLibrary
+    } catch {
+      present(error, in: .storage)
+      return false
+    }
+
+    let deletion: PreparedTrashDeletion
+    do {
+      deletion = try await environment.media.preparePermanentTrashDeletion(
+        transactionID: transactionID,
+        bookID: book.id,
+        mediaPolicy: transaction.mediaPolicy,
+        manifest: transaction.mediaManifest
+      )
+    } catch {
+      do {
+        try await environment.persistence.save(previousLibrary)
+        library = previousLibrary
+      } catch {
+        // Keep the durable purging intent. Startup reconciliation can safely
+        // return it to recoverable because filesystem preparation never completed.
+      }
+      present(error, in: .storage)
+      return false
+    }
+
+    var purgedLibrary = purgingLibrary
+    purgedLibrary.bookmarks.removeAll { $0.bookID == book.id }
+    purgedLibrary.bookmarkDeletionTransactions.removeAll { $0.bookmark.bookID == book.id }
+    purgedLibrary.resumeRewindTransactions.removeAll { $0.bookID == book.id }
+    if purgedLibrary.activeSleepTimer?.bookID == book.id {
+      purgedLibrary.activeSleepTimer = nil
+    }
+    purgedLibrary.trashTransactions[index].finishPurging(at: environment.clock.now())
+
+    do {
+      try await environment.persistence.save(purgedLibrary)
+    } catch {
+      do {
+        try await environment.media.rollbackPermanentTrashDeletion(deletion)
+        try await environment.persistence.save(previousLibrary)
+        library = previousLibrary
+      } catch {
+        // The durable purging record and journal deliberately remain. Startup
+        // reconciliation will retry rollback without guessing which bytes moved.
+        library = purgingLibrary
+      }
+      present(error, in: .storage)
+      return false
+    }
+
+    library = purgedLibrary
+    if environment.playback.state.loadedBookID == book.id {
+      environment.playback.unload()
+      playbackState = .unloaded
+      loadedAssetID = nil
+      loadedAssetTimelineStartSeconds = 0
+      playbackMeterLastUptime = nil
+      pendingPlaybackMeterSeconds = 0
+    }
+    if transaction.wasCurrentBook {
+      sleepTimerMonitorTask?.cancel()
+      sleepTimerMonitorTask = nil
+    }
+    publishNowPlaying()
+
+    do {
+      try await environment.media.commitPermanentTrashDeletion(deletion)
+    } catch {
+      // The purged tombstone is the commit point. The journal remains durable
+      // and startup reconciliation will finish removing the prepared payload.
+      present(error, in: .storage)
+      return false
+    }
+    return await refreshStorageSummary() != nil
   }
 
   func cancelImport(jobID: UUID) async {
@@ -1934,6 +2031,9 @@ final class PlayerModel {
       let playbackPosition = candidate.playbackPosition?.bookID == bookID
         ? candidate.playbackPosition : nil
       if playbackPosition != nil { candidate.playbackPosition = nil }
+      if candidate.activeSleepTimer?.bookID == bookID {
+        candidate.activeSleepTimer = nil
+      }
       let positionEvents = candidate.positionJournal.filter { $0.bookID == bookID }
       candidate.positionJournal.removeAll { $0.bookID == bookID }
       let metadataTransactions = candidate.metadataTransactions.filter {
@@ -1961,11 +2061,14 @@ final class PlayerModel {
       library = candidate
       if wasCurrentBook {
         await checkpointPlaybackMeter(force: true)
-        environment.playback.pause()
+        environment.playback.unload()
         playbackMeterLastUptime = nil
+        pendingPlaybackMeterSeconds = 0
         playbackState = .unloaded
         loadedAssetID = nil
         loadedAssetTimelineStartSeconds = 0
+        sleepTimerMonitorTask?.cancel()
+        sleepTimerMonitorTask = nil
       }
       publishNowPlaying()
       return transactionID
@@ -1980,6 +2083,11 @@ final class PlayerModel {
 
   @discardableResult
   func restoreTrashedBook(transactionID: UUID) async -> Bool {
+    guard mutatingTrashTransactionIDs.insert(transactionID).inserted else {
+      present(LibraryOrganizationError.trashTransactionNotRecoverable(transactionID), in: .storage)
+      return false
+    }
+    defer { mutatingTrashTransactionIDs.remove(transactionID) }
     guard let transactionIndex = library.trashTransactions.firstIndex(where: {
       $0.id == transactionID
     }) else {
@@ -1987,15 +2095,15 @@ final class PlayerModel {
       return false
     }
     let transaction = library.trashTransactions[transactionIndex]
-    guard transaction.status == .recoverable else {
+    guard transaction.status == .recoverable, let book = transaction.book else {
       present(
         LibraryOrganizationError.trashTransactionNotRecoverable(transactionID),
         in: .storage
       )
       return false
     }
-    guard !library.books.contains(where: { $0.id == transaction.book.id }) else {
-      present(LibraryOrganizationError.bookAlreadyExists(transaction.book.id), in: .storage)
+    guard !library.books.contains(where: { $0.id == book.id }) else {
+      present(LibraryOrganizationError.bookAlreadyExists(book.id), in: .storage)
       return false
     }
 
@@ -2007,14 +2115,14 @@ final class PlayerModel {
       }
       var candidate = library
       candidate.books.insert(
-        transaction.book,
+        book,
         at: min(max(0, transaction.originalBookIndex), candidate.books.count)
       )
       if let upNextIndex = transaction.upNextIndex,
-        !candidate.upNextBookIDs.contains(transaction.book.id)
+        !candidate.upNextBookIDs.contains(book.id)
       {
         candidate.upNextBookIDs.insert(
-          transaction.book.id,
+          book.id,
           at: min(max(0, upNextIndex), candidate.upNextBookIDs.count)
         )
       }
@@ -2022,9 +2130,9 @@ final class PlayerModel {
         guard let collectionIndex = candidate.collections.firstIndex(where: {
           $0.id == placement.collectionID
         }) else { continue }
-        if !candidate.collections[collectionIndex].orderedBookIDs.contains(transaction.book.id) {
+        if !candidate.collections[collectionIndex].orderedBookIDs.contains(book.id) {
           candidate.collections[collectionIndex].orderedBookIDs.insert(
-            transaction.book.id,
+            book.id,
             at: min(
               max(0, placement.index),
               candidate.collections[collectionIndex].orderedBookIDs.count
@@ -2043,19 +2151,19 @@ final class PlayerModel {
         !existingMetadataTransactionIDs.contains($0.id)
       })
       if transaction.wasCurrentBook && candidate.currentBookID == nil {
-        candidate.currentBookID = transaction.book.id
+        candidate.currentBookID = book.id
         candidate.playbackPosition = transaction.playbackPosition
       }
       candidate.trashTransactions[transactionIndex].status = .restored
       candidate.trashTransactions[transactionIndex].restoredAt = environment.clock.now()
       try await environment.persistence.save(candidate)
       library = candidate
-      if candidate.currentBookID == transaction.book.id {
+      if candidate.currentBookID == book.id {
         let seconds = candidate.playbackPosition?.seconds
-          ?? transaction.book.listeningState.positionSeconds
+          ?? book.listeningState.positionSeconds
         playbackState = PlaybackState(
           status: .paused,
-          loadedBookID: transaction.book.id,
+          loadedBookID: book.id,
           elapsedSeconds: seconds
         )
         // The durable restore is complete even if an audio adapter cannot load
@@ -2067,7 +2175,7 @@ final class PlayerModel {
     } catch {
       if restoredMedia {
         _ = try? await environment.media.moveManagedMediaToTrash(
-          bookID: transaction.book.id,
+          bookID: book.id,
           transactionID: transactionID
         )
       }

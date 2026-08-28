@@ -994,12 +994,17 @@ struct LibraryTrashView: View {
       if recoverable.isEmpty {
         ContentUnavailableView("Trash is empty", systemImage: "trash", description: Text("Removed books can be restored here."))
       } else {
-        List(recoverable) { transaction in
+        List(recoverable, id: \.transaction.id) { item in
+          let transaction = item.transaction
+          let book = item.book
           HStack(spacing: 12) {
-            ArtworkView(data: transaction.book.renderedArtworkData, size: 58)
+            ArtworkView(data: book.renderedArtworkData, size: 58)
             VStack(alignment: .leading, spacing: 4) {
-              Text(transaction.book.title).font(.headline)
-              Text(ByteCountFormatter.string(fromByteCount: transactionBytes(transaction), countStyle: .file))
+              Text(book.title).font(.headline)
+              Text(ByteCountFormatter.string(
+                fromByteCount: transactionBytes(transaction, book: book),
+                countStyle: .file
+              ))
                 .font(.caption).foregroundStyle(PlayerColor.secondary)
             }
             Spacer()
@@ -1017,7 +1022,7 @@ struct LibraryTrashView: View {
           }
           .accessibilityElement(children: .contain)
           .listRowBackground(PlayerColor.card)
-          .accessibilityIdentifier("trash-book-\(transaction.book.id.uuidString.lowercased())")
+          .accessibilityIdentifier("trash-book-\(book.id.uuidString.lowercased())")
         }
         .playerMiniPlayerScrollRunway()
         .scrollContentBackground(.hidden)
@@ -1031,8 +1036,18 @@ struct LibraryTrashView: View {
       StateProbe(id: "trash-probe", value: trashValue)
       #if E2E
         StateProbe(id: "trash-artwork-probe", value: trashArtworkValue)
+        StateProbe(
+          id: "trash-purge-probe",
+          value: E2ELibraryOrganizationBridge.shared.permanentDeletionEvidence
+        )
+        StateProbe(id: "trash-playback-probe", value: trashPlaybackValue)
       #endif
       StateProbe(id: "trash-screen", value: "ready")
+    }
+    .e2eLayoutReadiness(id: "trash-layout-readiness", containerID: "trash-screen")
+    .task(id: model.isRestored) {
+      guard model.isRestored else { return }
+      _ = await model.refreshStorageSummary()
     }
     .navigationTitle("Trash")
     .confirmationDialog(
@@ -1057,27 +1072,39 @@ struct LibraryTrashView: View {
     }
   }
 
-  private var recoverable: [LibraryTrashTransaction] {
-    model.library.trashTransactions.filter { $0.status == .recoverable }
+  private var recoverable: [(transaction: LibraryTrashTransaction, book: Book)] {
+    model.library.trashTransactions.compactMap { transaction in
+      guard transaction.status == .recoverable, let book = transaction.book else { return nil }
+      return (transaction, book)
+    }
   }
 
   private var trashArtworkValue: String {
-    let identifiers = recoverable.compactMap { transaction in
-      transaction.book.artworkData == nil
+    let identifiers = recoverable.compactMap { item in
+      item.book.artworkData == nil
         ? nil
-        : transaction.book.id.uuidString.lowercased()
+        : item.book.id.uuidString.lowercased()
     }
     return "artwork:ready=\(identifiers.joined(separator: ",")):count=\(identifiers.count)"
   }
 
-  private func transactionBytes(_ transaction: LibraryTrashTransaction) -> Int64 {
-    transaction.mediaManifest?.byteCount ?? transaction.book.assets.reduce(0) { $0 + $1.byteCount }
+  private var trashPlaybackValue: String {
+    "trash-playback:current=\(model.library.currentBookID?.uuidString.lowercased() ?? "none")"
+      + ":status=\(model.playbackState.status.rawValue)"
+      + ":loaded=\(model.playbackState.loadedBookID?.uuidString.lowercased() ?? "none")"
+      + ":position=\(model.library.playbackPosition?.positionMilliseconds.description ?? "none")"
+  }
+
+  private func transactionBytes(_ transaction: LibraryTrashTransaction, book: Book) -> Int64 {
+    transaction.mediaManifest?.byteCount ?? book.assets.reduce(0) { $0 + $1.byteCount }
   }
 
   private var trashValue: String {
     let books = recoverable.map { $0.book.id.uuidString.lowercased() }.joined(separator: ",")
     let assets = recoverable.reduce(0) { $0 + $1.book.assets.count }
-    let bytes = recoverable.reduce(Int64(0)) { $0 + transactionBytes($1) }
+    let bytes = recoverable.reduce(Int64(0)) {
+      $0 + transactionBytes($1.transaction, book: $1.book)
+    }
     #if E2E
       let checksumPreserved = E2ELibraryOrganizationBridge.shared.managedChecksumPreserved
     #else
@@ -1154,6 +1181,7 @@ struct LibraryOrganizationSettingsView: View {
           NavigationLink(value: LibrarySettingsDestination.trash) {
             Label("Trash", systemImage: "trash")
           }
+          .accessibilityIdentifier("settings-trash")
           NavigationLink(value: LibrarySettingsDestination.storage) {
             Label("Storage", systemImage: "internaldrive")
           }

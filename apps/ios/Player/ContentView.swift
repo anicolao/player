@@ -387,7 +387,13 @@ struct ContentView: View {
 
   private func beginImport() {
     #if E2E
-      if E2EMultifileAcquisition.shared.isConfigured || E2EZipAcquisition.shared.sourceURL != nil {
+      if E2EMultifileAcquisition.shared.isConfigured,
+        E2EMultifileAcquisition.shared.entryPoint == .directAdd
+      {
+        beginFileImport()
+        return
+      }
+      if E2EZipAcquisition.shared.sourceURL != nil {
         beginFileImport()
         return
       }
@@ -2680,7 +2686,13 @@ func compactPlaybackTime(_ seconds: Double) -> String {
     }
 
     private var multifileJob: ImportJob? {
-      model.library.importJobs.first {
+      if E2EMultifileAcquisition.shared.entryPoint == .explicitFileChoice {
+        return model.library.importJobs.max {
+          if $0.createdAt != $1.createdAt { return $0.createdAt < $1.createdAt }
+          return $0.id.uuidString < $1.id.uuidString
+        }
+      }
+      return model.library.importJobs.first {
         $0.id == UUID(uuidString: "30000000-0000-0000-0000-000000000001")
       }
     }

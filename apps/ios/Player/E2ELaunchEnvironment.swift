@@ -52,6 +52,7 @@ enum E2EFixture: String, CaseIterable {
   case syntheticImportChannels = "synthetic-import-channels"
   case syntheticMetadataRepair = "synthetic-metadata-repair"
   case syntheticPopulatedLibrary = "synthetic-populated-library"
+  case syntheticPermanentTrash = "synthetic-permanent-trash"
   case smartRewind = "smart-rewind"
   case sleepTimer = "sleep-timer"
   case bookmarks
@@ -943,6 +944,8 @@ extension PlayerEnvironment {
           return try metadataRepairEnvironment(reset: reset)
         case .syntheticPopulatedLibrary:
           return try populatedLibraryEnvironment(reset: reset)
+        case .syntheticPermanentTrash:
+          return try permanentTrashEnvironment(reset: reset)
         case .smartRewind:
           return try smartRewindEnvironment(
             reset: reset,
@@ -2079,7 +2082,49 @@ extension PlayerEnvironment {
         root: root,
         descriptorData: descriptorData,
         audio: audio,
-        covers: covers
+        covers: covers,
+        permanentTrashScenario: false
+      )
+    }
+
+    private static func permanentTrashEnvironment(reset: Bool) throws -> PlayerEnvironment {
+      let launchEnvironment = ProcessInfo.processInfo.environment
+      guard
+        let descriptorEncoded = launchEnvironment["PLAYER_E2E_LIBRARY_DESCRIPTOR_BASE64"],
+        let descriptorData = Data(base64Encoded: descriptorEncoded),
+        let audioEncoded = launchEnvironment["PLAYER_E2E_LIBRARY_AUDIO_BASE64"],
+        let audio = Data(base64Encoded: audioEncoded)
+      else {
+        throw PlayerCoreError.fileOperation(
+          "The permanent-Trash fixture payload is unavailable."
+        )
+      }
+      let covers = try (1...5).map { index -> Data in
+        guard let encoded = launchEnvironment["PLAYER_E2E_LIBRARY_COVER_B\(index)_BASE64"],
+          let data = Data(base64Encoded: encoded)
+        else {
+          throw PlayerCoreError.fileOperation(
+            "The permanent-Trash cover fixture is unavailable."
+          )
+        }
+        return data
+      }
+      let support = try FileManager.default.url(
+        for: .applicationSupportDirectory,
+        in: .userDomainMask,
+        appropriateFor: nil,
+        create: true
+      )
+      return try populatedLibraryEnvironment(
+        reset: reset,
+        root: support.appending(
+          path: "PlayerE2EPermanentTrash",
+          directoryHint: .isDirectory
+        ),
+        descriptorData: descriptorData,
+        audio: audio,
+        covers: covers,
+        permanentTrashScenario: true
       )
     }
 
@@ -2088,7 +2133,8 @@ extension PlayerEnvironment {
       root: URL,
       descriptorData: Data,
       audio: Data,
-      covers: [Data]
+      covers: [Data],
+      permanentTrashScenario: Bool = false
     ) throws -> PlayerEnvironment {
       let validated = try E2EPopulatedLibraryDescriptor.validated(
         data: descriptorData,
@@ -2103,8 +2149,26 @@ extension PlayerEnvironment {
 
       if reset { try resetE2EFixtureRoot(root) }
       try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+      var purgeTargetAudio = audio
+      if permanentTrashScenario, !purgeTargetAudio.isEmpty {
+        purgeTargetAudio[purgeTargetAudio.index(before: purgeTargetAudio.endIndex)] ^= 0x01
+      }
+      let purgeTargetChecksum = SHA256.hash(data: purgeTargetAudio)
+        .map { String(format: "%02x", $0) }.joined()
+      let sourceRoot = FileManager.default.temporaryDirectory.appending(
+        path: permanentTrashScenario
+          ? "PlayerE2EPermanentTrashSource" : "PlayerE2EPopulatedLibrarySource",
+        directoryHint: .isDirectory
+      )
+      if reset { try resetE2EFixtureRoot(sourceRoot) }
+      try FileManager.default.createDirectory(at: sourceRoot, withIntermediateDirectories: true)
+      let sourceURL = sourceRoot.appending(path: "library-book-audio.m4b")
+      if !FileManager.default.fileExists(atPath: sourceURL.path) {
+        try purgeTargetAudio.write(to: sourceURL, options: .atomic)
+      }
       let libraryFileURL = root.appending(path: "Library.json")
       let persistedLibrary = try E2EPersistedLibrary.load(from: libraryFileURL)?.snapshot
+      let media = FileSystemMediaManager(rootURL: root)
 
       let clock = validated.clock
       var books: [Book] = []
@@ -2112,21 +2176,25 @@ extension PlayerEnvironment {
         let bookID = validated.bookIDs[index]
         let assetID = validated.assetIDs[index]
         let cover = covers[index]
+        let assetAudio = permanentTrashScenario && index == 0 ? purgeTargetAudio : audio
+        let assetChecksum = permanentTrashScenario && index == 0
+          ? purgeTargetChecksum : descriptor.audio.sha256
         let relativePath = "Media/\(bookID.uuidString.lowercased())/\(assetID.uuidString.lowercased()).m4b"
         let managedURL = root.appending(path: relativePath)
-        if !FileManager.default.fileExists(atPath: managedURL.path) {
+        let shouldHaveManagedCopy = persistedLibrary?.books.contains(where: { $0.id == bookID }) ?? true
+        if shouldHaveManagedCopy && !FileManager.default.fileExists(atPath: managedURL.path) {
           try FileManager.default.createDirectory(
             at: managedURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
           )
-          try audio.write(to: managedURL, options: .atomic)
+          try assetAudio.write(to: managedURL, options: .atomic)
         }
         let asset = AudioAsset(
           id: assetID,
           originalFilename: "library-book-audio.m4b",
           managedRelativePath: relativePath,
-          checksumSHA256: descriptor.audio.sha256,
-          byteCount: Int64(audio.count),
+          checksumSHA256: assetChecksum,
+          byteCount: Int64(assetAudio.count),
           durationSeconds: Double(descriptor.audio.logicalBookDurationMilliseconds) / 1_000,
           container: "M4B"
         )
@@ -2202,7 +2270,7 @@ extension PlayerEnvironment {
         acknowledgedAt: clock,
         previousEventID: nil
       )
-      let seed = LibrarySnapshot(
+      var seed = LibrarySnapshot(
         books: books,
         importJobs: [],
         currentBookID: currentBookID,
@@ -2217,14 +2285,99 @@ extension PlayerEnvironment {
         upNextBookIDs: validated.upNextBookIDs,
         allBooksViewStyle: validated.viewPreference
       )
+      if permanentTrashScenario, persistedLibrary == nil {
+        let siblingID = UUID(uuidString: "90000000-0000-0000-0000-000000000601")!
+        let siblingBookID = validated.bookIDs[4]
+        let siblingBook = seed.books.remove(at: 4)
+        let siblingBookComponent = siblingBookID.uuidString.lowercased()
+        let siblingTransactionComponent = siblingID.uuidString.lowercased()
+        let siblingOriginalDirectory = "Media/\(siblingBookComponent)"
+        let siblingTrashDirectory = "Trash/\(siblingTransactionComponent)"
+        let siblingTrashMediaDirectory = "\(siblingTrashDirectory)/Media/\(siblingBookComponent)"
+        let siblingOriginalURL = root.appending(path: siblingOriginalDirectory)
+        let siblingTrashURL = root.appending(path: siblingTrashDirectory)
+        let siblingTrashMediaURL = root.appending(path: siblingTrashMediaDirectory)
+        let siblingManifest = TrashedMediaManifest(
+          transactionID: siblingID,
+          bookID: siblingBookID,
+          originalDirectoryRelativePath: siblingOriginalDirectory,
+          trashDirectoryRelativePath: siblingTrashMediaDirectory,
+          byteCount: Int64(descriptor.audio.byteCount)
+        )
+        try FileManager.default.createDirectory(
+          at: siblingTrashMediaURL.deletingLastPathComponent(),
+          withIntermediateDirectories: true
+        )
+        let siblingManifestEncoder = JSONEncoder()
+        siblingManifestEncoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try siblingManifestEncoder.encode(siblingManifest).write(
+          to: siblingTrashURL.appending(path: "manifest.json"),
+          options: [.atomic, .completeFileProtectionUnlessOpen]
+        )
+        try FileManager.default.moveItem(at: siblingOriginalURL, to: siblingTrashMediaURL)
+        let upNextIndex = seed.upNextBookIDs.firstIndex(of: siblingBookID)
+        seed.upNextBookIDs.removeAll { $0 == siblingBookID }
+        seed.trashTransactions = [LibraryTrashTransaction(
+          id: siblingID,
+          book: siblingBook,
+          originalBookIndex: 4,
+          mediaPolicy: .moveManagedMediaToTrash,
+          mediaManifest: siblingManifest,
+          upNextIndex: upNextIndex,
+          collectionPlacements: [],
+          wasCurrentBook: false,
+          playbackPosition: nil,
+          positionEvents: [],
+          metadataTransactions: [],
+          removedAt: clock,
+          status: .recoverable,
+          restoredAt: nil
+        )]
+      }
       E2ELibraryOrganizationBridge.shared.configure(
         rootURL: root,
         trackedBookID: descriptor.books[4].id,
-        expectedChecksum: descriptor.audio.sha256
+        expectedChecksum: descriptor.audio.sha256,
+        purgeTargetExpectedChecksum: purgeTargetChecksum,
+        purgeTargetBookID: descriptor.currentBookID,
+        purgeTransactionID: "90000000-0000-0000-0000-000000000602",
+        siblingTrashBookID: descriptor.books[4].id,
+        siblingTrashTransactionID: "90000000-0000-0000-0000-000000000601",
+        expectedOtherManagedFileCount: permanentTrashScenario
+          ? descriptor.books.count - 2 : descriptor.books.count - 1,
+        expectedManagedByteCount: descriptor.audio.byteCount,
+        libraryURL: libraryFileURL,
+        sourceURL: sourceURL
       )
+      if permanentTrashScenario {
+        E2EMultifileAcquisition.shared.configure(
+          selectionURLs: [sourceURL],
+          storageRootURL: root,
+          entryPoint: .explicitFileChoice
+        )
+      }
       let generatedIDs: [UUID]
-      if persistedLibrary?.collections.contains(where: { $0.id == collectionID }) == true {
-        generatedIDs = [trashID]
+      if permanentTrashScenario {
+        let firstImportSuffix = try E2EPersistedIDSequence.nextSuffix(
+          in: libraryFileURL,
+          prefix: "90000000",
+          initialSuffix: 702,
+          requiredCount: 40
+        )
+        let importIDs = (firstImportSuffix..<(firstImportSuffix + 40)).map {
+          UUID(uuidString: String(format: "90000000-0000-0000-0000-%012d", $0))!
+        }
+        generatedIDs = persistedLibrary == nil
+          ? [UUID(uuidString: "90000000-0000-0000-0000-000000000602")!] + importIDs
+          : importIDs
+      } else if persistedLibrary?.collections.contains(where: { $0.id == collectionID }) == true {
+        if persistedLibrary?.trashTransactions.contains(where: { $0.id == trashID }) == true {
+          generatedIDs = [
+            UUID(uuidString: "90000000-0000-0000-0000-000000000602")!
+          ]
+        } else {
+          generatedIDs = [trashID]
+        }
       } else {
         generatedIDs = [collectionID, trashID]
       }
@@ -2233,8 +2386,16 @@ extension PlayerEnvironment {
           base: CodableLibraryStore(fileURL: libraryFileURL),
           seed: seed
         ),
-        media: FileSystemMediaManager(rootURL: root),
-        inspector: DeterministicAudioInspector(result: .failure(.unreadableAudio("unused"))),
+        media: media,
+        inspector: permanentTrashScenario
+          ? DeterministicAudioInspector(result: .success(InspectedAudio(
+            title: "Reimported Source",
+            authors: ["Fixture Author"],
+            durationSeconds: Double(descriptor.audio.logicalBookDurationMilliseconds) / 1_000,
+            artworkData: covers[0],
+            container: "M4B"
+          )))
+          : DeterministicAudioInspector(result: .failure(.unreadableAudio("unused"))),
         playback: DeterministicPlaybackController(),
         clock: FixedPlayerClock(value: clock),
         ids: DeterministicPlayerIDGenerator(values: generatedIDs)
@@ -2735,11 +2896,42 @@ extension PlayerEnvironment {
     private var rootURL: URL?
     private var trackedBookID: String?
     private var expectedChecksum: String?
+    private var purgeTargetExpectedChecksum: String?
+    private var purgeTargetBookID: String?
+    private var purgeTransactionID: UUID?
+    private var siblingTrashBookID: String?
+    private var siblingTrashTransactionID: UUID?
+    private var expectedOtherManagedFileCount = 0
+    private var expectedManagedByteCount = 0
+    private var libraryURL: URL?
+    private var sourceURL: URL?
 
-    func configure(rootURL: URL, trackedBookID: String, expectedChecksum: String) {
+    func configure(
+      rootURL: URL,
+      trackedBookID: String,
+      expectedChecksum: String,
+      purgeTargetExpectedChecksum: String,
+      purgeTargetBookID: String,
+      purgeTransactionID: String,
+      siblingTrashBookID: String,
+      siblingTrashTransactionID: String,
+      expectedOtherManagedFileCount: Int,
+      expectedManagedByteCount: Int,
+      libraryURL: URL,
+      sourceURL: URL
+    ) {
       self.rootURL = rootURL
       self.trackedBookID = trackedBookID.lowercased()
       self.expectedChecksum = expectedChecksum
+      self.purgeTargetExpectedChecksum = purgeTargetExpectedChecksum
+      self.purgeTargetBookID = purgeTargetBookID.lowercased()
+      self.purgeTransactionID = UUID(uuidString: purgeTransactionID)
+      self.siblingTrashBookID = siblingTrashBookID.lowercased()
+      self.siblingTrashTransactionID = UUID(uuidString: siblingTrashTransactionID)
+      self.expectedOtherManagedFileCount = expectedOtherManagedFileCount
+      self.expectedManagedByteCount = expectedManagedByteCount
+      self.libraryURL = libraryURL
+      self.sourceURL = sourceURL
     }
 
     var managedChecksumPreserved: Bool {
@@ -2757,6 +2949,150 @@ extension PlayerEnvironment {
       guard candidates.count == 1, let data = try? Data(contentsOf: candidates[0]) else { return false }
       let checksum = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
       return checksum == expectedChecksum
+    }
+
+    var permanentDeletionEvidence: String {
+      guard let rootURL, let purgeTargetBookID, let purgeTransactionID,
+        let siblingTrashBookID, let siblingTrashTransactionID,
+        let expectedChecksum, let purgeTargetExpectedChecksum, let libraryURL, let sourceURL
+      else { return "purge:unconfigured" }
+      let mediaRoot = rootURL.appending(path: "Media", directoryHint: .isDirectory)
+      let trashRoot = rootURL.appending(path: "Trash", directoryHint: .isDirectory)
+      let pendingRoot = rootURL.appending(
+        path: "PendingTrashDeletion",
+        directoryHint: .isDirectory
+      )
+      let files = regularM4BFiles(in: rootURL)
+      let targetFiles = files.filter { $0.path.lowercased().contains(purgeTargetBookID) }
+      let siblingTrashFiles = files.filter {
+        $0.path.lowercased().contains(siblingTrashBookID)
+          && $0.pathComponents.contains("Trash")
+      }
+      let otherFiles = files.filter {
+        !$0.path.lowercased().contains(purgeTargetBookID)
+          && !$0.path.lowercased().contains(siblingTrashBookID)
+      }
+      let otherChecksumsPreserved = otherFiles.count == expectedOtherManagedFileCount
+        && otherFiles.allSatisfy { checksum(of: $0) == expectedChecksum }
+      let siblingChecksumPreserved = siblingTrashFiles.count == 1
+        && siblingTrashFiles.allSatisfy { checksum(of: $0) == expectedChecksum }
+      let targetChecksumPreserved = targetFiles.isEmpty
+        ? true
+        : targetFiles.count == 1
+          && targetFiles.allSatisfy { checksum(of: $0) == purgeTargetExpectedChecksum }
+      let sourceChecksumPreserved = checksum(of: sourceURL) == purgeTargetExpectedChecksum
+      let persistedLibrary = try? E2EPersistedLibrary.load(from: libraryURL)
+      let targetTransaction = persistedLibrary?.snapshot.trashTransactions.first {
+        $0.id == purgeTransactionID
+      }
+      let siblingTransaction = persistedLibrary?.snapshot.trashTransactions.first {
+        $0.id == siblingTrashTransactionID
+      }
+      let status = targetTransaction?.status.rawValue ?? "missing"
+      let siblingStatus = siblingTransaction?.status.rawValue ?? "missing"
+      let manifests = persistedLibrary?.snapshot.storageManifests ?? []
+      let managedManifests = manifests.filter {
+        if case .managedBook = $0.scope { return true }
+        return false
+      }
+      let trashManifests = manifests.filter {
+        if case .trashTransaction = $0.scope { return true }
+        return false
+      }
+      let managedFiles = regularFiles(in: mediaRoot)
+      let trashFiles = regularFiles(in: trashRoot)
+      let pendingFiles = regularFiles(in: pendingRoot)
+      let managedSummaryBytes = managedManifests.reduce(Int64(0)) { $0 + $1.byteCount }
+      let trashSummaryBytes = trashManifests.reduce(Int64(0)) { $0 + $1.byteCount }
+      let managedDiskBytes = byteCount(managedFiles)
+      let trashDiskBytes = byteCount(trashFiles)
+      let targetManifestAgrees = manifestAgrees(
+        transaction: targetTransaction,
+        transactionID: purgeTransactionID,
+        rootURL: rootURL
+      )
+      let siblingManifestAgrees = manifestAgrees(
+        transaction: siblingTransaction,
+        transactionID: siblingTrashTransactionID,
+        rootURL: rootURL
+      )
+      let storageSummaryMatchesDisk = managedSummaryBytes == managedDiskBytes
+        && trashSummaryBytes == trashDiskBytes
+      return [
+        "purge",
+        "transaction=\(status)",
+        "target-files=\(targetFiles.count)",
+        "target-bytes=\(byteCount(targetFiles))",
+        "target-checksum-preserved=\(targetChecksumPreserved)",
+        "target-manifest-agrees=\(targetManifestAgrees)",
+        "sibling-transaction=\(siblingStatus)",
+        "sibling-trash-files=\(siblingTrashFiles.count)",
+        "sibling-trash-bytes=\(byteCount(siblingTrashFiles))",
+        "sibling-manifest-agrees=\(siblingManifestAgrees)",
+        "sibling-checksum-preserved=\(siblingChecksumPreserved)",
+        "other-managed-files=\(otherFiles.count)",
+        "other-managed-bytes=\(byteCount(otherFiles))",
+        "other-checksums-preserved=\(otherChecksumsPreserved)",
+        "managed-summary-files=\(managedManifests.reduce(0) { $0 + $1.fileCount })",
+        "managed-summary-bytes=\(managedSummaryBytes)",
+        "managed-disk-files=\(managedFiles.count)",
+        "managed-disk-bytes=\(managedDiskBytes)",
+        "trash-summary-files=\(trashManifests.reduce(0) { $0 + $1.fileCount })",
+        "trash-summary-bytes=\(trashSummaryBytes)",
+        "trash-disk-files=\(trashFiles.count)",
+        "trash-disk-bytes=\(trashDiskBytes)",
+        "storage-summary-matches-disk=\(storageSummaryMatchesDisk)",
+        "pending-deletion-files=\(pendingFiles.count)",
+        "expected-file-bytes=\(expectedManagedByteCount)",
+        "source-checksum-preserved=\(sourceChecksumPreserved)",
+      ].joined(separator: ":")
+    }
+
+    private func manifestAgrees(
+      transaction: LibraryTrashTransaction?,
+      transactionID: UUID,
+      rootURL: URL
+    ) -> Bool {
+      let manifestURL = rootURL.appending(
+        path: "Trash/\(transactionID.uuidString.lowercased())/manifest.json"
+      )
+      guard let transaction else { return false }
+      if transaction.status == .purged {
+        return transaction.mediaManifest == nil
+          && !FileManager.default.fileExists(atPath: manifestURL.path)
+      }
+      guard transaction.status == .recoverable,
+        let expected = transaction.mediaManifest,
+        let data = try? Data(contentsOf: manifestURL),
+        let actual = try? JSONDecoder().decode(TrashedMediaManifest.self, from: data)
+      else { return false }
+      return actual == expected
+    }
+
+    private func regularM4BFiles(in root: URL) -> [URL] {
+      regularFiles(in: root).filter { $0.pathExtension.lowercased() == "m4b" }
+    }
+
+    private func regularFiles(in root: URL) -> [URL] {
+      guard let enumerator = FileManager.default.enumerator(
+        at: root,
+        includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
+        options: [.skipsHiddenFiles]
+      ) else { return [] }
+      return enumerator.compactMap { $0 as? URL }.filter { url in
+        (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
+      }
+    }
+
+    private func checksum(of url: URL) -> String? {
+      guard let data = try? Data(contentsOf: url) else { return nil }
+      return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
+    private func byteCount(_ urls: [URL]) -> Int64 {
+      urls.reduce(Int64(0)) { result, url in
+        result + Int64((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+      }
     }
   }
 
@@ -2984,16 +3320,27 @@ extension PlayerEnvironment {
 
   @MainActor
   final class E2EMultifileAcquisition {
+    enum EntryPoint: Equatable {
+      case directAdd
+      case explicitFileChoice
+    }
+
     static let shared = E2EMultifileAcquisition()
 
     private(set) var selectionURLs: [URL] = []
+    private(set) var entryPoint = EntryPoint.directAdd
     private var sourceBytes: [String: Data] = [:]
     private var storageRootURL: URL?
 
     var isConfigured: Bool { !selectionURLs.isEmpty }
 
-    func configure(selectionURLs: [URL], storageRootURL: URL) {
+    func configure(
+      selectionURLs: [URL],
+      storageRootURL: URL,
+      entryPoint: EntryPoint = .directAdd
+    ) {
       self.selectionURLs = selectionURLs
+      self.entryPoint = entryPoint
       self.storageRootURL = storageRootURL.standardizedFileURL
       sourceBytes = sourceFiles(in: selectionURLs).reduce(into: [:]) { result, url in
         result[url.path] = try? Data(contentsOf: url)

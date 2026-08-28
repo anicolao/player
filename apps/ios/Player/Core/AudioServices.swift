@@ -286,6 +286,14 @@ final class AVPlayerPlaybackController: AudioPlaybackControlling {
     state = PlaybackState(status: .paused, loadedBookID: bookID, elapsedSeconds: seconds)
   }
 
+  func unload() {
+    cancelSleepFade()
+    player?.pause()
+    player?.replaceCurrentItem(with: nil)
+    player = nil
+    state = .unloaded
+  }
+
   func play() {
     player?.playImmediately(atRate: Float(playbackRate))
     guard state.loadedBookID != nil else { return }
@@ -372,6 +380,11 @@ final class DeterministicPlaybackController: AudioPlaybackControlling {
   func load(url: URL, bookID: UUID, at seconds: Double) async throws {
     loadedURL = url
     state = PlaybackState(status: .paused, loadedBookID: bookID, elapsedSeconds: seconds)
+  }
+
+  func unload() {
+    loadedURL = nil
+    state = .unloaded
   }
 
   func play() {

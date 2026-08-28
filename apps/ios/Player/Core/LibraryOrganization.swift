@@ -87,13 +87,22 @@ struct CollectionBookPlacement: Codable, Equatable, Sendable {
 
 enum LibraryTrashStatus: String, Codable, Equatable, Sendable {
   case recoverable
+  case purging
   case restored
   case purged
 }
 
+struct PreparedTrashDeletion: Codable, Equatable, Sendable {
+  var transactionID: UUID
+  var bookID: UUID
+  var originalDirectoryRelativePath: String
+  var pendingDirectoryRelativePath: String
+}
+
 struct LibraryTrashTransaction: Codable, Equatable, Identifiable, Sendable {
   let id: UUID
-  var book: Book
+  var book: Book?
+  var purgedBookID: UUID?
   var originalBookIndex: Int
   var mediaPolicy: LibraryRemovalMediaPolicy
   var mediaManifest: TrashedMediaManifest?
@@ -106,6 +115,128 @@ struct LibraryTrashTransaction: Codable, Equatable, Identifiable, Sendable {
   var removedAt: Date
   var status: LibraryTrashStatus
   var restoredAt: Date?
+  var purgeStartedAt: Date?
+  var purgedAt: Date?
+
+  var bookID: UUID? { book?.id ?? purgedBookID }
+
+  init(
+    id: UUID,
+    book: Book,
+    originalBookIndex: Int,
+    mediaPolicy: LibraryRemovalMediaPolicy,
+    mediaManifest: TrashedMediaManifest?,
+    upNextIndex: Int?,
+    collectionPlacements: [CollectionBookPlacement],
+    wasCurrentBook: Bool,
+    playbackPosition: PlaybackPosition?,
+    positionEvents: [PositionEvent],
+    metadataTransactions: [MetadataTransaction],
+    removedAt: Date,
+    status: LibraryTrashStatus,
+    restoredAt: Date?,
+    purgeStartedAt: Date? = nil,
+    purgedAt: Date? = nil
+  ) {
+    self.id = id
+    self.book = book
+    self.purgedBookID = nil
+    self.originalBookIndex = originalBookIndex
+    self.mediaPolicy = mediaPolicy
+    self.mediaManifest = mediaManifest
+    self.upNextIndex = upNextIndex
+    self.collectionPlacements = collectionPlacements
+    self.wasCurrentBook = wasCurrentBook
+    self.playbackPosition = playbackPosition
+    self.positionEvents = positionEvents
+    self.metadataTransactions = metadataTransactions
+    self.removedAt = removedAt
+    self.status = status
+    self.restoredAt = restoredAt
+    self.purgeStartedAt = purgeStartedAt
+    self.purgedAt = purgedAt
+  }
+
+  mutating func beginPurging(at date: Date) {
+    status = .purging
+    purgeStartedAt = date
+  }
+
+  mutating func finishPurging(at date: Date) {
+    purgedBookID = book?.id ?? purgedBookID
+    book = nil
+    originalBookIndex = 0
+    mediaManifest = nil
+    upNextIndex = nil
+    collectionPlacements = []
+    wasCurrentBook = false
+    playbackPosition = nil
+    positionEvents = []
+    metadataTransactions = []
+    status = .purged
+    restoredAt = nil
+    purgedAt = date
+  }
+
+  mutating func cancelPurging() {
+    status = .recoverable
+    purgeStartedAt = nil
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id, book, purgedBookID, originalBookIndex, mediaPolicy, mediaManifest, upNextIndex
+    case collectionPlacements, wasCurrentBook, playbackPosition, positionEvents
+    case metadataTransactions, removedAt, status, restoredAt, purgeStartedAt, purgedAt
+  }
+
+  init(from decoder: any Decoder) throws {
+    let values = try decoder.container(keyedBy: CodingKeys.self)
+    id = try values.decode(UUID.self, forKey: .id)
+    book = try values.decodeIfPresent(Book.self, forKey: .book)
+    purgedBookID = try values.decodeIfPresent(UUID.self, forKey: .purgedBookID)
+      ?? book?.id
+    originalBookIndex = try values.decodeIfPresent(Int.self, forKey: .originalBookIndex) ?? 0
+    mediaPolicy = try values.decode(LibraryRemovalMediaPolicy.self, forKey: .mediaPolicy)
+    mediaManifest = try values.decodeIfPresent(TrashedMediaManifest.self, forKey: .mediaManifest)
+    upNextIndex = try values.decodeIfPresent(Int.self, forKey: .upNextIndex)
+    collectionPlacements = try values.decodeIfPresent(
+      [CollectionBookPlacement].self,
+      forKey: .collectionPlacements
+    ) ?? []
+    wasCurrentBook = try values.decodeIfPresent(Bool.self, forKey: .wasCurrentBook) ?? false
+    playbackPosition = try values.decodeIfPresent(PlaybackPosition.self, forKey: .playbackPosition)
+    positionEvents = try values.decodeIfPresent([PositionEvent].self, forKey: .positionEvents) ?? []
+    metadataTransactions = try values.decodeIfPresent(
+      [MetadataTransaction].self,
+      forKey: .metadataTransactions
+    ) ?? []
+    removedAt = try values.decode(Date.self, forKey: .removedAt)
+    status = try values.decode(LibraryTrashStatus.self, forKey: .status)
+    restoredAt = try values.decodeIfPresent(Date.self, forKey: .restoredAt)
+    purgeStartedAt = try values.decodeIfPresent(Date.self, forKey: .purgeStartedAt)
+    purgedAt = try values.decodeIfPresent(Date.self, forKey: .purgedAt)
+  }
+
+  func encode(to encoder: any Encoder) throws {
+    var values = encoder.container(keyedBy: CodingKeys.self)
+    try values.encode(id, forKey: .id)
+    try values.encodeIfPresent(book, forKey: .book)
+    try values.encodeIfPresent(purgedBookID, forKey: .purgedBookID)
+    try values.encode(originalBookIndex, forKey: .originalBookIndex)
+    try values.encode(mediaPolicy, forKey: .mediaPolicy)
+    try values.encodeIfPresent(mediaManifest, forKey: .mediaManifest)
+    try values.encodeIfPresent(upNextIndex, forKey: .upNextIndex)
+    try values.encode(collectionPlacements, forKey: .collectionPlacements)
+    try values.encode(wasCurrentBook, forKey: .wasCurrentBook)
+    try values.encodeIfPresent(playbackPosition, forKey: .playbackPosition)
+    try values.encode(positionEvents, forKey: .positionEvents)
+    try values.encode(metadataTransactions, forKey: .metadataTransactions)
+    try values.encode(removedAt, forKey: .removedAt)
+    try values.encode(status, forKey: .status)
+    try values.encodeIfPresent(restoredAt, forKey: .restoredAt)
+    try values.encodeIfPresent(purgeStartedAt, forKey: .purgeStartedAt)
+    try values.encodeIfPresent(purgedAt, forKey: .purgedAt)
+  }
 }
 
 enum LibraryOrganizationError: LocalizedError, Equatable, Sendable {
@@ -125,7 +256,7 @@ enum LibraryOrganizationError: LocalizedError, Equatable, Sendable {
     case .invalidBookOrder: "The supplied book order is incomplete or contains duplicates."
     case .missingTrashTransaction(let id): "Trash transaction \(id.uuidString) no longer exists."
     case .trashTransactionNotRecoverable(let id):
-      "Trash transaction \(id.uuidString) has already been restored."
+      "Trash transaction \(id.uuidString) is no longer recoverable or is already being changed."
     case .bookAlreadyExists(let id): "Book \(id.uuidString) is already in the library."
     }
   }

@@ -9,6 +9,7 @@ actor FileSystemMediaManager: MediaManaging {
   private let stagingURL: URL
   private let mediaURL: URL
   private let trashURL: URL
+  private let pendingTrashDeletionURL: URL
   private let fileManager: FileManager
   private let logger = Logger(subsystem: "com.spnss.player", category: "MediaStorage")
 
@@ -17,6 +18,10 @@ actor FileSystemMediaManager: MediaManaging {
     self.stagingURL = rootURL.appending(path: "Staging", directoryHint: .isDirectory)
     self.mediaURL = rootURL.appending(path: "Media", directoryHint: .isDirectory)
     self.trashURL = rootURL.appending(path: "Trash", directoryHint: .isDirectory)
+    self.pendingTrashDeletionURL = rootURL.appending(
+      path: "PendingTrashDeletion",
+      directoryHint: .isDirectory
+    )
     self.fileManager = fileManager
   }
 
@@ -366,6 +371,118 @@ actor FileSystemMediaManager: MediaManaging {
     try? fileManager.removeItem(at: transactionDirectory)
   }
 
+  func preparePermanentTrashDeletion(
+    transactionID: UUID,
+    bookID: UUID,
+    mediaPolicy: LibraryRemovalMediaPolicy,
+    manifest: TrashedMediaManifest?
+  ) throws -> PreparedTrashDeletion {
+    try prepareDirectories()
+    let transactionComponent = transactionID.uuidString.lowercased()
+    let bookComponent = bookID.uuidString.lowercased()
+    let originalRelativePath: String
+
+    switch mediaPolicy {
+    case .moveManagedMediaToTrash:
+      guard let manifest else {
+        throw PlayerCoreError.fileOperation("The Trash record has no managed-media manifest.")
+      }
+      let expectedOriginal = "Media/\(bookComponent)"
+      let expectedTrash = "Trash/\(transactionComponent)/Media/\(bookComponent)"
+      guard manifest.transactionID == transactionID,
+        manifest.bookID == bookID,
+        manifest.originalDirectoryRelativePath == expectedOriginal,
+        manifest.trashDirectoryRelativePath == expectedTrash
+      else {
+        throw PlayerCoreError.fileOperation("The Trash manifest does not match this book.")
+      }
+      let manifestURL = trashURL.appending(
+        path: "\(transactionComponent)/manifest.json"
+      )
+      guard fileManager.fileExists(atPath: manifestURL.path) else {
+        throw PlayerCoreError.missingManagedFile("Trash/\(transactionComponent)/manifest.json")
+      }
+      let storedManifest = try JSONDecoder().decode(
+        TrashedMediaManifest.self,
+        from: Data(contentsOf: manifestURL)
+      )
+      guard storedManifest == manifest else {
+        throw PlayerCoreError.fileOperation("The on-disk Trash manifest does not match the catalog.")
+      }
+      originalRelativePath = "Trash/\(transactionComponent)"
+    case .retainManagedMedia:
+      guard manifest == nil else {
+        throw PlayerCoreError.fileOperation("Retained media cannot have a Trash manifest.")
+      }
+      originalRelativePath = "Media/\(bookComponent)"
+    }
+
+    let originalDirectory = rootURL.appending(path: originalRelativePath).standardizedFileURL
+    let allowedRoot = mediaPolicy == .moveManagedMediaToTrash ? trashURL : mediaURL
+    _ = try confinedURL(for: originalRelativePath, beneath: allowedRoot)
+    guard fileManager.fileExists(atPath: originalDirectory.path) else {
+      throw PlayerCoreError.missingManagedFile(originalRelativePath)
+    }
+
+    let pendingTransaction = pendingTrashDeletionURL.appending(
+      path: transactionComponent,
+      directoryHint: .isDirectory
+    )
+    guard !fileManager.fileExists(atPath: pendingTransaction.path) else {
+      throw PlayerCoreError.fileOperation("A permanent-deletion transaction already exists.")
+    }
+    let pendingRelativePath = "PendingTrashDeletion/\(transactionComponent)/Payload"
+    let pendingPayload = rootURL.appending(
+      path: pendingRelativePath,
+      directoryHint: .isDirectory
+    )
+    let deletion = PreparedTrashDeletion(
+      transactionID: transactionID,
+      bookID: bookID,
+      originalDirectoryRelativePath: originalRelativePath,
+      pendingDirectoryRelativePath: pendingRelativePath
+    )
+    do {
+      try fileManager.createDirectory(at: pendingTransaction, withIntermediateDirectories: false)
+      let encoder = JSONEncoder()
+      encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+      try encoder.encode(deletion).write(
+        to: pendingTransaction.appending(path: "journal.json"),
+        options: [.atomic, .completeFileProtectionUnlessOpen]
+      )
+      try fileManager.moveItem(at: originalDirectory, to: pendingPayload)
+      return deletion
+    } catch {
+      if fileManager.fileExists(atPath: originalDirectory.path) {
+        try? fileManager.removeItem(at: pendingTransaction)
+      }
+      throw error
+    }
+  }
+
+  func commitPermanentTrashDeletion(_ deletion: PreparedTrashDeletion) throws {
+    let pendingTransaction = try validatedPendingDeletionDirectory(for: deletion)
+    try fileManager.removeItem(at: pendingTransaction)
+  }
+
+  func rollbackPermanentTrashDeletion(_ deletion: PreparedTrashDeletion) throws {
+    let pendingTransaction = try validatedPendingDeletionDirectory(for: deletion)
+    let pendingPayload = rootURL.appending(path: deletion.pendingDirectoryRelativePath)
+    let original = rootURL.appending(path: deletion.originalDirectoryRelativePath)
+    guard fileManager.fileExists(atPath: pendingPayload.path) else {
+      throw PlayerCoreError.missingManagedFile(deletion.pendingDirectoryRelativePath)
+    }
+    guard !fileManager.fileExists(atPath: original.path) else {
+      throw PlayerCoreError.fileOperation("The deletion rollback destination already exists.")
+    }
+    try fileManager.createDirectory(
+      at: original.deletingLastPathComponent(),
+      withIntermediateDirectories: true
+    )
+    try fileManager.moveItem(at: pendingPayload, to: original)
+    try fileManager.removeItem(at: pendingTransaction)
+  }
+
   func discardStaging(for jobID: UUID) async {
     let directory = stagingURL.appending(
       path: jobID.uuidString.lowercased(),
@@ -439,10 +556,21 @@ actor FileSystemMediaManager: MediaManaging {
     -> StartupStorageReconciliation
   {
     try prepareDirectories()
-    let knownBooks = Set(library.books.map(\.id))
-    let knownJobs = Set(library.importJobs.map(\.id))
+    var reconciled = library
+    try reconcilePendingTrashDeletions(in: &reconciled)
+    for transaction in reconciled.trashTransactions where transaction.status == .recoverable {
+      try validateRecoverableTrashTransaction(transaction)
+    }
+    let retainedTrashBooks = reconciled.trashTransactions.compactMap { transaction -> UUID? in
+      guard transaction.mediaPolicy == .retainManagedMedia,
+        transaction.status == .recoverable || transaction.status == .purging
+      else { return nil }
+      return transaction.bookID
+    }
+    let knownBooks = Set(reconciled.books.map(\.id) + retainedTrashBooks)
+    let knownJobs = Set(reconciled.importJobs.map(\.id))
     let knownTrash = Set(
-      library.trashTransactions.filter { $0.status == .recoverable }.map(\.id)
+      reconciled.trashTransactions.filter { $0.status == .recoverable }.map(\.id)
     )
     let managed = try quarantineUnknownDirectories(
       in: mediaURL,
@@ -458,9 +586,12 @@ actor FileSystemMediaManager: MediaManaging {
       in: trashURL,
       category: "trash",
       expected: knownTrash
+    ) + quarantineUnknownDirectories(
+      in: pendingTrashDeletionURL,
+      category: "pending-trash-deletion",
+      expected: []
     )
     let inventory = try await storageInventory()
-    var reconciled = library
     reconciled.storageManifests = inventory.manifests
     return StartupStorageReconciliation(
       library: reconciled,
@@ -468,6 +599,168 @@ actor FileSystemMediaManager: MediaManaging {
       quarantinedStagingJobCount: staging,
       quarantinedTrashTransactionCount: trash
     )
+  }
+
+  private func validateRecoverableTrashTransaction(
+    _ transaction: LibraryTrashTransaction
+  ) throws {
+    guard let book = transaction.book, transaction.bookID == book.id else {
+      throw PlayerCoreError.fileOperation("A recoverable Trash transaction has no book.")
+    }
+    let bookID = book.id
+    let bookComponent = bookID.uuidString.lowercased()
+    switch transaction.mediaPolicy {
+    case .retainManagedMedia:
+      guard transaction.mediaManifest == nil else {
+        throw PlayerCoreError.fileOperation("Retained Trash media has an unexpected manifest.")
+      }
+      let media = mediaURL.appending(path: bookComponent, directoryHint: .isDirectory)
+      guard fileManager.fileExists(atPath: media.path) else {
+        throw PlayerCoreError.missingManagedFile("Media/\(bookComponent)")
+      }
+    case .moveManagedMediaToTrash:
+      guard let manifest = transaction.mediaManifest else {
+        throw PlayerCoreError.fileOperation("A recoverable Trash transaction has no manifest.")
+      }
+      let transactionComponent = transaction.id.uuidString.lowercased()
+      let expectedOriginal = "Media/\(bookComponent)"
+      let expectedTrash = "Trash/\(transactionComponent)/Media/\(bookComponent)"
+      guard manifest.transactionID == transaction.id,
+        manifest.bookID == bookID,
+        manifest.originalDirectoryRelativePath == expectedOriginal,
+        manifest.trashDirectoryRelativePath == expectedTrash
+      else {
+        throw PlayerCoreError.fileOperation("A recoverable Trash manifest is inconsistent.")
+      }
+      let manifestURL = trashURL.appending(path: "\(transactionComponent)/manifest.json")
+      let payloadURL = rootURL.appending(path: expectedTrash)
+      guard fileManager.fileExists(atPath: manifestURL.path),
+        fileManager.fileExists(atPath: payloadURL.path)
+      else {
+        throw PlayerCoreError.missingManagedFile(expectedTrash)
+      }
+      let stored = try JSONDecoder().decode(
+        TrashedMediaManifest.self,
+        from: Data(contentsOf: manifestURL)
+      )
+      guard stored == manifest else {
+        throw PlayerCoreError.fileOperation("The recoverable Trash manifest changed on disk.")
+      }
+    }
+  }
+
+  private func validatedPendingDeletionDirectory(
+    for deletion: PreparedTrashDeletion
+  ) throws -> URL {
+    let transactionComponent = deletion.transactionID.uuidString.lowercased()
+    let bookComponent = deletion.bookID.uuidString.lowercased()
+    let expectedPending = "PendingTrashDeletion/\(transactionComponent)/Payload"
+    let allowedOriginals = [
+      "Trash/\(transactionComponent)",
+      "Media/\(bookComponent)",
+    ]
+    guard deletion.pendingDirectoryRelativePath == expectedPending,
+      allowedOriginals.contains(deletion.originalDirectoryRelativePath)
+    else {
+      throw PlayerCoreError.fileOperation("A permanent-deletion path escaped its transaction.")
+    }
+    let directory = pendingTrashDeletionURL.appending(
+      path: transactionComponent,
+      directoryHint: .isDirectory
+    )
+    let journalURL = directory.appending(path: "journal.json")
+    guard fileManager.fileExists(atPath: journalURL.path) else {
+      throw PlayerCoreError.missingManagedFile(
+        "PendingTrashDeletion/\(transactionComponent)/journal.json"
+      )
+    }
+    let stored = try JSONDecoder().decode(
+      PreparedTrashDeletion.self,
+      from: Data(contentsOf: journalURL)
+    )
+    guard stored == deletion else {
+      throw PlayerCoreError.fileOperation("The permanent-deletion journal does not match.")
+    }
+    return directory
+  }
+
+  private func reconcilePendingTrashDeletions(in library: inout LibrarySnapshot) throws {
+    for index in library.trashTransactions.indices {
+      let transaction = library.trashTransactions[index]
+      let transactionComponent = transaction.id.uuidString.lowercased()
+      let pending = pendingTrashDeletionURL.appending(
+        path: transactionComponent,
+        directoryHint: .isDirectory
+      )
+      let hasPending = fileManager.fileExists(atPath: pending.path)
+
+      if transaction.status == .purged {
+        // The catalog tombstone is the durable commit point. Cleanup must roll
+        // forward even when a prior removeItem partially removed its journal.
+        if hasPending { try fileManager.removeItem(at: pending) }
+        continue
+      }
+      guard transaction.status == .purging || transaction.status == .recoverable else {
+        if hasPending {
+          throw PlayerCoreError.fileOperation(
+            "Restored media unexpectedly has a pending permanent-deletion transaction."
+          )
+        }
+        continue
+      }
+      guard let book = transaction.book, transaction.bookID == book.id else {
+        throw PlayerCoreError.fileOperation("A Trash transaction has no book identifier.")
+      }
+      let bookID = book.id
+      let bookComponent = bookID.uuidString.lowercased()
+      let original = transaction.mediaPolicy == .moveManagedMediaToTrash
+        ? trashURL.appending(path: transactionComponent, directoryHint: .isDirectory)
+        : mediaURL.appending(path: bookComponent, directoryHint: .isDirectory)
+      let hasOriginal = fileManager.fileExists(atPath: original.path)
+
+      if hasPending {
+        let journalURL = pending.appending(path: "journal.json")
+        guard fileManager.fileExists(atPath: journalURL.path) else {
+          throw PlayerCoreError.fileOperation(
+            "An uncommitted permanent-deletion journal is missing."
+          )
+        }
+        let deletion = try JSONDecoder().decode(
+          PreparedTrashDeletion.self,
+          from: Data(contentsOf: journalURL)
+        )
+        guard deletion.transactionID == transaction.id, deletion.bookID == bookID else {
+          throw PlayerCoreError.fileOperation(
+            "The permanent-deletion journal does not match its Trash transaction."
+          )
+        }
+        let payload = rootURL.appending(path: deletion.pendingDirectoryRelativePath)
+        if fileManager.fileExists(atPath: payload.path) {
+          guard !hasOriginal else {
+            throw PlayerCoreError.fileOperation(
+              "Both original and prepared Trash media exist; recovery requires review."
+            )
+          }
+          try rollbackPermanentTrashDeletion(deletion)
+          library.trashTransactions[index].cancelPurging()
+        } else if hasOriginal {
+          // Crash after durable journal creation but before the atomic move.
+          try fileManager.removeItem(at: pending)
+          library.trashTransactions[index].cancelPurging()
+        } else {
+          throw PlayerCoreError.fileOperation(
+            "Uncommitted Trash media is missing from both original and prepared storage."
+          )
+        }
+      } else if transaction.status == .purging {
+        guard hasOriginal else {
+          throw PlayerCoreError.fileOperation(
+            "Uncommitted Trash media is missing; permanent deletion was not committed."
+          )
+        }
+        library.trashTransactions[index].cancelPurging()
+      }
+    }
   }
 
   private func quarantineUnknownDirectories(
@@ -514,6 +807,10 @@ actor FileSystemMediaManager: MediaManaging {
     try fileManager.createDirectory(at: stagingURL, withIntermediateDirectories: true)
     try fileManager.createDirectory(at: mediaURL, withIntermediateDirectories: true)
     try fileManager.createDirectory(at: trashURL, withIntermediateDirectories: true)
+    try fileManager.createDirectory(
+      at: pendingTrashDeletionURL,
+      withIntermediateDirectories: true
+    )
   }
 
   private func directoryByteCount(_ directory: URL) throws -> Int64 {
