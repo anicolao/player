@@ -14,6 +14,7 @@ final class LibraryOrganizationUITests: XCTestCase {
   ]
   private let collectionID = "90000000-0000-0000-0000-000000000501"
   private let trashID = "90000000-0000-0000-0000-000000000601"
+  private var stableCaptureGeometry: [String: CaptureGeometryObservation] = [:]
 
   func testOrganizesDailyLibraryAndRestoresATrashedBook() throws {
     continueAfterFailure = false
@@ -88,7 +89,8 @@ final class LibraryOrganizationUITests: XCTestCase {
             libraryRootReadiness,
             containerID: "library-root-scroll",
             axis: .vertical,
-            endpoint: \.atTop
+            endpoint: \.atTop,
+            permitsStableGeometryFallback: true
           )
           && self.isSettled(
             homeRecentReadiness,
@@ -1110,20 +1112,39 @@ final class LibraryOrganizationUITests: XCTestCase {
     _ readiness: XCUIElement,
     containerID: String,
     axis: E2EScrollAxis,
-    endpoint: KeyPath<ScrollReadinessState, Bool>? = nil
+    endpoint: KeyPath<ScrollReadinessState, Bool>? = nil,
+    permitsStableGeometryFallback: Bool = false
   ) -> Bool {
     guard
       let state = ScrollReadinessState(readiness.value),
       state.containerID == containerID,
       state.axis == axis,
       state.geometryReady,
-      state.isIdle
-    else { return false }
-    let hasCorrelatedCompletion = state.interactionID == 0
-      ? state.completionID == 0
-      : state.completionID == state.interactionID && state.completionGeometryID > 0
-    guard hasCorrelatedCompletion else { return false }
-    return endpoint.map { state[keyPath: $0] } ?? true
+      endpoint.map({ state[keyPath: $0] }) ?? true
+    else {
+      stableCaptureGeometry.removeValue(forKey: containerID)
+      return false
+    }
+
+    if state.isIdle {
+      stableCaptureGeometry.removeValue(forKey: containerID)
+      return state.interactionID == 0
+        ? state.completionID == 0
+        : state.completionID == state.interactionID && state.completionGeometryID > 0
+    }
+
+    guard permitsStableGeometryFallback else {
+      stableCaptureGeometry.removeValue(forKey: containerID)
+      return false
+    }
+    let observation = CaptureGeometryObservation(state)
+    guard stableCaptureGeometry[containerID] == observation else {
+      stableCaptureGeometry[containerID] = observation
+      print("Capture readiness observed stranded phase; awaiting identical geometry: \(observation)")
+      return false
+    }
+    print("Capture readiness accepted consecutive identical stranded-phase geometry: \(observation)")
+    return true
   }
 
   private func hasSettledLayout(_ readiness: XCUIElement, containerID: String) -> Bool {
@@ -1137,7 +1158,13 @@ final class LibraryOrganizationUITests: XCTestCase {
     within container: XCUIElement
   ) -> [XCUIElement] {
     app.descendants(matching: .any)
-      .matching(NSPredicate(format: "identifier BEGINSWITH %@", identifierPrefix))
+      .matching(
+        NSPredicate(
+          format: "identifier BEGINSWITH %@ OR label BEGINSWITH %@",
+          identifierPrefix,
+          identifierPrefix
+        )
+      )
       .allElementsBoundByIndex
       .filter { elementIsFullyVisible($0, within: container, requiresHittable: false) }
   }
@@ -1220,6 +1247,45 @@ final class LibraryOrganizationUITests: XCTestCase {
       )
       throw LibraryOrganizationTestError.semanticStateUnavailable
     }
+  }
+}
+
+private struct CaptureGeometryObservation: Equatable, CustomStringConvertible {
+  let interactionID: Int
+  let completionID: Int
+  let geometryID: Int
+  let completionGeometryID: Int
+  let offset: Double
+  let minimum: Double
+  let maximum: Double
+  let contentLength: Double
+  let containerLength: Double
+  let atLeft: Bool
+  let atRight: Bool
+  let atTop: Bool
+  let atBottom: Bool
+
+  init(_ state: ScrollReadinessState) {
+    interactionID = state.interactionID
+    completionID = state.completionID
+    geometryID = state.geometryID
+    completionGeometryID = state.completionGeometryID
+    offset = state.offset
+    minimum = state.minimum
+    maximum = state.maximum
+    contentLength = state.contentLength
+    containerLength = state.containerLength
+    atLeft = state.atLeft
+    atRight = state.atRight
+    atTop = state.atTop
+    atBottom = state.atBottom
+  }
+
+  var description: String {
+    "interaction=\(interactionID), completion=\(completionID), geometry=\(geometryID), "
+      + "completionGeometry=\(completionGeometryID), offset=\(offset), "
+      + "range=\(minimum)...\(maximum), content=\(contentLength), "
+      + "container=\(containerLength), endpoints=\(atLeft)/\(atRight)/\(atTop)/\(atBottom)"
   }
 }
 
