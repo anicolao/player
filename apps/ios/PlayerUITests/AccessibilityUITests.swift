@@ -213,6 +213,11 @@ final class AccessibilityUITests: XCTestCase {
         targetMinY: 100
       )
     )
+    let primedBookDetailPixels = ConsecutiveAccessibilityScreenObservation()
+    XCTAssertTrue(
+      settleCompositedSurface(primedBookDetailPixels),
+      "The identical Book Detail preflight must reach a stable composited frame"
+    )
     terminateAndDisplaceSurface(app)
     app = makeApplication(
       fixture: "metadata-rich-book",
@@ -551,6 +556,20 @@ final class AccessibilityUITests: XCTestCase {
       file: file,
       line: line
     )
+  }
+
+  private func settleCompositedSurface(
+    _ observation: ConsecutiveAccessibilityScreenObservation
+  ) -> Bool {
+    guard observation.prime() else { return false }
+    if observation.isStable() { return true }
+    let deadline = EventDeadline()
+    guard deadline.remaining > 0 else { return false }
+    let expectation = XCTNSPredicateExpectation(
+      predicate: NSPredicate { _, _ in observation.isStable() },
+      object: observation
+    )
+    return XCTWaiter.wait(for: [expectation], timeout: deadline.remaining) == .completed
   }
 
   private func makeApplication(

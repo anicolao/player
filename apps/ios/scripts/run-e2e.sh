@@ -410,6 +410,17 @@ else
   fi
 fi
 
+target_application="${build_data}/Build/Products/E2E-iphonesimulator/Player.app"
+if [[ ! -d "${target_application}" ]]; then
+  echo "The exact E2E target application is unavailable: ${target_application}" >&2
+  exit 1
+fi
+if ! run_logged_phase target-install \
+  xcrun simctl install "${simulator_id}" "${target_application}"; then
+  echo "Could not install the exact E2E target before XCTest launch." >&2
+  exit 1
+fi
+
 only_testing_arguments=()
 test_classes=()
 for test_selector in "${test_selectors[@]}"; do

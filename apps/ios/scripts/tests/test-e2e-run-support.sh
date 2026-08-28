@@ -308,6 +308,13 @@ jq -e '
   || fail "unreadable-image diagnostics omitted source files or the diff placeholder"
 
 run_e2e="${ios_scripts}/run-e2e.sh"
+target_install_line="$(rg -n -m 1 'run_logged_phase target-install' "${run_e2e}" | cut -d: -f1)"
+test_phase_line="$(rg -n -m 1 'run_logged_phase test xcodebuild test-without-building' "${run_e2e}" | cut -d: -f1)"
+[[ -n "${target_install_line}" && -n "${test_phase_line}" \
+  && "${target_install_line}" -lt "${test_phase_line}" ]] \
+  || fail "the exact target application is not installed before XCTest launch"
+rg -Fq 'target_application="${build_data}/Build/Products/E2E-iphonesimulator/Player.app"' "${run_e2e}" \
+  || fail "target preinstallation is not bound to the exact E2E build product"
 rg -Fq -- '--start "${run_started_at}" --style compact --info --debug' "${run_e2e}" \
   || fail "failure logging does not cover the complete attempt"
 for retained_log in player.log simulator-system.log coresimulator-host.log semantic-probes.log; do
