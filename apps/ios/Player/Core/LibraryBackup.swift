@@ -50,6 +50,20 @@ struct AutomaticLibraryBackup: Equatable, Sendable {
   var byteCount: Int64
 }
 
+struct PortableLibraryBackupPolicy: Equatable, Sendable {
+  var maximumManifestByteCount: Int64 = 64 * 1_024 * 1_024
+  var maximumBookCount = 100_000
+  var maximumMediaCount = 500_000
+  var maximumArtworkCount = 100_000
+  var maximumArtworkByteCount: Int64 = 64 * 1_024 * 1_024
+  var maximumAggregateArtworkByteCount: Int64 = 2 * 1_024 * 1_024 * 1_024
+  var maximumMediaByteCount: Int64 = 1_024 * 1_024 * 1_024 * 1_024
+  var maximumAggregateMediaByteCount: Int64 = 4 * 1_024 * 1_024 * 1_024 * 1_024
+  var maximumPackageByteCount: Int64 = 4 * 1_024 * 1_024 * 1_024 * 1_024
+
+  static let production = Self()
+}
+
 enum LibraryBackupError: LocalizedError, Equatable, Sendable {
   case unsupportedFormat(Int)
   case unsupportedLibrarySchema(Int)
@@ -101,15 +115,21 @@ actor FileSystemLibraryBackupManager: LibraryBackupManaging {
   private let rootURL: URL
   private let fileManager: FileManager
   private let clock: any PlayerClock
+  private let policy: PortableLibraryBackupPolicy
+  private let beforeRestoreCommit: (@Sendable () async -> Void)?
 
   init(
     rootURL: URL,
     fileManager: FileManager = .default,
-    clock: any PlayerClock = SystemPlayerClock()
+    clock: any PlayerClock = SystemPlayerClock(),
+    policy: PortableLibraryBackupPolicy = .production,
+    beforeRestoreCommit: (@Sendable () async -> Void)? = nil
   ) {
     self.rootURL = rootURL.standardizedFileURL
     self.fileManager = fileManager
     self.clock = clock
+    self.policy = policy
+    self.beforeRestoreCommit = beforeRestoreCommit
     // A prepared package is only a transient hand-off to the system picker.
     // If the process was killed while the picker was open, remove that copy on
     // the next launch so it cannot become hidden duplicate storage.
@@ -122,6 +142,8 @@ actor FileSystemLibraryBackupManager: LibraryBackupManaging {
     library: LibrarySnapshot,
     kind: PortableBackupKind
   ) throws -> PreparedLibraryBackup {
+    try Task.checkCancellation()
+    try validateLibraryCounts(library)
     let exportRoot = rootURL.appending(path: "BackupExports", directoryHint: .isDirectory)
     try fileManager.createDirectory(at: exportRoot, withIntermediateDirectories: true)
     let packageURL = exportRoot.appending(
@@ -145,11 +167,10 @@ actor FileSystemLibraryBackupManager: LibraryBackupManaging {
       var exportedBytes: Int64 = 0
       if kind == .includingMedia {
         for asset in library.books.flatMap(\.assets) {
+          try Task.checkCancellation()
           let relativePath = try validatedMediaPath(asset.managedRelativePath)
           let source = rootURL.appending(path: relativePath).standardizedFileURL
-          guard fileManager.fileExists(atPath: source.path) else {
-            throw LibraryBackupError.missingPayload(relativePath)
-          }
+          try requireRegularFileWithoutSymlink(source, missingPath: relativePath)
           let destination = packageURL.appending(path: relativePath)
           try fileManager.createDirectory(
             at: destination.deletingLastPathComponent(),
@@ -167,7 +188,12 @@ actor FileSystemLibraryBackupManager: LibraryBackupManaging {
               byteCount: identity.byteCount,
               checksumSHA256: identity.checksumSHA256
             ))
-          exportedBytes += identity.byteCount
+          exportedBytes = try checkedTotal(
+            exportedBytes,
+            adding: identity.byteCount,
+            maximum: policy.maximumAggregateMediaByteCount,
+            detail: "the media payloads exceed the supported size."
+          )
         }
       }
 
@@ -186,6 +212,7 @@ actor FileSystemLibraryBackupManager: LibraryBackupManaging {
           checksumSHA256: Self.hash(data)
         )
       }.sorted { $0.bookID.uuidString < $1.bookID.uuidString }
+      try validateArtworkCatalog(artwork, library: portableLibrary)
 
       let manifest = PortableLibraryManifest(
         formatVersion: PortableLibraryManifest.currentFormatVersion,
@@ -197,11 +224,20 @@ actor FileSystemLibraryBackupManager: LibraryBackupManaging {
         artwork: artwork
       )
       let manifestData = try JSONEncoder.playerEncoder.encode(manifest)
+      guard Int64(manifestData.count) <= policy.maximumManifestByteCount else {
+        throw LibraryBackupError.invalidPackage("manifest.json exceeds the supported size.")
+      }
+      exportedBytes = try checkedTotal(
+        exportedBytes,
+        adding: Int64(manifestData.count),
+        maximum: policy.maximumPackageByteCount,
+        detail: "the backup exceeds the supported size."
+      )
+      try Task.checkCancellation()
       try manifestData.write(
         to: packageURL.appending(path: "manifest.json"),
         options: [.atomic, .completeFileProtectionUnlessOpen]
       )
-      exportedBytes += Int64(manifestData.count)
       return PreparedLibraryBackup(
         url: packageURL,
         kind: kind,
@@ -226,16 +262,27 @@ actor FileSystemLibraryBackupManager: LibraryBackupManaging {
     let accessed = backupURL.startAccessingSecurityScopedResource()
     defer { if accessed { backupURL.stopAccessingSecurityScopedResource() } }
 
-    let manifestURL = backupURL.appending(path: "manifest.json")
-    guard fileManager.fileExists(atPath: manifestURL.path) else {
-      throw LibraryBackupError.invalidPackage("manifest.json is missing.")
+    try Task.checkCancellation()
+    let packageURL = backupURL.standardizedFileURL
+    try requireDirectoryWithoutSymlink(packageURL, detail: "the package root is not a directory.")
+    let manifestURL = packageURL.appending(path: "manifest.json")
+    try requireRegularFileWithoutSymlink(manifestURL, missingPath: "manifest.json")
+    let manifestByteCount = try fileByteCount(at: manifestURL)
+    guard manifestByteCount <= policy.maximumManifestByteCount else {
+      throw LibraryBackupError.invalidPackage("manifest.json exceeds the supported size.")
     }
     let manifest: PortableLibraryManifest
     do {
+      let manifestData = try Data(contentsOf: manifestURL, options: .mappedIfSafe)
+      guard Int64(manifestData.count) <= policy.maximumManifestByteCount else {
+        throw LibraryBackupError.invalidPackage("manifest.json exceeds the supported size.")
+      }
       manifest = try JSONDecoder.playerDecoder.decode(
         PortableLibraryManifest.self,
-        from: Data(contentsOf: manifestURL)
+        from: manifestData
       )
+    } catch let error as LibraryBackupError {
+      throw error
     } catch {
       throw LibraryBackupError.invalidPackage("manifest.json could not be decoded.")
     }
@@ -245,6 +292,8 @@ actor FileSystemLibraryBackupManager: LibraryBackupManaging {
     guard manifest.librarySchemaVersion <= CodableLibraryStore.currentSchemaVersion else {
       throw LibraryBackupError.unsupportedLibrarySchema(manifest.librarySchemaVersion)
     }
+    try Task.checkCancellation()
+    try validateLibraryCounts(manifest.library)
     try validateArtwork(in: manifest)
 
     let expectedPaths = try Set(
@@ -259,17 +308,23 @@ actor FileSystemLibraryBackupManager: LibraryBackupManaging {
       guard manifest.media.isEmpty else {
         throw LibraryBackupError.invalidPackage("a metadata-only manifest contains media records.")
       }
+      try validatePackageContents(at: packageURL, expectedPayloadPaths: [])
       for asset in manifest.library.books.flatMap(\.assets) {
+        try Task.checkCancellation()
         let relativePath = try validatedMediaPath(asset.managedRelativePath)
         let localURL = rootURL.appending(path: relativePath)
         guard fileManager.fileExists(atPath: localURL.path) else {
           throw LibraryBackupError.localMediaRequired(relativePath)
         }
         let identity = try hashFile(at: localURL)
-        guard identity.checksumSHA256 == asset.checksumSHA256.lowercased() else {
+        guard identity.byteCount == asset.byteCount,
+          identity.checksumSHA256 == asset.checksumSHA256.lowercased()
+        else {
           throw LibraryBackupError.invalidPayload(relativePath)
         }
       }
+      if let beforeRestoreCommit { await beforeRestoreCommit() }
+      try Task.checkCancellation()
       try await CodableLibraryStore(fileURL: rootURL.appending(path: "Library.json")).save(
         manifest.library
       )
@@ -277,7 +332,10 @@ actor FileSystemLibraryBackupManager: LibraryBackupManaging {
     }
 
     let normalizedPayloads = try manifest.media.map { payload in
-      (try validatedMediaPath(payload.relativePath), payload)
+      let relativePath = try validatedMediaPath(payload.relativePath)
+      try validateMediaByteCount(payload.byteCount, path: relativePath)
+      try validateChecksum(payload.checksumSHA256, path: relativePath)
+      return (relativePath, payload)
     }
     guard Set(normalizedPayloads.map(\.0)).count == normalizedPayloads.count else {
       throw LibraryBackupError.invalidPackage("the media catalog contains duplicate paths.")
@@ -286,6 +344,31 @@ actor FileSystemLibraryBackupManager: LibraryBackupManaging {
     guard Set(payloadByPath.keys) == expectedPaths else {
       throw LibraryBackupError.invalidPackage("the media catalog does not match the library.")
     }
+    var aggregateMediaByteCount: Int64 = 0
+    for (relativePath, payload) in normalizedPayloads {
+      aggregateMediaByteCount = try checkedTotal(
+        aggregateMediaByteCount,
+        adding: payload.byteCount,
+        maximum: policy.maximumAggregateMediaByteCount,
+        detail: "the media payloads exceed the supported size."
+      )
+      guard
+        let asset = manifest.library.books.flatMap(\.assets).first(where: {
+          $0.managedRelativePath == relativePath
+        }), payload.byteCount == asset.byteCount,
+        payload.checksumSHA256.lowercased() == asset.checksumSHA256.lowercased()
+      else { throw LibraryBackupError.invalidPayload(relativePath) }
+    }
+    _ = try checkedTotal(
+      manifestByteCount,
+      adding: aggregateMediaByteCount,
+      maximum: policy.maximumPackageByteCount,
+      detail: "the backup exceeds the supported size."
+    )
+    try validatePackageContents(
+      at: packageURL,
+      expectedPayloadPaths: Set(normalizedPayloads.map(\.0))
+    )
 
     let restoreID = UUID().uuidString.lowercased()
     let transactionRoot = rootURL.appending(path: "BackupRestore/\(restoreID)")
@@ -295,6 +378,7 @@ actor FileSystemLibraryBackupManager: LibraryBackupManaging {
     try fileManager.createDirectory(at: stagedMedia, withIntermediateDirectories: true)
     do {
       for relativePath in expectedPaths.sorted() {
+        try Task.checkCancellation()
         guard let payload = payloadByPath[relativePath] else {
           throw LibraryBackupError.missingPayload(relativePath)
         }
@@ -304,7 +388,11 @@ actor FileSystemLibraryBackupManager: LibraryBackupManaging {
           }), payload.byteCount == asset.byteCount,
           payload.checksumSHA256.lowercased() == asset.checksumSHA256.lowercased()
         else { throw LibraryBackupError.invalidPayload(relativePath) }
-        let source = backupURL.appending(path: relativePath).standardizedFileURL
+        let source = packageURL.appending(path: relativePath).standardizedFileURL
+        try requireRegularFileWithoutSymlink(source, missingPath: relativePath)
+        guard try fileByteCount(at: source) == payload.byteCount else {
+          throw LibraryBackupError.invalidPayload(relativePath)
+        }
         let destination = transactionRoot.appending(path: relativePath).standardizedFileURL
         try fileManager.createDirectory(
           at: destination.deletingLastPathComponent(),
@@ -317,6 +405,8 @@ actor FileSystemLibraryBackupManager: LibraryBackupManaging {
       }
 
       let liveMedia = rootURL.appending(path: "Media", directoryHint: .isDirectory)
+      if let beforeRestoreCommit { await beforeRestoreCommit() }
+      try Task.checkCancellation()
       var movedPreviousMedia = false
       if fileManager.fileExists(atPath: liveMedia.path) {
         try fileManager.moveItem(at: liveMedia, to: previousMedia)
@@ -341,33 +431,217 @@ actor FileSystemLibraryBackupManager: LibraryBackupManaging {
   }
 
   private func validateArtwork(in manifest: PortableLibraryManifest) throws {
+    try validateArtworkCatalog(manifest.artwork, library: manifest.library)
+  }
+
+  private func validateArtworkCatalog(
+    _ artwork: [PortableArtworkDigest],
+    library: LibrarySnapshot
+  ) throws {
+    guard artwork.count <= policy.maximumArtworkCount else {
+      throw LibraryBackupError.invalidPackage("the artwork catalog contains too many entries.")
+    }
     let expected = Dictionary(
-      uniqueKeysWithValues: manifest.library.books.compactMap {
+      uniqueKeysWithValues: library.books.compactMap {
         book -> (UUID, Data)? in book.artworkData.map { (book.id, $0) }
       })
-    guard Set(manifest.artwork.map(\.bookID)).count == manifest.artwork.count else {
+    guard Set(artwork.map(\.bookID)).count == artwork.count else {
       throw LibraryBackupError.invalidPackage("the artwork catalog contains duplicate entries.")
     }
-    let supplied = Dictionary(uniqueKeysWithValues: manifest.artwork.map { ($0.bookID, $0) })
+    let supplied = Dictionary(uniqueKeysWithValues: artwork.map { ($0.bookID, $0) })
     guard expected.count == supplied.count else {
       throw LibraryBackupError.invalidPackage("the artwork catalog does not match the library.")
     }
+    var aggregateArtworkByteCount: Int64 = 0
     for (bookID, data) in expected {
-      guard let digest = supplied[bookID], digest.byteCount == Int64(data.count),
-        digest.checksumSHA256.lowercased() == Self.hash(data)
+      guard let digest = supplied[bookID], digest.byteCount >= 0,
+        digest.byteCount <= policy.maximumArtworkByteCount,
+        digest.byteCount == Int64(data.count)
       else { throw LibraryBackupError.invalidPackage("artwork failed its integrity check.") }
+      try validateChecksum(digest.checksumSHA256, path: "artwork")
+      guard digest.checksumSHA256.lowercased() == Self.hash(data) else {
+        throw LibraryBackupError.invalidPackage("artwork failed its integrity check.")
+      }
+      aggregateArtworkByteCount = try checkedTotal(
+        aggregateArtworkByteCount,
+        adding: digest.byteCount,
+        maximum: policy.maximumAggregateArtworkByteCount,
+        detail: "the artwork catalog exceeds the supported size."
+      )
+    }
+  }
+
+  private func validateLibraryCounts(_ library: LibrarySnapshot) throws {
+    guard library.books.count <= policy.maximumBookCount,
+      Set(library.books.map(\.id)).count == library.books.count
+    else {
+      throw LibraryBackupError.invalidPackage("the library contains too many or duplicate books.")
+    }
+    var assetCount = 0
+    for book in library.books {
+      guard assetCount <= policy.maximumMediaCount,
+        book.assets.count <= policy.maximumMediaCount - assetCount
+      else {
+        throw LibraryBackupError.invalidPackage("the library contains too many media records.")
+      }
+      assetCount += book.assets.count
+      for asset in book.assets {
+        let relativePath = try validatedMediaPath(asset.managedRelativePath)
+        try validateMediaByteCount(asset.byteCount, path: relativePath)
+        try validateChecksum(asset.checksumSHA256, path: relativePath)
+      }
     }
   }
 
   private func validatedMediaPath(_ path: String) throws -> String {
+    let components = path.split(separator: "/", omittingEmptySubsequences: false)
+    guard path == path.precomposedStringWithCanonicalMapping,
+      !path.hasPrefix("/"),
+      components.count >= 2,
+      components.first == "Media",
+      components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." })
+    else {
+      throw LibraryBackupError.invalidPackage("a media path escapes managed storage.")
+    }
     let candidate = rootURL.appending(path: path).standardizedFileURL
     let mediaRoot =
       rootURL.appending(path: "Media", directoryHint: .isDirectory)
       .standardizedFileURL.path + "/"
-    guard candidate.path.hasPrefix(mediaRoot), !path.hasPrefix("/"), !path.contains("..") else {
+    let normalized = String(candidate.path.dropFirst(rootURL.path.count + 1))
+    guard candidate.path.hasPrefix(mediaRoot), normalized == path else {
       throw LibraryBackupError.invalidPackage("a media path escapes managed storage.")
     }
-    return String(candidate.path.dropFirst(rootURL.path.count + 1))
+    return normalized
+  }
+
+  private func validatePackageContents(
+    at packageURL: URL,
+    expectedPayloadPaths: Set<String>
+  ) throws {
+    var expectedFiles = expectedPayloadPaths
+    expectedFiles.insert("manifest.json")
+    var expectedDirectories: Set<String> = []
+    for path in expectedPayloadPaths {
+      var components = path.split(separator: "/").map(String.init)
+      components.removeLast()
+      var ancestor = ""
+      for component in components {
+        ancestor = ancestor.isEmpty ? component : "\(ancestor)/\(component)"
+        expectedDirectories.insert(ancestor)
+      }
+    }
+
+    var actualFiles: Set<String> = []
+    var actualDirectories: Set<String> = []
+    var directoriesToVisit = [packageURL]
+    while let directory = directoriesToVisit.popLast() {
+      try Task.checkCancellation()
+      for child in try fileManager.contentsOfDirectory(
+        at: directory,
+        includingPropertiesForKeys: nil,
+        options: []
+      ) {
+        let relativePath = try packageRelativePath(child, root: packageURL)
+        let type = try itemType(at: child)
+        guard type != .typeSymbolicLink else {
+          throw LibraryBackupError.invalidPackage("\(relativePath) is a symbolic link.")
+        }
+        if type == .typeDirectory {
+          guard expectedDirectories.contains(relativePath) else {
+            throw LibraryBackupError.invalidPackage("the package contains undeclared entries.")
+          }
+          actualDirectories.insert(relativePath)
+          directoriesToVisit.append(child)
+        } else if type == .typeRegular {
+          guard expectedFiles.contains(relativePath) else {
+            throw LibraryBackupError.invalidPackage("the package contains undeclared entries.")
+          }
+          actualFiles.insert(relativePath)
+        } else {
+          throw LibraryBackupError.invalidPackage("\(relativePath) has an unsupported file type.")
+        }
+      }
+    }
+    guard actualFiles == expectedFiles, actualDirectories == expectedDirectories else {
+      throw LibraryBackupError.invalidPackage("the package contents do not match its manifest.")
+    }
+  }
+
+  private func packageRelativePath(_ url: URL, root: URL) throws -> String {
+    let rootPath = root.standardizedFileURL.path
+    let path = url.standardizedFileURL.path
+    guard path.hasPrefix(rootPath + "/") else {
+      throw LibraryBackupError.invalidPackage("an entry escapes the package root.")
+    }
+    return String(path.dropFirst(rootPath.count + 1))
+  }
+
+  private func itemType(at url: URL) throws -> FileAttributeType {
+    let attributes = try fileManager.attributesOfItem(atPath: url.path)
+    guard let type = attributes[.type] as? FileAttributeType else {
+      throw LibraryBackupError.invalidPackage("an entry has no filesystem type.")
+    }
+    return type
+  }
+
+  private func requireDirectoryWithoutSymlink(_ url: URL, detail: String) throws {
+    guard fileManager.fileExists(atPath: url.path), try itemType(at: url) == .typeDirectory else {
+      throw LibraryBackupError.invalidPackage(detail)
+    }
+  }
+
+  private func requireRegularFileWithoutSymlink(_ url: URL, missingPath: String) throws {
+    guard fileManager.fileExists(atPath: url.path) else {
+      throw LibraryBackupError.missingPayload(missingPath)
+    }
+    let type = try itemType(at: url)
+    guard type != .typeSymbolicLink else {
+      throw LibraryBackupError.invalidPackage("\(missingPath) is a symbolic link.")
+    }
+    guard type == .typeRegular else {
+      throw LibraryBackupError.invalidPackage("\(missingPath) is not a regular file.")
+    }
+  }
+
+  private func fileByteCount(at url: URL) throws -> Int64 {
+    let attributes = try fileManager.attributesOfItem(atPath: url.path)
+    guard let value = attributes[.size] as? NSNumber else {
+      throw LibraryBackupError.invalidPackage("an entry has no valid size.")
+    }
+    let byteCount = value.int64Value
+    guard byteCount >= 0 else {
+      throw LibraryBackupError.invalidPackage("an entry has an invalid size.")
+    }
+    return byteCount
+  }
+
+  private func validateMediaByteCount(_ byteCount: Int64, path: String) throws {
+    guard byteCount >= 0, byteCount <= policy.maximumMediaByteCount else {
+      throw LibraryBackupError.invalidPackage("\(path) has an unsupported size.")
+    }
+  }
+
+  private func validateChecksum(_ checksum: String, path: String) throws {
+    guard checksum.count == 64,
+      checksum.unicodeScalars.allSatisfy({
+        (48...57).contains($0.value) || (65...70).contains($0.value)
+          || (97...102).contains($0.value)
+      })
+    else {
+      throw LibraryBackupError.invalidPackage("\(path) has an invalid checksum.")
+    }
+  }
+
+  private func checkedTotal(
+    _ total: Int64,
+    adding value: Int64,
+    maximum: Int64,
+    detail: String
+  ) throws -> Int64 {
+    guard value >= 0, total >= 0, total <= maximum, value <= maximum - total else {
+      throw LibraryBackupError.invalidPackage(detail)
+    }
+    return total + value
   }
 
   private func copyAndHash(from source: URL, to destination: URL) throws

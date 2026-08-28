@@ -167,6 +167,319 @@ final class LibraryBackupTests: XCTestCase {
     }
   }
 
+  func testPortableRestoreRejectsSymlinkedRootManifestDirectoryAndPayload() async throws {
+    let sourceRoot = temporaryDirectory("backup-symlink-source")
+    let destinationRoot = temporaryDirectory("backup-symlink-destination")
+    let variantsRoot = temporaryDirectory("backup-symlink-variants")
+    defer {
+      try? FileManager.default.removeItem(at: sourceRoot)
+      try? FileManager.default.removeItem(at: destinationRoot)
+      try? FileManager.default.removeItem(at: variantsRoot)
+    }
+    let fixture = try makeFixture(at: sourceRoot)
+    let prepared = try await FileSystemLibraryBackupManager(rootURL: sourceRoot).prepareExport(
+      library: fixture.library,
+      kind: .includingMedia
+    )
+    try FileManager.default.createDirectory(at: variantsRoot, withIntermediateDirectories: true)
+    let manager = FileSystemLibraryBackupManager(rootURL: destinationRoot)
+
+    let rootLink = variantsRoot.appending(path: "root-link.playerbackup")
+    try FileManager.default.createSymbolicLink(at: rootLink, withDestinationURL: prepared.url)
+    await assertInvalidPackage(manager, restoring: rootLink, label: "root symlink")
+
+    let manifestLink = try copyPackage(prepared.url, into: variantsRoot, named: "manifest-link")
+    let manifestURL = manifestLink.appending(path: "manifest.json")
+    let manifestTarget = variantsRoot.appending(path: "manifest-target.json")
+    try FileManager.default.copyItem(at: manifestURL, to: manifestTarget)
+    try FileManager.default.removeItem(at: manifestURL)
+    try FileManager.default.createSymbolicLink(at: manifestURL, withDestinationURL: manifestTarget)
+    await assertInvalidPackage(manager, restoring: manifestLink, label: "manifest symlink")
+
+    let directoryLink = try copyPackage(prepared.url, into: variantsRoot, named: "directory-link")
+    let mediaDirectory = directoryLink.appending(path: "Media")
+    let mediaTarget = variantsRoot.appending(path: "media-target")
+    try FileManager.default.moveItem(at: mediaDirectory, to: mediaTarget)
+    try FileManager.default.createSymbolicLink(at: mediaDirectory, withDestinationURL: mediaTarget)
+    await assertInvalidPackage(manager, restoring: directoryLink, label: "directory symlink")
+
+    let payloadLink = try copyPackage(prepared.url, into: variantsRoot, named: "payload-link")
+    let payloadURL = payloadLink.appending(path: fixture.relativeMediaPath)
+    let payloadTarget = variantsRoot.appending(path: "payload-target.m4b")
+    try FileManager.default.copyItem(at: payloadURL, to: payloadTarget)
+    try FileManager.default.removeItem(at: payloadURL)
+    try FileManager.default.createSymbolicLink(at: payloadURL, withDestinationURL: payloadTarget)
+    await assertInvalidPackage(manager, restoring: payloadLink, label: "payload symlink")
+  }
+
+  func testPortableRestoreRequiresAnExactDeclaredPackageTree() async throws {
+    let sourceRoot = temporaryDirectory("backup-allowlist-source")
+    let destinationRoot = temporaryDirectory("backup-allowlist-destination")
+    let variantsRoot = temporaryDirectory("backup-allowlist-variants")
+    defer {
+      try? FileManager.default.removeItem(at: sourceRoot)
+      try? FileManager.default.removeItem(at: destinationRoot)
+      try? FileManager.default.removeItem(at: variantsRoot)
+    }
+    let fixture = try makeFixture(at: sourceRoot)
+    let prepared = try await FileSystemLibraryBackupManager(rootURL: sourceRoot).prepareExport(
+      library: fixture.library,
+      kind: .includingMedia
+    )
+    try FileManager.default.createDirectory(at: variantsRoot, withIntermediateDirectories: true)
+    let manager = FileSystemLibraryBackupManager(rootURL: destinationRoot)
+
+    let extraFile = try copyPackage(prepared.url, into: variantsRoot, named: "extra-file")
+    try Data("undeclared".utf8).write(to: extraFile.appending(path: "extra.txt"))
+    await assertInvalidPackage(manager, restoring: extraFile, label: "undeclared file")
+
+    let extraDirectory = try copyPackage(prepared.url, into: variantsRoot, named: "extra-directory")
+    try FileManager.default.createDirectory(
+      at: extraDirectory.appending(path: "Extras"),
+      withIntermediateDirectories: true
+    )
+    await assertInvalidPackage(manager, restoring: extraDirectory, label: "undeclared directory")
+
+    let missingDirectory = try copyPackage(prepared.url, into: variantsRoot, named: "missing")
+    try FileManager.default.removeItem(at: missingDirectory.appending(path: "Media"))
+    await assertInvalidPackage(manager, restoring: missingDirectory, label: "missing tree")
+  }
+
+  func testPortableRestoreRejectsAbsoluteTraversalNoncanonicalAndDuplicatePaths() async throws {
+    let sourceRoot = temporaryDirectory("backup-path-source")
+    let destinationRoot = temporaryDirectory("backup-path-destination")
+    let variantsRoot = temporaryDirectory("backup-path-variants")
+    defer {
+      try? FileManager.default.removeItem(at: sourceRoot)
+      try? FileManager.default.removeItem(at: destinationRoot)
+      try? FileManager.default.removeItem(at: variantsRoot)
+    }
+    let fixture = try makeFixture(at: sourceRoot)
+    let prepared = try await FileSystemLibraryBackupManager(rootURL: sourceRoot).prepareExport(
+      library: fixture.library,
+      kind: .includingMedia
+    )
+    try FileManager.default.createDirectory(at: variantsRoot, withIntermediateDirectories: true)
+    let manager = FileSystemLibraryBackupManager(rootURL: destinationRoot)
+    let invalidPaths = [
+      "/\(fixture.relativeMediaPath)",
+      "Media/../\(fixture.relativeMediaPath)",
+      fixture.relativeMediaPath.replacingOccurrences(
+        of: "/", with: "//", options: [], range: fixture.relativeMediaPath.range(of: "/")),
+      fixture.relativeMediaPath.replacingOccurrences(
+        of: "/", with: "/./", options: [], range: fixture.relativeMediaPath.range(of: "/")),
+    ]
+
+    for (index, invalidPath) in invalidPaths.enumerated() {
+      let package = try copyPackage(
+        prepared.url, into: variantsRoot, named: "invalid-path-\(index)")
+      try rewriteManifest(at: package) { manifest in
+        manifest.library.books[0].assets[0].managedRelativePath = invalidPath
+        manifest.media[0].relativePath = invalidPath
+      }
+      await assertInvalidPackage(manager, restoring: package, label: invalidPath)
+    }
+
+    let duplicate = try copyPackage(prepared.url, into: variantsRoot, named: "duplicate-path")
+    try rewriteManifest(at: duplicate) { manifest in
+      manifest.media.append(manifest.media[0])
+    }
+    await assertInvalidPackage(manager, restoring: duplicate, label: "duplicate path")
+  }
+
+  func testPortableRestoreEnforcesManifestBookMediaArtworkAndPackageBudgets() async throws {
+    let sourceRoot = temporaryDirectory("backup-budget-source")
+    let destinationRoot = temporaryDirectory("backup-budget-destination")
+    defer {
+      try? FileManager.default.removeItem(at: sourceRoot)
+      try? FileManager.default.removeItem(at: destinationRoot)
+    }
+    let fixture = try makeFixture(at: sourceRoot)
+    let prepared = try await FileSystemLibraryBackupManager(rootURL: sourceRoot).prepareExport(
+      library: fixture.library,
+      kind: .includingMedia
+    )
+    let manifestByteCount = Int64(
+      try Data(contentsOf: prepared.url.appending(path: "manifest.json")).count
+    )
+
+    var policy = PortableLibraryBackupPolicy.production
+    policy.maximumManifestByteCount = manifestByteCount - 1
+    await assertInvalidPackage(
+      FileSystemLibraryBackupManager(rootURL: destinationRoot, policy: policy),
+      restoring: prepared.url,
+      label: "manifest budget"
+    )
+
+    policy = .production
+    policy.maximumBookCount = 0
+    await assertInvalidPackage(
+      FileSystemLibraryBackupManager(rootURL: destinationRoot, policy: policy),
+      restoring: prepared.url,
+      label: "book budget"
+    )
+
+    policy = .production
+    policy.maximumMediaCount = 0
+    await assertInvalidPackage(
+      FileSystemLibraryBackupManager(rootURL: destinationRoot, policy: policy),
+      restoring: prepared.url,
+      label: "media count budget"
+    )
+
+    policy = .production
+    policy.maximumArtworkCount = 0
+    await assertInvalidPackage(
+      FileSystemLibraryBackupManager(rootURL: destinationRoot, policy: policy),
+      restoring: prepared.url,
+      label: "artwork count budget"
+    )
+
+    policy = .production
+    policy.maximumArtworkByteCount = Int64(fixture.library.books[0].artworkData!.count - 1)
+    await assertInvalidPackage(
+      FileSystemLibraryBackupManager(rootURL: destinationRoot, policy: policy),
+      restoring: prepared.url,
+      label: "artwork budget"
+    )
+
+    policy = .production
+    policy.maximumAggregateArtworkByteCount =
+      Int64(fixture.library.books[0].artworkData!.count - 1)
+    await assertInvalidPackage(
+      FileSystemLibraryBackupManager(rootURL: destinationRoot, policy: policy),
+      restoring: prepared.url,
+      label: "aggregate artwork budget"
+    )
+
+    policy = .production
+    policy.maximumMediaByteCount = Int64(fixture.audio.count - 1)
+    await assertInvalidPackage(
+      FileSystemLibraryBackupManager(rootURL: destinationRoot, policy: policy),
+      restoring: prepared.url,
+      label: "per-file media budget"
+    )
+
+    policy = .production
+    policy.maximumAggregateMediaByteCount = Int64(fixture.audio.count - 1)
+    await assertInvalidPackage(
+      FileSystemLibraryBackupManager(rootURL: destinationRoot, policy: policy),
+      restoring: prepared.url,
+      label: "media byte budget"
+    )
+
+    policy = .production
+    policy.maximumPackageByteCount = manifestByteCount + Int64(fixture.audio.count) - 1
+    await assertInvalidPackage(
+      FileSystemLibraryBackupManager(rootURL: destinationRoot, policy: policy),
+      restoring: prepared.url,
+      label: "package budget"
+    )
+  }
+
+  func testPortableRestoreRejectsNegativeAndOverflowingDeclaredSizes() async throws {
+    let sourceRoot = temporaryDirectory("backup-size-source")
+    let destinationRoot = temporaryDirectory("backup-size-destination")
+    let variantsRoot = temporaryDirectory("backup-size-variants")
+    defer {
+      try? FileManager.default.removeItem(at: sourceRoot)
+      try? FileManager.default.removeItem(at: destinationRoot)
+      try? FileManager.default.removeItem(at: variantsRoot)
+    }
+    let fixture = try makeFixture(at: sourceRoot)
+    let prepared = try await FileSystemLibraryBackupManager(rootURL: sourceRoot).prepareExport(
+      library: fixture.library,
+      kind: .includingMedia
+    )
+    try FileManager.default.createDirectory(at: variantsRoot, withIntermediateDirectories: true)
+
+    let negative = try copyPackage(prepared.url, into: variantsRoot, named: "negative")
+    try rewriteManifest(at: negative) { manifest in
+      manifest.library.books[0].assets[0].byteCount = -1
+      manifest.media[0].byteCount = -1
+    }
+    await assertInvalidPackage(
+      FileSystemLibraryBackupManager(rootURL: destinationRoot),
+      restoring: negative,
+      label: "negative size"
+    )
+
+    let overflow = try copyPackage(prepared.url, into: variantsRoot, named: "overflow")
+    try rewriteManifest(at: overflow) { manifest in
+      manifest.library.books[0].assets[0].byteCount = .max
+      var secondAsset = manifest.library.books[0].assets[0]
+      secondAsset.managedRelativePath = "Media/overflow/second.m4b"
+      manifest.library.books[0].assets.append(secondAsset)
+      manifest.media[0].byteCount = .max
+      manifest.media.append(
+        PortableBackupPayload(
+          relativePath: secondAsset.managedRelativePath,
+          byteCount: .max,
+          checksumSHA256: secondAsset.checksumSHA256
+        )
+      )
+    }
+    var overflowPolicy = PortableLibraryBackupPolicy.production
+    overflowPolicy.maximumMediaByteCount = .max
+    overflowPolicy.maximumAggregateMediaByteCount = .max
+    overflowPolicy.maximumPackageByteCount = .max
+    await assertInvalidPackage(
+      FileSystemLibraryBackupManager(rootURL: destinationRoot, policy: overflowPolicy),
+      restoring: overflow,
+      label: "overflowing aggregate"
+    )
+  }
+
+  func testCancelledPortableRestoreDoesNotReplaceLibraryOrMedia() async throws {
+    let sourceRoot = temporaryDirectory("backup-cancel-source")
+    let destinationRoot = temporaryDirectory("backup-cancel-destination")
+    defer {
+      try? FileManager.default.removeItem(at: sourceRoot)
+      try? FileManager.default.removeItem(at: destinationRoot)
+    }
+    let fixture = try makeFixture(at: sourceRoot)
+    let prepared = try await FileSystemLibraryBackupManager(rootURL: sourceRoot).prepareExport(
+      library: fixture.library,
+      kind: .includingMedia
+    )
+    let existing = LibrarySnapshot.empty
+    let store = CodableLibraryStore(fileURL: destinationRoot.appending(path: "Library.json"))
+    try await store.save(existing)
+    let oldMedia = destinationRoot.appending(path: "Media/old/old.m4b")
+    try FileManager.default.createDirectory(
+      at: oldMedia.deletingLastPathComponent(),
+      withIntermediateDirectories: true
+    )
+    let oldBytes = Data("preserve on cancellation".utf8)
+    try oldBytes.write(to: oldMedia)
+    let manager = FileSystemLibraryBackupManager(
+      rootURL: destinationRoot,
+      beforeRestoreCommit: { withUnsafeCurrentTask { $0?.cancel() } }
+    )
+
+    let task = Task { () throws -> LibrarySnapshot in
+      return try await manager.restore(from: prepared.url)
+    }
+    do {
+      _ = try await task.value
+      XCTFail("Expected cancellation")
+    } catch is CancellationError {
+      // Cancellation is the expected terminal state.
+    } catch {
+      XCTFail("Expected CancellationError, got \(error)")
+    }
+
+    let persisted = try await store.load()
+    XCTAssertEqual(persisted, existing)
+    XCTAssertEqual(try Data(contentsOf: oldMedia), oldBytes)
+    XCTAssertFalse(
+      try FileManager.default.contentsOfDirectory(
+        at: destinationRoot.appending(path: "BackupRestore"),
+        includingPropertiesForKeys: nil
+      ).contains(where: { _ in true })
+    )
+  }
+
   func testAutomaticDatabaseBackupsUseStableEqualTimestampOrderForRotationRecoveryAndDeduplication()
     async throws
   {
@@ -425,6 +738,41 @@ final class LibraryBackupTests: XCTestCase {
       PortableLibraryManifest.self,
       from: Data(contentsOf: packageURL.appending(path: "manifest.json"))
     )
+  }
+
+  private func copyPackage(_ packageURL: URL, into root: URL, named name: String) throws -> URL {
+    let destination = root.appending(path: "\(name).playerbackup", directoryHint: .isDirectory)
+    try FileManager.default.copyItem(at: packageURL, to: destination)
+    return destination
+  }
+
+  private func rewriteManifest(
+    at packageURL: URL,
+    mutate: (inout PortableLibraryManifest) -> Void
+  ) throws {
+    var value = try manifest(at: packageURL)
+    mutate(&value)
+    try JSONEncoder.playerEncoder.encode(value).write(
+      to: packageURL.appending(path: "manifest.json"),
+      options: .atomic
+    )
+  }
+
+  private func assertInvalidPackage(
+    _ manager: FileSystemLibraryBackupManager,
+    restoring packageURL: URL,
+    label: String,
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) async {
+    do {
+      _ = try await manager.restore(from: packageURL)
+      XCTFail("Expected invalid package: \(label)", file: file, line: line)
+    } catch LibraryBackupError.invalidPackage {
+      // This is the expected trust-boundary rejection.
+    } catch {
+      XCTFail("Expected invalid package for \(label), got \(error)", file: file, line: line)
+    }
   }
 
   private func mediaFiles(beneath root: URL) throws -> [String] {
