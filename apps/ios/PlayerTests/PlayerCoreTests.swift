@@ -57,6 +57,92 @@ final class PlayerCoreTests: XCTestCase {
       )
     }
 
+    func testZIPFixturePayloadAcceptsBoundedArchiveBytes() throws {
+      let archive = emptyZIPArchive()
+      XCTAssertEqual(
+        try E2EZIPFixturePayload.parse(environment: [
+          E2EZIPFixturePayload.environmentKey: archive.base64EncodedString(),
+        ]),
+        archive
+      )
+    }
+
+    func testZIPFixturePayloadRejectsMissingEmptyMalformedNonZIPAndOverBoundData() {
+      let archive = emptyZIPArchive()
+      let invalidEnvironments: [[String: String]] = [
+        [:],
+        [E2EZIPFixturePayload.environmentKey: ""],
+        [E2EZIPFixturePayload.environmentKey: "not-base64!"],
+        [
+          E2EZIPFixturePayload.environmentKey:
+            Data("PK but not a ZIP archive".utf8).base64EncodedString(),
+        ],
+      ]
+      for environment in invalidEnvironments {
+        XCTAssertThrowsError(try E2EZIPFixturePayload.parse(environment: environment))
+      }
+      XCTAssertThrowsError(
+        try E2EZIPFixturePayload.parse(
+          environment: [
+            E2EZIPFixturePayload.environmentKey: archive.base64EncodedString(),
+          ],
+          maximumDecodedBytes: archive.count - 1
+        )
+      )
+    }
+
+    func testMetadataRichCoverPayloadPreservesAbsentGeneratedFallbackChoice() throws {
+      XCTAssertNil(try E2EMetadataRichCoverPayload.parseOverride(environment: [:]))
+    }
+
+    func testMetadataRichCoverPayloadAcceptsValidImageOverride() throws {
+      let imageData = UIGraphicsImageRenderer(size: CGSize(width: 3, height: 2)).pngData {
+        context in
+        UIColor.systemTeal.setFill()
+        context.fill(CGRect(x: 0, y: 0, width: 3, height: 2))
+      }
+      XCTAssertEqual(
+        try E2EMetadataRichCoverPayload.parseOverride(environment: [
+          E2EMetadataRichCoverPayload.environmentKey: imageData.base64EncodedString(),
+        ]),
+        imageData
+      )
+    }
+
+    func testMetadataRichCoverPayloadRejectsExplicitInvalidTypeAndOverBoundOverrides() throws {
+      let renderer = UIGraphicsImageRenderer(size: CGSize(width: 3, height: 2))
+      let imageData = renderer.pngData {
+        context in
+        UIColor.systemTeal.setFill()
+        context.fill(CGRect(x: 0, y: 0, width: 3, height: 2))
+      }
+      let jpegData = try XCTUnwrap(renderer.image { context in
+        UIColor.systemTeal.setFill()
+        context.fill(CGRect(x: 0, y: 0, width: 3, height: 2))
+      }.jpegData(compressionQuality: 1))
+      let invalidValues = [
+        "",
+        "not-base64!",
+        Data("valid base64 but not an image".utf8).base64EncodedString(),
+        jpegData.base64EncodedString(),
+      ]
+      for value in invalidValues {
+        XCTAssertThrowsError(
+          try E2EMetadataRichCoverPayload.parseOverride(environment: [
+            E2EMetadataRichCoverPayload.environmentKey: value,
+          ])
+        )
+      }
+      XCTAssertThrowsError(
+        try E2EMetadataRichCoverPayload.parseOverride(
+          environment: [
+            E2EMetadataRichCoverPayload.environmentKey: imageData.base64EncodedString(),
+          ],
+          maximumDecodedBytes: imageData.count - 1
+        )
+      )
+    }
+
     func testScrollReadinessProtocolParsesBoundFiniteEndpointGeometry() {
       let horizontal = ScrollReadinessState(
         scrollReadinessValue(
@@ -118,6 +204,17 @@ final class PlayerCoreTests: XCTestCase {
           valid.replacingOccurrences(of: "offset=0.0", with: "offset=nan")
         )
       )
+    }
+
+    private func emptyZIPArchive() -> Data {
+      Data([
+        0x50, 0x4B, 0x05, 0x06,
+        0, 0, 0, 0,
+        0, 0, 0, 0,
+        0, 0, 0, 0,
+        0, 0, 0, 0,
+        0, 0,
+      ])
     }
 
     func testLayoutReadinessProtocolFailsClosedOnMalformedOrUnknownFields() {

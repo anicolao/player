@@ -170,6 +170,89 @@ import UIKit
     }
   }
 
+  enum E2EZIPFixturePayload {
+    static let environmentKey = "PLAYER_E2E_ZIP_FIXTURE_BASE64"
+    static let maximumDecodedBytes = 32 * 1_024 * 1_024
+
+    static func parse(
+      environment: [String: String],
+      maximumDecodedBytes: Int = maximumDecodedBytes
+    ) throws -> Data {
+      guard let encoded = environment[environmentKey] else {
+        throw PlayerCoreError.fileOperation("Missing E2E ZIP fixture payload.")
+      }
+      let data = try decodeBoundedBase64(
+        encoded,
+        maximumDecodedBytes: maximumDecodedBytes,
+        description: "E2E ZIP fixture payload"
+      )
+      guard isZIPArchive(data) else {
+        throw PlayerCoreError.fileOperation("Invalid E2E ZIP fixture payload.")
+      }
+      return data
+    }
+
+    private static func isZIPArchive(_ data: Data) -> Bool {
+      let header = Array(data.prefix(4))
+      guard header == [0x50, 0x4B, 0x03, 0x04]
+        || header == [0x50, 0x4B, 0x05, 0x06]
+        || header == [0x50, 0x4B, 0x07, 0x08]
+      else { return false }
+
+      let endRecord = Data([0x50, 0x4B, 0x05, 0x06])
+      let maximumEndRecordLength = Int(UInt16.max) + 22
+      let searchStart = max(0, data.count - maximumEndRecordLength)
+      return data.range(
+        of: endRecord,
+        options: .backwards,
+        in: searchStart..<data.count
+      ) != nil
+    }
+  }
+
+  enum E2EMetadataRichCoverPayload {
+    static let environmentKey = "PLAYER_E2E_METADATA_RICH_COVER_BASE64"
+    static let maximumDecodedBytes = 20 * 1_024 * 1_024
+
+    static func parseOverride(
+      environment: [String: String],
+      maximumDecodedBytes: Int = maximumDecodedBytes
+    ) throws -> Data? {
+      guard let encoded = environment[environmentKey] else { return nil }
+      let data = try decodeBoundedBase64(
+        encoded,
+        maximumDecodedBytes: maximumDecodedBytes,
+        description: "Metadata Rich Book E2E cover override"
+      )
+      let pngSignature = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+      guard data.starts(with: pngSignature), UIImage(data: data) != nil else {
+        throw PlayerCoreError.fileOperation(
+          "Invalid Metadata Rich Book E2E cover override."
+        )
+      }
+      return data
+    }
+  }
+
+  private func decodeBoundedBase64(
+    _ encoded: String,
+    maximumDecodedBytes: Int,
+    description: String
+  ) throws -> Data {
+    guard maximumDecodedBytes > 0, !encoded.isEmpty else {
+      throw PlayerCoreError.fileOperation("Invalid \(description).")
+    }
+    let maximumEncodedBytes = ((maximumDecodedBytes + 2) / 3) * 4
+    guard encoded.utf8.count <= maximumEncodedBytes,
+      let data = Data(base64Encoded: encoded),
+      !data.isEmpty,
+      data.count <= maximumDecodedBytes
+    else {
+      throw PlayerCoreError.fileOperation("Invalid \(description).")
+    }
+    return data
+  }
+
   enum E2EFixture: String, CaseIterable {
     static let argument = "-e2e-fixture"
     static let modeArgument = "-e2e"
@@ -1140,6 +1223,9 @@ extension PlayerEnvironment {
       reset: Bool,
       namespace: String
     ) throws -> PlayerEnvironment {
+      let artworkOverride = try E2EMetadataRichCoverPayload.parseOverride(
+        environment: ProcessInfo.processInfo.environment
+      )
       let support = try FileManager.default.url(
         for: .applicationSupportDirectory,
         in: .userDomainMask,
@@ -1201,7 +1287,7 @@ extension PlayerEnvironment {
         title: "Harbor at Dawn",
         authors: ["Mara Vale"],
         durationSeconds: 120,
-        artworkData: metadataRichArtwork(),
+        artworkData: metadataRichArtwork(override: artworkOverride),
         assets: [asset],
         dateAdded: Date(timeIntervalSince1970: 1_700_000_000),
         narrators: ["Imani Chen"],
@@ -1814,6 +1900,9 @@ extension PlayerEnvironment {
     private static func safeZipEnvironment(reset: Bool) throws -> PlayerEnvironment {
       let arguments = ProcessInfo.processInfo.arguments
       let options = try E2ESafeZIPArguments.parse(arguments: arguments)
+      let bytes = try E2EZIPFixturePayload.parse(
+        environment: ProcessInfo.processInfo.environment
+      )
       let root = FileManager.default.temporaryDirectory.appending(
         path: "PlayerE2ESafeZIP",
         directoryHint: .isDirectory
@@ -1821,12 +1910,6 @@ extension PlayerEnvironment {
       if reset { try resetE2EFixtureRoot(root) }
       try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
 
-      guard
-        let encoded = ProcessInfo.processInfo.environment["PLAYER_E2E_ZIP_FIXTURE_BASE64"],
-        let bytes = Data(base64Encoded: encoded)
-      else {
-        throw PlayerCoreError.fileOperation("The E2E ZIP fixture was not provided.")
-      }
       let sourceURL = root.appending(path: "selected-audiobook.zip")
       try bytes.write(to: sourceURL, options: .atomic)
       E2EZipAcquisition.shared.configure(
@@ -1860,13 +1943,8 @@ extension PlayerEnvironment {
       )
     }
 
-    private static func metadataRichArtwork() -> Data {
-      if
-        let encoded = ProcessInfo.processInfo.environment["PLAYER_E2E_METADATA_RICH_COVER_BASE64"],
-        let artwork = Data(base64Encoded: encoded)
-      {
-        return artwork
-      }
+    private static func metadataRichArtwork(override: Data?) -> Data {
+      if let override { return override }
 
       let renderer = UIGraphicsImageRenderer(size: CGSize(width: 240, height: 240))
       return renderer.pngData { context in
