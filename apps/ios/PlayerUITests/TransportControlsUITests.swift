@@ -146,6 +146,7 @@ final class TransportControlsUITests: XCTestCase {
     let app = XCUIApplication()
     app.launchArguments = [
       "-e2e", "-e2e-fixture", "metadata-rich-book",
+      "-e2e-metadata-rich-namespace", "transport-controls-persistence",
       "-AppleLanguages", "(en)",
       "-AppleLocale", "en_CA",
       "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryM",

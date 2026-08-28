@@ -230,6 +230,125 @@
     }
   }
 
+  final class E2EPlaybackControlConfigurationTests: XCTestCase {
+    func testProductionAndControlFreeLaunchesRemainDisabled() throws {
+      XCTAssertEqual(
+        try E2EPlaybackControlConfiguration.parse(arguments: [
+          "Player", "-e2e-event-controls", "-e2e-rewind-expiry-control",
+        ]),
+        .disabled
+      )
+      XCTAssertEqual(
+        try E2EPlaybackControlConfiguration.parse(arguments: fixtureArguments(
+          .committedCurrentBook
+        )),
+        .disabled
+      )
+    }
+
+    func testCanonicalRemoteInterruptionAndSmartRewindControlsParseExactly() throws {
+      let remote = try E2EPlaybackControlConfiguration.parse(arguments: fixtureArguments(
+        .committedCurrentBook,
+        suffix: ["-e2e-event-controls"]
+      ))
+      XCTAssertTrue(remote.eventControls)
+      XCTAssertFalse(remote.rewindExpiryControl)
+
+      let rewind = try E2EPlaybackControlConfiguration.parse(arguments: smartRewindArguments(
+        scenario: .chapterClamp,
+        suffix: ["-e2e-rewind-expiry-control"]
+      ))
+      XCTAssertFalse(rewind.eventControls)
+      XCTAssertTrue(rewind.rewindExpiryControl)
+    }
+
+    func testDuplicateControlMarkersFailClosed() {
+      let invalidArguments = [
+        fixtureArguments(
+          .committedCurrentBook,
+          suffix: ["-e2e-event-controls", "-e2e-event-controls"]
+        ),
+        smartRewindArguments(
+          scenario: .chapterClamp,
+          suffix: ["-e2e-rewind-expiry-control", "-e2e-rewind-expiry-control"]
+        ),
+      ]
+
+      assertPlaybackControlsReject(invalidArguments)
+    }
+
+    func testControlsRejectIncompatibleFixturesAndNonRewindingScenarios() {
+      assertPlaybackControlsReject([
+        fixtureArguments(.emptyLibrary, suffix: ["-e2e-event-controls"]),
+        smartRewindArguments(
+          scenario: .chapterClamp,
+          suffix: ["-e2e-event-controls"]
+        ),
+        fixtureArguments(
+          .committedCurrentBook,
+          suffix: ["-e2e-rewind-expiry-control"]
+        ),
+        smartRewindArguments(
+          scenario: .belowThreshold,
+          suffix: ["-e2e-rewind-expiry-control"]
+        ),
+        smartRewindArguments(
+          scenario: .disabled,
+          suffix: ["-e2e-rewind-expiry-control"]
+        ),
+        fixtureArguments(
+          .committedCurrentBook,
+          suffix: ["-e2e-event-controls", "-e2e-rewind-expiry-control"]
+        ),
+      ])
+    }
+
+    func testRewindExpiryControlAcceptsEveryScenarioThatAppliesARewind() throws {
+      let supported: [E2ESmartRewindScenario] = [
+        .short, .medium, .long, .maximum, .chapterClamp,
+      ]
+      for scenario in supported {
+        let parsed = try E2EPlaybackControlConfiguration.parse(arguments: smartRewindArguments(
+          scenario: scenario,
+          suffix: ["-e2e-rewind-expiry-control"]
+        ))
+        XCTAssertTrue(parsed.rewindExpiryControl)
+        XCTAssertFalse(parsed.eventControls)
+      }
+    }
+
+    private func fixtureArguments(
+      _ fixture: E2EFixture,
+      suffix: [String] = []
+    ) -> [String] {
+      ["Player", "-e2e", "-e2e-fixture", fixture.rawValue] + suffix
+    }
+
+    private func smartRewindArguments(
+      scenario: E2ESmartRewindScenario,
+      suffix: [String] = []
+    ) -> [String] {
+      fixtureArguments(.smartRewind) + [
+        "-e2e-smart-rewind-scenario", scenario.rawValue,
+      ] + suffix
+    }
+
+    private func assertPlaybackControlsReject(
+      _ invalidArguments: [[String]],
+      file: StaticString = #filePath,
+      line: UInt = #line
+    ) {
+      for arguments in invalidArguments {
+        XCTAssertThrowsError(
+          try E2EPlaybackControlConfiguration.parse(arguments: arguments),
+          "Expected invalid E2E playback controls to be rejected: \(arguments)",
+          file: file,
+          line: line
+        )
+      }
+    }
+  }
+
   final class E2ESafeZIPArgumentsTests: XCTestCase {
     func testCanonicalCasesAndOptionalInspectionFailureParseExactly() throws {
       for archiveCase in E2ESafeZIPArguments.ArchiveCase.allCases {
@@ -478,13 +597,13 @@
   }
 
   final class E2EMetadataRichBookNamespaceTests: XCTestCase {
-    func testDefaultNamespacePreservesTheCanonicalRoot() throws {
-      let support = URL(fileURLWithPath: "/fixture-support", isDirectory: true)
-      let namespace = try E2EMetadataRichBookNamespace.parse(arguments: ["-e2e"])
-      let root = E2EMetadataRichBookNamespace.root(in: support, namespace: namespace)
-
-      XCTAssertEqual(namespace, "default")
-      XCTAssertEqual(root.path, "/fixture-support/PlayerE2EMetadataRichBook")
+    func testNamespaceIsRequired() {
+      for arguments in [[], ["-e2e"]] {
+        XCTAssertThrowsError(
+          try E2EMetadataRichBookNamespace.parse(arguments: arguments),
+          "Every Metadata Rich Book fixture must own an explicit namespace"
+        )
+      }
     }
 
     func testValidDedicatedNamespaceProducesOneConfinedChildRoot() throws {
@@ -505,6 +624,7 @@
     func testMalformedMissingAndDuplicateNamespacesAreRejected() {
       let invalidArguments = [
         ["-e2e-metadata-rich-namespace"],
+        ["-e2e-metadata-rich-namespace", ""],
         ["-e2e-metadata-rich-namespace", "UPPERCASE"],
         ["-e2e-metadata-rich-namespace", "-leading"],
         ["-e2e-metadata-rich-namespace", "trailing-"],

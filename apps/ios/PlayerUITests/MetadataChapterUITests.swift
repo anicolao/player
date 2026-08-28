@@ -11,6 +11,7 @@ final class MetadataChapterUITests: XCTestCase {
     let app = XCUIApplication()
     app.launchArguments = [
       "-e2e", "-e2e-reset", "-e2e-fixture", "metadata-rich-book",
+      "-e2e-metadata-rich-namespace", "metadata-chapters",
       "-AppleLanguages", "(en)",
       "-AppleLocale", "en_CA",
       "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryM",

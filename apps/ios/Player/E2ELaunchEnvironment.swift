@@ -2,6 +2,16 @@ import CryptoKit
 import Foundation
 import UIKit
 
+struct E2EPlaybackControlConfiguration: Equatable {
+  static let disabled = E2EPlaybackControlConfiguration(
+    eventControls: false,
+    rewindExpiryControl: false
+  )
+
+  let eventControls: Bool
+  let rewindExpiryControl: Bool
+}
+
 #if E2E
   func resetE2EFixtureRoot(_ root: URL) throws {
     let fileManager = FileManager.default
@@ -15,16 +25,16 @@ import UIKit
 
   enum E2EMetadataRichBookNamespace {
     static let argument = "-e2e-metadata-rich-namespace"
-    static let defaultValue = "default"
 
     static func parse(arguments: [String]) throws -> String {
       let markers = arguments.indices.filter { arguments[$0] == argument }
-      guard markers.count <= 1 else {
-        throw PlayerCoreError.fileOperation("Duplicate Metadata Rich Book E2E namespace.")
+      guard markers.count == 1 else {
+        let reason = markers.isEmpty ? "Missing" : "Duplicate"
+        throw PlayerCoreError.fileOperation("\(reason) Metadata Rich Book E2E namespace.")
       }
-      guard let marker = markers.first else { return defaultValue }
+      let marker = markers[0]
       guard arguments.indices.contains(marker + 1) else {
-        throw PlayerCoreError.fileOperation("Missing Metadata Rich Book E2E namespace.")
+        throw PlayerCoreError.fileOperation("Missing Metadata Rich Book E2E namespace value.")
       }
       let namespace = arguments[marker + 1]
       let bytes = Array(namespace.utf8)
@@ -43,9 +53,8 @@ import UIKit
     }
 
     static func root(in support: URL, namespace: String) -> URL {
-      let suffix = namespace == defaultValue ? "" : "-\(namespace)"
       return support.appending(
-        path: "PlayerE2EMetadataRichBook\(suffix)",
+        path: "PlayerE2EMetadataRichBook-\(namespace)",
         directoryHint: .isDirectory
       )
     }
@@ -294,6 +303,60 @@ import UIKit
     }
   }
 
+  extension E2EPlaybackControlConfiguration {
+    static let eventControlsArgument = "-e2e-event-controls"
+    static let rewindExpiryControlArgument = "-e2e-rewind-expiry-control"
+
+    static func parse(arguments: [String]) throws -> E2EPlaybackControlConfiguration {
+      guard arguments.contains(E2EFixture.modeArgument) else { return .disabled }
+
+      for marker in [eventControlsArgument, rewindExpiryControlArgument] {
+        guard arguments.filter({ $0 == marker }).count <= 1 else {
+          throw PlayerCoreError.fileOperation("Duplicate E2E playback-control option: \(marker)")
+        }
+      }
+
+      let eventControls = arguments.contains(eventControlsArgument)
+      let rewindExpiryControl = arguments.contains(rewindExpiryControlArgument)
+      guard let fixture = try E2EFixture.parseForLaunch(arguments: arguments) else {
+        throw PlayerCoreError.fileOperation("Missing fixture for E2E playback controls.")
+      }
+
+      guard !eventControls || fixture == .committedCurrentBook else {
+        throw PlayerCoreError.fileOperation(
+          "E2E event controls require the committed-current-book fixture."
+        )
+      }
+      if rewindExpiryControl {
+        guard fixture == .smartRewind else {
+          throw PlayerCoreError.fileOperation(
+            "The E2E rewind-expiry control requires the smart-rewind fixture."
+          )
+        }
+        let scenario = try E2ESmartRewindScenario.parseRequired(arguments: arguments)
+        guard scenario.supportsRewindExpiryControl else {
+          throw PlayerCoreError.fileOperation(
+            "The E2E rewind-expiry control requires a scenario that applies a rewind."
+          )
+        }
+      }
+
+      return E2EPlaybackControlConfiguration(
+        eventControls: eventControls,
+        rewindExpiryControl: rewindExpiryControl
+      )
+    }
+  }
+
+  private extension E2ESmartRewindScenario {
+    var supportsRewindExpiryControl: Bool {
+      switch self {
+      case .short, .medium, .long, .maximum, .chapterClamp: true
+      case .belowThreshold, .disabled: false
+      }
+    }
+  }
+
   struct E2ESafeZIPArguments: Equatable {
     enum ArchiveCase: String, CaseIterable {
       case valid
@@ -424,7 +487,9 @@ import UIKit
 
 @MainActor
 extension PlayerEnvironment {
-  static func launchEnvironment() throws -> PlayerEnvironment {
+  static func launchEnvironment(
+    playbackControls: E2EPlaybackControlConfiguration = .disabled
+  ) throws -> PlayerEnvironment {
     #if E2E
       let arguments = ProcessInfo.processInfo.arguments
       if let fixture = try E2EFixture.parseForLaunch(arguments: arguments) {
@@ -436,7 +501,7 @@ extension PlayerEnvironment {
         case .committedCurrentBook:
           return try committedCurrentBookEnvironment(
             reset: arguments.contains("-e2e-reset"),
-            eventControls: arguments.contains("-e2e-event-controls")
+            playbackControls: playbackControls
           )
         case .monetizationExhausted:
           return try monetizationExhaustedEnvironment()
@@ -585,7 +650,7 @@ extension PlayerEnvironment {
 
     private static func committedCurrentBookEnvironment(
       reset: Bool,
-      eventControls: Bool,
+      playbackControls: E2EPlaybackControlConfiguration,
       monetization: (any MonetizationManaging)? = nil
     ) throws -> PlayerEnvironment {
       let support = try FileManager.default.url(
@@ -659,19 +724,19 @@ extension PlayerEnvironment {
         UUID(uuidString: String(format: "21000000-0000-0000-0000-%012d", $0))!
       }
       let playbackEventBridge = E2EPlaybackEventBridge.shared
-      if eventControls { playbackEventBridge.reset() }
+      if playbackControls.eventControls { playbackEventBridge.reset() }
       return PlayerEnvironment(
         persistence: E2ESeededLibraryStore(base: persisted, seed: seed),
         media: FileSystemMediaManager(rootURL: root),
         inspector: DeterministicAudioInspector(result: .failure(.unreadableAudio("unused"))),
         playback: DeterministicPlaybackController(),
-        audioSession: eventControls
+        audioSession: playbackControls.eventControls
           ? AVAudioSessionController(
             platform: playbackEventBridge,
             notificationSource: playbackEventBridge
           )
           : DisabledAudioSessionController(),
-        remoteCommands: eventControls
+        remoteCommands: playbackControls.eventControls
           ? MPRemoteCommandController(source: playbackEventBridge)
           : DisabledRemoteCommandController(),
         clock: FixedPlayerClock(value: date),
@@ -686,7 +751,7 @@ extension PlayerEnvironment {
       snapshot.displayPrice = "$9.99"
       return try committedCurrentBookEnvironment(
         reset: true,
-        eventControls: false,
+        playbackControls: .disabled,
         monetization: DeterministicMonetizationManager(snapshot: snapshot)
       )
     }

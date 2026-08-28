@@ -126,7 +126,10 @@ final class AccessibilityUITests: XCTestCase {
     )
 
     XCTAssertTrue(terminateAndWait(app))
-    app = makeApplication(fixture: "metadata-rich-book")
+    app = makeApplication(
+      fixture: "metadata-rich-book",
+      metadataRichNamespace: "accessibility-core-book-detail"
+    )
     app.launch()
     app.staticTexts["Harbor at Dawn"].tap()
     let playBook = revealWithUserScroll(

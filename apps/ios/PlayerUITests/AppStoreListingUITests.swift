@@ -73,7 +73,10 @@ final class AppStoreListingUITests: XCTestCase {
 
     let playback = makeApplication(
       fixture: "metadata-rich-book",
-      extraArguments: ["-e2e-start-section", "settings"]
+      extraArguments: [
+        "-e2e-metadata-rich-namespace", "app-store-listing-playback",
+        "-e2e-start-section", "settings",
+      ]
     )
     playback.launchEnvironment["PLAYER_E2E_METADATA_RICH_COVER_BASE64"] = try fixtureData(
       resource: "harbor-at-dawn-cover", extension: "png"

@@ -6,6 +6,7 @@ struct PlayerApp: App {
   @State private var model: PlayerModel?
   @State private var launchErrorMessage: String?
   private let launchNavigation: E2ELaunchNavigationConfiguration
+  private let playbackControls: E2EPlaybackControlConfiguration
   #if E2E
     @State private var e2eDynamicTypeSize: DynamicTypeSize
   #endif
@@ -19,6 +20,18 @@ struct PlayerApp: App {
         )
       } catch {
         launchNavigation = .library
+        playbackControls = .disabled
+        _e2eDynamicTypeSize = State(initialValue: .medium)
+        _model = State(initialValue: nil)
+        _launchErrorMessage = State(initialValue: error.localizedDescription)
+        return
+      }
+      do {
+        playbackControls = try E2EPlaybackControlConfiguration.parse(
+          arguments: ProcessInfo.processInfo.arguments
+        )
+      } catch {
+        playbackControls = .disabled
         _e2eDynamicTypeSize = State(initialValue: .medium)
         _model = State(initialValue: nil)
         _launchErrorMessage = State(initialValue: error.localizedDescription)
@@ -38,9 +51,12 @@ struct PlayerApp: App {
       }
     #else
       launchNavigation = .library
+      playbackControls = .disabled
     #endif
     do {
-      let environment = try PlayerEnvironment.launchEnvironment()
+      let environment = try PlayerEnvironment.launchEnvironment(
+        playbackControls: playbackControls
+      )
       _model = State(
         initialValue: PlayerModel(environment: environment)
       )
@@ -55,7 +71,11 @@ struct PlayerApp: App {
     WindowGroup {
       Group {
         if let model {
-          ContentView(model: model, launchNavigation: launchNavigation)
+          ContentView(
+            model: model,
+            launchNavigation: launchNavigation,
+            playbackControls: playbackControls
+          )
         } else {
           LaunchStorageUnavailableView(
             detail: launchErrorMessage,
@@ -76,7 +96,9 @@ struct PlayerApp: App {
 
   private func retryLaunchEnvironment() {
     do {
-      model = PlayerModel(environment: try PlayerEnvironment.launchEnvironment())
+      model = PlayerModel(environment: try PlayerEnvironment.launchEnvironment(
+        playbackControls: playbackControls
+      ))
       launchErrorMessage = nil
     } catch {
       launchErrorMessage = error.localizedDescription

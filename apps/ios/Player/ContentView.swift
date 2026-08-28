@@ -90,13 +90,16 @@ struct ContentView: View {
   @State private var pendingDocumentURLs: [URL] = []
   @State private var presentedPlayerBook: Book?
   private let launchNavigation: E2ELaunchNavigationConfiguration
+  private let playbackControls: E2EPlaybackControlConfiguration
 
   init(
     model: PlayerModel,
-    launchNavigation: E2ELaunchNavigationConfiguration
+    launchNavigation: E2ELaunchNavigationConfiguration,
+    playbackControls: E2EPlaybackControlConfiguration
   ) {
     self.model = model
     self.launchNavigation = launchNavigation
+    self.playbackControls = playbackControls
     switch launchNavigation.section {
     case .library: _selection = State(initialValue: .library)
     case .inbox: _selection = State(initialValue: .inbox)
@@ -178,7 +181,11 @@ struct ContentView: View {
       }
     }
     .fullScreenCover(item: $presentedPlayerBook) { book in
-      NowPlayingView(model: model, book: book)
+      NowPlayingView(
+        model: model,
+        book: book,
+        showsRewindExpiryControl: playbackControls.rewindExpiryControl
+      )
     }
     .sheet(isPresented: $model.isFullUnlockPresented) {
       NavigationStack {
@@ -192,7 +199,7 @@ struct ContentView: View {
     }
     #if E2E
       .overlay(alignment: .topLeading) {
-        if ProcessInfo.processInfo.arguments.contains("-e2e-event-controls") {
+        if playbackControls.eventControls {
           E2EPlaybackControlSurface(model: model)
         }
       }
@@ -1766,6 +1773,7 @@ private struct NowPlayingView: View {
   @Environment(\.dynamicTypeSize) private var dynamicTypeSize
   @Bindable var model: PlayerModel
   let book: Book
+  let showsRewindExpiryControl: Bool
   @State private var requestedPosition: Double?
   @State private var showsTransportPreferences = false
   @State private var showsSleepTimer = false
@@ -1931,7 +1939,7 @@ private struct NowPlayingView: View {
             }
           }
           .overlay(alignment: .topLeading) {
-            if ProcessInfo.processInfo.arguments.contains("-e2e-rewind-expiry-control") {
+            if showsRewindExpiryControl {
               Button("Advance five seconds") {
                 Task {
                   await model.seek(to: model.playbackState.elapsedSeconds + 5)
