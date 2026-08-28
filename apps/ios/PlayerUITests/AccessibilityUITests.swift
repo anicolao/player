@@ -41,7 +41,7 @@ final class AccessibilityUITests: XCTestCase {
       deadline: reduceArtworkDeadline
     )
 
-    XCTAssertTrue(terminateAndWait(app))
+    terminateAndDisplaceSurface(app)
     let restoredApp = makeApplication(
       fixture: "metadata-rich-book",
       reset: false,
@@ -54,13 +54,7 @@ final class AccessibilityUITests: XCTestCase {
       switchValues: (highContrast: "1", reduceArtwork: "1"),
       modelValue: "high-contrast=true:reduce-artwork=true"
     )
-    XCTAssertTrue(terminateAndWait(restoredApp))
-    let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-    springboard.activate()
-    XCTAssertTrue(
-      springboard.wait(for: .runningForeground, timeout: 2),
-      "SpringBoard should own the foreground after the preference process is terminated"
-    )
+    terminateAndDisplaceSurface(restoredApp)
   }
 
   func testCoreJourneysRemainCompleteAtLargestAccessibilityText() throws {
@@ -201,7 +195,25 @@ final class AccessibilityUITests: XCTestCase {
       }
     )
 
-    XCTAssertTrue(terminateAndWait(app))
+    terminateAndDisplaceSurface(app)
+    app = makeApplication(
+      fixture: "metadata-rich-book",
+      metadataRichNamespace: "accessibility-core-book-detail"
+    )
+    app.launch()
+    app.staticTexts["Harbor at Dawn"].tap()
+    _ = revealWithUserScroll(
+      { app.buttons["play-book"] },
+      targetID: "play-book",
+      in: app,
+      containerID: "book-detail-scroll",
+      gesture: .bookDetailActions,
+      captureFraming: AccessibilityCaptureFraming(
+        anchor: { app.staticTexts["Narrated by Imani Chen"] },
+        targetMinY: 100
+      )
+    )
+    terminateAndDisplaceSurface(app)
     app = makeApplication(
       fixture: "metadata-rich-book",
       metadataRichNamespace: "accessibility-core-book-detail"
@@ -318,7 +330,7 @@ final class AccessibilityUITests: XCTestCase {
       }
     )
 
-    XCTAssertTrue(terminateAndWait(app))
+    terminateAndDisplaceSurface(app)
     app = try makePopulatedLibraryApplication()
     app.launch()
     let upNext = revealWithUserScroll(
@@ -402,7 +414,7 @@ final class AccessibilityUITests: XCTestCase {
       }
     )
 
-    XCTAssertTrue(terminateAndWait(app))
+    terminateAndDisplaceSurface(app)
     app = makeApplication(fixture: "single-audiobook-ready")
     app.launch()
     app.tabBars.buttons["Settings"].tap()
@@ -478,7 +490,7 @@ final class AccessibilityUITests: XCTestCase {
       }
     )
 
-    XCTAssertTrue(terminateAndWait(app))
+    terminateAndDisplaceSurface(app)
     app = makeReceiverApplication()
     app.launch()
     app.buttons["receive-from-computer-empty-library"].tap()
@@ -523,6 +535,22 @@ final class AccessibilityUITests: XCTestCase {
     )
 
     tester.generateDocs()
+  }
+
+  private func terminateAndDisplaceSurface(
+    _ app: XCUIApplication,
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) {
+    XCTAssertTrue(terminateAndWait(app), file: file, line: line)
+    let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+    springboard.activate()
+    XCTAssertTrue(
+      springboard.wait(for: .runningForeground, timeout: 2),
+      "SpringBoard must own the foreground before another translucent app surface is launched",
+      file: file,
+      line: line
+    )
   }
 
   private func makeApplication(
@@ -1081,10 +1109,14 @@ final class AccessibilityUITests: XCTestCase {
     let containerHeight = element.frame.height
     guard containerHeight > 0 else { return }
     let startY: CGFloat = 0.5
-    // UIScrollView consumes the first ten points while recognizing a pan. Include
-    // that hysteresis in the finger motion so the content moves by the measured
-    // anchor-to-target displacement without a momentum-producing release.
-    let panHysteresis: CGFloat = displacement > 0 ? 10 : -10
+    // XCTest's synthesized recognizer consumes 30 physical pixels for short
+    // qualification-device pans and 34 for a long downward correction.
+    let panHysteresis: CGFloat
+    if displacement > 0 || abs(displacement) <= 80 {
+      panHysteresis = displacement > 0 ? 10 : -10
+    } else {
+      panHysteresis = -(34 / 3)
+    }
     let fingerDisplacement = displacement + panHysteresis
     let endY = max(0.1, min(0.9, startY - fingerDisplacement / containerHeight))
     let distance = abs(fingerDisplacement)

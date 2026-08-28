@@ -147,5 +147,15 @@ rg -Fq 'terminalEndpoint: \.atBottom' \
   "${ui_test_root}/BookmarkUITests.swift"
 rg -Fq 'waitForExistence(container, deadline: EventDeadline())' \
   "${ui_test_root}/AccessibilityUITests.swift"
+rg -Fq 'let actionDeadline = EventDeadline()' \
+  "${ui_test_root}/TestStepHelper.swift"
+rg -Fq 'while actionDeadline.remaining > 0' \
+  "${ui_test_root}/TestStepHelper.swift"
+rg -Fq 'terminateAndDisplaceSurface(app)' \
+  "${ui_test_root}/AccessibilityUITests.swift"
+if [[ "$(rg -c 'terminateAndWait\(' "${ui_test_root}/AccessibilityUITests.swift")" != "1" ]]; then
+  echo 'accessibility lifecycle hygiene requires every process boundary to displace glass' >&2
+  exit 1
+fi
 
 echo "Capture-readiness and selector source hygiene tests passed."

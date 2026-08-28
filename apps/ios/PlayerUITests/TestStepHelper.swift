@@ -315,7 +315,7 @@ struct ScrollSurface {
 func scrollUntil(
   _ condition: @escaping () -> Bool,
   on surface: ScrollSurface,
-  deadline: EventDeadline = EventDeadline(),
+  deadline readinessDeadline: EventDeadline = EventDeadline(),
   direction: ScrollProbeDirection = .towardEnd,
   requiresInteraction: Bool = false,
   requiresScrollableRange: Bool = false,
@@ -325,7 +325,7 @@ func scrollUntil(
 ) -> Bool {
   guard waitForScrollReadiness(
     surface,
-    deadline: deadline,
+    deadline: readinessDeadline,
     matching: { $0.isIdle && $0.geometryReady }
   ), let initial = surface.state()
   else {
@@ -338,13 +338,14 @@ func scrollUntil(
   }
   if !requiresInteraction && condition() { return true }
 
+  // Readiness and the first virtualized-target query are one observable phase.
+  // Give gesture synthesis and its correlated completion a separate bounded
+  // event budget so a slow accessibility snapshot cannot prevent all input.
+  let actionDeadline = EventDeadline()
   var observedInteraction = false
   var lastCorrelatedState: ScrollReadinessState?
-  while deadline.remaining > 0 {
-    guard let before = surface.state() else {
-      print("Scroll surface became invalid: \(scrollReadinessDiagnostic(surface))")
-      return false
-    }
+  var before = initial
+  while actionDeadline.remaining > 0 {
     if let terminalEndpoint, before[keyPath: terminalEndpoint] {
       let context = failureContext()
       print(
@@ -354,13 +355,13 @@ func scrollUntil(
       )
       return false
     }
-    guard deadline.remaining >= 0.2 else { break }
+    guard actionDeadline.remaining >= 0.2 else { break }
     gesture()
 
     var settledState: ScrollReadinessState?
     let correlated = waitForScrollReadiness(
       surface,
-      deadline: deadline,
+      deadline: actionDeadline,
       matching: { after in
         let madeOffsetProgress: Bool
         switch direction {
@@ -393,6 +394,7 @@ func scrollUntil(
     observedInteraction = true
     lastCorrelatedState = settledState
     if condition() { return true }
+    before = settledState
   }
 
   if observedInteraction,
