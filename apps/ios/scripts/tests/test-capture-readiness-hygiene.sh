@@ -108,6 +108,19 @@ if rg -n --fixed-strings 'dismissAppleIntelligenceNotificationIfPresent()' \
   exit 1
 fi
 
+bookmark_backdoor_sources=(
+  "${ui_test_root}/BookmarkUITests.swift"
+  "${ui_test_root}/../Player/BookmarksView.swift"
+  "${ui_test_root}/../Player/ContentView.swift"
+)
+if rg -n --regexp 'e2e-[^"[:space:]]*(scroll|align)|bookmarks-walkthrough-bottom' \
+  "${bookmark_backdoor_sources[@]}" \
+  > "${temporary_root}/bookmark-scroll-backdoor.log"; then
+  cat "${temporary_root}/bookmark-scroll-backdoor.log" >&2
+  echo 'bookmark hygiene rejected an E2E-only scroll/alignment backdoor identifier' >&2
+  exit 1
+fi
+
 rg -Fq 'func resolveAppleIntelligenceNotification(' \
   "${ui_test_root}/TestStepHelper.swift"
 rg -Fq 'guard notificationTitles.count == 1 else {' \
@@ -121,6 +134,14 @@ rg -Fq 'let doneButtons = app.navigationBars.buttons.matching(' \
 rg -Fq 'doneButtons.count,' \
   "${ui_test_root}/BookmarkUITests.swift"
 rg -Fq '"Now Playing must expose one navigation-scoped Done button"' \
+  "${ui_test_root}/BookmarkUITests.swift"
+rg -Fq 'performBookmarkFramingGesture(in: scroll)' \
+  "${ui_test_root}/BookmarkUITests.swift"
+rg -Fq 'bookmarkSegmentIsFramed(segment, within: scroll)' \
+  "${ui_test_root}/BookmarkUITests.swift"
+rg -Fq 'requiresScrollableRange: true' \
+  "${ui_test_root}/BookmarkUITests.swift"
+rg -Fq 'terminalEndpoint: \.atBottom' \
   "${ui_test_root}/BookmarkUITests.swift"
 
 echo "Capture-readiness and selector source hygiene tests passed."

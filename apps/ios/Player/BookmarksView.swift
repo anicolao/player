@@ -40,11 +40,6 @@ struct BookmarksView: View {
             bookmarkRow(bookmark)
           }
         }
-        #if E2E
-          Color.clear
-            .frame(height: 0)
-            .id("bookmarks-walkthrough-bottom")
-        #endif
       }
 
       StateProbe(id: "bookmarks-screen", value: screenValue)

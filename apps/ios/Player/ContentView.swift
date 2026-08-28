@@ -1435,9 +1435,8 @@ struct BookDetailView: View {
     ZStack {
       PlayerColor.background.ignoresSafeArea()
       if let book {
-        ScrollViewReader { proxy in
-          ScrollView {
-            VStack(spacing: 18) {
+        ScrollView {
+          VStack(spacing: 18) {
             ArtworkView(data: book.artworkData, size: 210)
             VStack(spacing: 6) {
               Text(book.title).font(.title.bold()).multilineTextAlignment(.center)
@@ -1571,39 +1570,17 @@ struct BookDetailView: View {
               }
               .frame(maxWidth: .infinity, alignment: .leading)
             }
-            }
-            .padding(24)
-            .padding(.bottom, 72)
           }
-          .playerMiniPlayerScrollRunway()
-          .accessibilityIdentifier("book-detail-scroll")
-          .e2eScrollReadiness(
-            id: "book-detail-scroll-readiness",
-            containerID: "book-detail-scroll",
-            axis: .vertical
-          )
-          #if E2E
-            .overlay(alignment: .topLeading) {
-              VStack(spacing: 0) {
-                if E2EBookmarkBridge.shared.isConfigured, selectedContent == .bookmarks {
-                  Button {
-                    proxy.scrollTo(
-                      "bookmarks-walkthrough-bottom",
-                      anchor: UnitPoint(x: 0.5, y: 0.68)
-                    )
-                  } label: {
-                    Color.white.opacity(0.001)
-                      .frame(width: 44, height: 44)
-                      .contentShape(Rectangle())
-                  }
-                  .buttonStyle(.plain)
-                  .accessibilityLabel("Align Bookmarks walkthrough")
-                  .accessibilityIdentifier("e2e-align-bookmarks-walkthrough")
-                }
-              }
-            }
-          #endif
+          .padding(24)
+          .padding(.bottom, 72)
         }
+        .playerMiniPlayerScrollRunway()
+        .accessibilityIdentifier("book-detail-scroll")
+        .e2eScrollReadiness(
+          id: "book-detail-scroll-readiness",
+          containerID: "book-detail-scroll",
+          axis: .vertical
+        )
         metadataProbe(id: "book-metadata-probe", value: bookMetadataValue(book))
         metadataProbe(id: "book-metadata-provenance-probe", value: bookProvenanceValue(book))
         metadataProbe(id: "book-state-probe", value: bookStateValue(book))
