@@ -32,6 +32,8 @@ final class MonetizationUITests: XCTestCase {
     )
 
     app.launch()
+    let unlockScreen = app.scrollViews["full-unlock-screen"]
+    let scrollReadiness = app.descendants(matching: .any)["full-unlock-scroll-readiness"]
 
     try tester.step(
       "included-playback-exhausted",
@@ -43,7 +45,25 @@ final class MonetizationUITests: XCTestCase {
         .exists(app.buttons["full-unlock-restore"], "Purchase restoration is available"),
         .exists(app.buttons["full-unlock-redeem-code"], "Offer-code redemption is available"),
         .exists(app.staticTexts["One-time purchase · No subscription"], "The purchase model is explicit"),
-      ]
+      ],
+      captureReadiness: fullUnlockCaptureReadiness(
+        app,
+        screen: unlockScreen,
+        readiness: scrollReadiness,
+        specification:
+          "At capture, the exhausted 50-hour allowance and exact $9.99 one-time purchase actions are settled at the top with no transient UI"
+      ) {
+        let purchase = app.buttons["full-unlock-purchase"]
+        return purchase.exists
+          && purchase.isEnabled
+          && purchase.label == "Unlock Forever — $9.99"
+          && elementIsFullyVisible(purchase, within: unlockScreen)
+          && elementIsFullyVisible(app.buttons["full-unlock-restore"], within: unlockScreen)
+          && elementIsFullyVisible(app.buttons["full-unlock-redeem-code"], within: unlockScreen)
+          && app.staticTexts[
+            "0m remaining from the 50 hours included with Bookshelf. Pay once to keep listening without a limit."
+          ].exists
+      }
     )
 
     app.buttons["full-unlock-purchase"].tap()
@@ -54,9 +74,45 @@ final class MonetizationUITests: XCTestCase {
         .exists(app.staticTexts["full-unlock-purchased"], "The purchased entitlement is visible"),
         .exists(app.staticTexts["Bookshelf is unlocked"], "The screen confirms ownership"),
         .notExists(app.buttons["full-unlock-purchase"], "The app no longer offers a duplicate purchase"),
-      ]
+      ],
+      captureReadiness: fullUnlockCaptureReadiness(
+        app,
+        screen: unlockScreen,
+        readiness: scrollReadiness,
+        specification:
+          "At capture, the permanent entitlement and purchase feedback are settled at the top with no purchase action or transient UI"
+      ) {
+        app.staticTexts["full-unlock-purchased"].exists
+          && app.staticTexts["Bookshelf is unlocked"].exists
+          && app.staticTexts["Bookshelf is unlocked on this device."].exists
+          && !app.buttons["full-unlock-purchase"].exists
+          && elementIsFullyVisible(
+            app.staticTexts["full-unlock-purchased"], within: unlockScreen, requiresHittable: false
+          )
+      }
     )
 
     tester.generateDocs()
+  }
+
+  private func fullUnlockCaptureReadiness(
+    _ app: XCUIApplication,
+    screen: XCUIElement,
+    readiness: XCUIElement,
+    specification: String,
+    state: @escaping @MainActor () -> Bool
+  ) -> CaptureReadiness {
+    CaptureReadiness(specification: specification, anchor: readiness) {
+      guard let scroll = ScrollReadinessState(readiness.value) else { return false }
+      return screen.exists
+        && scroll.containerID == "full-unlock-screen"
+        && scroll.axis == .vertical
+        && scroll.isIdle
+        && scroll.atTop
+        && state()
+        && !app.keyboards.firstMatch.exists
+        && !app.alerts.firstMatch.exists
+        && !app.sheets.firstMatch.exists
+    }
   }
 }
