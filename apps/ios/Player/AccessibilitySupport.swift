@@ -77,19 +77,40 @@ extension View {
     modifier(AccessibleCardModifier(cornerRadius: cornerRadius))
   }
 
-  func accessibilityScrollsIfNeeded(_ enabled: Bool) -> some View {
-    modifier(AccessibilityScrollModifier(enabled: enabled))
+  func accessibilityScrollsIfNeeded(
+    _ enabled: Bool,
+    identifier: String,
+    readinessID: String,
+    axis: E2EScrollAxis
+  ) -> some View {
+    modifier(
+      AccessibilityScrollModifier(
+        enabled: enabled,
+        identifier: identifier,
+        readinessID: readinessID,
+        axis: axis
+      )
+    )
   }
 }
 
 private struct AccessibilityScrollModifier: ViewModifier {
   let enabled: Bool
+  let identifier: String
+  let readinessID: String
+  let axis: E2EScrollAxis
 
   @ViewBuilder
   func body(content: Content) -> some View {
     if enabled {
       ScrollView { content }
         .playerMiniPlayerScrollRunway()
+        .accessibilityIdentifier(identifier)
+        .e2eScrollReadiness(
+          id: readinessID,
+          containerID: identifier,
+          axis: axis
+        )
     } else {
       content
     }

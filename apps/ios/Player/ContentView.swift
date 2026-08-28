@@ -1906,11 +1906,10 @@ private struct NowPlayingView: View {
             Spacer()
           }
           .padding(24)
-          .accessibilityScrollsIfNeeded(dynamicTypeSize.isAccessibilitySize)
-          .accessibilityIdentifier("now-playing-scroll")
-          .e2eScrollReadiness(
-            id: "now-playing-scroll-readiness",
-            containerID: "now-playing-scroll",
+          .accessibilityScrollsIfNeeded(
+            dynamicTypeSize.isAccessibilitySize,
+            identifier: "now-playing-scroll",
+            readinessID: "now-playing-scroll-readiness",
             axis: .vertical
           )
           }
