@@ -118,7 +118,9 @@ rg -Fq 'let dismissed = waitForNoElements(notificationTitles, deadline: EventDea
   "${ui_test_root}/TestStepHelper.swift"
 rg -Fq 'let doneButtons = app.navigationBars.buttons.matching(' \
   "${ui_test_root}/BookmarkUITests.swift"
-rg -Fq 'XCTAssertEqual(doneButtons.count, 1' \
+rg -Fq 'doneButtons.count,' \
+  "${ui_test_root}/BookmarkUITests.swift"
+rg -Fq '"Now Playing must expose one navigation-scoped Done button"' \
   "${ui_test_root}/BookmarkUITests.swift"
 
 echo "Capture-readiness and selector source hygiene tests passed."
