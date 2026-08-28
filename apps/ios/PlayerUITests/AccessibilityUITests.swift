@@ -814,7 +814,7 @@ final class AccessibilityUITests: XCTestCase {
             && after.completionID > before.completionID
             && after.completionGeometryID == after.geometryID
           let listGeometryFallback = surface.permitsGeometrySettledFallback
-            && isFramed(framing.anchor(), allowedMinY: framing.allowedMinY, in: app)
+            && self.isFramed(framing.anchor(), allowedMinY: framing.allowedMinY, in: app)
           return after.isIdle && after.geometryID > before.geometryID
             && progressed && (phaseCompletion || listGeometryFallback)
         }
