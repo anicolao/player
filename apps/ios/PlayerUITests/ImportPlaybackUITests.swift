@@ -96,6 +96,17 @@ final class ImportPlaybackUITests: XCTestCase {
     addToLibrary.tap()
     let libraryScreen = app.descendants(matching: .any)["library-screen"]
     XCTAssertTrue(libraryScreen.waitForExistence(timeout: 2))
+    let addAudiobook = app.tabBars.buttons["Add"]
+    XCTAssertTrue(addAudiobook.waitForExistence(timeout: 2))
+    XCTAssertTrue(addAudiobook.isHittable)
+
+    app.tabBars.buttons["Inbox"].tap()
+    let clearInbox = app.staticTexts["Inbox is clear"]
+    XCTAssertTrue(clearInbox.waitForExistence(timeout: 2))
+    let completedImportIsAbsent = !app.buttons["review-import-job-\(jobID)"].exists
+    XCTAssertTrue(completedImportIsAbsent)
+    app.tabBars.buttons["Library"].tap()
+    XCTAssertTrue(libraryScreen.waitForStringValue("ready:library-1-books", timeout: 2))
 
     try tester.step(
       "committed-library",
@@ -108,16 +119,18 @@ final class ImportPlaybackUITests: XCTestCase {
         ),
         .exists(app.staticTexts["The Lighthouse Signal"], "The committed title is visible"),
         .exists(app.staticTexts["Mara Vale"], "The committed author is visible"),
+        StepVerification(
+          specification: "The completed import is absent from Inbox and its triage state is clear"
+        ) {
+          completedImportIsAbsent
+        },
+        StepVerification(
+          specification: "The larger Add Audiobook action is available beside the tab switcher"
+        ) {
+          addAudiobook.exists && addAudiobook.isHittable
+        },
       ]
     )
-    let addAudiobook = app.tabBars.buttons["Add"]
-    XCTAssertTrue(addAudiobook.waitForExistence(timeout: 2))
-    XCTAssertTrue(addAudiobook.isHittable)
-
-    app.tabBars.buttons["Inbox"].tap()
-    XCTAssertTrue(app.staticTexts["Inbox is clear"].waitForExistence(timeout: 2))
-    XCTAssertFalse(app.buttons["review-import-job-\(jobID)"].exists)
-    app.tabBars.buttons["Library"].tap()
 
     app.staticTexts["The Lighthouse Signal"].tap()
     try tester.step(
