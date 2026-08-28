@@ -6,6 +6,53 @@ extension UTType {
   static let playerLibraryBackup = UTType(exportedAs: "com.spnss.player.library-backup")
 }
 
+enum BackupExportPickerOutcome: Equatable, Sendable {
+  case saved
+  case cancelled
+}
+
+enum BackupOperationState: Equatable, Sendable {
+  case idle
+  case preparing(String)
+  case awaitingFiles(String)
+  case finalizingExport(String)
+  case awaitingRestoreSelection
+  case confirmingPortableRestore
+  case restoringPortable
+  case confirmingAutomaticRestore
+  case restoringAutomatic
+  case succeeded(String)
+  case cancelled
+  case failed(String)
+
+  var token: String {
+    switch self {
+    case .idle: "idle"
+    case .preparing(let kind): "preparing-\(kind)"
+    case .awaitingFiles(let kind): "awaiting-files-\(kind)"
+    case .finalizingExport(let kind): "finalizing-export-\(kind)"
+    case .awaitingRestoreSelection: "awaiting-restore-selection"
+    case .confirmingPortableRestore: "confirming-portable-restore"
+    case .restoringPortable: "restoring-portable"
+    case .confirmingAutomaticRestore: "confirming-automatic-restore"
+    case .restoringAutomatic: "restoring-automatic"
+    case .succeeded(let operation): "succeeded-\(operation)"
+    case .cancelled: "cancelled"
+    case .failed(let operation): "failed-\(operation)"
+    }
+  }
+
+  var progressLabel: String? {
+    switch self {
+    case .preparing: "Preparing and checking backup…"
+    case .finalizingExport: "Cleaning up prepared backup…"
+    case .restoringPortable: "Checking and restoring backup…"
+    case .restoringAutomatic: "Restoring database backup…"
+    default: nil
+    }
+  }
+}
+
 struct BackupSettingsView: View {
   @Bindable var model: PlayerModel
   @State private var exportKind = PortableBackupKind.includingMedia
@@ -19,6 +66,8 @@ struct BackupSettingsView: View {
   @State private var automaticBackups: [AutomaticLibraryBackup] = []
   @State private var message: String?
   @State private var localError: PlayerPresentationError?
+  @State private var operationState = BackupOperationState.idle
+  @State private var operationTask: Task<Void, Never>?
   #if E2E
     @State private var e2eRevision = 0
   #endif
@@ -83,6 +132,7 @@ struct BackupSettingsView: View {
                   .pickerStyle(.menu)
                   .lineLimit(1)
                   .minimumScaleFactor(0.85)
+                  .accessibilityIdentifier("backup-export-kind")
                 }
               }
               BackupSettingsDivider()
@@ -94,7 +144,7 @@ struct BackupSettingsView: View {
               BackupSettingsDivider()
               BackupSettingsRow {
                 Button {
-                  Task { await prepareExport() }
+                  startOperation { await prepareExport() }
                 } label: {
                   Label("Export Library Backup", systemImage: "square.and.arrow.up")
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -108,6 +158,7 @@ struct BackupSettingsView: View {
             BackupSettingsSection("Restore") {
               BackupSettingsRow {
                 Button {
+                  operationState = .awaitingRestoreSelection
                   isChoosingRestore = true
                 } label: {
                   Label("Choose Bookshelf Backup", systemImage: "square.and.arrow.down")
@@ -143,6 +194,7 @@ struct BackupSettingsView: View {
                 BackupSettingsDivider()
                 BackupSettingsRow {
                   Button("Restore Latest Database Backup") {
+                    operationState = .confirmingAutomaticRestore
                     confirmsAutomaticRestore = true
                   }
                   .buttonStyle(.plain)
@@ -167,10 +219,10 @@ struct BackupSettingsView: View {
               }
             }
 
-            if isWorking {
+            if let progressLabel = operationState.progressLabel {
               BackupSettingsSection {
                 BackupSettingsRow {
-                  ProgressView("Checking library integrity…")
+                  ProgressView(progressLabel)
                     .accessibilityIdentifier("backup-progress")
                 }
               }
@@ -262,22 +314,31 @@ struct BackupSettingsView: View {
             value: E2EBackupBridge.shared.value(for: model)
           )
           .id(e2eRevision)
+          StateProbe(id: "backup-operation-state", value: operationState.token)
         }
       #endif
     }
     .navigationTitle("Backup")
     .navigationBarTitleDisplayMode(.inline)
     .task { await reloadAutomaticBackups() }
+    .onDisappear { operationTask?.cancel() }
     .fileImporter(
       isPresented: $isChoosingRestore,
       allowedContentTypes: [.playerLibraryBackup],
       allowsMultipleSelection: false
     ) { result in
       guard case .success(let urls) = result, let url = urls.first else {
-        if case .failure(let error) = result { presentRecoveryError(error) }
+        if case .failure(let error) = result,
+           !SystemSelectionCancellation.isCancellation(error)
+        {
+          presentRecoveryError(error)
+        } else {
+          operationState = .cancelled
+        }
         return
       }
       pendingRestoreURL = url
+      operationState = .confirmingPortableRestore
       confirmsPortableRestore = true
     }
     .confirmationDialog(
@@ -287,9 +348,12 @@ struct BackupSettingsView: View {
     ) {
       Button("Restore Backup", role: .destructive) {
         guard let pendingRestoreURL else { return }
-        Task { await restorePortable(from: pendingRestoreURL) }
+        startOperation { await restorePortable(from: pendingRestoreURL) }
       }
-      Button("Cancel", role: .cancel) { pendingRestoreURL = nil }
+      Button("Cancel", role: .cancel) {
+        pendingRestoreURL = nil
+        operationState = .cancelled
+      }
     } message: {
       Text(
         "The selected backup replaces books, progress, bookmarks, preferences, and managed audio only after every included file passes its integrity check."
@@ -301,16 +365,18 @@ struct BackupSettingsView: View {
       titleVisibility: .visible
     ) {
       Button("Restore Database", role: .destructive) {
-        Task { await restoreAutomatic() }
+        startOperation { await restoreAutomatic() }
       }
-      Button("Cancel", role: .cancel) {}
+      Button("Cancel", role: .cancel) { operationState = .cancelled }
     } message: {
       Text(
         "Managed audio is left in place. Current library organization and listening data will be replaced."
       )
     }
-    .sheet(item: $preparedBackup, onDismiss: discardPreparedBackup) { backup in
-      SystemBackupExporter(url: backup.url)
+    .sheet(item: $preparedBackup, onDismiss: cancelUndeliveredPreparedBackup) { backup in
+      SystemBackupExporter(url: backup.url) { outcome in
+        finishExport(backup, outcome: outcome)
+      }
         .ignoresSafeArea()
     }
     .alert(
@@ -338,31 +404,59 @@ struct BackupSettingsView: View {
   private func prepareExport() async {
     isWorking = true
     message = nil
+    operationState = .preparing(exportKind.rawValue)
     defer { isWorking = false }
     do {
       let backup = try await model.prepareLibraryBackup(kind: exportKind)
+      try Task.checkCancellation()
       preparedBackupToDiscard = backup
       preparedBackup = backup
+      operationState = .awaitingFiles(backup.kind.rawValue)
+    } catch is CancellationError {
+      operationState = .cancelled
     } catch {
+      operationState = .failed("export")
       localError = PlayerPresentationError.presenting(error, in: .backup)
     }
   }
 
-  private func discardPreparedBackup() {
+  private func cancelUndeliveredPreparedBackup() {
     guard let backup = preparedBackupToDiscard else { return }
+    finishExport(backup, outcome: .cancelled)
+  }
+
+  private func finishExport(
+    _ backup: PreparedLibraryBackup,
+    outcome: BackupExportPickerOutcome
+  ) {
+    guard preparedBackupToDiscard?.url == backup.url else { return }
     preparedBackupToDiscard = nil
-    Task { await model.discardPreparedLibraryBackup(backup) }
+    operationState = .finalizingExport(backup.kind.rawValue)
+    startOperation {
+      await model.discardPreparedLibraryBackup(backup)
+      switch outcome {
+      case .saved:
+        message = "\(backup.kind.displayName) backup saved to Files."
+        operationState = .succeeded("export-\(backup.kind.rawValue)")
+      case .cancelled:
+        operationState = .cancelled
+      }
+    }
   }
 
   private func restorePortable(from url: URL) async {
     isWorking = true
     message = nil
+    operationState = .restoringPortable
     pendingRestoreURL = nil
     defer { isWorking = false }
     do {
       try await model.restoreLibraryBackup(from: url)
       message = "Library restored from the verified Bookshelf backup."
+      operationState = .succeeded("portable-restore")
       await reloadAutomaticBackups()
+    } catch is CancellationError {
+      operationState = .cancelled
     } catch {
       presentRecoveryError(error)
     }
@@ -371,11 +465,15 @@ struct BackupSettingsView: View {
   private func restoreAutomatic() async {
     isWorking = true
     message = nil
+    operationState = .restoringAutomatic
     defer { isWorking = false }
     do {
       try await model.restoreLatestAutomaticLibraryBackup()
       message = "Library restored from the latest valid database backup."
+      operationState = .succeeded("automatic-restore")
       await reloadAutomaticBackups()
+    } catch is CancellationError {
+      operationState = .cancelled
     } catch {
       presentRecoveryError(error)
     }
@@ -383,6 +481,11 @@ struct BackupSettingsView: View {
 
   private func reloadAutomaticBackups() async {
     automaticBackups = await model.automaticLibraryBackups()
+  }
+
+  private func startOperation(_ operation: @escaping @MainActor () async -> Void) {
+    operationTask?.cancel()
+    operationTask = Task { await operation() }
   }
 
   #if E2E
@@ -419,6 +522,7 @@ struct BackupSettingsView: View {
   #endif
 
   private func presentRecoveryError(_ error: any Error) {
+    operationState = .failed("restore")
     localError = PlayerPresentationError.presenting(
       error,
       in: .recovery,
@@ -506,15 +610,54 @@ extension PreparedLibraryBackup: Identifiable {
   var id: URL { url }
 }
 
-private struct SystemBackupExporter: UIViewControllerRepresentable {
+struct SystemBackupExporter: UIViewControllerRepresentable {
   let url: URL
+  let onOutcome: @MainActor (BackupExportPickerOutcome) -> Void
+
+  func makeCoordinator() -> Coordinator {
+    Coordinator(onOutcome: onOutcome)
+  }
 
   func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
-    UIDocumentPickerViewController(forExporting: [url], asCopy: true)
+    let picker = UIDocumentPickerViewController(forExporting: [url], asCopy: true)
+    picker.delegate = context.coordinator
+    picker.presentationController?.delegate = context.coordinator
+    return picker
   }
 
   func updateUIViewController(
     _ uiViewController: UIDocumentPickerViewController,
     context: Context
   ) {}
+
+  @MainActor
+  final class Coordinator: NSObject, UIDocumentPickerDelegate, UIAdaptivePresentationControllerDelegate {
+    private let onOutcome: @MainActor (BackupExportPickerOutcome) -> Void
+    private var didFinish = false
+
+    init(onOutcome: @escaping @MainActor (BackupExportPickerOutcome) -> Void) {
+      self.onOutcome = onOutcome
+    }
+
+    func documentPicker(
+      _ controller: UIDocumentPickerViewController,
+      didPickDocumentsAt urls: [URL]
+    ) {
+      finish(.saved)
+    }
+
+    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+      finish(.cancelled)
+    }
+
+    func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+      finish(.cancelled)
+    }
+
+    private func finish(_ outcome: BackupExportPickerOutcome) {
+      guard !didFinish else { return }
+      didFinish = true
+      onOutcome(outcome)
+    }
+  }
 }

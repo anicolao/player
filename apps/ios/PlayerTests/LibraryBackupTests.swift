@@ -6,6 +6,50 @@ import XCTest
 
 @MainActor
 final class LibraryBackupTests: XCTestCase {
+  func testSystemExportCoordinatorReportsOneSavedOutcome() {
+    var outcomes: [BackupExportPickerOutcome] = []
+    let coordinator = SystemBackupExporter.Coordinator { outcomes.append($0) }
+    let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.data])
+
+    coordinator.documentPicker(
+      picker,
+      didPickDocumentsAt: [URL(filePath: "/tmp/Bookshelf.playerbackup")]
+    )
+    coordinator.documentPickerWasCancelled(picker)
+
+    XCTAssertEqual(outcomes, [.saved])
+  }
+
+  func testSystemExportCoordinatorReportsOneCancelledOutcome() {
+    var outcomes: [BackupExportPickerOutcome] = []
+    let coordinator = SystemBackupExporter.Coordinator { outcomes.append($0) }
+    let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.data])
+
+    coordinator.documentPickerWasCancelled(picker)
+    coordinator.documentPicker(
+      picker,
+      didPickDocumentsAt: [URL(filePath: "/tmp/TooLate.playerbackup")]
+    )
+
+    XCTAssertEqual(outcomes, [.cancelled])
+  }
+
+  func testBackupOperationStateExposesSpecificProgressAndTerminalTokens() {
+    XCTAssertEqual(
+      BackupOperationState.preparing(PortableBackupKind.includingMedia.rawValue).progressLabel,
+      "Preparing and checking backup…"
+    )
+    XCTAssertEqual(
+      BackupOperationState.restoringPortable.progressLabel,
+      "Checking and restoring backup…"
+    )
+    XCTAssertEqual(
+      BackupOperationState.succeeded("export-metadataOnly").token,
+      "succeeded-export-metadataOnly"
+    )
+    XCTAssertEqual(BackupOperationState.cancelled.token, "cancelled")
+  }
+
   func testMediaBackupRoundTripsLibraryArtworkAndAudioWithoutDuplicates() async throws {
     let sourceRoot = temporaryDirectory("backup-source")
     let destinationRoot = temporaryDirectory("backup-destination")
