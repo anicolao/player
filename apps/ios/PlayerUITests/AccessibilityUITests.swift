@@ -416,25 +416,6 @@ final class AccessibilityUITests: XCTestCase {
     element.exists || element.waitForExistence(timeout: deadline.remaining)
   }
 
-  @discardableResult
-  private func terminateAndWait(
-    _ application: XCUIApplication,
-    deadline: AccessibilityEventDeadline = AccessibilityEventDeadline()
-  ) -> Bool {
-    if application.state == .notRunning { return true }
-    application.terminate()
-    if application.state == .notRunning { return true }
-    guard deadline.remaining > 0 else { return false }
-    let expectation = XCTNSPredicateExpectation(
-      predicate: NSPredicate { object, _ in
-        (object as? XCUIApplication)?.state == .notRunning
-      },
-      object: application
-    )
-    _ = XCTWaiter.wait(for: [expectation], timeout: deadline.remaining)
-    return application.state == .notRunning
-  }
-
   private func visibleControl(
     _ element: XCUIElement,
     in app: XCUIApplication,

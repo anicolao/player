@@ -328,3 +328,35 @@ private struct Step {
   let filename: String
   let verifications: [String]
 }
+
+struct EventDeadline {
+  private let expiresAt: TimeInterval
+
+  init(timeout: TimeInterval = 2) {
+    expiresAt = ProcessInfo.processInfo.systemUptime + min(timeout, 2)
+  }
+
+  var remaining: TimeInterval {
+    max(0, expiresAt - ProcessInfo.processInfo.systemUptime)
+  }
+}
+
+@MainActor
+@discardableResult
+func terminateAndWait(
+  _ application: XCUIApplication,
+  deadline: EventDeadline = EventDeadline()
+) -> Bool {
+  if application.state == .notRunning { return true }
+  application.terminate()
+  if application.state == .notRunning { return true }
+  guard deadline.remaining > 0 else { return false }
+  let expectation = XCTNSPredicateExpectation(
+    predicate: NSPredicate { object, _ in
+      (object as? XCUIApplication)?.state == .notRunning
+    },
+    object: application
+  )
+  _ = XCTWaiter.wait(for: [expectation], timeout: deadline.remaining)
+  return application.state == .notRunning
+}
