@@ -102,3 +102,4 @@
 - [x] Now Playing is paused exactly at the safe 100,000 ms chapter boundary
 - [x] The explanation identifies the original position, clamped target, elapsed absence, and applied transaction
 - [x] A one-tap Undo remains available after process termination and relaunch
+- [x] At capture, the exact restored rewind state, explanation, and fully visible Undo are settled without a keyboard, alert, or unrelated sheet
