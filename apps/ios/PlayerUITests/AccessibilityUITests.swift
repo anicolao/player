@@ -236,7 +236,9 @@ final class AccessibilityUITests: XCTestCase {
       captureReadiness: accessibilityCaptureReadiness(
         app: app,
         specification: "At capture, the exact three-chapter book is idle with narrator context framed under the header and all visible primary actions settled",
-        anchor: bookDetailScrollReadiness
+        anchor: bookDetailScrollReadiness,
+        prime: { bookDetailScreenPixels.prime() },
+        preparedScreenshot: { bookDetailScreenPixels.takePreparedScreenshot() }
       ) {
         self.hasExactValue(
           bookDetailScreen,
@@ -607,9 +609,16 @@ final class AccessibilityUITests: XCTestCase {
     specification: String,
     anchor: XCUIElement,
     intendedSheetContentID: String? = nil,
+    prime: (@MainActor () -> Bool)? = nil,
+    preparedScreenshot: (@MainActor () -> XCUIScreenshot?)? = nil,
     checkNow: @escaping @MainActor () -> Bool
   ) -> CaptureReadiness {
-    CaptureReadiness(specification: specification, anchor: anchor) {
+    CaptureReadiness(
+      specification: specification,
+      anchor: anchor,
+      prime: prime,
+      preparedScreenshot: preparedScreenshot
+    ) {
       checkNow()
         && app.keyboards.count == 0
         && app.alerts.count == 0
@@ -1263,9 +1272,21 @@ final class AccessibilityUITests: XCTestCase {
 @MainActor
 private final class ConsecutiveAccessibilityScreenObservation {
   private var previousObservation: AccessibilityScreenPixelObservation?
+  private var preparedScreenshot: XCUIScreenshot?
+
+  func prime() -> Bool {
+    guard let (_, observation) = captureObservation() else {
+      print("Accessibility capture could not decode its priming composited screen pixels")
+      return false
+    }
+    previousObservation = observation
+    preparedScreenshot = nil
+    print("Accessibility capture primed its composited screen observation")
+    return true
+  }
 
   func isStable() -> Bool {
-    guard let observation = AccessibilityScreenPixelObservation(XCUIScreen.main.screenshot()) else {
+    guard let (screenshot, observation) = captureObservation() else {
       print("Accessibility capture could not decode the composited screen pixels")
       return false
     }
@@ -1274,9 +1295,24 @@ private final class ConsecutiveAccessibilityScreenObservation {
       print("Accessibility capture observed its first composited screen")
       return false
     }
-    if previousObservation == observation { return true }
+    if previousObservation == observation {
+      preparedScreenshot = screenshot
+      return true
+    }
+    preparedScreenshot = nil
     print("Accessibility capture observed a compositor change")
     return false
+  }
+
+  func takePreparedScreenshot() -> XCUIScreenshot? {
+    defer { preparedScreenshot = nil }
+    return preparedScreenshot
+  }
+
+  private func captureObservation() -> (XCUIScreenshot, AccessibilityScreenPixelObservation)? {
+    let screenshot = XCUIScreen.main.screenshot()
+    guard let observation = AccessibilityScreenPixelObservation(screenshot) else { return nil }
+    return (screenshot, observation)
   }
 }
 

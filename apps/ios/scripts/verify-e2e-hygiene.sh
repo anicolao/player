@@ -268,14 +268,19 @@ step_deadline_line="$(rg -n '^[[:space:]]{6}let deadline = EventDeadline\(\)$' \
   "${step_helper}" | cut -d: -f1)"
 step_readiness_line="$(rg -n 'let isReady = waitForCaptureReadiness\(' \
   "${step_helper}" | cut -d: -f1)"
-step_screenshot_line="$(rg -n '^[[:space:]]{4}let screenshot = XCUIScreen\.main\.screenshot\(\)$' \
+step_screenshot_line="$(rg -n '^[[:space:]]{4}let screenshot = preparedScreenshot \?\? XCUIScreen\.main\.screenshot\(\)$' \
   "${step_helper}" | cut -d: -f1)"
 [[ -n "${step_dismiss_line}" && -n "${step_deadline_line}" \
   && -n "${step_readiness_line}" && -n "${step_screenshot_line}" \
   && "${step_dismiss_line}" -lt "${step_deadline_line}" \
   && "${step_deadline_line}" -lt "${step_readiness_line}" \
   && "${step_readiness_line}" -lt "${step_screenshot_line}" ]] \
-  || fail "capture readiness must use one deadline after system-notification dismissal and immediately before the screenshot"
+  || fail "capture readiness must use one deadline after system-notification dismissal and immediately before the verified or ordinary screenshot"
+rg -Fq 'if let takePreparedScreenshot = captureReadiness.preparedScreenshot {' \
+  "${step_helper}" \
+  || fail "prepared screenshot capture must distinguish verified evidence from the ordinary path"
+rg -Fq 'guard preparedScreenshot != nil else {' "${step_helper}" \
+  || fail "prepared screenshot capture must fail closed when verified evidence is missing"
 
 smart_rewind_capture="$(awk '
   /"smart-rewind-applied"/ { capture = 1 }

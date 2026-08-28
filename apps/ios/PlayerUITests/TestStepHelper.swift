@@ -639,7 +639,23 @@ struct StepVerification {
 struct CaptureReadiness {
   let specification: String
   let anchor: XCUIElement
+  let prime: (@MainActor () -> Bool)?
+  let preparedScreenshot: (@MainActor () -> XCUIScreenshot?)?
   let checkNow: @MainActor () -> Bool
+
+  init(
+    specification: String,
+    anchor: XCUIElement,
+    prime: (@MainActor () -> Bool)? = nil,
+    preparedScreenshot: (@MainActor () -> XCUIScreenshot?)? = nil,
+    checkNow: @escaping @MainActor () -> Bool
+  ) {
+    self.specification = specification
+    self.anchor = anchor
+    self.prime = prime
+    self.preparedScreenshot = preparedScreenshot
+    self.checkNow = checkNow
+  }
 }
 
 private enum TestStepError: Error {
@@ -658,8 +674,7 @@ private func waitForCaptureReadiness(
     predicate: NSPredicate { _, _ in readiness.checkNow() },
     object: readiness.anchor
   )
-  _ = XCTWaiter.wait(for: [expectation], timeout: deadline.remaining)
-  return readiness.checkNow()
+  return XCTWaiter.wait(for: [expectation], timeout: deadline.remaining) == .completed
 }
 
 @MainActor
@@ -720,7 +735,20 @@ final class TestStepHelper {
     }
 
     let filename = String(format: "%03d-%@.png", nextScreenshotIndex, identifier)
+    var preparedScreenshot: XCUIScreenshot?
     if let captureReadiness {
+      if let prime = captureReadiness.prime {
+        let isPrimed = prime()
+        XCTAssertTrue(
+          isPrimed,
+          "Capture readiness could not prepare its first verified observation",
+          file: #filePath,
+          line: #line
+        )
+        guard isPrimed else {
+          throw TestStepError.captureNotReady(captureReadiness.specification)
+        }
+      }
       let deadline = EventDeadline()
       let isReady = waitForCaptureReadiness(captureReadiness, deadline: deadline)
       XCTAssertTrue(
@@ -732,9 +760,21 @@ final class TestStepHelper {
       guard isReady else {
         throw TestStepError.captureNotReady(captureReadiness.specification)
       }
+      if let takePreparedScreenshot = captureReadiness.preparedScreenshot {
+        preparedScreenshot = takePreparedScreenshot()
+        XCTAssertNotNil(
+          preparedScreenshot,
+          "Capture readiness succeeded without retaining its verified screenshot",
+          file: #filePath,
+          line: #line
+        )
+        guard preparedScreenshot != nil else {
+          throw TestStepError.captureNotReady(captureReadiness.specification)
+        }
+      }
     }
 
-    let screenshot = XCUIScreen.main.screenshot()
+    let screenshot = preparedScreenshot ?? XCUIScreen.main.screenshot()
     nextScreenshotIndex += 1
     let attachment = XCTAttachment(screenshot: screenshot)
     attachment.name = filename
