@@ -7,6 +7,8 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
+from evidence_manifest import validate_manifest
+
 
 def load_json(path: Path):
     with path.open(encoding="utf-8") as handle:
@@ -66,13 +68,20 @@ def parse_phases(path: Path, label, errors):
     return phases
 
 
-def validate_attempt_evidence(lane_root, record, story, sha, label, errors):
+def validate_attempt_evidence(lane_root, canonical_root, record, story, sha, label, errors):
     root = evidence_path(lane_root, record.get("artifact"), label, errors)
     if root is None:
         return {}
     if not root.is_dir():
         errors.append(f"{label} artifact directory is missing")
         return {}
+    if record.get("evidenceValid") is not True:
+        errors.append(f"{label} summary does not attest valid evidence")
+    try:
+        manifest_errors = validate_manifest(root, canonical_root / story, story)
+    except (OSError, ValueError, TypeError, json.JSONDecodeError) as error:
+        manifest_errors = [f"manifest validation raised an error: {error}"]
+    errors.extend(f"{label} {error}" for error in manifest_errors)
     run_path = root / "Run.json"
     if not run_path.is_file():
         errors.append(f"{label} is missing Run.json")
@@ -97,7 +106,7 @@ def validate_attempt_evidence(lane_root, record, story, sha, label, errors):
     return phases
 
 
-def validate_story(root, expected_stories, sha, requested_attempts):
+def validate_story(root, canonical_root, expected_stories, sha, requested_attempts):
     errors, durations, signatures, failures = [], [], {}, []
     pairs = [(path, load_json(path)) for path in discover(root, "StoryLaneSummary.json")]
     lanes = [item.get("lane") for _, item in pairs]
@@ -136,7 +145,8 @@ def validate_story(root, expected_stories, sha, requested_attempts):
                 label = f"{story_id} attempt {attempt.get('attempt')}"
                 if attempt.get("result") != "passed" or not attempt.get("testPhaseEntered"):
                     errors.append(f"{label} is not a measured pass")
-                validate_attempt_evidence(lane_root, attempt, story_id, sha, label, errors)
+                validate_attempt_evidence(
+                    lane_root, canonical_root, attempt, story_id, sha, label, errors)
     if sorted(seen) != sorted(expected_stories) or len(seen) != len(set(seen)):
         errors.append("story lane coverage does not equal the canonical manifest exactly once")
     return {"lanes": len(pairs), "stories": len(seen), "durations": distribution(durations),
@@ -176,7 +186,7 @@ def validate_core(lane_root, gate, index, errors):
         errors.append(f"logical matrix {index} core result bundle is incomplete")
 
 
-def validate_matrices(root, expected_stories, sha, requested_matrices, baseline):
+def validate_matrices(root, canonical_root, expected_stories, sha, requested_matrices, baseline):
     errors, durations, signatures, failures = [], [], {}, []
     story_values, phase_matrix_values, wall_values = defaultdict(list), defaultdict(list), []
     pairs = [(path, load_json(path)) for path in discover(root, "MatrixLaneSummary.json")]
@@ -213,7 +223,8 @@ def validate_matrices(root, expected_stories, sha, requested_matrices, baseline)
                 label = f"matrix {index} story {story_id}"
                 if story.get("commit") != sha or story.get("status") != "passed" or not story.get("testPhaseEntered"):
                     errors.append(f"{label} is not a measured pass")
-                story["_phases"] = validate_attempt_evidence(lane_root, story, story_id, sha, label, errors)
+                story["_phases"] = validate_attempt_evidence(
+                    lane_root, canonical_root, story, story_id, sha, label, errors)
     for index, matrices in by_attempt.items():
         stories = [story.get("story") for _, matrix in matrices for story in matrix.get("stories", [])]
         if len(matrices) != 5 or sorted(stories) != sorted(expected_stories) or len(stories) != len(set(stories)):
@@ -436,10 +447,13 @@ def main(argv=None):
     except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError) as error:
         print(f"Invalid qualification contract: {error}", file=sys.stderr)
         return 2
-    story_result = validate_story(args.story_input, stories, args.sha, args.story_attempts)
+    canonical_root = args.manifest.parent
+    story_result = validate_story(
+        args.story_input, canonical_root, stories, args.sha, args.story_attempts)
     matrix_result = None
     if args.matrix_input is not None:
-        matrix_result = validate_matrices(args.matrix_input, stories, args.sha, args.matrix_attempts, baseline)
+        matrix_result = validate_matrices(
+            args.matrix_input, canonical_root, stories, args.sha, args.matrix_attempts, baseline)
     failure_accounting = build_failure_accounting(failure_history, story_result, matrix_result)
     if not failure_accounting["rootCauseAccountingComplete"]:
         story_result["errors"].append(

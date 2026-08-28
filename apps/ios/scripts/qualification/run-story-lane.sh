@@ -113,6 +113,13 @@ for story in "${stories[@]}"; do
       mkdir -p "${retained}"
     fi
     duration=$((SECONDS - attempt_start))
+    evidence_valid=true
+    if ! qualification_validate_evidence_manifest \
+      "${retained}" "${repository_root}/tests/e2e/${story}" "${story}"; then
+      evidence_valid=false
+      infrastructure_invalid=1
+      attempt_status=1
+    fi
     test_phase_entered=false
     if qualification_phase_was_recorded "${retained}/PhaseTimings.tsv" test; then
       test_phase_entered=true
@@ -152,11 +159,13 @@ for story in "${stories[@]}"; do
       --argjson durationSeconds "${duration}" \
       --argjson exitCode "${attempt_status}" \
       --argjson testPhaseEntered "${test_phase_entered}" \
+      --argjson evidenceValid "${evidence_valid}" \
       --arg signature "${signature}" \
       --arg artifact "Stories/${story}/${attempt_name}" \
       '{attempt: $attempt, startedAt: $startedAt, result: $result,
         durationSeconds: $durationSeconds, exitCode: $exitCode,
-        testPhaseEntered: $testPhaseEntered, signature: $signature,
+        testPhaseEntered: $testPhaseEntered, evidenceValid: $evidenceValid,
+        signature: $signature,
         artifact: $artifact}' >> "${story_root}/attempts.jsonl"
     printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
       "${attempt}" "${result}" "${duration}" "${attempt_status}" \

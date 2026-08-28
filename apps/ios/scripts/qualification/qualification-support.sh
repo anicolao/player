@@ -1,5 +1,19 @@
 #!/usr/bin/env bash
 
+qualification_support_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+qualification_write_evidence_manifest() {
+  local retained="$1" story_root="$2" story="$3"
+  python3 "${qualification_support_dir}/evidence_manifest.py" \
+    write "${retained}" "${story_root}" --story "${story}"
+}
+
+qualification_validate_evidence_manifest() {
+  local retained="$1" story_root="$2" story="$3"
+  python3 "${qualification_support_dir}/evidence_manifest.py" \
+    validate "${retained}" "${story_root}" --story "${story}"
+}
+
 qualification_phase_was_recorded() {
   local timings="$1" requested_phase="$2"
   [[ -f "${timings}" ]] || return 1

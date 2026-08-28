@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 import aggregate_r0_qualification as aggregate
+import evidence_manifest as evidence_module
 
 
 SHA = "a" * 40
@@ -23,14 +24,30 @@ def write_json(path, payload):
     path.write_text(json.dumps(payload), encoding="utf-8")
 
 
-def write_story_evidence(root, story, artifact, duration=5):
+def write_story_evidence(root, canonical_root, story, artifact, duration=5):
     evidence = root / artifact
     write_json(evidence / "Run.json", {"story": story, "commit": SHA, "status": "passed"})
     (evidence / "Logs").mkdir(parents=True, exist_ok=True)
     (evidence / "Logs/test.log").write_text("test entered\n", encoding="utf-8")
     (evidence / "Results/Story.xcresult").mkdir(parents=True, exist_ok=True)
     (evidence / "Results/Story.xcresult/Info.plist").write_text("plist", encoding="utf-8")
-    (evidence / "PhaseTimings.tsv").write_text(f"test\t0\t{duration}\tpassed\n", encoding="utf-8")
+    (evidence / "PhaseTimings.tsv").write_text(f"test\t0\t{duration}\t0\n", encoding="utf-8")
+    write_json(evidence / "Attachments/manifest.json", [{"attachments": []}])
+    (evidence / "ActualWalkthrough").mkdir(parents=True, exist_ok=True)
+    (evidence / "ActualWalkthrough/README.md").write_text("# Walkthrough\n", encoding="utf-8")
+    screenshot = evidence / "ActualWalkthrough/screenshots/ios/000-screen.png"
+    screenshot.parent.mkdir(parents=True, exist_ok=True)
+    screenshot.write_text("png", encoding="utf-8")
+    write_json(evidence / "Diagnostics/ScreenshotComparison/summary.json", {
+        "failureCount": 0,
+        "fileSetMatches": True,
+        "expectedNames": ["000-screen.png"],
+        "actualNames": ["000-screen.png"],
+        "images": [{"name": "000-screen.png", "result": "exact"}],
+    })
+    manifest = evidence_module.write_manifest(evidence, canonical_root / story, story)
+    if not manifest["validation"]["valid"]:
+        raise AssertionError(manifest["validation"]["errors"])
 
 
 class QualificationAggregatorTests(unittest.TestCase):
@@ -39,6 +56,13 @@ class QualificationAggregatorTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.manifest = self.root / "manifest.json"
         write_json(self.manifest, [{"story": story, "tests": ["test"]} for story in STORIES])
+        for story in STORIES:
+            write_json(self.root / story / "story.json", {
+                "id": story, "platform": "ios", "screenshots": ["000-screen.png"]
+            })
+            screenshot = self.root / story / "screenshots/ios/000-screen.png"
+            screenshot.parent.mkdir(parents=True, exist_ok=True)
+            screenshot.write_text("png", encoding="utf-8")
         self.baseline = self.root / "baseline.json"
         write_json(self.baseline, {"schemaVersion": 1,
                                   "thresholds": {"suiteRegression": .1, "storyRegression": .2},
@@ -68,10 +92,11 @@ class QualificationAggregatorTests(unittest.TestCase):
                 attempts = []
                 for index in range(1, 11):
                     artifact = f"Stories/{story}/attempt-{index:02d}"
-                    write_story_evidence(lane_root, story, artifact)
+                    write_story_evidence(lane_root, self.root, story, artifact)
                     attempts.append({"attempt": index, "result": "passed", "durationSeconds": 5,
                                      "exitCode": 0, "testPhaseEntered": True,
-                                     "signature": "none", "artifact": artifact})
+                                     "evidenceValid": True, "signature": "none",
+                                     "artifact": artifact})
                 summaries.append({"story": story, "commit": SHA, "requestedAttempts": 10,
                                   "attemptCount": 10, "passCount": 10, "failureCount": 0,
                                   "attempts": attempts})
@@ -87,10 +112,11 @@ class QualificationAggregatorTests(unittest.TestCase):
                 story_results = []
                 for story in lane_stories:
                     artifact = f"Matrices/{matrix_name}/Stories/{story}"
-                    write_story_evidence(matrix_lane_root, story, artifact)
+                    write_story_evidence(matrix_lane_root, self.root, story, artifact)
                     story_results.append({"story": story, "commit": SHA, "status": "passed",
                                           "signature": "none", "durationSeconds": 5,
-                                          "testPhaseEntered": True, "artifact": artifact})
+                                          "testPhaseEntered": True, "evidenceValid": True,
+                                          "artifact": artifact})
                 renderer = {"required": False, "status": "not-required"}
                 if lane_index == 5:
                     renderer_artifact = f"Matrices/{matrix_name}/AppStoreListing"
@@ -171,6 +197,38 @@ class QualificationAggregatorTests(unittest.TestCase):
         artifact = payload["stories"][0]["attempts"][0]["artifact"]
         (self.story_summary().parent / artifact / "Logs/test.log").unlink()
         self.assertEqual(self.run_aggregate(), 1)
+
+    def test_rejects_missing_or_corrupt_evidence_manifest(self):
+        payload = json.loads(self.story_summary().read_text())
+        artifact = self.story_summary().parent / payload["stories"][0]["attempts"][0]["artifact"]
+        (artifact / "EvidenceManifest.json").unlink()
+        self.assertEqual(self.run_aggregate(), 1)
+        errors = json.loads((self.root / "report/QualificationSummary.json").read_text())["errors"]
+        self.assertTrue(any("EvidenceManifest.json is missing or invalid" in error for error in errors))
+
+        evidence_module.write_manifest(artifact, self.root / STORIES[0], STORIES[0])
+        (artifact / "EvidenceManifest.json").write_text("{", encoding="utf-8")
+        self.assertEqual(self.run_aggregate(), 1)
+
+    def test_rejects_manifest_hash_mismatch_or_unlisted_file(self):
+        payload = json.loads(self.matrix_summary().read_text())
+        artifact = self.matrix_summary().parent / payload["matrices"][0]["stories"][0]["artifact"]
+        (artifact / "Logs/test.log").write_text("tampered after manifest\n", encoding="utf-8")
+        self.assertEqual(self.run_aggregate(), 1)
+        errors = json.loads((self.root / "report/QualificationSummary.json").read_text())["errors"]
+        self.assertTrue(any("every retained evidence file" in error for error in errors))
+
+        evidence_module.write_manifest(artifact, self.root / STORIES[0], STORIES[0])
+        (artifact / "unlisted.txt").write_text("not in manifest\n", encoding="utf-8")
+        self.assertEqual(self.run_aggregate(), 1)
+
+    def test_rejects_lane_summary_that_does_not_attest_valid_evidence(self):
+        payload = json.loads(self.story_summary().read_text())
+        payload["stories"][0]["attempts"][0]["evidenceValid"] = False
+        write_json(self.story_summary(), payload)
+        self.assertEqual(self.run_aggregate(), 1)
+        errors = json.loads((self.root / "report/QualificationSummary.json").read_text())["errors"]
+        self.assertTrue(any("does not attest valid evidence" in error for error in errors))
 
     def test_rejects_missing_run_or_result_bundle(self):
         payload = json.loads(self.story_summary().read_text())

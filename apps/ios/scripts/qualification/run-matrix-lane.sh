@@ -173,9 +173,16 @@ for ((matrix_index = 1; matrix_index <= matrix_count; matrix_index += 1)); do
       PLAYER_SIMULATOR_LEASE_ROOT="${simulator_lease_root}" \
       PLAYER_SKIP_E2E_BUILD="${skip_build}" \
       PLAYER_SKIP_E2E_ENVIRONMENT_VERIFICATION=1 \
-      PLAYER_SKIP_PROJECT_GENERATION=1 \
+    PLAYER_SKIP_PROJECT_GENERATION=1 \
       "${worktree_ios}/scripts/run-e2e.sh" --story "${story}" || story_status=$?
     if [[ ! -d "${retained}" ]]; then mkdir -p "${retained}"; fi
+    evidence_valid=true
+    if ! qualification_validate_evidence_manifest \
+      "${retained}" "${active_worktree}/tests/e2e/${story}" "${story}"; then
+      evidence_valid=false
+      infrastructure_invalid=1
+      story_status=1
+    fi
     test_phase_entered=false
     if qualification_phase_was_recorded "${retained}/PhaseTimings.tsv" test; then test_phase_entered=true; fi
     if ! jq -e --arg sha "${expected_sha}" \
@@ -206,10 +213,12 @@ for ((matrix_index = 1; matrix_index <= matrix_count; matrix_index += 1)); do
       --arg status "${result}" --arg signature "${signature}" \
       --argjson exitCode "${story_status}" --argjson durationSeconds "$((SECONDS - story_start))" \
       --argjson testPhaseEntered "${test_phase_entered}" \
+      --argjson evidenceValid "${evidence_valid}" \
       --arg artifact "Matrices/${matrix_name}/Stories/${story}" \
       '{story: $story, commit: $commit, status: $status, signature: $signature,
         exitCode: $exitCode, durationSeconds: $durationSeconds,
-        testPhaseEntered: $testPhaseEntered, artifact: $artifact}' >> "${matrix_root}/stories.jsonl"
+        testPhaseEntered: $testPhaseEntered, evidenceValid: $evidenceValid,
+        artifact: $artifact}' >> "${matrix_root}/stories.jsonl"
     if [[ "${infrastructure_invalid}" -eq 1 ]]; then overall_status=1; break; fi
   done
 

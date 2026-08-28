@@ -2,6 +2,7 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "${script_dir}/qualification/qualification-support.sh"
 ios_dir="$(cd "${script_dir}/.." && pwd)"
 repository_root="$(cd "${ios_dir}/../.." && pwd)"
 story_id="001-ios-launch"
@@ -222,6 +223,7 @@ capture_failure_diagnostics() {
 
 cleanup() {
   local run_status="$?"
+  local manifest_status=0
   trap - EXIT INT TERM
   set +e
   if [[ "${run_status}" -ne 0 ]]; then
@@ -244,6 +246,27 @@ cleanup() {
     '. + {completedAt: $completedAt, status: $status, exitCode: $exitCode}' \
     "${story_output}/Run.json" > "${story_output}/Run.json.next" \
     && mv "${story_output}/Run.json.next" "${story_output}/Run.json"
+  qualification_write_evidence_manifest \
+    "${story_output}" "${baseline_story}" "${story_id}" || manifest_status=1
+  qualification_validate_evidence_manifest \
+    "${story_output}" "${baseline_story}" "${story_id}" || manifest_status=1
+  if [[ "${manifest_status}" -ne 0 ]]; then
+    if [[ "${run_status}" -eq 0 ]]; then
+      run_status=1
+      jq \
+        --arg completedAt "${completed_at}" \
+        --arg status failed \
+        --argjson exitCode "${run_status}" \
+        '. + {completedAt: $completedAt, status: $status, exitCode: $exitCode}' \
+        "${story_output}/Run.json" > "${story_output}/Run.json.next" \
+        && mv "${story_output}/Run.json.next" "${story_output}/Run.json"
+      qualification_write_evidence_manifest \
+        "${story_output}" "${baseline_story}" "${story_id}" >/dev/null 2>&1 || true
+      qualification_validate_evidence_manifest \
+        "${story_output}" "${baseline_story}" "${story_id}" >/dev/null 2>&1 || true
+    fi
+    echo "E2E evidence manifest is incomplete or corrupt: ${story_output}" >&2
+  fi
   exit "${run_status}"
 }
 trap cleanup EXIT

@@ -328,4 +328,23 @@ rg -Fq 'cp -R "${baseline_story}/." "${recording_stage}/"' "${run_e2e}" \
 rg -Fq 'find "${recording_stage}/screenshots/ios" -type f -depth -delete' "${run_e2e}" \
   || fail "baseline recording does not replace the complete prior screenshot set"
 
+python3 "${ios_scripts}/qualification/test_evidence_manifest.py" \
+  || fail "the content-addressed per-attempt evidence contract is not fail closed"
+for contract_call in \
+  'qualification_write_evidence_manifest' \
+  'qualification_validate_evidence_manifest'; do
+  rg -Fq "${contract_call}" "${run_e2e}" \
+    || fail "run-e2e does not invoke ${contract_call} during finalization"
+done
+for lane_script in \
+  "${ios_scripts}/qualification/run-story-lane.sh" \
+  "${ios_scripts}/qualification/run-matrix-lane.sh"; do
+  rg -Fq 'qualification_validate_evidence_manifest' "${lane_script}" \
+    || fail "$(basename "${lane_script}") does not revalidate every attempt"
+  rg -Fq 'infrastructure_invalid=1' "${lane_script}" \
+    || fail "$(basename "${lane_script}") does not fail closed on invalid infrastructure"
+  rg -Fq 'evidenceValid' "${lane_script}" \
+    || fail "$(basename "${lane_script}") does not retain its evidence verdict"
+done
+
 echo "E2E output, build provenance, and failure-evidence tests passed."
