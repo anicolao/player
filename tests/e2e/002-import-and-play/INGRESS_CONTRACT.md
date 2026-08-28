@@ -82,17 +82,26 @@ second job, staged asset, inspection result, or proposal.
 The Share Extension and main app use the configured App Group container. For
 each accepted item provider, the extension:
 
-1. creates `ImportHandoffs/Incoming/<handoff UUID>/Items/` without following
+1. validates the complete provider selection before creating a handoff; a mixed
+   selection with an unsupported filename is rejected rather than partially
+   published;
+2. requests an in-place representation first, falls back to a temporary file
+   representation when unavailable, and preserves the provider's actionable
+   error if neither representation can be acquired;
+3. cancels the active provider `Progress` when the import task is cancelled and
+   copies a provider-owned temporary URL synchronously before its callback
+   returns;
+4. creates `ImportHandoffs/Incoming/<handoff UUID>/Items/` without following
    symbolic links;
-2. materializes the provider's temporary representation, then streams it into
-   deterministic `Items/00000.<extension>` names while hashing;
-3. accepts only the registered M4A, M4B, MP3, and ZIP content types and
-   preserves a safe filename extension;
-4. synchronizes every item, then atomically writes `handoff.json` with
+5. streams each valid representation into deterministic
+   `Items/00000.<extension>` names while hashing;
+6. accepts only the registered M4A, M4B, MP3, and ZIP content types, sanitizes
+   the display filename, and preserves a safe filename extension;
+7. synchronizes every item, then atomically writes `handoff.json` with
    `ShareImportHandoff { schemaVersion, id, createdAt, items }`;
-5. atomically renames the completed request directory from `Incoming` to
+8. atomically renames the completed request directory from `Incoming` to
    `Pending`, which is the only publication step; and
-6. completes the extension request without deleting or mutating the provider's
+9. completes the extension request without deleting or mutating the provider's
    source.
 
 Each `ShareImportHandoffItem` contains only `relativePath`, `originalFilename`,

@@ -53,6 +53,7 @@ targets:
     sources:
       - path: ShareExtension
       - path: Player/Core/AppGroupImportHandoffQueue.swift
+      - path: Player/Core/ShareProviderImportCoordinator.swift
     configFiles:
       Debug: Config/Debug.xcconfig
       E2E: Config/E2E.xcconfig
