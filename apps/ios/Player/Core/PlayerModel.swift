@@ -20,6 +20,7 @@ final class PlayerModel {
   @ObservationIgnored private var playbackIntegrationsConfigured = false
   @ObservationIgnored private var wasPlayingBeforeInterruption = false
   @ObservationIgnored private var importTasks: [UUID: Task<Void, Never>] = [:]
+  @ObservationIgnored private var cancellingImportIDs: Set<UUID> = []
   @ObservationIgnored private var sleepTimerMonitorTask: Task<Void, Never>?
   @ObservationIgnored private var playbackProgressMonitorTask: Task<Void, Never>?
   @ObservationIgnored private var sleepTimerEvaluationInProgress = false
@@ -1122,6 +1123,8 @@ final class PlayerModel {
 
   func cancelImport(jobID: UUID) async {
     guard var job = library.importJobs.first(where: { $0.id == jobID }) else { return }
+    guard cancellingImportIDs.insert(jobID).inserted else { return }
+    defer { cancellingImportIDs.remove(jobID) }
     let previousLibrary = library
     importTasks[jobID]?.cancel()
     job.phase = .cancelled
@@ -1143,10 +1146,15 @@ final class PlayerModel {
       status.retryAllowed = false
       job.zipStatus = status
     }
+    job.updatedAt = environment.clock.now()
+    var cancelledLibrary = previousLibrary
+    guard let jobIndex = cancelledLibrary.importJobs.firstIndex(where: { $0.id == jobID }) else {
+      return
+    }
+    cancelledLibrary.importJobs[jobIndex] = job
     do {
-      try await replaceAndPersist(job)
+      try await environment.persistence.save(cancelledLibrary)
     } catch {
-      library = previousLibrary
       lastErrorMessage = error.localizedDescription
       return
     }
@@ -1157,6 +1165,7 @@ final class PlayerModel {
       )
     }
     await environment.media.discardStaging(for: jobID)
+    library = cancelledLibrary
     lastErrorMessage = nil
   }
 

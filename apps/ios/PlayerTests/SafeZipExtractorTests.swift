@@ -351,6 +351,55 @@ final class SafeZipExtractorTests: XCTestCase {
     XCTAssertFalse(FileManager.default.fileExists(atPath: staging.path))
   }
 
+  func testCancellationIsPublishedOnlyAfterStagingCleanupCompletes() async throws {
+    let jobID = UUID(uuidString: "60000000-0000-0000-0000-000000000011")!
+    let date = Date(timeIntervalSince1970: 1_700_000_000)
+    let failedJob = ImportJob(
+      id: jobID,
+      sourceFilename: "unsafe.zip",
+      phase: .failed,
+      progress: .none,
+      stagedRelativePath: "60000000-0000-0000-0000-000000000011/unsafe.zip",
+      failure: ImportFailure(
+        message: "The ZIP contains an unsafe path.",
+        affectedFilename: "unsafe.zip",
+        sourceIsUnchanged: true,
+        isRecoverable: false,
+        reasonCode: "path-traversal",
+        recoveryAction: .changeSelection
+      ),
+      createdAt: date,
+      updatedAt: date
+    )
+    let media = DelayedDiscardMediaManager()
+    let model = PlayerModel(environment: PlayerEnvironment(
+      persistence: InMemoryLibraryStore(snapshot: LibrarySnapshot(
+        books: [],
+        importJobs: [failedJob],
+        currentBookID: nil
+      )),
+      media: media,
+      inspector: ZipTestInspector(),
+      playback: ZipTestPlaybackController()
+    ))
+    await model.restore()
+
+    let cancellation = Task { await model.cancelImport(jobID: jobID) }
+    await media.waitUntilDiscardStarts()
+    XCTAssertEqual(
+      model.library.importJobs.first(where: { $0.id == jobID })?.phase,
+      .failed,
+      "Observers must not see a completed cancellation while staging still exists"
+    )
+
+    await media.allowDiscardToFinish()
+    await cancellation.value
+    XCTAssertEqual(
+      model.library.importJobs.first(where: { $0.id == jobID })?.phase,
+      .cancelled
+    )
+  }
+
   private func assertPolicyFailure(
     entries: [ZipFixture.Entry],
     policy: ZipExtractionPolicy,
@@ -450,6 +499,44 @@ private actor AsyncSignal {
   func wait() async {
     if hasSignalled { return }
     await withCheckedContinuation { continuations.append($0) }
+  }
+}
+
+private actor DelayedDiscardMediaManager: MediaManaging {
+  private let discardStarted = AsyncSignal()
+  private let discardAllowed = AsyncSignal()
+
+  func stage(sourceURL: URL, jobID: UUID) throws -> StagedAudio {
+    throw PlayerCoreError.fileOperation("Staging is unused by this test.")
+  }
+
+  func stagedURL(for relativePath: String) throws -> URL {
+    throw PlayerCoreError.fileOperation("Staging lookup is unused by this test.")
+  }
+
+  func commit(_ staged: StagedAudio, bookID: UUID, assetID: UUID) throws -> ManagedAudio {
+    throw PlayerCoreError.fileOperation("Commit is unused by this test.")
+  }
+
+  func rollback(_ managed: ManagedAudio) throws {
+    throw PlayerCoreError.fileOperation("Rollback is unused by this test.")
+  }
+
+  func managedURL(for relativePath: String) throws -> URL {
+    throw PlayerCoreError.fileOperation("Managed lookup is unused by this test.")
+  }
+
+  func discardStaging(for jobID: UUID) async {
+    await discardStarted.signal()
+    await discardAllowed.wait()
+  }
+
+  func waitUntilDiscardStarts() async {
+    await discardStarted.wait()
+  }
+
+  func allowDiscardToFinish() async {
+    await discardAllowed.signal()
   }
 }
 
