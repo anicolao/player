@@ -120,9 +120,9 @@ as useful evidence but not conclusive release protection.
     SHA so the measurement can be reproduced.
 11. Profile the baseline and remove avoidable duplicated work only when doing so
     preserves story isolation. In particular, quantify simulator creation/boot,
-    receiver-web/project generation, twelve cold `build-for-testing` operations,
-    test execution, `.xcresult` attachment export, walkthrough materialization,
-    and pixel comparison.
+    receiver-web/project generation, one cold `build-for-testing` operation per
+    canonical story (13 currently), test execution, `.xcresult` attachment
+    export, walkthrough materialization, and pixel comparison.
 12. Run focused repetitions while repairing each independent failure class,
     then qualify the complete matrix on clean simulator state.
 

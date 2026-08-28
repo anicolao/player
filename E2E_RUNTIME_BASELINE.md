@@ -3,19 +3,60 @@
 **Captured:** 2026-08-27  
 **Purpose:** Establish the pre-R0 runtime baseline for the canonical E2E matrix  
 **Branch:** `remediation/e2e-stabilization`  
-**Measured commit:** `36b31cbd26d73f16318c7688539db58f0e0cf392`
+**Current-main CI commit:** `6349b14f46ad1673a68eb60b8b24ba5207302acd`
+
+**Local phase-profile commit:** `36b31cbd26d73f16318c7688539db58f0e0cf392`
 
 ## Result
 
-All 12 canonical stories and all 22 selected UI tests passed on their first
-measured attempt. Running the shards sequentially took **29m09s** wall clock.
-The story commands accounted for 29m07s; two seconds were wrapper overhead.
+The current-main CI workflow passed all 13 canonical E2E stories plus core
+tests in **43m30s** wall clock. Its 14 macOS jobs consumed **2h54m22s** of
+aggregate runner time and were admitted at an observed maximum of five
+concurrent macOS jobs.
 
-This is the before-R0 reference measurement, not yet a runtime distribution.
-R0 qualification will produce repeated measurements and compare medians on the
-same machine class and command shape.
+Before the App Store listing work reached `main`, all 12 then-current stories
+and all 22 selected UI tests also passed on their first measured local attempt.
+Running those shards sequentially took **29m09s** wall clock. The story
+commands accounted for 29m07s; two seconds were wrapper overhead. That local
+run supplies the detailed phase profile below, while the current-main CI run is
+the authoritative complete-matrix wall-clock baseline.
 
-## Environment and method
+These are before-R0 reference measurements, not yet runtime distributions. R0
+qualification will produce repeated measurements and compare medians within
+the same environment and command shape; local and GitHub-hosted measurements
+must not be mixed into one delta.
+
+## Current-main CI critical path
+
+The successful [GitHub Actions run](https://github.com/anicolao/player/actions/runs/33124661556)
+started at 23:00:08Z and completed at 23:43:38Z. Core tests and the 13 E2E
+matrix jobs were eligible at once, but only five macOS jobs ran concurrently.
+Later shards began as earlier jobs released those slots.
+
+| CI measurement | Time |
+| --- | ---: |
+| End-to-end workflow wall clock | 43m30s |
+| Aggregate macOS job time | 2h54m22s |
+| Five-runner scheduling lower bound | 34m52s |
+| Longest individual job, Story 005 | 18m22s |
+| Story 007 | 15m08s |
+| Story 008 | 14m23s |
+| Story 013 | 13m23s |
+| Core tests | 6m52s |
+
+The final Story 013 job did not start until 30 minutes into the workflow, so
+the current critical path is primarily five-runner wave scheduling rather than
+one intrinsically 43-minute test. Purely balancing the existing jobs across
+five lanes has a computed longest lane of about 37m16s. Removing repeated
+per-job setup and build work can lower that further.
+
+A typical shard spends about one minute installing Nix and another minute in
+the pinned-environment step before project generation or E2E execution begins.
+Every shard then generates the project once in the workflow and again inside
+`run-e2e.sh`. More matrix entries without a larger runner allowance would add
+this fixed cost and increase queue pressure.
+
+## Local phase-profile environment and method
 
 - macOS 26.5.2 (25F84), arm64
 - Mac16,5; 16 logical CPUs; 128 GiB RAM
@@ -47,7 +88,7 @@ The twelve invocations were timed around the complete process. Xcode test
 session durations and individual test durations were then read from each
 retained `Story.xcresult`.
 
-## Per-story timing
+## Local per-story timing for Stories 001-012
 
 | Story | Wall | Xcode test session | Outside test session | Share of story wall |
 | --- | ---: | ---: | ---: | ---: |
@@ -127,11 +168,16 @@ because this baseline happened to pass.
    whether receiver/project generation can occur once per checkout. CI
    currently generates the project in the workflow and again inside
    `run-e2e.sh`; measure and remove that duplication safely.
-3. Do not trade runtime for permissive waits. Product-state waits remain event
+3. Design CI around the observed macOS concurrency allowance. With five slots,
+   use balanced lanes or raise runner capacity before adding more jobs. Split
+   the long tests in Stories 005 and 007 across lanes, and decompose Story 008
+   only when its constituent journeys can retain independent setup, artifacts,
+   and failure reporting.
+4. Do not trade runtime for permissive waits. Product-state waits remain event
    driven and capped at two seconds.
-4. After R0 qualifies at 10/10 per story and 5/5 complete matrices, repeat this
+5. After R0 qualifies at 10/10 per story and 5/5 complete matrices, repeat this
    measurement on a comparable machine and publish median, minimum, maximum,
    and p95 total and per-story times.
-5. The median complete-suite runtime may not regress more than 10%, and an
+6. The median complete-suite runtime may not regress more than 10%, and an
    individual story may not regress more than 20%, unless added coverage is
    intentional, separately measured, and approved.
