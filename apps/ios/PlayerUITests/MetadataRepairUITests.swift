@@ -35,6 +35,10 @@ final class MetadataRepairUITests: XCTestCase {
     let series = anyElement(app, "metadata-field-series")
     let cover = anyElement(app, "metadata-cover-state")
     let integrity = anyElement(app, "metadata-integrity-probe")
+    let editorScroll = anyElement(app, "metadata-editor-scroll")
+    let editorReadiness = anyElement(app, "metadata-editor-scroll-readiness")
+    let editorArtwork = editor.descendants(matching: .any)["embedded-cover-artwork"]
+    let titleInput = app.textFields["metadata-title-input"]
     try requireValue(editor, "metadata:proposal:revision=0:dirty=false")
 
     try tester.step(
@@ -71,10 +75,52 @@ final class MetadataRepairUITests: XCTestCase {
           "audio:source=\(audioChecksum):managed=none:source-unchanged=true",
           "Opening metadata repair does not rewrite source audio"
         ),
-      ]
+      ],
+      captureReadiness: CaptureReadiness(
+        specification:
+          "At capture, the exact proposal provenance and integrity state are rendered at the settled top of the editor with decoded artwork and no transient UI",
+        anchor: editorReadiness
+      ) {
+        guard let state = ScrollReadinessState(editorReadiness.value) else { return false }
+        return state.containerID == "metadata-editor-scroll"
+          && state.axis == .vertical
+          && state.isIdle
+          && state.atTop
+          && self.hasExactValue(editor, "metadata:proposal:revision=0:dirty=false")
+          && self.hasExactValue(
+            title,
+            "value=The Brass Lantern|source=embedded-tag|confidence=high|locked=false|cleared=false"
+          )
+          && self.hasExactValue(
+            authors,
+            "value=Mira Sol|source=embedded-tag|confidence=high|locked=false|cleared=false"
+          )
+          && self.hasExactValue(
+            narrators,
+            "value=Anika Reed|source=embedded-tag|confidence=high|locked=false|cleared=false"
+          )
+          && self.hasExactValue(
+            series,
+            "value=Night Signals #4|source=embedded-tag|confidence=high|locked=false|cleared=false"
+          )
+          && self.hasExactValue(
+            cover,
+            "cover=original|source=embedded-artwork|locked=false"
+          )
+          && self.hasExactValue(
+            integrity,
+            "audio:source=\(self.audioChecksum):managed=none:source-unchanged=true"
+          )
+          && elementIsFullyVisible(
+            editorArtwork,
+            within: editorScroll,
+            requiresHittable: false
+          )
+          && elementIsFullyVisible(titleInput, within: editorScroll)
+          && self.hasNoTransientUI(app)
+      }
     )
 
-    let titleInput = app.textFields["metadata-title-input"]
     XCTAssertTrue(titleInput.waitForExistence(timeout: 2))
     try replaceText(in: titleInput, with: "The Amber Signal", app: app)
     app.buttons["metadata-apply-title"].tap()
@@ -122,6 +168,11 @@ final class MetadataRepairUITests: XCTestCase {
 
     let bookMetadata = anyElement(app, "book-metadata-probe")
     let bookProvenance = anyElement(app, "book-metadata-provenance-probe")
+    let detail = anyElement(app, "book-detail-screen")
+    let detailScroll = anyElement(app, "book-detail-scroll")
+    let detailReadiness = anyElement(app, "book-detail-scroll-readiness")
+    let detailArtwork = detail.descendants(matching: .any)["embedded-cover-artwork"]
+    let undoRepair = app.buttons["undo-metadata-repair"]
     try tester.step(
       "repaired-book-detail",
       description: "The committed book retains the repaired values and locks",
@@ -141,8 +192,32 @@ final class MetadataRepairUITests: XCTestCase {
           "audio:source=\(audioChecksum):managed=\(audioChecksum):source-unchanged=true",
           "Commit copied audio byte-for-byte without rewriting the source"
         ),
-        .exists(app.buttons["undo-metadata-repair"], "The committed repair can be undone"),
-      ]
+        .exists(undoRepair, "The committed repair can be undone"),
+      ],
+      captureReadiness: bookDetailCaptureReadiness(
+        app: app,
+        specification:
+          "At capture, the repaired metadata, provenance, byte integrity, and replacement artwork are atomically rendered at the settled top of Book Detail",
+        anchor: detailReadiness,
+        detail: detail,
+        detailScroll: detailScroll,
+        detailReadiness: detailReadiness,
+        artwork: detailArtwork
+      ) {
+        self.hasExactValue(
+          bookMetadata,
+          "metadata:book:title=The Amber Signal:authors=1:narrators=0:series=Night Signals #4:cover=replacement:locked=title,narrators,series,cover"
+        )
+          && self.hasExactValue(
+            bookProvenance,
+            "provenance:title=user:authors=embedded-tag:narrators=user-clear:series=embedded-tag:cover=user"
+          )
+          && self.hasExactValue(
+            integrity,
+            "audio:source=\(self.audioChecksum):managed=\(self.audioChecksum):source-unchanged=true"
+          )
+          && elementIsFullyVisible(undoRepair, within: detailScroll)
+      }
     )
 
     app.buttons["undo-metadata-repair"].tap()
@@ -165,8 +240,32 @@ final class MetadataRepairUITests: XCTestCase {
           "audio:source=\(audioChecksum):managed=\(audioChecksum):source-unchanged=true",
           "Undo changes metadata only and leaves both audio copies byte-identical"
         ),
-        .notExists(app.buttons["undo-metadata-repair"], "The consumed undo action is removed"),
-      ]
+        .notExists(undoRepair, "The consumed undo action is removed"),
+      ],
+      captureReadiness: bookDetailCaptureReadiness(
+        app: app,
+        specification:
+          "At capture, undo has atomically restored the original metadata, provenance, cover, and integrity at the settled top of Book Detail",
+        anchor: detailReadiness,
+        detail: detail,
+        detailScroll: detailScroll,
+        detailReadiness: detailReadiness,
+        artwork: detailArtwork
+      ) {
+        self.hasExactValue(
+          bookMetadata,
+          "metadata:book:title=The Brass Lantern:authors=1:narrators=1:series=Night Signals #4:cover=original:locked=none"
+        )
+          && self.hasExactValue(
+            bookProvenance,
+            "provenance:title=embedded-tag:authors=embedded-tag:narrators=embedded-tag:series=embedded-tag:cover=embedded-artwork"
+          )
+          && self.hasExactValue(
+            integrity,
+            "audio:source=\(self.audioChecksum):managed=\(self.audioChecksum):source-unchanged=true"
+          )
+          && !undoRepair.exists
+      }
     )
 
     tester.generateDocs()
@@ -207,6 +306,39 @@ final class MetadataRepairUITests: XCTestCase {
 
   private func anyElement(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {
     app.descendants(matching: .any)[identifier]
+  }
+
+  private func bookDetailCaptureReadiness(
+    app: XCUIApplication,
+    specification: String,
+    anchor: XCUIElement,
+    detail: XCUIElement,
+    detailScroll: XCUIElement,
+    detailReadiness: XCUIElement,
+    artwork: XCUIElement,
+    semanticState: @escaping @MainActor () -> Bool
+  ) -> CaptureReadiness {
+    CaptureReadiness(specification: specification, anchor: anchor) {
+      guard let state = ScrollReadinessState(detailReadiness.value) else { return false }
+      return state.containerID == "book-detail-scroll"
+        && state.axis == .vertical
+        && state.isIdle
+        && state.atTop
+        && detail.exists
+        && semanticState()
+        && elementIsFullyVisible(artwork, within: detailScroll, requiresHittable: false)
+        && self.hasNoTransientUI(app)
+    }
+  }
+
+  private func hasExactValue(_ element: XCUIElement, _ expected: String) -> Bool {
+    element.exists && element.value.map(String.init(describing:)) == expected
+  }
+
+  private func hasNoTransientUI(_ app: XCUIApplication) -> Bool {
+    !app.keyboards.firstMatch.exists
+      && !app.alerts.firstMatch.exists
+      && !app.sheets.firstMatch.exists
   }
 
   private func replaceText(

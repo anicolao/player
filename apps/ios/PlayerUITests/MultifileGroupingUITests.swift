@@ -44,8 +44,14 @@ final class MultifileGroupingUITests: XCTestCase {
     app.buttons["review-import-job-\(jobID)"].tap()
 
     let reviewImport = anyElement(app, "review-import-screen")
+    let reviewScroll = anyElement(app, "review-import-scroll")
+    let reviewReadiness = anyElement(app, "review-import-scroll-readiness")
     let groupingProbe = anyElement(app, "grouping-probe")
     let addToLibrary = app.buttons["add-import-to-library"]
+    let folderEvidence = anyElement(app, "grouping-evidence-folder-name")
+    let filenameEvidence = anyElement(app, "grouping-evidence-filename-stem")
+    let reviewOrder = app.buttons["review-order-button"]
+    let reviewArtwork = reviewImport.descendants(matching: .any)["placeholder-artwork"]
     try tester.step(
       "explainable-grouping",
       description: "Review Import explains why the selection became two candidate books",
@@ -61,15 +67,15 @@ final class MultifileGroupingUITests: XCTestCase {
           "The proposal reports its folder, filename, and numeric-order evidence"
         ),
         .exists(
-          anyElement(app, "grouping-evidence-folder-name"),
+          folderEvidence,
           "Folder-name grouping evidence is visible"
         ),
         .exists(
-          anyElement(app, "grouping-evidence-filename-stem"),
+          filenameEvidence,
           "Unicode filename-stem grouping evidence is visible"
         ),
         .exists(
-          app.buttons["review-order-button"],
+          reviewOrder,
           "The ordering problem links directly to Review Order"
         ),
         .valueEquals(
@@ -82,12 +88,47 @@ final class MultifileGroupingUITests: XCTestCase {
             && !addToLibrary.isEnabled
             && app.frame.intersects(addToLibrary.frame)
         },
-      ]
+      ],
+      captureReadiness: CaptureReadiness(
+        specification:
+          "At capture, the exact two-book grouping proposal is settled at the top with its evidence, placeholder artwork, and blocked pinned action fully rendered",
+        anchor: reviewReadiness
+      ) {
+        guard let state = ScrollReadinessState(reviewReadiness.value) else { return false }
+        return state.containerID == "review-import-scroll"
+          && state.axis == .vertical
+          && state.isIdle
+          && state.atTop
+          && self.hasExactValue(
+            reviewImport,
+            "proposal:needs-review:2-books:8-tracks:2-warnings"
+          )
+          && self.hasExactValue(
+            groupingProbe,
+            "groups|2|tracks|8|folder-name+filename-stem|natural-numeric|review"
+          )
+          && self.hasExactValue(addToLibrary, "blocked:2-warnings:disabled")
+          && !addToLibrary.isEnabled
+          && elementIsFullyVisible(
+            reviewArtwork,
+            within: reviewScroll,
+            requiresHittable: false
+          )
+          && elementIsFullyVisible(folderEvidence, within: reviewScroll, requiresHittable: false)
+          && elementIsFullyVisible(filenameEvidence, within: reviewScroll, requiresHittable: false)
+          && elementIsFullyVisible(reviewOrder, within: reviewScroll)
+          && elementIsFullyVisible(addToLibrary, within: app, requiresHittable: false)
+          && self.hasNoTransientUI(app)
+      }
     )
 
     app.buttons["review-order-button"].tap()
     let orderScreen = anyElement(app, "review-order-screen")
     let orderProbe = anyElement(app, "order-probe")
+    let orderingEvidence = anyElement(app, "ordering-evidence-natural-numeric")
+    let preludeTrack = anyElement(app, "order-track-\(prelude)")
+    let lastTrack = anyElement(app, "order-track-\(b3)")
+    let saveOrder = app.buttons["save-order"]
     try tester.step(
       "natural-order-review",
       description: "Review Order preserves natural numeric order and every original file",
@@ -103,12 +144,30 @@ final class MultifileGroupingUITests: XCTestCase {
           "Numeric filename components place part 2 before part 10"
         ),
         .exists(
-          anyElement(app, "ordering-evidence-natural-numeric"),
+          orderingEvidence,
           "Natural numeric ordering evidence is visible"
         ),
-        .exists(anyElement(app, "order-track-\(prelude)"), "The Unicode prelude is retained"),
+        .exists(preludeTrack, "The Unicode prelude is retained"),
         .exists(anyElement(app, "order-track-\(b4)"), "The accented loose file is retained"),
-      ]
+      ],
+      captureReadiness: CaptureReadiness(
+        specification:
+          "At capture, the exact initial natural ordering and visible first proposal rows are rendered together with the pinned action and no transient UI",
+        anchor: orderProbe
+      ) {
+        self.hasExactValue(
+          orderScreen,
+          "order:needs-review:2-books:8-tracks:revision-0"
+        )
+          && self.hasExactValue(
+            orderProbe,
+            "order|revision|0|a|a1,a2,a10,ap|b|b3,b4,b5,b6"
+          )
+          && elementIsFullyVisible(orderingEvidence, within: orderScreen, requiresHittable: false)
+          && elementIsFullyVisible(preludeTrack, within: orderScreen, requiresHittable: false)
+          && elementIsFullyVisible(saveOrder, within: orderScreen)
+          && self.hasNoTransientUI(app)
+      }
     )
 
     app.buttons["order-select-\(b4)"].tap()
@@ -168,8 +227,24 @@ final class MultifileGroupingUITests: XCTestCase {
           "order|revision|7|a|ap,a1,a2,a10,b4,b5,b6,b3",
           "The editor preserves the listener's complete curated order"
         ),
-        .exists(app.buttons["save-order"], "The valid corrected order can be saved"),
-      ]
+        .exists(saveOrder, "The valid corrected order can be saved"),
+      ],
+      captureReadiness: CaptureReadiness(
+        specification:
+          "At capture, the exact corrected one-book order, its first and last tracks, and enabled pinned save action are rendered atomically with no transient UI",
+        anchor: orderProbe
+      ) {
+        self.hasExactValue(orderScreen, "order:valid:1-book:8-tracks:revision-7")
+          && self.hasExactValue(
+            orderProbe,
+            "order|revision|7|a|ap,a1,a2,a10,b4,b5,b6,b3"
+          )
+          && saveOrder.isEnabled
+          && elementIsFullyVisible(preludeTrack, within: orderScreen, requiresHittable: false)
+          && elementIsFullyVisible(lastTrack, within: orderScreen, requiresHittable: false)
+          && elementIsFullyVisible(saveOrder, within: orderScreen)
+          && self.hasNoTransientUI(app)
+      }
     )
 
     app.buttons["save-order"].tap()
@@ -189,6 +264,11 @@ final class MultifileGroupingUITests: XCTestCase {
 
     let library = anyElement(app, "library-screen")
     let committedBook = anyElement(app, "recent-book-\(finalBookID)")
+    let libraryScrollReadiness = anyElement(app, "library-root-scroll-readiness")
+    let recentShelf = anyElement(app, "library-home-recent-shelf-scroll")
+    let recentShelfReadiness = anyElement(app, "library-home-recent-shelf-scroll-readiness")
+    let artworkProbe = anyElement(app, "library-artwork-probe")
+    let committedProbe = anyElement(app, "commit-probe")
     try tester.step(
       "atomic-commit",
       description: "The corrected selection appears atomically as one complete library book",
@@ -200,11 +280,37 @@ final class MultifileGroupingUITests: XCTestCase {
         ),
         .exists(committedBook, "The populated Library exposes the stable corrected book"),
         .valueEquals(
-          anyElement(app, "commit-probe"),
+          committedProbe,
           "transaction:committed:books=1:assets=8:staging=0:source-unchanged=true:rollback=available",
           "All eight assets committed together, staging cleared, and rollback remains available"
         ),
-      ]
+      ],
+      captureReadiness: CaptureReadiness(
+        specification:
+          "At capture, the exact atomic commit is visible as one settled recent shelf card with deterministic placeholder artwork and no transient UI",
+        anchor: recentShelfReadiness
+      ) {
+        guard
+          let libraryState = ScrollReadinessState(libraryScrollReadiness.value),
+          let shelfState = ScrollReadinessState(recentShelfReadiness.value)
+        else { return false }
+        return libraryState.containerID == "library-root-scroll"
+          && libraryState.axis == .vertical
+          && libraryState.isIdle
+          && libraryState.atTop
+          && shelfState.containerID == "library-home-recent-shelf-scroll"
+          && shelfState.axis == .horizontal
+          && shelfState.isIdle
+          && shelfState.atLeft
+          && self.hasExactValue(library, "ready:library-1-books")
+          && self.hasExactValue(
+            committedProbe,
+            "transaction:committed:books=1:assets=8:staging=0:source-unchanged=true:rollback=available"
+          )
+          && self.hasExactValue(artworkProbe, "artwork:ready=:count=0")
+          && elementIsFullyVisible(committedBook, within: recentShelf)
+          && self.hasNoTransientUI(app)
+      }
     )
 
     tester.generateDocs()
@@ -227,6 +333,16 @@ final class MultifileGroupingUITests: XCTestCase {
 
   private func anyElement(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {
     app.descendants(matching: .any)[identifier]
+  }
+
+  private func hasExactValue(_ element: XCUIElement, _ expected: String) -> Bool {
+    element.exists && element.value.map(String.init(describing:)) == expected
+  }
+
+  private func hasNoTransientUI(_ app: XCUIApplication) -> Bool {
+    !app.keyboards.firstMatch.exists
+      && !app.alerts.firstMatch.exists
+      && !app.sheets.firstMatch.exists
   }
 
   private func requireValue(_ element: XCUIElement, _ expected: String) throws {
