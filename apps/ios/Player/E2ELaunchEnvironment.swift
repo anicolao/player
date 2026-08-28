@@ -111,6 +111,31 @@ import UIKit
       return scenario
     }
   }
+
+  enum E2EImportRecoveryScenario: String, CaseIterable {
+    static let argument = "-e2e-recovery-scenario"
+
+    case lowSpace = "low-space"
+    case mixed
+    case allCorrupt = "all-corrupt"
+
+    static func parseRequired(arguments: [String]) throws -> E2EImportRecoveryScenario {
+      let markers = arguments.indices.filter { arguments[$0] == argument }
+      guard markers.count == 1 else {
+        let reason = markers.isEmpty ? "Missing" : "Duplicate"
+        throw PlayerCoreError.fileOperation("\(reason) Import Recovery E2E scenario.")
+      }
+      let marker = markers[0]
+      guard arguments.indices.contains(marker + 1) else {
+        throw PlayerCoreError.fileOperation("Missing Import Recovery E2E scenario value.")
+      }
+      let value = arguments[marker + 1]
+      guard !value.isEmpty, !value.hasPrefix("-"), let scenario = Self(rawValue: value) else {
+        throw PlayerCoreError.fileOperation("Invalid Import Recovery E2E scenario: \(value)")
+      }
+      return scenario
+    }
+  }
 #endif
 
 @MainActor
@@ -145,7 +170,7 @@ extension PlayerEnvironment {
         case "import-recovery-storage":
           return try E2EImportRecoveryEnvironment.make(
             reset: arguments.contains("-e2e-reset"),
-            scenario: argumentValue(after: "-e2e-recovery-scenario", in: arguments) ?? "mixed"
+            scenario: E2EImportRecoveryScenario.parseRequired(arguments: arguments).rawValue
           )
         case "synthetic-import-channels":
           return try importIngressEnvironment(reset: arguments.contains("-e2e-reset"))

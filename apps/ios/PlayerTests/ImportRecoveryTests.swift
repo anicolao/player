@@ -2,6 +2,58 @@ import XCTest
 @testable import Player
 
 final class ImportRecoveryTests: XCTestCase {
+  func testE2EImportRecoveryScenarioAcceptsEveryCanonicalValue() throws {
+    for scenario in E2EImportRecoveryScenario.allCases {
+      let parsed = try E2EImportRecoveryScenario.parseRequired(arguments: [
+        "Player",
+        "-e2e",
+        "-e2e-recovery-scenario", scenario.rawValue,
+        "-AppleLanguages", "(en)",
+      ])
+      XCTAssertEqual(parsed, scenario)
+    }
+  }
+
+  func testE2EImportRecoveryScenarioRequiresExactlyOneValue() {
+    let invalidArguments = [
+      ["Player", "-e2e"],
+      ["Player", "-e2e-recovery-scenario"],
+      ["Player", "-e2e-recovery-scenario", "-e2e-reset"],
+      [
+        "Player",
+        "-e2e-recovery-scenario", "mixed",
+        "-e2e-recovery-scenario", "low-space",
+      ],
+    ]
+
+    for arguments in invalidArguments {
+      XCTAssertThrowsError(
+        try E2EImportRecoveryScenario.parseRequired(arguments: arguments),
+        "Expected strict scenario parsing to reject \(arguments)"
+      )
+    }
+  }
+
+  func testE2EImportRecoveryScenarioRejectsUnknownAndMalformedValues() {
+    let invalidValues = [
+      "partial",
+      "Mixed",
+      "../mixed",
+      "mixed/other",
+      "",
+      String(repeating: "a", count: 65),
+    ]
+
+    for value in invalidValues {
+      XCTAssertThrowsError(
+        try E2EImportRecoveryScenario.parseRequired(arguments: [
+          "Player", "-e2e-recovery-scenario", value,
+        ]),
+        "Expected strict scenario parsing to reject \(value.debugDescription)"
+      )
+    }
+  }
+
   func testDetectsExistingAndWithinSelectionDuplicatesExplainably() {
     let files = [
       file(1, "first.m4b", checksum: "aaa"),
