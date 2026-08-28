@@ -934,9 +934,11 @@ struct ReviewImportView: View {
       if job.proposals.count > 1 {
         HStack(spacing: 10) {
           Label("Folder name", systemImage: "folder")
+            .accessibilityElement(children: .combine)
             .accessibilityIdentifier("grouping-evidence-folder-name")
           Spacer()
           Label("Filename stem", systemImage: "textformat")
+            .accessibilityElement(children: .combine)
             .accessibilityIdentifier("grouping-evidence-filename-stem")
         }
         .font(.subheadline)
@@ -1131,6 +1133,7 @@ private struct ReviewOrderView: View {
       )
       .font(.subheadline)
       .foregroundStyle(PlayerColor.secondary)
+      .accessibilityElement(children: .combine)
       .accessibilityIdentifier("ordering-evidence-natural-numeric")
     }
     .padding(.vertical, 8)

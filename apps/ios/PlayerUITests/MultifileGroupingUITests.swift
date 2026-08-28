@@ -126,6 +126,12 @@ final class MultifileGroupingUITests: XCTestCase {
     let orderScreen = anyElement(app, "review-order-screen")
     let orderProbe = anyElement(app, "order-probe")
     let orderingEvidence = anyElement(app, "ordering-evidence-natural-numeric")
+    XCTAssertEqual(
+      app.descendants(matching: .any)
+        .matching(identifier: "ordering-evidence-natural-numeric").count,
+      1,
+      "Natural-order evidence must be one unambiguous accessibility element"
+    )
     let preludeTrack = anyElement(app, "order-track-\(prelude)")
     let lastTrack = anyElement(app, "order-track-\(b3)")
     let saveOrder = app.buttons["save-order"]
