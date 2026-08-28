@@ -324,6 +324,12 @@ struct UpNextView: View {
       }
       .playerMiniPlayerScrollRunway()
       .scrollContentBackground(.hidden)
+      .accessibilityIdentifier("up-next-scroll")
+      .e2eScrollReadiness(
+        id: "up-next-scroll-readiness",
+        containerID: "up-next-scroll",
+        axis: .vertical
+      )
       StateProbe(id: "up-next-probe", value: upNextValue)
       StateProbe(id: "up-next-screen", value: "ready")
     }
@@ -414,6 +420,12 @@ struct AllBooksView: View {
           }
         }
         .playerMiniPlayerScrollRunway()
+        .accessibilityIdentifier("all-books-scroll")
+        .e2eScrollReadiness(
+          id: "all-books-scroll-readiness",
+          containerID: "all-books-scroll",
+          axis: .vertical
+        )
       }
       StateProbe(id: "all-books-probe", value: allBooksValue)
       StateProbe(id: "all-books-screen", value: "ready")
@@ -880,7 +892,16 @@ struct CollectionDetailView: View {
         }
         .playerMiniPlayerScrollRunway()
         .scrollContentBackground(.hidden)
+        .accessibilityIdentifier("collection-detail-scroll")
+        .e2eScrollReadiness(
+          id: "collection-detail-scroll-readiness",
+          containerID: "collection-detail-scroll",
+          axis: .vertical
+        )
         StateProbe(id: "collection-probe", value: collectionValue(collection))
+        #if E2E
+          LibraryArtworkStateProbe(model: model, id: "collection-artwork-probe")
+        #endif
       }
     }
     .navigationTitle(collection?.name ?? "Collection")
@@ -996,8 +1017,17 @@ struct LibraryTrashView: View {
         }
         .playerMiniPlayerScrollRunway()
         .scrollContentBackground(.hidden)
+        .accessibilityIdentifier("trash-scroll")
+        .e2eScrollReadiness(
+          id: "trash-scroll-readiness",
+          containerID: "trash-scroll",
+          axis: .vertical
+        )
       }
       StateProbe(id: "trash-probe", value: trashValue)
+      #if E2E
+        StateProbe(id: "trash-artwork-probe", value: trashArtworkValue)
+      #endif
       StateProbe(id: "trash-screen", value: "ready")
     }
     .navigationTitle("Trash")
@@ -1025,6 +1055,15 @@ struct LibraryTrashView: View {
 
   private var recoverable: [LibraryTrashTransaction] {
     model.library.trashTransactions.filter { $0.status == .recoverable }
+  }
+
+  private var trashArtworkValue: String {
+    let identifiers = recoverable.compactMap { transaction in
+      transaction.book.artworkData == nil
+        ? nil
+        : transaction.book.id.uuidString.lowercased()
+    }
+    return "artwork:ready=\(identifiers.joined(separator: ",")):count=\(identifiers.count)"
   }
 
   private func transactionBytes(_ transaction: LibraryTrashTransaction) -> Int64 {
@@ -1236,9 +1275,31 @@ struct LibraryOrganizerStateProbe: View {
     let position = model.library.playbackPosition?.positionMilliseconds ?? 0
     let trash = model.library.trashTransactions.filter { $0.status == .recoverable }.count
     let value = "library:books=\(model.library.books.count):continue=\(continued):up-next=\(upNext):finished=\(finished):collections=\(model.library.collections.count):trash=\(trash):view=\(model.library.allBooksViewStyle.rawValue):current=\(current):position=\(position)"
-    StateProbe(id: "library-organizer-probe", value: value)
+    Group {
+      StateProbe(id: "library-organizer-probe", value: value)
+      #if E2E
+        LibraryArtworkStateProbe(model: model)
+      #endif
+    }
   }
 }
+
+#if E2E
+  struct LibraryArtworkStateProbe: View {
+    @Bindable var model: PlayerModel
+    var id = "library-artwork-probe"
+
+    var body: some View {
+      let identifiers = model.library.books.compactMap { book in
+        book.artworkData == nil ? nil : book.id.uuidString.lowercased()
+      }
+      StateProbe(
+        id: id,
+        value: "artwork:ready=\(identifiers.joined(separator: ",")):count=\(identifiers.count)"
+      )
+    }
+  }
+#endif
 
 private func organizationDuration(_ seconds: Double) -> String {
   let minutes = max(Int(seconds / 60), 0)

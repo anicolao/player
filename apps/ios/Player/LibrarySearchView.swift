@@ -15,9 +15,14 @@ struct LibrarySearchView: View {
         controls
         resultContent
       }
+      .e2eLayoutReadiness(
+        id: "library-search-layout-readiness",
+        containerID: "library-search-layout"
+      )
       StateProbe(id: "library-search-screen", value: isIndexed ? "ready" : "indexing")
       StateProbe(id: "library-search-probe", value: probeValue)
       #if E2E
+        LibraryArtworkStateProbe(model: model, id: "library-search-artwork-probe")
         StateProbe(
           id: "library-search-focus-state",
           value: isSearchFocused ? "focused" : "unfocused"
@@ -185,6 +190,12 @@ struct LibrarySearchView: View {
         .padding(.bottom, 20)
       }
       .playerMiniPlayerScrollRunway()
+      .accessibilityIdentifier("library-search-results-scroll")
+      .e2eScrollReadiness(
+        id: "library-search-results-scroll-readiness",
+        containerID: "library-search-results-scroll",
+        axis: .vertical
+      )
     }
   }
 
