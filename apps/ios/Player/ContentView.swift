@@ -229,13 +229,22 @@ struct ContentView: View {
       }
       .overlay(alignment: .topLeading) {
         if E2EMetadataRepairBridge.shared.isConfigured {
-          Color.clear
-            .frame(width: 1, height: 1)
-            .id(model.library.books.count)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Metadata audio integrity")
-            .accessibilityIdentifier("metadata-integrity-probe")
-            .accessibilityValue(E2EMetadataRepairBridge.shared.integrityValue)
+          ZStack {
+            Color.clear
+              .frame(width: 1, height: 1)
+              .id(model.library.books.count)
+              .accessibilityElement(children: .ignore)
+              .accessibilityLabel("Metadata audio integrity")
+              .accessibilityIdentifier("metadata-integrity-probe")
+              .accessibilityValue(E2EMetadataRepairBridge.shared.integrityValue)
+            Color.clear
+              .frame(width: 1, height: 1)
+              .id(E2EMetadataRepairBridge.shared.persistenceValue)
+              .accessibilityElement(children: .ignore)
+              .accessibilityLabel("Metadata persistence")
+              .accessibilityIdentifier("metadata-persistence-probe")
+              .accessibilityValue(E2EMetadataRepairBridge.shared.persistenceValue)
+          }
         }
       }
     #endif
@@ -897,7 +906,7 @@ struct ReviewImportView: View {
 
   private func reviewContent(job: ImportJob, proposal: BookProposal) -> some View {
     VStack(spacing: 24) {
-      ArtworkView(data: proposal.artworkData, size: 152)
+      ArtworkView(data: proposal.renderedArtworkData, size: 152)
       VStack(spacing: 7) {
         Text(proposal.title).font(.title2.bold())
         Text(proposal.authors.first ?? "Unknown Author")
@@ -1402,7 +1411,7 @@ struct BookRow: View {
   let book: Book
   var body: some View {
     HStack(spacing: 14) {
-      ArtworkView(data: book.artworkData, size: 76)
+      ArtworkView(data: book.renderedArtworkData, size: 76)
       VStack(alignment: .leading, spacing: 5) {
         Text(book.title).font(.headline)
         Text(book.authors.first ?? "Unknown Author").foregroundStyle(PlayerColor.secondary)
@@ -1440,7 +1449,7 @@ struct BookDetailView: View {
       if let book {
         ScrollView {
           VStack(spacing: 18) {
-            ArtworkView(data: book.artworkData, size: 210)
+            ArtworkView(data: book.renderedArtworkData, size: 210)
             VStack(spacing: 6) {
               Text(book.title).font(.title.bold()).multilineTextAlignment(.center)
               Text(book.authors.first ?? "Unknown Author").foregroundStyle(PlayerColor.secondary)
@@ -1587,6 +1596,9 @@ struct BookDetailView: View {
         metadataProbe(id: "book-metadata-probe", value: bookMetadataValue(book))
         metadataProbe(id: "book-metadata-provenance-probe", value: bookProvenanceValue(book))
         metadataProbe(id: "book-state-probe", value: bookStateValue(book))
+        #if E2E
+          metadataProbe(id: "book-cover-render-state", value: coverRenderState(book))
+        #endif
       } else {
         ProgressView("Loading book…")
       }
@@ -1668,6 +1680,21 @@ struct BookDetailView: View {
     guard let book else { return "book:loading" }
     let container = book.assets.first?.container.lowercased() ?? "unknown"
     return "book:ready:\(book.id.uuidString.lowercased()):\(book.chapters.count)-chapters:\(container)"
+  }
+
+  private func coverRenderState(_ book: Book) -> String {
+    guard let cover = book.metadata.cover, let crop = cover.crop else {
+      return "crop=none:rendered=false"
+    }
+    return String(
+      format: "crop=x:%.3f:y:%.3f:width:%.3f:height:%.3f:rotation:%.1f:rendered=%@",
+      crop.x,
+      crop.y,
+      crop.width,
+      crop.height,
+      crop.rotationDegrees,
+      book.renderedArtworkData == cover.originalData ? "false" : "true"
+    )
   }
 
   private func seriesLabel(name: String, position: String?) -> String {
@@ -1772,7 +1799,7 @@ private struct NowPlayingView: View {
             PlayerColor.background.ignoresSafeArea()
             VStack(spacing: 24) {
           Spacer()
-          ArtworkView(data: book.artworkData, size: 270)
+          ArtworkView(data: book.renderedArtworkData, size: 270)
           VStack(spacing: 7) {
             Text(book.title).font(.title2.bold()).multilineTextAlignment(.center)
             Text(book.authors.first ?? "Unknown Author").foregroundStyle(PlayerColor.secondary)
@@ -2288,7 +2315,7 @@ private struct MiniPlayerView: View {
       Button(action: open) {
         HStack(spacing: 12) {
           if !dynamicTypeSize.isAccessibilitySize && !reducesDecorativeArtwork {
-            ArtworkView(data: book.artworkData, size: 44)
+            ArtworkView(data: book.renderedArtworkData, size: 44)
           }
           VStack(alignment: .leading, spacing: 2) {
             Text(book.title)
@@ -2386,6 +2413,7 @@ struct ArtworkView: View {
   var cornerRadius: CGFloat? = nil
   var shadowRadius: CGFloat? = nil
   var shadowY: CGFloat? = nil
+  var accessibilityIdentifierOverride: String? = nil
 
   var body: some View {
     Group {
@@ -2423,6 +2451,7 @@ struct ArtworkView: View {
   }
 
   private var artworkIdentifier: String {
+    if let accessibilityIdentifierOverride { return accessibilityIdentifierOverride }
     if reducesDecorativeArtwork && !isEssential { return "reduced-decorative-artwork" }
     return data == nil ? "placeholder-artwork" : "embedded-cover-artwork"
   }

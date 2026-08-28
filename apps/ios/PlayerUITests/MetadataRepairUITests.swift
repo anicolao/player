@@ -8,7 +8,7 @@ final class MetadataRepairUITests: XCTestCase {
   func testRepairsLocksCommitsAndUndoesMetadataWithoutChangingAudio() throws {
     continueAfterFailure = false
     XCUIDevice.shared.orientation = .portrait
-    let app = try makeApplication()
+    var app = try makeApplication()
     let tester = TestStepHelper(testCase: self)
     tester.setMetadata(
       title: "Metadata repair is explainable, reversible, and audio-safe",
@@ -148,6 +148,49 @@ final class MetadataRepairUITests: XCTestCase {
     XCTAssertTrue(app.buttons["Choose File"].exists)
     choosePhoto.tap()
     try requireValue(cover, "cover=replacement|source=user|locked=true")
+    app.buttons["metadata-replace-cover"].tap()
+    let cropButton = app.buttons["Crop"]
+    XCTAssertTrue(cropButton.waitForExistence(timeout: 2))
+    cropButton.tap()
+    let cropPreview = anyElement(app, "metadata-crop-preview-state")
+    let cropZoom = app.sliders["metadata-crop-zoom"]
+    let cropHorizontal = app.sliders["metadata-crop-horizontal"]
+    let cropArtwork = anyElement(app, "metadata-crop-preview-artwork")
+    XCTAssertTrue(cropZoom.waitForExistence(timeout: 2))
+    XCTAssertTrue(cropHorizontal.waitForExistence(timeout: 2))
+    cropZoom.adjust(toNormalizedSliderPosition: 1)
+    cropHorizontal.adjust(toNormalizedSliderPosition: 1)
+    let expectedCrop = "x:0.500:y:0.250:width:0.500:height:0.500:rotation:0.0"
+    try requireValue(cropPreview, "preview=\(expectedCrop)")
+
+    try tester.step(
+      "cropped-cover-preview",
+      description: "Crop previews a visibly different region of the retained original cover",
+      verifications: [
+        .valueEquals(
+          cropPreview,
+          "preview=\(expectedCrop)",
+          "The crop preview reflects the exact zoom and focal point"
+        ),
+        .exists(cropArtwork, "The decoded cropped artwork preview is visible"),
+      ],
+      captureReadiness: CaptureReadiness(
+        specification:
+          "At capture, the exact half-size crop is rendered from the asymmetric replacement cover and the crop controls are settled",
+        anchor: cropPreview
+      ) {
+        self.hasExactValue(cropPreview, "preview=\(expectedCrop)")
+          && cropArtwork.exists
+          && cropZoom.exists
+          && cropHorizontal.exists
+          && !app.keyboards.firstMatch.exists
+          && !app.alerts.firstMatch.exists
+      }
+    )
+
+    app.buttons["metadata-apply-crop"].tap()
+    let cropState = anyElement(app, "metadata-crop-state")
+    try requireValue(cropState, "crop=\(expectedCrop)")
     try requireValue(editor, "metadata:proposal:revision=0:dirty=true")
     try requireValue(
       integrity,
@@ -162,6 +205,13 @@ final class MetadataRepairUITests: XCTestCase {
     // asynchronous commit to leave that screen before resolving the matching
     // title in Library; otherwise a fast host can tap the stale review label.
     XCTAssertTrue(review.waitForNonExistence(timeout: 2))
+    let persistence = anyElement(app, "metadata-persistence-probe")
+    let persistedBook = "persistence=books:1:titles:The Amber Signal"
+    try requireValue(persistence, persistedBook)
+    XCTAssertTrue(terminateAndWait(app))
+    app = try makeApplication(reset: false)
+    app.launch()
+    try requireValue(anyElement(app, "metadata-persistence-probe"), persistedBook)
     let repairedBook = app.staticTexts["The Amber Signal"]
     XCTAssertTrue(repairedBook.waitForExistence(timeout: 2))
     repairedBook.tap()
@@ -172,6 +222,7 @@ final class MetadataRepairUITests: XCTestCase {
     let detailScroll = anyElement(app, "book-detail-scroll")
     let detailReadiness = anyElement(app, "book-detail-scroll-readiness")
     let detailArtwork = detail.descendants(matching: .any)["embedded-cover-artwork"]
+    let renderedCover = anyElement(app, "book-cover-render-state")
     let undoRepair = app.buttons["undo-metadata-repair"]
     try tester.step(
       "repaired-book-detail",
@@ -193,6 +244,11 @@ final class MetadataRepairUITests: XCTestCase {
           "Commit copied audio byte-for-byte without rewriting the source"
         ),
         .exists(undoRepair, "The committed repair can be undone"),
+        .valueEquals(
+          renderedCover,
+          "crop=\(expectedCrop):rendered=true",
+          "The saved crop survives relaunch and renders from retained original bytes"
+        ),
       ],
       captureReadiness: bookDetailCaptureReadiness(
         app: app,
@@ -216,6 +272,7 @@ final class MetadataRepairUITests: XCTestCase {
             integrity,
             "audio:source=\(self.audioChecksum):managed=\(self.audioChecksum):source-unchanged=true"
           )
+          && self.hasExactValue(renderedCover, "crop=\(expectedCrop):rendered=true")
           && elementIsFullyVisible(undoRepair, within: detailScroll)
       }
     )
@@ -241,6 +298,11 @@ final class MetadataRepairUITests: XCTestCase {
           "Undo changes metadata only and leaves both audio copies byte-identical"
         ),
         .notExists(undoRepair, "The consumed undo action is removed"),
+        .valueEquals(
+          renderedCover,
+          "crop=none:rendered=false",
+          "Undo restores the uncropped embedded artwork projection"
+        ),
       ],
       captureReadiness: bookDetailCaptureReadiness(
         app: app,
@@ -264,6 +326,7 @@ final class MetadataRepairUITests: XCTestCase {
             integrity,
             "audio:source=\(self.audioChecksum):managed=\(self.audioChecksum):source-unchanged=true"
           )
+          && self.hasExactValue(renderedCover, "crop=none:rendered=false")
           && !undoRepair.exists
       }
     )
@@ -271,15 +334,16 @@ final class MetadataRepairUITests: XCTestCase {
     tester.generateDocs()
   }
 
-  private func makeApplication() throws -> XCUIApplication {
+  private func makeApplication(reset: Bool = true) throws -> XCUIApplication {
     let app = XCUIApplication()
     app.launchArguments = [
-      "-e2e", "-e2e-reset", "-e2e-fixture", "synthetic-metadata-repair",
+      "-e2e", "-e2e-fixture", "synthetic-metadata-repair",
       "-AppleLanguages", "(en)",
       "-AppleLocale", "en_CA",
       "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryM",
       "-NSTreatUnknownArgumentsAsOpen", "NO",
     ]
+    if reset { app.launchArguments.insert("-e2e-reset", at: 1) }
     app.launchEnvironment["TZ"] = "America/Toronto"
     app.launchEnvironment["PLAYER_E2E_METADATA_AUDIO_BASE64"] = try fixtureData(
       resource: "metadata-repair-source",

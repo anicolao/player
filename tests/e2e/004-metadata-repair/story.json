@@ -5,7 +5,8 @@
   "fixture": "synthetic-metadata-repair",
   "screenshots": [
     "000-metadata-provenance.png",
-    "001-repaired-book-detail.png",
-    "002-undo-restored-book-detail.png"
+    "001-cropped-cover-preview.png",
+    "002-repaired-book-detail.png",
+    "003-undo-restored-book-detail.png"
   ]
 }

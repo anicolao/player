@@ -61,6 +61,10 @@ struct MetadataEditorView: View {
           id: "metadata-title-value-state",
           value: draft.title.isEmpty ? "empty" : "value=\(draft.title)"
         )
+        StateProbe(
+          id: "metadata-crop-state",
+          value: draft.cover?.crop.map { cropValue($0) } ?? "crop=none"
+        )
       #endif
     }
     .navigationTitle("Edit Details")
@@ -83,7 +87,7 @@ struct MetadataEditorView: View {
     .confirmationDialog("Change Cover", isPresented: $isChoosingCoverSource) {
       Button("Choose Photo") { chooseCoverPhoto() }
       Button("Choose File") { isChoosingCoverFile = true }
-      if draft.cover != nil { Button("Crop") { isCroppingCover = true } }
+      if draft.cover != nil { Button("Crop") { openCrop() } }
       Button("Remove", role: .destructive) { removeCover() }
     }
     .photosPicker(
@@ -122,7 +126,11 @@ struct MetadataEditorView: View {
   private var coverEditor: some View {
     VStack(spacing: 14) {
       adaptiveCoverLayout {
-        ArtworkView(data: draft.cover?.originalData, size: 126, isEssential: true)
+        ArtworkView(
+          data: CoverArtworkRenderer.renderedData(for: draft.cover),
+          size: 126,
+          isEssential: true
+        )
         VStack(alignment: .leading, spacing: 10) {
           Text("Cover").font(.headline)
           Text(fieldSource(.cover))
@@ -287,13 +295,30 @@ struct MetadataEditorView: View {
   private var cropSheet: some View {
     NavigationStack {
       VStack(spacing: 22) {
-        ArtworkView(data: draft.cover?.originalData, size: 230, isEssential: true)
-        LabeledContent("Zoom") { Slider(value: $cropZoom, in: 1...2) }
-        LabeledContent("Horizontal") { Slider(value: $cropX, in: 0...1) }
-        LabeledContent("Vertical") { Slider(value: $cropY, in: 0...1) }
-        Text("Player retains the original cover, so this crop can be changed later.")
+        ArtworkView(
+          data: CoverArtworkRenderer.renderedData(for: cropPreviewCover),
+          size: 230,
+          isEssential: true,
+          accessibilityIdentifierOverride: "metadata-crop-preview-artwork"
+        )
+        LabeledContent("Zoom") {
+          Slider(value: $cropZoom, in: 1...2)
+            .accessibilityIdentifier("metadata-crop-zoom")
+        }
+        LabeledContent("Horizontal") {
+          Slider(value: $cropX, in: 0...1)
+            .accessibilityIdentifier("metadata-crop-horizontal")
+        }
+        LabeledContent("Vertical") {
+          Slider(value: $cropY, in: 0...1)
+            .accessibilityIdentifier("metadata-crop-vertical")
+        }
+        Text("Bookshelf retains the original cover, so this crop can be changed later.")
           .font(.caption)
           .foregroundStyle(PlayerColor.secondary)
+        #if E2E
+          StateProbe(id: "metadata-crop-preview-state", value: cropPreviewStateValue)
+        #endif
         Spacer()
       }
       .padding(24)
@@ -305,6 +330,7 @@ struct MetadataEditorView: View {
         }
         ToolbarItem(placement: .confirmationAction) {
           Button("Apply") { applyCrop() }
+            .accessibilityIdentifier("metadata-apply-crop")
         }
       }
     }
@@ -546,17 +572,44 @@ struct MetadataEditorView: View {
     lockOverrides[.cover] = true
   }
 
+  private func openCrop() {
+    if let crop = draft.cover?.crop, crop.width > 0, crop.height > 0 {
+      cropZoom = min(max(1 / min(crop.width, crop.height), 1), 2)
+      cropX = min(max(crop.x + crop.width / 2, 0), 1)
+      cropY = min(max(crop.y + crop.height / 2, 0), 1)
+    } else {
+      cropZoom = 1
+      cropX = 0.5
+      cropY = 0.5
+    }
+    isCroppingCover = true
+  }
+
   private func applyCrop() {
     guard var cover = draft.cover else { return }
-    let side = 1 / cropZoom
-    let x = min(max(cropX - side / 2, 0), 1 - side)
-    let y = min(max(cropY - side / 2, 0), 1 - side)
-    cover.crop = CoverCrop(x: x, y: y, width: side, height: side)
+    cover.crop = pendingCrop
     cover.source = .userCrop
     draft.cover = cover
     touchedFields.insert(.cover)
     lockOverrides[.cover] = true
     isCroppingCover = false
+  }
+
+  private var pendingCrop: CoverCrop {
+    let side = 1 / cropZoom
+    let x = min(max(cropX - side / 2, 0), 1 - side)
+    let y = min(max(cropY - side / 2, 0), 1 - side)
+    return CoverCrop(x: x, y: y, width: side, height: side)
+  }
+
+  private var cropPreviewCover: CoverArtwork? {
+    guard var cover = draft.cover else { return nil }
+    cover.crop = pendingCrop
+    return cover
+  }
+
+  private var cropPreviewStateValue: String {
+    cropValue(pendingCrop, prefix: "preview")
   }
 
   private var currentMetadata: AudiobookMetadata? {
@@ -588,6 +641,18 @@ struct MetadataEditorView: View {
       revision = model.library.importJobs.first(where: { $0.id == jobID })?.reviewRevision ?? 0
     }
     return "metadata:\(kind):revision=\(revision):dirty=\(isDirty)"
+  }
+
+  private func cropValue(_ crop: CoverCrop, prefix: String = "crop") -> String {
+    String(
+      format: "%@=x:%.3f:y:%.3f:width:%.3f:height:%.3f:rotation:%.1f",
+      prefix,
+      crop.x,
+      crop.y,
+      crop.width,
+      crop.height,
+      crop.rotationDegrees
+    )
   }
 
   private func fieldProbeValue(_ field: MetadataField) -> String {

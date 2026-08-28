@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 enum MetadataField: String, Codable, CaseIterable, Equatable, Hashable, Sendable {
   case cover
@@ -164,6 +165,97 @@ struct CoverArtwork: Codable, Equatable, Sendable {
     self.mediaType = mediaType
     self.source = source
     self.crop = crop
+  }
+}
+
+/// The original bytes and crop metadata are authoritative. Every presentation
+/// surface asks this renderer for a projection, so edits never crop an already
+/// cropped bitmap and legacy covers without crop metadata keep their exact
+/// original bytes.
+enum CoverArtworkRenderer {
+  static func renderedData(for artwork: CoverArtwork?) -> Data? {
+    guard let artwork else { return nil }
+    guard let crop = validatedCrop(artwork.crop) else { return artwork.originalData }
+    guard let source = UIImage(data: artwork.originalData), source.size.width > 0,
+      source.size.height > 0
+    else { return artwork.originalData }
+
+    let normalized = normalizedImage(source)
+    let rotated = rotatedImage(normalized, degrees: crop.rotationDegrees)
+    guard let image = croppedImage(rotated, crop: crop), let data = image.pngData() else {
+      return artwork.originalData
+    }
+    return data
+  }
+
+  private static func validatedCrop(_ crop: CoverCrop?) -> CoverCrop? {
+    guard let crop, crop.x.isFinite, crop.y.isFinite, crop.width.isFinite,
+      crop.height.isFinite, crop.rotationDegrees.isFinite,
+      crop.width > 0, crop.height > 0
+    else { return nil }
+    let validated = CoverCrop(
+      x: crop.x,
+      y: crop.y,
+      width: crop.width,
+      height: crop.height,
+      rotationDegrees: crop.rotationDegrees
+    )
+    guard validated.width > 0, validated.height > 0 else { return nil }
+    let isFullFrame = validated.x == 0 && validated.y == 0
+      && validated.width == 1 && validated.height == 1
+      && validated.rotationDegrees == 0
+    return isFullFrame ? nil : validated
+  }
+
+  private static func normalizedImage(_ image: UIImage) -> UIImage {
+    guard image.imageOrientation != .up || image.scale != 1 else { return image }
+    let format = UIGraphicsImageRendererFormat()
+    format.scale = 1
+    format.opaque = false
+    return UIGraphicsImageRenderer(size: image.size, format: format).image { _ in
+      image.draw(in: CGRect(origin: .zero, size: image.size))
+    }
+  }
+
+  private static func rotatedImage(_ image: UIImage, degrees: Double) -> UIImage {
+    let normalizedDegrees = degrees.truncatingRemainder(dividingBy: 360)
+    guard abs(normalizedDegrees) > .ulpOfOne else { return image }
+    let radians = CGFloat(normalizedDegrees * .pi / 180)
+    let sourceRect = CGRect(origin: .zero, size: image.size)
+    let rotatedRect = sourceRect.applying(CGAffineTransform(rotationAngle: radians))
+    let outputSize = CGSize(
+      width: max(1, abs(rotatedRect.width).rounded(.up)),
+      height: max(1, abs(rotatedRect.height).rounded(.up))
+    )
+    let format = UIGraphicsImageRendererFormat()
+    format.scale = 1
+    format.opaque = false
+    return UIGraphicsImageRenderer(size: outputSize, format: format).image { context in
+      context.cgContext.translateBy(x: outputSize.width / 2, y: outputSize.height / 2)
+      context.cgContext.rotate(by: radians)
+      image.draw(in: CGRect(
+        x: -image.size.width / 2,
+        y: -image.size.height / 2,
+        width: image.size.width,
+        height: image.size.height
+      ))
+    }
+  }
+
+  private static func croppedImage(_ image: UIImage, crop: CoverCrop) -> UIImage? {
+    guard let source = image.cgImage else { return nil }
+    let pixelWidth = CGFloat(source.width)
+    let pixelHeight = CGFloat(source.height)
+    let requested = CGRect(
+      x: CGFloat(crop.x) * pixelWidth,
+      y: CGFloat(crop.y) * pixelHeight,
+      width: CGFloat(crop.width) * pixelWidth,
+      height: CGFloat(crop.height) * pixelHeight
+    ).integral.intersection(CGRect(x: 0, y: 0, width: pixelWidth, height: pixelHeight))
+    guard requested.width >= 1, requested.height >= 1,
+      let cropped = source.cropping(to: requested)
+    else { return nil }
+    return UIImage(cgImage: cropped, scale: 1, orientation: .up)
   }
 }
 
@@ -537,6 +629,11 @@ enum MetadataRepairError: LocalizedError, Equatable, Sendable {
 }
 
 extension Book {
+  var renderedArtworkData: Data? {
+    CoverArtworkRenderer.renderedData(for: metadata.cover)
+      ?? artworkData
+  }
+
   mutating func replaceMetadata(with value: AudiobookMetadata) {
     metadata = value
     title = value.title
@@ -550,6 +647,11 @@ extension Book {
 }
 
 extension BookProposal {
+  var renderedArtworkData: Data? {
+    CoverArtworkRenderer.renderedData(for: metadata.cover)
+      ?? artworkData
+  }
+
   mutating func replaceMetadata(with value: AudiobookMetadata) {
     metadata = value
     title = value.title

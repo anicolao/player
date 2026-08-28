@@ -88,7 +88,8 @@ cleared fields use `confidence=user`, never a fabricated percentage.
 
 ## Repair and lock semantics
 
-The test stages five field operations in one editor draft:
+The test performs six editing actions in one editor draft; they resolve to five
+field mutations because replacement and cropping are one final cover value:
 
 1. Replace the contents of `metadata-title-input` with `The Amber Signal`, then
    tap `metadata-apply-title`. A user edit automatically locks the title.
@@ -102,6 +103,12 @@ The test stages five field operations in one editor draft:
    `Choose Photo`. This consumes the injected synthetic PNG through the normal
    photo-library cover setter and produces
    `cover=replacement|source=user|locked=true`.
+6. Open `Crop`, set the production zoom and horizontal sliders to their
+   deterministic end positions, and require
+   `preview=x:0.500:y:0.250:width:0.500:height:0.500:rotation:0.0` before
+   applying. The preview and saved projection are decoded from the retained
+   replacement bytes; the original replacement image is not destructively
+   rewritten.
 
 The final changed fields are:
 
@@ -140,7 +147,10 @@ Before commit, source is the fixture checksum and managed is `none`. After
 Metadata and artwork are stored as book/provenance state; no mutation writes
 tags into either audio file.
 
-On Book Detail, `book-metadata-probe` reports:
+After commit, `metadata-persistence-probe` must report the committed title from
+the production `Library.json`. The test terminates the app, constructs and
+launches a fresh `XCUIApplication` without reset, and requires the same durable
+state before opening Book Detail. There, `book-metadata-probe` reports:
 
 ```text
 metadata:book:title=The Amber Signal:authors=1:narrators=0:series=Night Signals #4:cover=replacement:locked=title,narrators,series,cover
@@ -151,6 +161,11 @@ metadata:book:title=The Amber Signal:authors=1:narrators=0:series=Night Signals 
 ```text
 provenance:title=user:authors=embedded-tag:narrators=user-clear:series=embedded-tag:cover=user
 ```
+
+`book-cover-render-state` also reports the exact persisted crop and confirms
+that the displayed cover is a rendered projection. After undo, it reports no
+crop and no rendered projection, proving that undo restores the original
+embedded cover bytes as well as their metadata.
 
 The commit transaction retains revision 0 as the single available prior
 metadata snapshot. `undo-metadata-repair` restores that snapshot atomically but
@@ -172,9 +187,10 @@ After all programmatic assertions for each state, the test attaches exactly:
 
 ```text
 000-metadata-provenance.png
-001-repaired-book-detail.png
-002-undo-restored-book-detail.png
+001-cropped-cover-preview.png
+002-repaired-book-detail.png
+003-undo-restored-book-detail.png
 ```
 
-The test also attaches generated `README.md`. Baselines are not recorded by this
-scaffold task. Every screenshot contains only fixed synthetic metadata and art.
+The test also attaches generated `README.md`. Every screenshot contains only
+fixed synthetic metadata and art.

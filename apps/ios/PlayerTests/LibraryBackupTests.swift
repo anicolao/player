@@ -1,8 +1,10 @@
 import CryptoKit
+import UIKit
 import XCTest
 
 @testable import Player
 
+@MainActor
 final class LibraryBackupTests: XCTestCase {
   func testMediaBackupRoundTripsLibraryArtworkAndAudioWithoutDuplicates() async throws {
     let sourceRoot = temporaryDirectory("backup-source")
@@ -31,6 +33,15 @@ final class LibraryBackupTests: XCTestCase {
     let restored = try await destination.restore(from: prepared.url)
 
     XCTAssertEqual(restored, fixture.library)
+    XCTAssertEqual(
+      restored.books.first?.renderedArtworkData,
+      fixture.library.books.first?.renderedArtworkData
+    )
+    XCTAssertNotEqual(
+      restored.books.first?.renderedArtworkData,
+      restored.books.first?.artworkData,
+      "Restoring a portable backup must reapply the authoritative crop"
+    )
     XCTAssertEqual(
       try Data(contentsOf: destinationRoot.appending(path: fixture.relativeMediaPath)),
       fixture.audio
@@ -283,7 +294,28 @@ final class LibraryBackupTests: XCTestCase {
     )
     try audio.write(to: mediaURL)
     let checksum = SHA256.hash(data: audio).map { String(format: "%02x", $0) }.joined()
-    let artwork = Data([0x89, 0x50, 0x4e, 0x47, 0x01, 0x02])
+    let artworkFormat = UIGraphicsImageRendererFormat()
+    artworkFormat.scale = 1
+    let artwork = UIGraphicsImageRenderer(
+      size: CGSize(width: 8, height: 4),
+      format: artworkFormat
+    ).pngData { context in
+      UIColor.red.setFill()
+      context.fill(CGRect(x: 0, y: 0, width: 4, height: 4))
+      UIColor.blue.setFill()
+      context.fill(CGRect(x: 4, y: 0, width: 4, height: 4))
+    }
+    var metadata = AudiobookMetadata.imported(
+      title: "The Portable Book",
+      authors: ["Ada Listener"],
+      narrators: ["Nora Reader"],
+      seriesName: "Portable Stories",
+      seriesPosition: "2",
+      artworkData: artwork,
+      artworkMediaType: "image/png"
+    )
+    metadata.cover?.crop = CoverCrop(x: 0.5, y: 0, width: 0.5, height: 1)
+    metadata.cover?.source = .userCrop
     let asset = AudioAsset(
       id: assetID,
       originalFilename: "The Portable Book.m4b",
@@ -311,6 +343,7 @@ final class LibraryBackupTests: XCTestCase {
           durationSeconds: 600, source: .embedded, assetID: assetID
         )
       ],
+      metadata: metadata,
       listeningState: BookListeningState(
         status: .inProgress,
         positionMilliseconds: 123_000,

@@ -29,9 +29,18 @@
 - [x] The embedded synthetic cover identifies its source
 - [x] Opening metadata repair does not rewrite source audio
 
+## Crop previews a visibly different region of the retained original cover
+
+![Crop previews a visibly different region of the retained original cover](./screenshots/ios/001-cropped-cover-preview.png)
+
+**Verifications:**
+
+- [x] The crop preview reflects the exact zoom and focal point
+- [x] The decoded cropped artwork preview is visible
+
 ## The committed book retains the repaired values and locks
 
-![The committed book retains the repaired values and locks](./screenshots/ios/001-repaired-book-detail.png)
+![The committed book retains the repaired values and locks](./screenshots/ios/002-repaired-book-detail.png)
 
 **Verifications:**
 
@@ -39,10 +48,11 @@
 - [x] Book Detail retains provenance after commit
 - [x] Commit copied audio byte-for-byte without rewriting the source
 - [x] The committed repair can be undone
+- [x] The saved crop survives relaunch and renders from retained original bytes
 
 ## Undo restores the prior metadata and embedded cover
 
-![Undo restores the prior metadata and embedded cover](./screenshots/ios/002-undo-restored-book-detail.png)
+![Undo restores the prior metadata and embedded cover](./screenshots/ios/003-undo-restored-book-detail.png)
 
 **Verifications:**
 
@@ -50,3 +60,4 @@
 - [x] Undo restores the original provenance
 - [x] Undo changes metadata only and leaves both audio copies byte-identical
 - [x] The consumed undo action is removed
+- [x] Undo restores the uncropped embedded artwork projection

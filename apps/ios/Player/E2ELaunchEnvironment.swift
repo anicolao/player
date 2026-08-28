@@ -1698,7 +1698,13 @@ extension PlayerEnvironment {
         environment: environment
       )
 
-      let root = FileManager.default.temporaryDirectory.appending(
+      let support = try FileManager.default.url(
+        for: .applicationSupportDirectory,
+        in: .userDomainMask,
+        appropriateFor: nil,
+        create: true
+      )
+      let root = support.appending(
         path: "PlayerE2EMetadataRepair",
         directoryHint: .isDirectory
       )
@@ -1774,6 +1780,7 @@ extension PlayerEnvironment {
         sourceURL: sourceURL,
         sourceBytes: audio,
         managedURL: managedURL,
+        libraryURL: root.appending(path: "Library.json"),
         checksum: checksum,
         replacementCoverData: replacementCover
       )
@@ -1781,8 +1788,9 @@ extension PlayerEnvironment {
         UUID(uuidString: String(format: "80000000-0000-0000-0000-%012d", $0))
       }
       return PlayerEnvironment(
-        persistence: InMemoryLibraryStore(
-          snapshot: LibrarySnapshot(books: [], importJobs: [job], currentBookID: nil)
+        persistence: E2ESeededLibraryStore(
+          base: CodableLibraryStore(fileURL: root.appending(path: "Library.json")),
+          seed: LibrarySnapshot(books: [], importJobs: [job], currentBookID: nil)
         ),
         media: FileSystemMediaManager(rootURL: root),
         inspector: DeterministicAudioInspector(result: .failure(.unreadableAudio("unused"))),
@@ -2514,6 +2522,7 @@ extension PlayerEnvironment {
     private var sourceURL: URL?
     private var sourceBytes: Data?
     private var managedURL: URL?
+    private var libraryURL: URL?
     private var checksum: String?
     private(set) var replacementCoverData: Data?
 
@@ -2521,6 +2530,7 @@ extension PlayerEnvironment {
       sourceURL != nil
         && sourceBytes != nil
         && managedURL != nil
+        && libraryURL != nil
         && replacementCoverData != nil
     }
 
@@ -2528,12 +2538,14 @@ extension PlayerEnvironment {
       sourceURL: URL,
       sourceBytes: Data,
       managedURL: URL,
+      libraryURL: URL,
       checksum: String,
       replacementCoverData: Data
     ) {
       self.sourceURL = sourceURL
       self.sourceBytes = sourceBytes
       self.managedURL = managedURL
+      self.libraryURL = libraryURL
       self.checksum = checksum
       self.replacementCoverData = replacementCoverData
     }
@@ -2550,6 +2562,19 @@ extension PlayerEnvironment {
         managed = "none"
       }
       return "audio:source=\(checksum):managed=\(managed):source-unchanged=\(sourceUnchanged)"
+    }
+
+    var persistenceValue: String {
+      guard let libraryURL else { return "persistence=unconfigured" }
+      do {
+        guard let persisted = try E2EPersistedLibrary.load(from: libraryURL) else {
+          return "persistence=missing"
+        }
+        let titles = persisted.snapshot.books.map(\.title).sorted().joined(separator: ",")
+        return "persistence=books:\(persisted.snapshot.books.count):titles:\(titles)"
+      } catch {
+        return "persistence=invalid"
+      }
     }
   }
 

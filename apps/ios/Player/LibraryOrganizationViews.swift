@@ -79,13 +79,13 @@ struct LibraryOrganizationHome: View {
       Group {
         if stacksVertically {
           VStack(alignment: .leading, spacing: 12) {
-            ArtworkView(data: book.artworkData, size: 92)
+            ArtworkView(data: book.renderedArtworkData, size: 92)
             continueListeningDetails(book, fixedWidth: false)
           }
           .frame(maxWidth: .infinity, alignment: .leading)
         } else {
           HStack(spacing: 14) {
-            ArtworkView(data: book.artworkData, size: 92)
+            ArtworkView(data: book.renderedArtworkData, size: 92)
             continueListeningDetails(book, fixedWidth: true)
           }
         }
@@ -349,7 +349,7 @@ struct UpNextView: View {
     } label: {
       HStack(spacing: 12) {
         Text("\(index + 1)").font(.caption.bold()).foregroundStyle(PlayerColor.accent)
-        ArtworkView(data: book.artworkData, size: 58)
+        ArtworkView(data: book.renderedArtworkData, size: 58)
         VStack(alignment: .leading) {
           Text(book.title).font(.headline).foregroundStyle(PlayerColor.ink)
           Text(book.authors.first ?? "Unknown Author")
@@ -662,7 +662,7 @@ private struct BookshelfCoverCard: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
       ArtworkView(
-        data: book.artworkData,
+        data: book.renderedArtworkData,
         size: metrics.coverSize,
         cornerRadius: metrics.cornerRadius,
         shadowRadius: 0,
@@ -881,7 +881,7 @@ struct CollectionDetailView: View {
         List {
           ForEach(Array(books.enumerated()), id: \.element.id) { index, book in
             HStack(spacing: 12) {
-              ArtworkView(data: book.artworkData, size: 58)
+              ArtworkView(data: book.renderedArtworkData, size: 58)
               Text(book.title).font(.headline)
               Spacer()
               Button { move(book.id, offset: -1) } label: { Image(systemName: "arrow.up") }
@@ -996,7 +996,7 @@ struct LibraryTrashView: View {
       } else {
         List(recoverable) { transaction in
           HStack(spacing: 12) {
-            ArtworkView(data: transaction.book.artworkData, size: 58)
+            ArtworkView(data: transaction.book.renderedArtworkData, size: 58)
             VStack(alignment: .leading, spacing: 4) {
               Text(transaction.book.title).font(.headline)
               Text(ByteCountFormatter.string(fromByteCount: transactionBytes(transaction), countStyle: .file))
@@ -1233,7 +1233,7 @@ private struct CompactBookRow: View {
   let book: Book
   var body: some View {
     HStack(spacing: 12) {
-      ArtworkView(data: book.artworkData, size: 54)
+      ArtworkView(data: book.renderedArtworkData, size: 54)
       VStack(alignment: .leading, spacing: 4) {
         Text(book.title).font(.headline).foregroundStyle(PlayerColor.ink).lineLimit(1)
         Text(book.authors.first ?? "Unknown Author")

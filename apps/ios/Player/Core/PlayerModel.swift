@@ -2945,7 +2945,7 @@ final class PlayerModel {
         playbackRate: playbackState.status == .playing
           ? configuredRate : 0,
         defaultPlaybackRate: configuredRate,
-        artworkData: book.artworkData
+        artworkData: book.renderedArtworkData
       )
     )
   }

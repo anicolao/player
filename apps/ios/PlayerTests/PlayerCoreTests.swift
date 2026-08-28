@@ -543,6 +543,150 @@ final class PlayerCoreTests: XCTestCase {
     XCTAssertNotNil(MPNowPlayingArtworkFactory.make(from: image.pngData() ?? Data()))
   }
 
+  func testCoverCropRendersFromAuthoritativeOriginalAndSurvivesCoding() throws {
+    let format = UIGraphicsImageRendererFormat()
+    format.scale = 1
+    let original = UIGraphicsImageRenderer(
+      size: CGSize(width: 8, height: 4),
+      format: format
+    ).pngData {
+      context in
+      UIColor.red.setFill()
+      context.fill(CGRect(x: 0, y: 0, width: 4, height: 4))
+      UIColor.blue.setFill()
+      context.fill(CGRect(x: 4, y: 0, width: 4, height: 4))
+    }
+    let cover = CoverArtwork(
+      originalData: original,
+      mediaType: "image/png",
+      source: .userCrop,
+      crop: CoverCrop(x: 0.5, y: 0, width: 0.5, height: 1)
+    )
+
+    let rendered = try XCTUnwrap(CoverArtworkRenderer.renderedData(for: cover))
+    XCTAssertNotEqual(rendered, original)
+    let image = try XCTUnwrap(UIImage(data: rendered)?.cgImage)
+    XCTAssertEqual(image.width, 4)
+    XCTAssertEqual(image.height, 4)
+    let average = try averageRGBA(image)
+    XCTAssertLessThan(average[0], 10)
+    XCTAssertLessThan(average[1], 10)
+    XCTAssertGreaterThan(average[2], 245)
+
+    var metadata = AudiobookMetadata.imported(
+      title: "Asymmetric Cover",
+      authors: ["Fixture Author"],
+      narrators: [],
+      seriesName: nil,
+      seriesPosition: nil,
+      artworkData: original,
+      artworkMediaType: "image/png"
+    )
+    metadata.cover = cover
+    let book = Book(
+      id: UUID(uuidString: "A8000000-0000-0000-0000-000000000001")!,
+      title: metadata.title,
+      authors: ["Fixture Author"],
+      durationSeconds: 60,
+      artworkData: original,
+      assets: [],
+      dateAdded: Date(timeIntervalSince1970: 1_700_000_000),
+      artworkMediaType: "image/png",
+      metadata: metadata
+    )
+    XCTAssertEqual(book.artworkData, original, "The retained source bytes stay authoritative")
+    XCTAssertEqual(book.renderedArtworkData, rendered)
+
+    let restored = try JSONDecoder().decode(Book.self, from: JSONEncoder().encode(book))
+    XCTAssertEqual(restored.metadata.cover, cover)
+    XCTAssertEqual(restored.artworkData, original)
+    XCTAssertEqual(restored.renderedArtworkData, rendered)
+  }
+
+  func testCoverCropIgnoresMalformedZeroAreaMetadata() throws {
+    let format = UIGraphicsImageRendererFormat()
+    format.scale = 1
+    let original = UIGraphicsImageRenderer(
+      size: CGSize(width: 3, height: 2),
+      format: format
+    ).pngData {
+      context in
+      UIColor.orange.setFill()
+      context.fill(CGRect(x: 0, y: 0, width: 3, height: 2))
+    }
+    let malformedCrop = try JSONDecoder().decode(
+      CoverCrop.self,
+      from: Data(#"{"x":-3,"y":4,"width":0,"height":7,"rotationDegrees":0}"#.utf8)
+    )
+    let cover = CoverArtwork(
+      originalData: original,
+      mediaType: "image/png",
+      source: .userCrop,
+      crop: malformedCrop
+    )
+
+    XCTAssertEqual(CoverArtworkRenderer.renderedData(for: cover), original)
+  }
+
+  func testMetadataCropPublishesRenderedNowPlayingArtworkAndUndoRestoresOriginal() async throws {
+    let format = UIGraphicsImageRendererFormat()
+    format.scale = 1
+    let original = UIGraphicsImageRenderer(
+      size: CGSize(width: 8, height: 4),
+      format: format
+    ).pngData { context in
+      UIColor.red.setFill()
+      context.fill(CGRect(x: 0, y: 0, width: 4, height: 4))
+      UIColor.blue.setFill()
+      context.fill(CGRect(x: 4, y: 0, width: 4, height: 4))
+    }
+    let bookID = UUID(uuidString: "A8100000-0000-0000-0000-000000000001")!
+    let transactionID = UUID(uuidString: "A8100000-0000-0000-0000-000000000002")!
+    let book = Book(
+      id: bookID,
+      title: "Projected Cover",
+      authors: ["Fixture Author"],
+      durationSeconds: 60,
+      artworkData: original,
+      assets: [],
+      dateAdded: Date(timeIntervalSince1970: 1_700_000_000),
+      artworkMediaType: "image/png"
+    )
+    let nowPlaying = DeterministicNowPlayingPublisher()
+    let model = PlayerModel(environment: PlayerEnvironment(
+      persistence: InMemoryLibraryStore(snapshot: LibrarySnapshot(
+        books: [book],
+        importJobs: [],
+        currentBookID: bookID
+      )),
+      media: FileSystemMediaManager(rootURL: FileManager.default.temporaryDirectory),
+      inspector: AVFoundationAudioInspector(),
+      playback: DeterministicPlaybackController(),
+      nowPlaying: nowPlaying,
+      ids: DeterministicPlayerIDGenerator(values: [transactionID])
+    ))
+    await model.restore()
+    let cropped = CoverArtwork(
+      originalData: original,
+      mediaType: "image/png",
+      source: .userCrop,
+      crop: CoverCrop(x: 0.5, y: 0, width: 0.5, height: 1)
+    )
+    let expected = try XCTUnwrap(CoverArtworkRenderer.renderedData(for: cropped))
+
+    let repairedID = await model.repairBookMetadata(
+      bookID: bookID,
+      mutations: [.set(.cover, value: .cover(cropped))]
+    )
+    XCTAssertEqual(repairedID, transactionID)
+    XCTAssertEqual(nowPlaying.latest?.artworkData, expected)
+    XCTAssertEqual(model.library.books.first?.artworkData, original)
+
+    let undone = await model.undoLastMetadataTransaction(for: .book(bookID))
+    XCTAssertTrue(undone)
+    XCTAssertEqual(nowPlaying.latest?.artworkData, original)
+  }
+
   func testRealNowPlayingPublisherSurvivesArtworkConsumption() async throws {
     let renderer = UIGraphicsImageRenderer(size: CGSize(width: 512, height: 512))
     let artworkData = renderer.pngData { context in
@@ -2204,6 +2348,23 @@ final class PlayerCoreTests: XCTestCase {
   private func checksum(_ url: URL) throws -> String {
     let digest = SHA256.hash(data: try Data(contentsOf: url))
     return digest.map { String(format: "%02x", $0) }.joined()
+  }
+
+  private func averageRGBA(_ image: CGImage) throws -> [UInt8] {
+    var bytes = [UInt8](repeating: 0, count: 4)
+    let colorSpace = CGColorSpaceCreateDeviceRGB()
+    let context = try XCTUnwrap(CGContext(
+      data: &bytes,
+      width: 1,
+      height: 1,
+      bitsPerComponent: 8,
+      bytesPerRow: 4,
+      space: colorSpace,
+      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    ))
+    context.interpolationQuality = .none
+    context.draw(image, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+    return bytes
   }
 
   private func fixtureToneURL() throws -> URL {
