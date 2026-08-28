@@ -68,13 +68,33 @@ image comparator is [compare-walkthrough.swift](apps/ios/scripts/compare-walkthr
 A document mismatch retains the expected README, actual README, and unified
 diff under the same story's diagnostics directory.
 
-In GitHub Actions, the core suite and each committed story run in isolated
-parallel jobs. Within a multi-class story, XCTest may run two classes in
-parallel while retaining one combined result bundle and walkthrough. Every
-story uploads its own diagnostics artifact, and the
-`Core tests and exact E2E walkthroughs` aggregate succeeds only when the core
-job and every story job succeed. Serial release work advances only from that
-aggregate green result for the exact commit SHA.
+In GitHub Actions, five balanced macOS shards match the available runner
+concurrency. Each shard verifies and generates the project once, builds the
+complete test bundle once, and then runs its assigned stories sequentially.
+Only immutable build products are shared: every story still gets a newly
+created simulator, result bundle, logs, comparisons, and separately named
+diagnostics artifact. One shard also runs the fixture checks and core suite
+from the shared build. UI-test classes run serially within each shard because
+concurrent XCTest clones contend for simulator accessibility services; the
+safe parallelism boundary is the five independent macOS hosts. The
+`Core tests and exact E2E walkthroughs` aggregate succeeds only when all five
+shards succeed for the exact commit SHA.
+
+To exercise the same build-sharing contract locally, pass canonical story IDs
+to the shard runner. `--core` additionally exercises the fixture and core-test
+gate:
+
+```bash
+apps/ios/scripts/run-e2e-shard.sh \
+  --shard local-smoke \
+  --core \
+  010-library-backup \
+  011-offline-recovery
+```
+
+Shard timing and core diagnostics remain under
+`apps/ios/DerivedData/E2EShards/<shard>/`; the story evidence remains in its
+normal per-story directory.
 
 To run the complete serial acceptance suite locally—fixture verification, all
 unit/integration tests, and Stories 001–013—use:
@@ -113,8 +133,9 @@ screenshots/
 
 [`tests/e2e/manifest.json`](tests/e2e/manifest.json) is the canonical mapping
 from stories to UI-test selectors. The hygiene check requires every UI test to
-appear exactly once and requires CI to select the same set. Each story's
-`story.json` records its fixture and expected screenshot inventory.
+appear exactly once and requires the five CI shards to assign every canonical
+story exactly once. Each story's `story.json` records its fixture and expected
+screenshot inventory.
 
 The Swift `TestStepHelper` combines state assertions, screenshot capture, deterministic naming, and walkthrough generation in one operation. Screenshot counters and Markdown references are not maintained manually.
 

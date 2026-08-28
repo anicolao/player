@@ -79,10 +79,28 @@ sort -o "${temporary_root}/source-tests" "${temporary_root}/source-tests"
 cmp "${temporary_root}/manifest-tests" "${temporary_root}/source-tests" \
   || fail "every UI test method must appear exactly once in the canonical manifest"
 
-rg -o 'PlayerUITests/[A-Za-z0-9_]+/test[A-Za-z0-9_]+' "${workflow}" \
-  | sort > "${temporary_root}/workflow-tests"
-cmp "${temporary_root}/manifest-tests" "${temporary_root}/workflow-tests" \
-  || fail "the CI selectors and canonical manifest differ"
+rg -o 'story_[1-3]: [0-9]{3}-[a-z0-9][a-z0-9-]*' "${workflow}" \
+  | sed 's/^story_[1-3]: //' | sort > "${temporary_root}/workflow-stories"
+cmp "${temporary_root}/manifest-stories" "${temporary_root}/workflow-stories" \
+  || fail "every canonical story must appear exactly once in the CI shards"
+
+rg -o 'shard: [a-z0-9][a-z0-9-]*' "${workflow}" \
+  | sed 's/^shard: //' | sort > "${temporary_root}/workflow-shards"
+[[ "$(wc -l < "${temporary_root}/workflow-shards" | tr -d ' ')" -eq 5 ]] \
+  || fail "CI must define exactly five macOS shards"
+[[ "$(sort -u "${temporary_root}/workflow-shards" | wc -l | tr -d ' ')" -eq 5 ]] \
+  || fail "CI shard identifiers must be unique"
+[[ "$(rg -c 'run_core: true' "${workflow}")" -eq 1 ]] \
+  || fail "core and fixture tests must run in exactly one CI shard"
+[[ "$(rg -c 'PLAYER_E2E_PARALLEL_WORKERS: "1"' "${workflow}")" -eq 1 ]] \
+  || fail "CI must keep UI test classes serial within each macOS shard"
+rg -q '^[[:space:]]*PLAYER_E2E_PARALLEL_WORKERS=1' \
+  "${script_dir}/run-e2e-shard.sh" \
+  || fail "the shard runner must keep UI test classes serial"
+
+if rg -q 'PlayerUITests/[A-Za-z0-9_]+/test[A-Za-z0-9_]+' "${workflow}"; then
+  fail "CI must derive selectors from the canonical manifest instead of duplicating them"
+fi
 
 if rg -n --pcre2 '\b(?:sleep|usleep)\s*\(|DispatchQueue\.[^\n]*asyncAfter|Task\.sleep' \
   "${ui_test_root}" --glob '*.swift'; then
@@ -188,4 +206,4 @@ fi
 [[ -s "${walkthrough_fixture}/mismatch-diagnostics/README.diff" ]] \
   || fail "walkthrough README comparison did not retain a unified diff"
 
-echo "E2E hygiene passed: manifest, selectors, waits, retries, recording guard, and walkthrough docs."
+echo "E2E hygiene passed: manifest, shards, waits, retries, recording guard, and walkthrough docs."

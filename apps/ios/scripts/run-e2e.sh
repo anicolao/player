@@ -15,6 +15,8 @@ simulator_id=""
 recording_stage=""
 parallel_workers="${PLAYER_E2E_PARALLEL_WORKERS:-2}"
 skip_project_generation="${PLAYER_SKIP_PROJECT_GENERATION:-0}"
+skip_e2e_build="${PLAYER_SKIP_E2E_BUILD:-0}"
+skip_environment_verification="${PLAYER_SKIP_E2E_ENVIRONMENT_VERIFICATION:-0}"
 
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 
@@ -83,6 +85,16 @@ if [[ "${skip_project_generation}" != "0" && "${skip_project_generation}" != "1"
   exit 2
 fi
 
+if [[ "${skip_e2e_build}" != "0" && "${skip_e2e_build}" != "1" ]]; then
+  echo "PLAYER_SKIP_E2E_BUILD must be 0 or 1." >&2
+  exit 2
+fi
+
+if [[ "${skip_environment_verification}" != "0" && "${skip_environment_verification}" != "1" ]]; then
+  echo "PLAYER_SKIP_E2E_ENVIRONMENT_VERIFICATION must be 0 or 1." >&2
+  exit 2
+fi
+
 if [[ -n "${PLAYER_RECORD_STORY:-}" ]]; then
   echo "PLAYER_RECORD_STORY is no longer accepted; use --record <story-id>." >&2
   exit 2
@@ -126,7 +138,7 @@ fi
 
 derived_data_root="${ios_dir}/DerivedData/E2E"
 story_output="${derived_data_root}/${story_id}"
-build_data="${story_output}/Build"
+build_data="${PLAYER_E2E_BUILD_DATA:-${story_output}/Build}"
 result_bundle="${story_output}/Results/Story.xcresult"
 attachments="${story_output}/Attachments"
 actual_story="${story_output}/ActualWalkthrough"
@@ -206,8 +218,13 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if ! run_logged_phase environment "${script_dir}/verify-e2e-environment.sh"; then
-  exit 1
+if [[ "${skip_environment_verification}" == "1" ]]; then
+  printf 'environment-reuse\t%s\t%s\t0\n' "${SECONDS}" "${SECONDS}" \
+    >> "${story_output}/PhaseTimings.tsv"
+else
+  if ! run_logged_phase environment "${script_dir}/verify-e2e-environment.sh"; then
+    exit 1
+  fi
 fi
 
 simulator_phase_start="${SECONDS}"
@@ -243,15 +260,25 @@ else
   fi
 fi
 
-if ! run_logged_phase build xcodebuild build-for-testing \
-  -project "${ios_dir}/Player.xcodeproj" \
-  -scheme Player \
-  -configuration E2E \
-  -destination "platform=iOS Simulator,id=${simulator_id}" \
-  -derivedDataPath "${build_data}" \
-  CODE_SIGNING_ALLOWED=NO; then
-  echo "UI-test build failed; retained diagnostics in ${story_output}" >&2
-  exit 1
+if [[ "${skip_e2e_build}" == "1" ]]; then
+  if ! find "${build_data}/Build/Products" -maxdepth 1 -name '*.xctestrun' -print -quit \
+    | grep -q .; then
+    echo "A prebuilt E2E test bundle is unavailable in ${build_data}." >&2
+    exit 1
+  fi
+  printf 'build-reuse\t%s\t%s\t0\n' "${SECONDS}" "${SECONDS}" \
+    >> "${story_output}/PhaseTimings.tsv"
+else
+  if ! run_logged_phase build xcodebuild build-for-testing \
+    -project "${ios_dir}/Player.xcodeproj" \
+    -scheme Player \
+    -configuration E2E \
+    -destination "platform=iOS Simulator,id=${simulator_id}" \
+    -derivedDataPath "${build_data}" \
+    CODE_SIGNING_ALLOWED=NO; then
+    echo "UI-test build failed; retained diagnostics in ${story_output}" >&2
+    exit 1
+  fi
 fi
 
 only_testing_arguments=()
