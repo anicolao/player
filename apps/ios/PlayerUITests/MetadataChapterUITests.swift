@@ -38,6 +38,9 @@ final class MetadataChapterUITests: XCTestCase {
     app.staticTexts["Harbor at Dawn"].tap()
 
     let detail = app.descendants(matching: .any)["book-detail-screen"]
+    let detailScroll = app.descendants(matching: .any)["book-detail-scroll"]
+    let detailReadiness = app.descendants(matching: .any)["book-detail-scroll-readiness"]
+    let detailArtwork = detail.descendants(matching: .any)["embedded-cover-artwork"]
     try tester.step(
       "metadata-and-chapters",
       description: "Book Detail presents embedded contributors, series, cover, and chapters",
@@ -58,7 +61,25 @@ final class MetadataChapterUITests: XCTestCase {
         ),
         .exists(app.buttons["chapter-1"], "The first embedded chapter is navigable"),
         .exists(app.buttons["chapter-2"], "The second embedded chapter is navigable"),
-      ]
+      ],
+      captureReadiness: CaptureReadiness(
+        specification:
+          "At capture, the exact embedded M4B metadata, decoded cover, and first two chapter actions are settled at the top with no transient UI",
+        anchor: detailReadiness
+      ) {
+        guard let state = ScrollReadinessState(detailReadiness.value) else { return false }
+        return self.hasExactValue(detail, "book:ready:\(self.bookID):3-chapters:m4b")
+          && state.containerID == "book-detail-scroll"
+          && state.axis == .vertical
+          && state.isIdle
+          && state.atTop
+          && elementIsFullyVisible(detailArtwork, within: detailScroll, requiresHittable: false)
+          && app.buttons["chapter-1"].exists
+          && app.buttons["chapter-2"].exists
+          && !app.keyboards.firstMatch.exists
+          && !app.alerts.firstMatch.exists
+          && !app.sheets.firstMatch.exists
+      }
     )
 
     XCTAssertTrue(
@@ -69,21 +90,46 @@ final class MetadataChapterUITests: XCTestCase {
     XCTAssertTrue(app.buttons["player-play-pause"].waitForExistence(timeout: 2))
     app.buttons["player-play-pause"].tap()
 
+    let nowPlaying = app.otherElements["now-playing-screen"]
+    let nowPlayingReadiness = app.descendants(matching: .any)["now-playing-layout-readiness"]
     try tester.step(
       "chapter-now-playing",
       description: "Starting an embedded chapter opens Now Playing at its exact boundary",
       verifications: [
         .valueEquals(
-          app.otherElements["now-playing-screen"],
+          nowPlaying,
           "player:paused:\(bookID):1:30000",
           "The deterministic engine acknowledges chapter 2 at 30,000 milliseconds"
         ),
         .exists(app.staticTexts["Crossing the Bar"], "Now Playing names the current chapter"),
         .exists(app.staticTexts["Chapter 2 of 3"], "Now Playing gives chapter context"),
         .exists(app.sliders["player-position-slider"], "The chapter position remains adjustable"),
-      ]
+      ],
+      captureReadiness: CaptureReadiness(
+        specification:
+          "At capture, chapter two is paused at exactly 30 seconds with decoded artwork, settled Now Playing geometry, and no transient UI",
+        anchor: nowPlayingReadiness
+      ) {
+        guard let layout = LayoutReadinessState(nowPlayingReadiness.value) else { return false }
+        return layout.containerID == "now-playing-screen"
+          && self.hasExactValue(nowPlaying, "player:paused:\(self.bookID):1:30000")
+          && elementIsFullyVisible(
+            nowPlaying.descendants(matching: .any)["embedded-cover-artwork"],
+            within: nowPlaying,
+            requiresHittable: false
+          )
+          && elementIsFullyVisible(app.sliders["player-position-slider"], within: nowPlaying)
+          && elementIsFullyVisible(app.buttons["player-play-pause"], within: nowPlaying)
+          && !app.keyboards.firstMatch.exists
+          && !app.alerts.firstMatch.exists
+          && !app.sheets.firstMatch.exists
+      }
     )
 
     tester.generateDocs()
+  }
+
+  private func hasExactValue(_ element: XCUIElement, _ expected: String) -> Bool {
+    element.exists && element.value.map(String.init(describing:)) == expected
   }
 }
