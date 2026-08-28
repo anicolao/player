@@ -142,20 +142,32 @@ func dismissAppleIntelligenceNotificationIfPresent(
   file: StaticString = #filePath,
   line: UInt = #line
 ) {
+  guard !SystemInterruptionReadiness.didDismissAppleIntelligenceNotification else { return }
   let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
   let notificationTitle = springboard.staticTexts["Ready for Apple Intelligence"]
-  guard notificationTitle.waitForExistence(timeout: 0.5) else { return }
+  // This runs before every screenshot until the one-time system notification appears.
+  // An immediate query keeps the normal absent-notification path free of polling latency.
+  guard notificationTitle.exists else { return }
   notificationTitle.swipeUp()
+  let dismissed = waitForPredicate(
+    NSPredicate(format: "exists == false"),
+    on: notificationTitle,
+    timeout: 1
+  )
   XCTAssertTrue(
-    waitForPredicate(
-      NSPredicate(format: "exists == false"),
-      on: notificationTitle,
-      timeout: 1
-    ),
+    dismissed,
     "The simulator's Apple Intelligence notification should not obscure the walkthrough",
     file: file,
     line: line
   )
+  if dismissed {
+    SystemInterruptionReadiness.didDismissAppleIntelligenceNotification = true
+  }
+}
+
+@MainActor
+private enum SystemInterruptionReadiness {
+  static var didDismissAppleIntelligenceNotification = false
 }
 
 @MainActor
@@ -569,8 +581,6 @@ final class TestStepHelper {
     description: String,
     verifications: [StepVerification]
   ) throws {
-    dismissAppleIntelligenceNotificationIfPresent()
-
     for verification in verifications {
       XCTAssertTrue(
         verification.check(),
@@ -579,6 +589,8 @@ final class TestStepHelper {
         line: #line
       )
     }
+
+    dismissAppleIntelligenceNotificationIfPresent()
 
     let filename = String(format: "%03d-%@.png", nextScreenshotIndex, identifier)
     nextScreenshotIndex += 1
