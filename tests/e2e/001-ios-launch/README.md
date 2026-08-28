@@ -36,6 +36,8 @@
 **Verifications:**
 
 - [x] The receiver is ready before the listener visits the computer
+- [x] The production receiver parsed and served a deterministic raw browser request
+- [x] Ready state is backed by the production server exchange
 - [x] A copyable local-network address is shown
 - [x] A six-digit pairing code is shown
 - [x] Supported locales also see the optional iPhone Mirroring path
@@ -49,6 +51,7 @@
 - [x] The receiver reports the native mirrored-drop state
 - [x] The listener sees progress while the dropped folder is materialized
 - [x] The progress view identifies the book currently being received
+- [x] The state comes from the production drop materializer's progress callback
 
 ## Interrupted web transfer progress agrees with the server-confirmed bytes
 
@@ -58,6 +61,7 @@
 
 - [x] The receiver identifies the paused, resumable state
 - [x] The iPhone reports the exact confirmed byte count
+- [x] The paused state is backed by the server's interrupted-upload event
 - [x] The listener is told that retry continues from confirmed progress
 
 ## A completed transfer remains actionable for repeated imports
@@ -69,6 +73,7 @@
 - [x] The receiver reports one completed book without dismissing itself
 - [x] The listener can keep the receiver open for another book
 - [x] The listener explicitly decides when receiving is finished
+- [x] The receiver completion is corroborated by one new Book and committed import job
 
 ## Receive Another returns to the same paired receiver
 
