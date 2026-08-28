@@ -236,7 +236,7 @@ final class AccessibilityUITests: XCTestCase {
       in: app,
       containerID: "accessibility-settings-scroll",
       permitsGeometrySettledFallback: true,
-      gesture: .settingsLongForm
+      gesture: .accessibilitySettingsLongForm
     )
     try tester.step(
       "accessibility-preferences",
@@ -441,35 +441,90 @@ final class AccessibilityUITests: XCTestCase {
       permitsGeometrySettledFallback: permitsGeometrySettledFallback
     )
     let miniPlayer = app.otherElements["mini-player"]
-    XCTAssertTrue(
-      scrollUntil(
-        {
-          let element = target()
-          return elementIsFullyVisible(
-            element,
-            within: container,
-            obscuredBelow: miniPlayer.exists ? miniPlayer : nil
-          )
-        },
+    let targetIsVisible = {
+      let element = target()
+      return elementIsFullyVisible(
+        element,
+        within: container,
+        obscuredBelow: miniPlayer.exists ? miniPlayer : nil
+      )
+    }
+    let failureContext = {
+      let element = target()
+      guard element.exists else {
+        return "target=\(targetID):missing, container=\(container.frame)"
+      }
+      return "target=\(targetID):\(element.frame), "
+        + "target-hittable=\(element.isHittable), container=\(container.frame)"
+    }
+    let revealed: Bool
+    if permitsGeometrySettledFallback {
+      revealed = revealWithSettledListGeometry(
+        targetIsVisible,
+        on: surface,
+        deadline: deadline,
+        failureContext: failureContext
+      ) {
+        performAccessibilityScrollGesture(gesture, in: container)
+      }
+    } else {
+      revealed = scrollUntil(
+        targetIsVisible,
         on: surface,
         deadline: deadline,
         requiresInteraction: true,
         requiresScrollableRange: true,
         terminalEndpoint: \.atBottom,
-        failureContext: {
-          let element = target()
-          guard element.exists else {
-            return "target=\(targetID):missing, container=\(container.frame)"
-          }
-          return "target=\(targetID):\(element.frame), "
-            + "target-hittable=\(element.isHittable), container=\(container.frame)"
-        }
+        failureContext: failureContext
       ) {
         performAccessibilityScrollGesture(gesture, in: container)
-      },
+      }
+    }
+    XCTAssertTrue(
+      revealed,
       "Expected \(targetID) to become fully visible through settled user scrolling"
     )
     return target()
+  }
+
+  private func revealWithSettledListGeometry(
+    _ condition: @escaping () -> Bool,
+    on surface: ScrollSurface,
+    deadline: EventDeadline,
+    failureContext: () -> String,
+    gesture: () -> Void
+  ) -> Bool {
+    guard waitForScrollReadiness(
+      surface,
+      deadline: deadline,
+      matching: { $0.isIdle && $0.geometryReady }
+    ), let before = surface.state(), before.hasScrollableRange, !before.atBottom,
+      deadline.remaining >= 0.2
+    else {
+      print("List scroll did not start from a ready scrollable surface: \(failureContext())")
+      return false
+    }
+
+    gesture()
+    guard let after = surface.state(),
+      after.isIdle,
+      after.geometryID > before.geometryID,
+      after.offset > before.offset + 0.5,
+      condition(),
+      let stable = surface.state(),
+      stable.isIdle,
+      stable.geometryID == after.geometryID,
+      abs(stable.offset - after.offset) <= 0.5,
+      condition()
+    else {
+      print(
+        "List scroll lacked stable progress-making geometry: "
+          + "container=\(surface.containerID), probe=\(surface.readiness.value), "
+          + failureContext()
+      )
+      return false
+    }
+    return true
   }
 
   private enum AccessibilityScrollGesture {
@@ -478,6 +533,7 @@ final class AccessibilityUITests: XCTestCase {
     case bookDetailActions
     case nowPlayingTransport
     case settingsLongForm
+    case accessibilitySettingsLongForm
     case libraryLongForm
   }
 
@@ -500,6 +556,9 @@ final class AccessibilityUITests: XCTestCase {
     case .settingsLongForm:
       // Center-origin swiping avoids bottom chrome and traverses toward the measured endpoint.
       element.swipeUp(velocity: 2_000)
+    case .accessibilitySettingsLongForm:
+      // The target is visible around offset 860; the general 2,000 velocity overshot to 1,079.
+      element.swipeUp(velocity: 1_600)
     case .libraryLongForm:
       // This velocity targets the measured 778...985-point Up Next clearance window.
       element.swipeUp(velocity: 1_800)
