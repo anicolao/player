@@ -29,6 +29,7 @@ final class AppStoreListingUITests: XCTestCase {
       library,
       "library-home-recent-shelf-scroll-readiness"
     )
+    let artworkReadiness = anyElement(library, "library-artwork-probe")
     try tester.step(
       "library",
       description: "The library gives owned audiobooks a warm, useful home",
@@ -40,16 +41,21 @@ final class AppStoreListingUITests: XCTestCase {
       ],
       captureReadiness: marketingCaptureReadiness(
         app: library,
-        specification: "At capture, the exact five-book Library and cover shelf are idle at their starts with visible cover-bearing cards and paused mini-player",
+        specification: "At capture, the exact five-book Library and decoded cover shelf are idle at their starts with four recent cards and a paused mini-player",
         anchor: recentShelfReadiness
       ) {
-        let visibleRecentCovers = library.descendants(matching: .any)
+        let recentCards = library.descendants(matching: .any)
           .matching(NSPredicate(format: "identifier BEGINSWITH %@", "recent-book-"))
           .allElementsBoundByIndex
-          .filter {
-            elementIsFullyVisible($0, within: recentShelf, requiresHittable: false)
-          }
         return self.hasExactValue(libraryScreen, "ready:library-5-books")
+          && self.hasExactValue(
+            artworkReadiness,
+            "artwork:ready=90000000-0000-0000-0000-000000000001,"
+              + "90000000-0000-0000-0000-000000000002,"
+              + "90000000-0000-0000-0000-000000000003,"
+              + "90000000-0000-0000-0000-000000000004,"
+              + "90000000-0000-0000-0000-000000000005:count=5"
+          )
           && self.hasExactValue(
             library.otherElements["mini-player"],
             "player:paused:90000000-0000-0000-0000-000000000001:0:45000"
@@ -63,7 +69,8 @@ final class AppStoreListingUITests: XCTestCase {
             containerID: "library-home-recent-shelf-scroll",
             axis: .horizontal
           )
-          && visibleRecentCovers.count >= 3
+          && recentShelf.exists
+          && recentCards.count == 4
       }
     )
     XCTAssertTrue(terminateAndWait(library))
