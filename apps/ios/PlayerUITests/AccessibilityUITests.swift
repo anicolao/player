@@ -580,8 +580,8 @@ final class AccessibilityUITests: XCTestCase {
       // Bring the transport into view while retaining the title and chapter context.
       directUpwardDrag(in: element, fromY: 0.86, toY: 0.08, velocity: 500)
     case .settingsLongForm:
-      // Center-origin swiping avoids bottom chrome and traverses toward the measured endpoint.
-      element.swipeUp(velocity: 2_000)
+      // This target sits near the bottom of the Form; finish at the endpoint so it clears chrome.
+      element.swipeUp(velocity: .fast)
     case .accessibilitySettingsLongForm:
       // The target is visible around offset 860; the general 2,000 velocity overshot to 1,079.
       element.swipeUp(velocity: 1_600)
