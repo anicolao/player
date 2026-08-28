@@ -138,10 +138,26 @@ final class LibraryOrganizationUITests: XCTestCase {
     )
     let confirmFinished = confirmFinishedQuery.element
     XCTAssertTrue(confirmFinished.waitForExistence(timeout: 2))
+    let confirmFinishedMatches = confirmFinishedQuery.allElementsBoundByIndex
+    XCTAssertFalse(confirmFinishedMatches.isEmpty)
+    XCTAssertTrue(
+      confirmFinishedMatches.allSatisfy { $0.frame == confirmFinished.frame },
+      "Nested accessibility aliases must resolve to one physical confirm action"
+    )
     XCTAssertEqual(
-      confirmFinishedQuery.count,
-      1,
-      "The finished confirmation must expose one scoped confirm action"
+      Set(confirmFinishedMatches.map(\.identifier)),
+      Set(["confirm-mark-finished"]),
+      "Every accessibility alias must retain the scoped confirm identifier"
+    )
+    XCTAssertEqual(
+      Set(confirmFinishedMatches.map(\.label)),
+      Set(["Mark Finished"]),
+      "Every accessibility alias must retain the visible confirm label"
+    )
+    XCTAssertEqual(
+      Set(confirmFinishedMatches.map(\.isHittable)),
+      Set([true]),
+      "The finished confirmation must expose a consistent hittable action"
     )
     XCTAssertEqual(confirmFinished.identifier, "confirm-mark-finished")
     confirmFinished.tap()
