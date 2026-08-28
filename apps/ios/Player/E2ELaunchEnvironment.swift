@@ -2867,8 +2867,15 @@ extension PlayerEnvironment {
         expectedAudio: audio,
         managedRelativePath: managedPath
       )
+      let libraryURL = root.appending(path: "Library.json")
+      if reset || !FileManager.default.fileExists(atPath: libraryURL.path) {
+        try CodableLibraryStore.encodedCurrentSnapshot(snapshot).write(
+          to: libraryURL,
+          options: [.atomic, .completeFileProtectionUnlessOpen]
+        )
+      }
       return PlayerEnvironment(
-        persistence: InMemoryLibraryStore(snapshot: snapshot),
+        persistence: CodableLibraryStore(fileURL: libraryURL),
         media: FileSystemMediaManager(rootURL: root),
         inspector: DeterministicAudioInspector(result: .failure(.unreadableAudio("unused"))),
         playback: DeterministicPlaybackController(),

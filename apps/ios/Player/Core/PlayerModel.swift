@@ -119,6 +119,7 @@ final class PlayerModel {
 
   func restore() async {
     do {
+      try await environment.backups.recoverInterruptedRestores()
       let loadedLibrary = try await environment.persistence.load()
       let reconciliation = try await environment.media.reconcileStartupStorage(
         with: loadedLibrary
@@ -232,8 +233,7 @@ final class PlayerModel {
     await checkpointPlaybackMeter(force: true)
     environment.playback.pause()
     playbackMeterLastUptime = nil
-    let restored = try await environment.backups.restore(from: url)
-    try await environment.persistence.save(restored)
+    _ = try await environment.backups.restore(from: url)
     await restore()
     guard isRestored else {
       throw PlayerCoreError.fileOperation(

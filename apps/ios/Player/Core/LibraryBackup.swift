@@ -50,6 +50,22 @@ struct AutomaticLibraryBackup: Equatable, Sendable {
   var byteCount: Int64
 }
 
+enum PortableRestoreTransactionPhase: String, Codable, CaseIterable, Sendable {
+  case prepared
+  case previousLibraryMoved
+  case previousMediaMoved
+  case stagedMediaInstalled
+  case stagedLibraryInstalled
+  case committed
+}
+
+struct PortableRestoreTransactionJournal: Codable, Equatable, Sendable {
+  var phase: PortableRestoreTransactionPhase
+  var replacesMedia: Bool
+  var hadPreviousLibrary: Bool
+  var hadPreviousMedia: Bool
+}
+
 struct PortableLibraryBackupPolicy: Equatable, Sendable {
   var maximumManifestByteCount: Int64 = 64 * 1_024 * 1_024
   var maximumBookCount = 100_000
@@ -91,6 +107,7 @@ enum LibraryBackupError: LocalizedError, Equatable, Sendable {
 }
 
 protocol LibraryBackupManaging: Sendable {
+  func recoverInterruptedRestores() async throws
   func prepareExport(library: LibrarySnapshot, kind: PortableBackupKind) async throws
     -> PreparedLibraryBackup
   func discardPreparedExport(_ backup: PreparedLibraryBackup) async
@@ -98,6 +115,8 @@ protocol LibraryBackupManaging: Sendable {
 }
 
 actor DisabledLibraryBackupManager: LibraryBackupManaging {
+  func recoverInterruptedRestores() {}
+
   func prepareExport(library: LibrarySnapshot, kind: PortableBackupKind) throws
     -> PreparedLibraryBackup
   {
@@ -117,19 +136,25 @@ actor FileSystemLibraryBackupManager: LibraryBackupManaging {
   private let clock: any PlayerClock
   private let policy: PortableLibraryBackupPolicy
   private let beforeRestoreCommit: (@Sendable () async -> Void)?
+  private let restorePhaseFailpoint: (@Sendable (PortableRestoreTransactionPhase) throws -> Void)?
+  private let restoreID: @Sendable () -> UUID
 
   init(
     rootURL: URL,
     fileManager: FileManager = .default,
     clock: any PlayerClock = SystemPlayerClock(),
     policy: PortableLibraryBackupPolicy = .production,
-    beforeRestoreCommit: (@Sendable () async -> Void)? = nil
+    beforeRestoreCommit: (@Sendable () async -> Void)? = nil,
+    restorePhaseFailpoint: (@Sendable (PortableRestoreTransactionPhase) throws -> Void)? = nil,
+    restoreID: @escaping @Sendable () -> UUID = { UUID() }
   ) {
     self.rootURL = rootURL.standardizedFileURL
     self.fileManager = fileManager
     self.clock = clock
     self.policy = policy
     self.beforeRestoreCommit = beforeRestoreCommit
+    self.restorePhaseFailpoint = restorePhaseFailpoint
+    self.restoreID = restoreID
     // A prepared package is only a transient hand-off to the system picker.
     // If the process was killed while the picker was open, remove that copy on
     // the next launch so it cannot become hidden duplicate storage.
@@ -142,6 +167,7 @@ actor FileSystemLibraryBackupManager: LibraryBackupManaging {
     library: LibrarySnapshot,
     kind: PortableBackupKind
   ) throws -> PreparedLibraryBackup {
+    try ensureInterruptedTransactionsRecovered()
     try Task.checkCancellation()
     try validateLibraryCounts(library)
     let exportRoot = rootURL.appending(path: "BackupExports", directoryHint: .isDirectory)
@@ -250,6 +276,201 @@ actor FileSystemLibraryBackupManager: LibraryBackupManaging {
     }
   }
 
+  func recoverInterruptedRestores() async throws {
+    try recoverInterruptedRestoreTransactions()
+  }
+
+  private func commitRestore(
+    library: LibrarySnapshot,
+    stagedMedia: URL?,
+    transactionRoot suppliedTransactionRoot: URL? = nil
+  ) throws {
+    let transactionRoot =
+      suppliedTransactionRoot
+      ?? rootURL.appending(
+        path: "BackupRestore/\(restoreID().uuidString.lowercased())"
+      )
+    try fileManager.createDirectory(at: transactionRoot, withIntermediateDirectories: true)
+
+    let stagedLibrary = transactionRoot.appending(path: "StagedLibrary.json")
+    do {
+      let encodedLibrary = try CodableLibraryStore.encodedCurrentSnapshot(library)
+      try encodedLibrary.write(
+        to: stagedLibrary,
+        options: [.atomic, .completeFileProtectionUnlessOpen]
+      )
+      let stagedLibraryData = try Data(contentsOf: stagedLibrary)
+      guard try CodableLibraryStore.decodedCurrentSnapshot(stagedLibraryData) == library else {
+        throw LibraryBackupError.invalidPackage("the staged library could not be verified.")
+      }
+    } catch {
+      try? fileManager.removeItem(at: transactionRoot)
+      throw error
+    }
+
+    let liveLibrary = rootURL.appending(path: "Library.json")
+    let liveMedia = rootURL.appending(path: "Media", directoryHint: .isDirectory)
+    var journal = PortableRestoreTransactionJournal(
+      phase: .prepared,
+      replacesMedia: stagedMedia != nil,
+      hadPreviousLibrary: fileManager.fileExists(atPath: liveLibrary.path),
+      hadPreviousMedia: fileManager.fileExists(atPath: liveMedia.path)
+    )
+    try write(journal, in: transactionRoot)
+
+    do {
+      try restorePhaseFailpoint?(.prepared)
+      try Task.checkCancellation()
+
+      if journal.hadPreviousLibrary {
+        try fileManager.moveItem(
+          at: liveLibrary,
+          to: transactionRoot.appending(path: "PreviousLibrary.json")
+        )
+      }
+      try advance(&journal, to: .previousLibraryMoved, in: transactionRoot)
+
+      if let stagedMedia {
+        if journal.hadPreviousMedia {
+          try fileManager.moveItem(
+            at: liveMedia,
+            to: transactionRoot.appending(path: "PreviousMedia", directoryHint: .isDirectory)
+          )
+        }
+        try advance(&journal, to: .previousMediaMoved, in: transactionRoot)
+        try fileManager.moveItem(at: stagedMedia, to: liveMedia)
+        try advance(&journal, to: .stagedMediaInstalled, in: transactionRoot)
+      }
+
+      try fileManager.moveItem(at: stagedLibrary, to: liveLibrary)
+      try advance(&journal, to: .stagedLibraryInstalled, in: transactionRoot)
+      try advance(&journal, to: .committed, in: transactionRoot, invokesFailpoint: false)
+
+      // The commit marker makes the new pair authoritative. Cleanup is safe to
+      // retry during the next operation if interruption happens here.
+      try? fileManager.removeItem(at: transactionRoot)
+    } catch {
+      do {
+        try rollbackRestoreTransaction(at: transactionRoot, journal: journal)
+      } catch {
+        throw LibraryBackupError.invalidPackage(
+          "the restore failed and its previous library could not be recovered automatically; recovery evidence was retained."
+        )
+      }
+      throw error
+    }
+  }
+
+  private func advance(
+    _ journal: inout PortableRestoreTransactionJournal,
+    to phase: PortableRestoreTransactionPhase,
+    in transactionRoot: URL,
+    invokesFailpoint: Bool = true
+  ) throws {
+    journal.phase = phase
+    try write(journal, in: transactionRoot)
+    if invokesFailpoint { try restorePhaseFailpoint?(phase) }
+  }
+
+  private func write(
+    _ journal: PortableRestoreTransactionJournal,
+    in transactionRoot: URL
+  ) throws {
+    let data = try JSONEncoder.playerEncoder.encode(journal)
+    try data.write(
+      to: transactionRoot.appending(path: "journal.json"),
+      options: [.atomic, .completeFileProtectionUnlessOpen]
+    )
+  }
+
+  private func ensureInterruptedTransactionsRecovered() throws {
+    try recoverInterruptedRestoreTransactions()
+  }
+
+  private func recoverInterruptedRestoreTransactions() throws {
+    let restoreRoot = rootURL.appending(path: "BackupRestore", directoryHint: .isDirectory)
+    guard fileManager.fileExists(atPath: restoreRoot.path) else { return }
+    let transactions = try fileManager.contentsOfDirectory(
+      at: restoreRoot,
+      includingPropertiesForKeys: nil,
+      options: [.skipsHiddenFiles]
+    )
+    for transactionRoot in transactions.sorted(by: { $0.path < $1.path }) {
+      guard try itemType(at: transactionRoot) == .typeDirectory else {
+        throw LibraryBackupError.invalidPackage(
+          "portable restore recovery contains an unexpected entry."
+        )
+      }
+      let journalURL = transactionRoot.appending(path: "journal.json")
+      guard fileManager.fileExists(atPath: journalURL.path) else {
+        // No journal means live storage was never touched.
+        try fileManager.removeItem(at: transactionRoot)
+        continue
+      }
+      let journal: PortableRestoreTransactionJournal
+      do {
+        journal = try JSONDecoder.playerDecoder.decode(
+          PortableRestoreTransactionJournal.self,
+          from: Data(contentsOf: journalURL)
+        )
+      } catch {
+        throw LibraryBackupError.invalidPackage(
+          "portable restore recovery metadata is unreadable; recovery evidence was retained."
+        )
+      }
+      if journal.phase == .committed {
+        try fileManager.removeItem(at: transactionRoot)
+      } else {
+        try rollbackRestoreTransaction(at: transactionRoot, journal: journal)
+      }
+    }
+    if (try? fileManager.contentsOfDirectory(atPath: restoreRoot.path).isEmpty) == true {
+      try? fileManager.removeItem(at: restoreRoot)
+    }
+  }
+
+  private func rollbackRestoreTransaction(
+    at transactionRoot: URL,
+    journal: PortableRestoreTransactionJournal
+  ) throws {
+    let liveLibrary = rootURL.appending(path: "Library.json")
+    let stagedLibrary = transactionRoot.appending(path: "StagedLibrary.json")
+    let previousLibrary = transactionRoot.appending(path: "PreviousLibrary.json")
+    let liveMedia = rootURL.appending(path: "Media", directoryHint: .isDirectory)
+    let stagedMedia = transactionRoot.appending(path: "Media", directoryHint: .isDirectory)
+    let previousMedia = transactionRoot.appending(
+      path: "PreviousMedia", directoryHint: .isDirectory
+    )
+
+    if journal.replacesMedia {
+      if fileManager.fileExists(atPath: previousMedia.path) {
+        if fileManager.fileExists(atPath: liveMedia.path) {
+          try fileManager.removeItem(at: liveMedia)
+        }
+        try fileManager.moveItem(at: previousMedia, to: liveMedia)
+      } else if !journal.hadPreviousMedia,
+        !fileManager.fileExists(atPath: stagedMedia.path),
+        fileManager.fileExists(atPath: liveMedia.path)
+      {
+        try fileManager.removeItem(at: liveMedia)
+      }
+    }
+
+    if fileManager.fileExists(atPath: previousLibrary.path) {
+      if fileManager.fileExists(atPath: liveLibrary.path) {
+        try fileManager.removeItem(at: liveLibrary)
+      }
+      try fileManager.moveItem(at: previousLibrary, to: liveLibrary)
+    } else if !journal.hadPreviousLibrary,
+      !fileManager.fileExists(atPath: stagedLibrary.path),
+      fileManager.fileExists(atPath: liveLibrary.path)
+    {
+      try fileManager.removeItem(at: liveLibrary)
+    }
+
+    try fileManager.removeItem(at: transactionRoot)
+  }
+
   func discardPreparedExport(_ backup: PreparedLibraryBackup) {
     let exportRoot =
       rootURL.appending(path: "BackupExports", directoryHint: .isDirectory)
@@ -259,6 +480,7 @@ actor FileSystemLibraryBackupManager: LibraryBackupManaging {
   }
 
   func restore(from backupURL: URL) async throws -> LibrarySnapshot {
+    try ensureInterruptedTransactionsRecovered()
     let accessed = backupURL.startAccessingSecurityScopedResource()
     defer { if accessed { backupURL.stopAccessingSecurityScopedResource() } }
 
@@ -325,9 +547,7 @@ actor FileSystemLibraryBackupManager: LibraryBackupManaging {
       }
       if let beforeRestoreCommit { await beforeRestoreCommit() }
       try Task.checkCancellation()
-      try await CodableLibraryStore(fileURL: rootURL.appending(path: "Library.json")).save(
-        manifest.library
-      )
+      try commitRestore(library: manifest.library, stagedMedia: nil)
       return manifest.library
     }
 
@@ -370,11 +590,10 @@ actor FileSystemLibraryBackupManager: LibraryBackupManaging {
       expectedPayloadPaths: Set(normalizedPayloads.map(\.0))
     )
 
-    let restoreID = UUID().uuidString.lowercased()
-    let transactionRoot = rootURL.appending(path: "BackupRestore/\(restoreID)")
+    let transactionRoot = rootURL.appending(
+      path: "BackupRestore/\(restoreID().uuidString.lowercased())"
+    )
     let stagedMedia = transactionRoot.appending(path: "Media", directoryHint: .isDirectory)
-    let previousMedia = transactionRoot.appending(
-      path: "PreviousMedia", directoryHint: .isDirectory)
     try fileManager.createDirectory(at: stagedMedia, withIntermediateDirectories: true)
     do {
       for relativePath in expectedPaths.sorted() {
@@ -404,28 +623,23 @@ actor FileSystemLibraryBackupManager: LibraryBackupManaging {
         else { throw LibraryBackupError.invalidPayload(relativePath) }
       }
 
-      let liveMedia = rootURL.appending(path: "Media", directoryHint: .isDirectory)
       if let beforeRestoreCommit { await beforeRestoreCommit() }
       try Task.checkCancellation()
-      var movedPreviousMedia = false
-      if fileManager.fileExists(atPath: liveMedia.path) {
-        try fileManager.moveItem(at: liveMedia, to: previousMedia)
-        movedPreviousMedia = true
-      }
-      do {
-        try fileManager.moveItem(at: stagedMedia, to: liveMedia)
-        try await CodableLibraryStore(fileURL: rootURL.appending(path: "Library.json")).save(
-          manifest.library
-        )
-      } catch {
-        try? fileManager.removeItem(at: liveMedia)
-        if movedPreviousMedia { try? fileManager.moveItem(at: previousMedia, to: liveMedia) }
-        throw error
-      }
-      try? fileManager.removeItem(at: transactionRoot)
+      try commitRestore(
+        library: manifest.library,
+        stagedMedia: stagedMedia,
+        transactionRoot: transactionRoot
+      )
       return manifest.library
     } catch {
-      try? fileManager.removeItem(at: transactionRoot)
+      // Before a journal exists the transaction contains only uncommitted
+      // staging and can be discarded. Once commitRestore creates its journal,
+      // it owns rollback and evidence retention.
+      if !fileManager.fileExists(
+        atPath: transactionRoot.appending(path: "journal.json").path
+      ) {
+        try? fileManager.removeItem(at: transactionRoot)
+      }
       throw error
     }
   }

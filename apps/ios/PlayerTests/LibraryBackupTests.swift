@@ -524,6 +524,148 @@ final class LibraryBackupTests: XCTestCase {
     )
   }
 
+  func testEveryPortableRestoreCommitFailpointRollsBackExactLibraryAndMedia() async throws {
+    let sourceRoot = temporaryDirectory("backup-transaction-source")
+    defer { try? FileManager.default.removeItem(at: sourceRoot) }
+    let fixture = try makeFixture(at: sourceRoot)
+    let prepared = try await FileSystemLibraryBackupManager(rootURL: sourceRoot).prepareExport(
+      library: fixture.library,
+      kind: .includingMedia
+    )
+    let phases: [PortableRestoreTransactionPhase] = [
+      .prepared,
+      .previousLibraryMoved,
+      .previousMediaMoved,
+      .stagedMediaInstalled,
+      .stagedLibraryInstalled,
+    ]
+
+    for phase in phases {
+      let root = temporaryDirectory("backup-transaction-\(phase.rawValue)")
+      defer { try? FileManager.default.removeItem(at: root) }
+      var previous = LibrarySnapshot.empty
+      previous.collections = [
+        BookCollection(
+          id: uuid(80),
+          name: "Previous \(phase.rawValue)",
+          orderedBookIDs: [],
+          createdAt: fixture.date,
+          updatedAt: fixture.date
+        )
+      ]
+      let store = CodableLibraryStore(fileURL: root.appending(path: "Library.json"))
+      try await store.save(previous)
+      let oldMedia = root.appending(path: "Media/old/old.m4b")
+      try FileManager.default.createDirectory(
+        at: oldMedia.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+      )
+      let oldBytes = Data("old media for \(phase.rawValue)".utf8)
+      try oldBytes.write(to: oldMedia)
+      let manager = FileSystemLibraryBackupManager(
+        rootURL: root,
+        restorePhaseFailpoint: { reached in
+          if reached == phase { throw BackupTransactionTestError.injected(phase) }
+        }
+      )
+
+      do {
+        _ = try await manager.restore(from: prepared.url)
+        XCTFail("Expected the \(phase.rawValue) failpoint")
+      } catch let error as BackupTransactionTestError {
+        XCTAssertEqual(error, .injected(phase))
+      }
+
+      let rolledBack = try await store.load()
+      XCTAssertEqual(rolledBack, previous, "catalog after \(phase.rawValue)")
+      XCTAssertEqual(try Data(contentsOf: oldMedia), oldBytes, "media after \(phase.rawValue)")
+      XCTAssertFalse(
+        FileManager.default.fileExists(atPath: root.appending(path: fixture.relativeMediaPath).path)
+      )
+      XCTAssertEqual(
+        (try? FileManager.default.contentsOfDirectory(
+          at: root.appending(path: "BackupRestore"),
+          includingPropertiesForKeys: nil
+        )) ?? [],
+        [],
+        "rollback must remove transaction staging after \(phase.rawValue)"
+      )
+    }
+  }
+
+  func testInterruptedPortableRestoreRollsBackOnRecoveryAndCommittedRestoreOnlyCleansEvidence()
+    async throws
+  {
+    for phase in [
+      PortableRestoreTransactionPhase.stagedLibraryInstalled,
+      .committed,
+    ] {
+      let root = temporaryDirectory("backup-recovery-\(phase.rawValue)")
+      defer { try? FileManager.default.removeItem(at: root) }
+      let previous = LibrarySnapshot.empty
+      var replacement = LibrarySnapshot.empty
+      replacement.collections = [
+        BookCollection(
+          id: uuid(81),
+          name: "Replacement",
+          orderedBookIDs: [],
+          createdAt: .distantPast,
+          updatedAt: .distantPast
+        )
+      ]
+      try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+      try CodableLibraryStore.encodedCurrentSnapshot(replacement).write(
+        to: root.appending(path: "Library.json")
+      )
+      let liveMedia = root.appending(path: "Media/new/new.m4b")
+      try FileManager.default.createDirectory(
+        at: liveMedia.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+      )
+      try Data("replacement media".utf8).write(to: liveMedia)
+
+      let transaction = root.appending(path: "BackupRestore/interrupted")
+      try FileManager.default.createDirectory(at: transaction, withIntermediateDirectories: true)
+      try CodableLibraryStore.encodedCurrentSnapshot(previous).write(
+        to: transaction.appending(path: "PreviousLibrary.json")
+      )
+      let previousMedia = transaction.appending(path: "PreviousMedia/old/old.m4b")
+      try FileManager.default.createDirectory(
+        at: previousMedia.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+      )
+      let previousMediaBytes = Data("previous media".utf8)
+      try previousMediaBytes.write(to: previousMedia)
+      let journal = PortableRestoreTransactionJournal(
+        phase: phase,
+        replacesMedia: true,
+        hadPreviousLibrary: true,
+        hadPreviousMedia: true
+      )
+      try JSONEncoder.playerEncoder.encode(journal).write(
+        to: transaction.appending(path: "journal.json")
+      )
+
+      let manager = FileSystemLibraryBackupManager(rootURL: root)
+      try await manager.recoverInterruptedRestores()
+      let loaded = try await CodableLibraryStore(
+        fileURL: root.appending(path: "Library.json")
+      ).load()
+      if phase == .committed {
+        XCTAssertEqual(loaded, replacement)
+        XCTAssertEqual(try Data(contentsOf: liveMedia), Data("replacement media".utf8))
+      } else {
+        XCTAssertEqual(loaded, previous)
+        XCTAssertEqual(
+          try Data(contentsOf: root.appending(path: "Media/old/old.m4b")),
+          previousMediaBytes
+        )
+        XCTAssertFalse(FileManager.default.fileExists(atPath: liveMedia.path))
+      }
+      XCTAssertFalse(FileManager.default.fileExists(atPath: transaction.path))
+    }
+  }
+
   func testAutomaticDatabaseBackupsUseStableEqualTimestampOrderForRotationRecoveryAndDeduplication()
     async throws
   {
@@ -572,6 +714,43 @@ final class LibraryBackupTests: XCTestCase {
     try await store.save(restored)
     let countAfterDuplicateSave = await store.automaticBackups().count
     XCTAssertEqual(countAfterDuplicateSave, countBeforeDuplicateSave)
+  }
+
+  func testAutomaticRestoreReadAndWriteFailuresPreservePrimaryBytes() async throws {
+    for failure in [AutomaticRestoreFailure.read, .write] {
+      let root = temporaryDirectory("automatic-restore-\(failure.rawValue)")
+      defer { try? FileManager.default.removeItem(at: root) }
+      let libraryURL = root.appending(path: "Library.json")
+      let seed = CodableLibraryStore(fileURL: libraryURL)
+      var first = LibrarySnapshot.empty
+      first.allBooksViewStyle = .list
+      try await seed.save(first)
+      var primary = LibrarySnapshot.empty
+      primary.allBooksViewStyle = .shelf
+      try await seed.save(primary)
+      let exactPrimaryBytes = try Data(contentsOf: libraryURL)
+
+      let store = CodableLibraryStore(
+        fileURL: libraryURL,
+        automaticRestoreRead: { url in
+          if failure == .read { throw BackupTransactionTestError.automaticRead }
+          return try Data(contentsOf: url)
+        },
+        automaticRestoreWrite: { data, url in
+          if failure == .write { throw BackupTransactionTestError.automaticWrite }
+          try data.write(to: url, options: [.atomic, .completeFileProtectionUnlessOpen])
+        }
+      )
+      do {
+        _ = try await store.restoreLatestAutomaticBackup()
+        XCTFail("Expected automatic restore \(failure.rawValue) failure")
+      } catch {
+        XCTAssertEqual(error as? BackupTransactionTestError, failure.expectedError)
+      }
+      XCTAssertEqual(try Data(contentsOf: libraryURL), exactPrimaryBytes)
+      let preserved = try await seed.load()
+      XCTAssertEqual(preserved, primary)
+    }
   }
 
   func testFreshLibraryUsesInjectedIdentityForQuarantinedEvidence() async throws {
@@ -864,6 +1043,24 @@ final class LibraryBackupTests: XCTestCase {
   private func uuid(_ suffix: Int) -> UUID {
     UUID(uuidString: String(format: "b0000000-0000-0000-0000-%012d", suffix))!
   }
+}
+
+private enum AutomaticRestoreFailure: String, Sendable {
+  case read
+  case write
+
+  var expectedError: BackupTransactionTestError {
+    switch self {
+    case .read: .automaticRead
+    case .write: .automaticWrite
+    }
+  }
+}
+
+private enum BackupTransactionTestError: Error, Equatable, Sendable {
+  case injected(PortableRestoreTransactionPhase)
+  case automaticRead
+  case automaticWrite
 }
 
 private final class LockedArtifactIDSequence: @unchecked Sendable {

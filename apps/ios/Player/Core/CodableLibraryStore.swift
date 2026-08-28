@@ -8,17 +8,27 @@ actor CodableLibraryStore: LibraryPersisting {
   private let fileManager: FileManager
   private let artifactNow: @Sendable () -> Date
   private let artifactID: @Sendable () -> UUID
+  private let automaticRestoreRead: @Sendable (URL) throws -> Data
+  private let automaticRestoreWrite: @Sendable (Data, URL) throws -> Void
 
   init(
     fileURL: URL,
     fileManager: FileManager = .default,
     artifactNow: @escaping @Sendable () -> Date = { Date() },
-    artifactID: @escaping @Sendable () -> UUID = { UUID() }
+    artifactID: @escaping @Sendable () -> UUID = { UUID() },
+    automaticRestoreRead: @escaping @Sendable (URL) throws -> Data = {
+      try Data(contentsOf: $0)
+    },
+    automaticRestoreWrite: @escaping @Sendable (Data, URL) throws -> Void = {
+      try $0.write(to: $1, options: [.atomic, .completeFileProtectionUnlessOpen])
+    }
   ) {
     self.fileURL = fileURL
     self.fileManager = fileManager
     self.artifactNow = artifactNow
     self.artifactID = artifactID
+    self.automaticRestoreRead = automaticRestoreRead
+    self.automaticRestoreWrite = automaticRestoreWrite
   }
 
   func load() throws -> LibrarySnapshot {
@@ -174,11 +184,7 @@ actor CodableLibraryStore: LibraryPersisting {
     let directory = fileURL.deletingLastPathComponent()
     try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
 
-    let envelope = EnvelopeV15(
-      schemaVersion: Self.currentSchemaVersion,
-      library: snapshot
-    )
-    let data = try JSONEncoder.playerEncoder.encode(envelope)
+    let data = try Self.encodedCurrentSnapshot(snapshot)
     try data.write(to: fileURL, options: [.atomic, .completeFileProtectionUnlessOpen])
     // Once the primary atomic write succeeds, a low-space failure while making
     // a redundant copy must not report the committed mutation as failed.
@@ -250,13 +256,26 @@ actor CodableLibraryStore: LibraryPersisting {
       throw PlayerCoreError.fileOperation("No valid automatic library backup is available.")
     }
     let snapshot = try await CodableLibraryStore(fileURL: backup.url).load()
-    _ = try quarantinePrimaryStore()
-    let data = try Data(contentsOf: backup.url)
+    // Reread and stage the exact candidate completely before preserving or
+    // replacing any primary bytes. Comparing both decodes also rejects a
+    // candidate that changed between selection and transfer.
+    let data = try automaticRestoreRead(backup.url)
+    let transactionRoot = fileURL.deletingLastPathComponent().appending(
+      path: "Recovery/AutomaticRestore/\(artifactID().uuidString.lowercased())",
+      directoryHint: .isDirectory
+    )
+    try fileManager.createDirectory(at: transactionRoot, withIntermediateDirectories: true)
+    defer { try? fileManager.removeItem(at: transactionRoot) }
+    let stagedURL = transactionRoot.appending(path: "Library.json")
+    try data.write(to: stagedURL, options: [.atomic, .completeFileProtectionUnlessOpen])
+    let stagedSnapshot = try await CodableLibraryStore(fileURL: stagedURL).load()
+    guard stagedSnapshot == snapshot else { throw PlayerCoreError.invalidStore }
+    _ = try copyPrimaryStoreToQuarantine()
     try fileManager.createDirectory(
       at: fileURL.deletingLastPathComponent(),
       withIntermediateDirectories: true
     )
-    try data.write(to: fileURL, options: [.atomic, .completeFileProtectionUnlessOpen])
+    try automaticRestoreWrite(data, fileURL)
     return snapshot
   }
 
@@ -300,6 +319,39 @@ actor CodableLibraryStore: LibraryPersisting {
     )
     try fileManager.moveItem(at: fileURL, to: destination)
     return destination
+  }
+
+  @discardableResult
+  private func copyPrimaryStoreToQuarantine() throws -> URL? {
+    guard fileManager.fileExists(atPath: fileURL.path) else { return nil }
+    let data = try Data(contentsOf: fileURL)
+    try fileManager.createDirectory(at: quarantineDirectory, withIntermediateDirectories: true)
+    let destination = quarantineDirectory.appending(
+      path: "library-\(Int(artifactNow().timeIntervalSince1970 * 1_000))-"
+        + "\(artifactID().uuidString.lowercased()).json"
+    )
+    try data.write(to: destination, options: [.atomic, .completeFileProtectionUnlessOpen])
+    return destination
+  }
+
+  static func encodedCurrentSnapshot(_ snapshot: LibrarySnapshot) throws -> Data {
+    try JSONEncoder.playerEncoder.encode(
+      EnvelopeV15(schemaVersion: currentSchemaVersion, library: snapshot)
+    )
+  }
+
+  static func decodedCurrentSnapshot(_ data: Data) throws -> LibrarySnapshot {
+    do {
+      let envelope = try JSONDecoder.playerDecoder.decode(EnvelopeV15.self, from: data)
+      guard envelope.schemaVersion == currentSchemaVersion else {
+        throw PlayerCoreError.invalidStore
+      }
+      return envelope.library
+    } catch let error as PlayerCoreError {
+      throw error
+    } catch {
+      throw PlayerCoreError.invalidStore
+    }
   }
 
   private func createAutomaticBackup(of source: URL, prefix: String) throws {
