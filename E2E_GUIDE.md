@@ -6,6 +6,9 @@ Player uses XCTest/XCUIAutomation for semantic verification and full-screen scre
 
 - Every screenshot is captured only after programmatic assertions establish the intended application state.
 - Baselines and actual images must contain the same filenames and dimensions.
+- The generated walkthrough README must match the reviewed baseline byte for byte.
+- Multi-class README fragments are ordered by their lowest numbered screenshot,
+  independent of XCTest completion or attachment-export order.
 - Images are decoded into canonical sRGB RGBA bytes and compared per pixel and per channel.
 - After canonical sRGB decoding, a channel may differ by at most 8/255 to absorb
   Core Graphics rounding observed across otherwise identical Xcode 26.6
@@ -61,7 +64,9 @@ The current run manifest, phase timings, logs, test result, raw attachments,
 materialized actual walkthrough, and failure diagnostics remain under
 `apps/ios/DerivedData/E2E/<story>/`. A pixel failure includes the expected,
 actual, and red heatmap diff images plus a machine-readable summary. The exact
-comparator is [compare-walkthrough.swift](apps/ios/scripts/compare-walkthrough.swift).
+image comparator is [compare-walkthrough.swift](apps/ios/scripts/compare-walkthrough.swift).
+A document mismatch retains the expected README, actual README, and unified
+diff under the same story's diagnostics directory.
 
 In GitHub Actions, the core suite and each committed story run in isolated
 parallel jobs. Within a multi-class story, XCTest may run two classes in

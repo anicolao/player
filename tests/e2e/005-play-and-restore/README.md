@@ -41,36 +41,6 @@
 
 ---
 
-# Test: Smart Rewind resumes safely and remains exactly undoable
-
-> As a listener returning after time away, I want Player to rewind by a predictable amount without crossing the current chapter, explain the adjustment, and let me undo it exactly.
-
-## Deterministic preconditions
-
-- Fixture: `smart-rewind`
-- Xcode: 26.6
-- Device: iPhone 17 on iOS 26.5, portrait, light appearance, standard Dynamic Type
-- Locale and time zone: `en_CA`, `America/Toronto`
-- Status bar: fixed at 9:41 AM, full battery, and full network indicators
-- Animations: disabled by the E2E build configuration
-- Network and clock data: unused by this story
-- The fixture contains one deterministic 180-second book with a logical chapter beginning at 100,000 milliseconds
-- The injected clock reports exactly 600 seconds away for the photographed chapter-clamp case
-- The durable paused position is 110,000 milliseconds and the 15-second tier clamps to the chapter start at 100,000 milliseconds
-- The deterministic playback engine does not advance with wall-clock time
-
-## Now Playing explains the durable chapter-clamped rewind before Undo
-
-![Now Playing explains the durable chapter-clamped rewind before Undo](./screenshots/ios/003-smart-rewind-applied.png)
-
-**Verifications:**
-
-- [x] Now Playing is paused exactly at the safe 100,000 ms chapter boundary
-- [x] The explanation identifies the original position, clamped target, elapsed absence, and applied transaction
-- [x] A one-tap Undo remains available after process termination and relaunch
-
----
-
 # Test: Listening controls follow durable global and per-book preferences
 
 > As a listener, I want chapter navigation, configurable skips, speed, and scrubber context to stay tailored to each audiobook.
@@ -102,3 +72,33 @@
 - [x] The custom backward skip is available
 - [x] The custom forward skip is available
 - [x] The chapter scrubber is available
+
+---
+
+# Test: Smart Rewind resumes safely and remains exactly undoable
+
+> As a listener returning after time away, I want Player to rewind by a predictable amount without crossing the current chapter, explain the adjustment, and let me undo it exactly.
+
+## Deterministic preconditions
+
+- Fixture: `smart-rewind`
+- Xcode: 26.6
+- Device: iPhone 17 on iOS 26.5, portrait, light appearance, standard Dynamic Type
+- Locale and time zone: `en_CA`, `America/Toronto`
+- Status bar: fixed at 9:41 AM, full battery, and full network indicators
+- Animations: disabled by the E2E build configuration
+- Network and clock data: unused by this story
+- The fixture contains one deterministic 180-second book with a logical chapter beginning at 100,000 milliseconds
+- The injected clock reports exactly 600 seconds away for the photographed chapter-clamp case
+- The durable paused position is 110,000 milliseconds and the 15-second tier clamps to the chapter start at 100,000 milliseconds
+- The deterministic playback engine does not advance with wall-clock time
+
+## Now Playing explains the durable chapter-clamped rewind before Undo
+
+![Now Playing explains the durable chapter-clamped rewind before Undo](./screenshots/ios/003-smart-rewind-applied.png)
+
+**Verifications:**
+
+- [x] Now Playing is paused exactly at the safe 100,000 ms chapter boundary
+- [x] The explanation identifies the original position, clamped target, elapsed absence, and applied transaction
+- [x] A one-tap Undo remains available after process termination and relaunch

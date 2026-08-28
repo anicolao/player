@@ -35,6 +35,8 @@ screenshot_count=0
 readme_count=0
 readme_directory="$(mktemp -d "${TMPDIR:-/tmp}/player-e2e-readmes.XXXXXX")"
 trap 'rm -rf "${readme_directory}"' EXIT
+readme_order="${readme_directory}/order.tsv"
+: > "${readme_order}"
 
 while IFS=$'\t' read -r test_identifier suggested_name exported_name; do
   [[ -n "${suggested_name}" && -n "${exported_name}" ]] || continue
@@ -66,7 +68,23 @@ while IFS=$'\t' read -r test_identifier suggested_name exported_name; do
 
   if [[ "${suggested_name}" =~ ^README(_[0-9]+_[0-9A-Fa-f-]+)?\.md$ ]]; then
     readme_count=$((readme_count + 1))
-    cp "${source_path}" "${readme_directory}/$(printf '%03d' "${readme_count}").md"
+    readme_path="${readme_directory}/$(printf '%03d' "${readme_count}").md"
+    cp "${source_path}" "${readme_path}"
+
+    screenshot_references="$(
+      grep -Eo '\./screenshots/ios/[0-9]{3}-[A-Za-z0-9._-]+\.png' "${readme_path}" \
+        || true
+    )"
+    if [[ -z "${screenshot_references}" ]]; then
+      echo "Generated walkthrough README has no numbered screenshot: ${test_identifier}" >&2
+      exit 1
+    fi
+    first_screenshot="$(printf '%s\n' "${screenshot_references}" | LC_ALL=C sort | head -n 1)"
+    screenshot_basename="${first_screenshot##*/}"
+    first_screenshot_index="${screenshot_basename%%-*}"
+    printf '%s\t%s\t%s\n' \
+      "${first_screenshot_index}" "${test_identifier}" "${readme_path}" \
+      >> "${readme_order}"
   fi
 done <<< "${attachment_rows}"
 
@@ -80,16 +98,13 @@ if [[ ${readme_count} -eq 0 ]]; then
   exit 1
 fi
 
-if [[ ${readme_count} -eq 1 ]]; then
-  cp "${readme_directory}/001.md" "${story_directory}/README.md"
-else
-  : > "${story_directory}/README.md"
-  for readme in "${readme_directory}/"*.md; do
-    if [[ -s "${story_directory}/README.md" ]]; then
-      printf '\n---\n\n' >> "${story_directory}/README.md"
-    fi
-    sed '1{/^# Test: /!s/^/# Test: /;}' "${readme}" >> "${story_directory}/README.md"
-  done
-fi
+: > "${story_directory}/README.md"
+while IFS=$'\t' read -r _ test_identifier readme; do
+  if [[ -s "${story_directory}/README.md" ]]; then
+    printf '\n---\n\n' >> "${story_directory}/README.md"
+  fi
+  sed '1{/^# Test: /!s/^/# Test: /;}' "${readme}" >> "${story_directory}/README.md"
+done < <(LC_ALL=C sort -t $'\t' -k1,1n -k2,2 -k3,3 "${readme_order}")
 
-printf 'Materialized %d screenshot(s) for the walkthrough.\n' "${screenshot_count}"
+printf 'Materialized %d screenshot(s) and %d README fragment(s) for the walkthrough.\n' \
+  "${screenshot_count}" "${readme_count}"

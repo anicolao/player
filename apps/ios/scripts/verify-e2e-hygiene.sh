@@ -122,4 +122,70 @@ rg -q 'PLAYER_RECORD_STORY is no longer accepted' \
   "${temporary_root}/environment-recording-check.log" \
   || fail "environment recording rejection did not report its reason"
 
-echo "E2E hygiene passed: manifest, selectors, waits, retries, and recording guard."
+walkthrough_fixture="${temporary_root}/walkthrough-fixture"
+mkdir -p "${walkthrough_fixture}/attachments-a" "${walkthrough_fixture}/attachments-b"
+printf '# Test: Later fragment\n\n![Later](./screenshots/ios/002-later.png)\n' \
+  > "${walkthrough_fixture}/attachments-a/later.txt"
+printf '# Test: Earlier fragment\n\n![First](./screenshots/ios/000-first.png)\n\n![Second](./screenshots/ios/001-second.png)\n' \
+  > "${walkthrough_fixture}/attachments-a/earlier.txt"
+: > "${walkthrough_fixture}/attachments-a/000.png"
+: > "${walkthrough_fixture}/attachments-a/001.png"
+: > "${walkthrough_fixture}/attachments-a/002.png"
+jq -n '
+  [
+    {
+      testIdentifier: "LaterUITests/testLater()",
+      attachments: [
+        {suggestedHumanReadableName: "README.md", exportedFileName: "later.txt"},
+        {suggestedHumanReadableName: "002-later.png", exportedFileName: "002.png"}
+      ]
+    },
+    {
+      testIdentifier: "EarlierUITests/testEarlier()",
+      attachments: [
+        {suggestedHumanReadableName: "001-second.png", exportedFileName: "001.png"},
+        {suggestedHumanReadableName: "README.md", exportedFileName: "earlier.txt"},
+        {suggestedHumanReadableName: "000-first.png", exportedFileName: "000.png"}
+      ]
+    }
+  ]
+' > "${walkthrough_fixture}/attachments-a/manifest.json"
+cp -R "${walkthrough_fixture}/attachments-a/." "${walkthrough_fixture}/attachments-b/"
+jq 'map(.attachments |= reverse) | reverse' \
+  "${walkthrough_fixture}/attachments-a/manifest.json" \
+  > "${walkthrough_fixture}/attachments-b/manifest.json"
+
+"${script_dir}/export-walkthrough.sh" \
+  "${walkthrough_fixture}/attachments-a" "${walkthrough_fixture}/walkthrough-a" \
+  > "${walkthrough_fixture}/export-a.log"
+"${script_dir}/export-walkthrough.sh" \
+  "${walkthrough_fixture}/attachments-b" "${walkthrough_fixture}/walkthrough-b" \
+  > "${walkthrough_fixture}/export-b.log"
+cmp "${walkthrough_fixture}/walkthrough-a/README.md" \
+  "${walkthrough_fixture}/walkthrough-b/README.md" \
+  || fail "walkthrough README order depends on attachment-export order"
+printf '# Test: Earlier fragment\n# Test: Later fragment\n' \
+  > "${walkthrough_fixture}/expected-headings"
+rg '^# Test:' "${walkthrough_fixture}/walkthrough-a/README.md" \
+  > "${walkthrough_fixture}/actual-headings"
+cmp "${walkthrough_fixture}/expected-headings" "${walkthrough_fixture}/actual-headings" \
+  || fail "walkthrough README fragments are not ordered by screenshot number"
+
+"${script_dir}/compare-walkthrough-readme.sh" \
+  "${walkthrough_fixture}/walkthrough-a/README.md" \
+  "${walkthrough_fixture}/walkthrough-b/README.md" \
+  "${walkthrough_fixture}/matching-diagnostics" \
+  > "${walkthrough_fixture}/matching-comparison.log"
+sed 's/^# Test:/# Changed Test:/' "${walkthrough_fixture}/walkthrough-b/README.md" \
+  > "${walkthrough_fixture}/changed-README.md"
+if "${script_dir}/compare-walkthrough-readme.sh" \
+  "${walkthrough_fixture}/walkthrough-a/README.md" \
+  "${walkthrough_fixture}/changed-README.md" \
+  "${walkthrough_fixture}/mismatch-diagnostics" \
+  > "${walkthrough_fixture}/mismatch-comparison.log" 2>&1; then
+  fail "walkthrough README comparison accepted changed documentation"
+fi
+[[ -s "${walkthrough_fixture}/mismatch-diagnostics/README.diff" ]] \
+  || fail "walkthrough README comparison did not retain a unified diff"
+
+echo "E2E hygiene passed: manifest, selectors, waits, retries, recording guard, and walkthrough docs."

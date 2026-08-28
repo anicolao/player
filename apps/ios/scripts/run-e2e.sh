@@ -337,8 +337,16 @@ if [[ -n "${record_story}" ]]; then
   rm -rf "${previous_baseline}"
   echo "Recorded reviewed baseline in ${baseline_story}"
 else
+  comparison_status=0
   run_logged_phase screenshot-comparison swift "${script_dir}/compare-walkthrough.swift" \
     "${baseline_story}/screenshots/ios" \
     "${actual_story}/screenshots/ios" \
-    "${story_output}/Diagnostics/ScreenshotComparison"
+    "${story_output}/Diagnostics/ScreenshotComparison" || comparison_status=$?
+  run_logged_phase readme-comparison bash "${script_dir}/compare-walkthrough-readme.sh" \
+    "${baseline_story}/README.md" \
+    "${actual_story}/README.md" \
+    "${story_output}/Diagnostics/READMEComparison" || comparison_status=$?
+  if [[ ${comparison_status} -ne 0 ]]; then
+    exit "${comparison_status}"
+  fi
 fi
