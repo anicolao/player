@@ -4,6 +4,58 @@ import XCTest
 
 @MainActor
 final class SmartRewindTests: XCTestCase {
+  func testE2ESmartRewindScenarioAcceptsEveryCanonicalValue() throws {
+    for scenario in E2ESmartRewindScenario.allCases {
+      let parsed = try E2ESmartRewindScenario.parseRequired(arguments: [
+        "Player",
+        "-e2e",
+        "-e2e-smart-rewind-scenario", scenario.rawValue,
+        "-AppleLanguages", "(en)",
+      ])
+      XCTAssertEqual(parsed, scenario)
+    }
+  }
+
+  func testE2ESmartRewindScenarioRequiresExactlyOneValue() {
+    let invalidArguments = [
+      ["Player", "-e2e"],
+      ["Player", "-e2e-smart-rewind-scenario"],
+      ["Player", "-e2e-smart-rewind-scenario", "-e2e-reset"],
+      [
+        "Player",
+        "-e2e-smart-rewind-scenario", "chapter-clamp",
+        "-e2e-smart-rewind-scenario", "medium",
+      ],
+    ]
+
+    for arguments in invalidArguments {
+      XCTAssertThrowsError(
+        try E2ESmartRewindScenario.parseRequired(arguments: arguments),
+        "Expected strict scenario parsing to reject \(arguments)"
+      )
+    }
+  }
+
+  func testE2ESmartRewindScenarioRejectsUnknownAndMalformedValues() {
+    let invalidValues = [
+      "medium-ish",
+      "Chapter-Clamp",
+      "../chapter-clamp",
+      "chapter-clamp/other",
+      "",
+      String(repeating: "a", count: 65),
+    ]
+
+    for value in invalidValues {
+      XCTAssertThrowsError(
+        try E2ESmartRewindScenario.parseRequired(arguments: [
+          "Player", "-e2e-smart-rewind-scenario", value,
+        ]),
+        "Expected strict scenario parsing to reject \(value.debugDescription)"
+      )
+    }
+  }
+
   func testPlannerUsesEveryDocumentedThresholdBoundaryAndMaximum() throws {
     let book = makeBook(chapters: [])
     let pausedAt = Date(timeIntervalSince1970: 1_800_000_000)

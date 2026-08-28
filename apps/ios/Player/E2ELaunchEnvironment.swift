@@ -82,6 +82,35 @@ import UIKit
       return namespace
     }
   }
+
+  enum E2ESmartRewindScenario: String, CaseIterable {
+    static let argument = "-e2e-smart-rewind-scenario"
+
+    case belowThreshold = "below-threshold"
+    case short
+    case medium
+    case long
+    case maximum
+    case disabled
+    case chapterClamp = "chapter-clamp"
+
+    static func parseRequired(arguments: [String]) throws -> E2ESmartRewindScenario {
+      let markers = arguments.indices.filter { arguments[$0] == argument }
+      guard markers.count == 1 else {
+        let reason = markers.isEmpty ? "Missing" : "Duplicate"
+        throw PlayerCoreError.fileOperation("\(reason) Smart Rewind E2E scenario.")
+      }
+      let marker = markers[0]
+      guard arguments.indices.contains(marker + 1) else {
+        throw PlayerCoreError.fileOperation("Missing Smart Rewind E2E scenario value.")
+      }
+      let value = arguments[marker + 1]
+      guard !value.isEmpty, !value.hasPrefix("-"), let scenario = Self(rawValue: value) else {
+        throw PlayerCoreError.fileOperation("Invalid Smart Rewind E2E scenario: \(value)")
+      }
+      return scenario
+    }
+  }
 #endif
 
 @MainActor
@@ -127,7 +156,7 @@ extension PlayerEnvironment {
         case "smart-rewind":
           return try smartRewindEnvironment(
             reset: arguments.contains("-e2e-reset"),
-            scenario: smartRewindScenario(in: arguments)
+            scenario: E2ESmartRewindScenario.parseRequired(arguments: arguments).rawValue
           )
         case "sleep-timer":
           return try sleepTimerEnvironment(
@@ -402,14 +431,6 @@ extension PlayerEnvironment {
         clock: FixedPlayerClock(value: Date(timeIntervalSince1970: 1_700_000_000)),
         ids: DeterministicPlayerIDGenerator(values: [])
       )
-    }
-
-    private static func smartRewindScenario(in arguments: [String]) -> String {
-      guard
-        let marker = arguments.firstIndex(of: "-e2e-smart-rewind-scenario"),
-        arguments.indices.contains(marker + 1)
-      else { return "chapter-clamp" }
-      return arguments[marker + 1]
     }
 
     private static func sleepTimerEnvironment(
