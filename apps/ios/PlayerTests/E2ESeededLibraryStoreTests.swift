@@ -1002,6 +1002,29 @@
       ])
     }
 
+    func testShareFixturePayloadIsValidatedBeforeFixtureStateCanBeReset() {
+      let malformedEnvironments: [[String: String]] = [
+        [:],
+        [
+          "PLAYER_E2E_SHARE_PAYLOAD_BASE64": "not-base64",
+          "PLAYER_E2E_SHARE_ENVELOPE_BASE64": Data("{}".utf8).base64EncodedString(),
+        ],
+        [
+          "PLAYER_E2E_SHARE_PAYLOAD_BASE64": Data("audio".utf8).base64EncodedString(),
+          "PLAYER_E2E_SHARE_ENVELOPE_BASE64": Data("not-json".utf8).base64EncodedString(),
+        ],
+      ]
+
+      for environment in malformedEnvironments {
+        XCTAssertThrowsError(
+          try E2EShareFixturePayload.parse(
+            environment: environment,
+            expectedHandoffID: handoffID
+          )
+        )
+      }
+    }
+
     private func documentArguments(suffix: [String] = []) -> [String] {
       canonicalArguments(channel: .documentOpen) + suffix
     }
@@ -1042,12 +1065,36 @@
   }
 
   final class E2EImportIngressIDSequenceTests: XCTestCase {
+    func testResumeRejectsMalformedDurableLibraryInsteadOfReusingCanonicalIDs() throws {
+      let root = temporaryDirectory("malformed-library")
+      defer { try? FileManager.default.removeItem(at: root) }
+      try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+      let libraryURL = root.appending(path: "Library.json")
+      try Data("not-json".utf8).write(to: libraryURL, options: .atomic)
+
+      XCTAssertThrowsError(
+        try E2EImportIngressIDSequence.values(
+          channel: .documentOpen,
+          reset: false,
+          libraryURL: libraryURL
+        )
+      )
+      XCTAssertEqual(
+        suffixes(try E2EImportIngressIDSequence.values(
+          channel: .documentOpen,
+          reset: true,
+          libraryURL: libraryURL
+        )),
+        Array(1...16)
+      )
+    }
+
     func testResetAlwaysPreservesCanonicalDocumentAndShareStreams() throws {
       let libraryURL = try durableLibraryURL("reset-canonical", suffixes: [999])
       defer { try? FileManager.default.removeItem(at: libraryURL.deletingLastPathComponent()) }
 
       XCTAssertEqual(
-        suffixes(E2EImportIngressIDSequence.values(
+        suffixes(try E2EImportIngressIDSequence.values(
           channel: .documentOpen,
           reset: true,
           libraryURL: libraryURL
@@ -1055,7 +1102,7 @@
         Array(1...16)
       )
       XCTAssertEqual(
-        suffixes(E2EImportIngressIDSequence.values(
+        suffixes(try E2EImportIngressIDSequence.values(
           channel: .shareExtension,
           reset: true,
           libraryURL: libraryURL
@@ -1073,7 +1120,7 @@
         defer { try? FileManager.default.removeItem(at: root) }
         let libraryURL = root.appending(path: "Library.json")
 
-        let resetIDs = E2EImportIngressIDSequence.values(
+        let resetIDs = try E2EImportIngressIDSequence.values(
           channel: channel,
           reset: true,
           libraryURL: libraryURL
@@ -1082,7 +1129,7 @@
           suffixes: Array(firstSuffix...(firstSuffix + 2)),
           to: libraryURL
         )
-        let firstResumeIDs = E2EImportIngressIDSequence.values(
+        let firstResumeIDs = try E2EImportIngressIDSequence.values(
           channel: channel,
           reset: false,
           libraryURL: libraryURL
@@ -1091,7 +1138,7 @@
           suffixes: Array(firstSuffix...(firstSuffix + 5)),
           to: libraryURL
         )
-        let secondResumeIDs = E2EImportIngressIDSequence.values(
+        let secondResumeIDs = try E2EImportIngressIDSequence.values(
           channel: channel,
           reset: false,
           libraryURL: libraryURL
@@ -1131,12 +1178,12 @@
       }
 
       for libraryURL in [ascendingURL, descendingURL] {
-        let document = E2EImportIngressIDSequence.values(
+        let document = try E2EImportIngressIDSequence.values(
           channel: .documentOpen,
           reset: false,
           libraryURL: libraryURL
         )
-        let share = E2EImportIngressIDSequence.values(
+        let share = try E2EImportIngressIDSequence.values(
           channel: .shareExtension,
           reset: false,
           libraryURL: libraryURL
@@ -1156,31 +1203,31 @@
         try? FileManager.default.removeItem(at: shareFirstURL.deletingLastPathComponent())
       }
 
-      let documentReset = E2EImportIngressIDSequence.values(
+      let documentReset = try E2EImportIngressIDSequence.values(
         channel: .documentOpen,
         reset: true,
         libraryURL: documentFirstURL
       )
       try writeDurableLibrary(suffixes: [1, 2, 3], to: documentFirstURL)
-      let shareAfterDocument = E2EImportIngressIDSequence.values(
+      let shareAfterDocument = try E2EImportIngressIDSequence.values(
         channel: .shareExtension,
         reset: false,
         libraryURL: documentFirstURL
       )
       try writeDurableLibrary(suffixes: [1, 2, 3, 102, 103, 104], to: documentFirstURL)
-      let documentAfterShare = E2EImportIngressIDSequence.values(
+      let documentAfterShare = try E2EImportIngressIDSequence.values(
         channel: .documentOpen,
         reset: false,
         libraryURL: documentFirstURL
       )
 
-      let shareReset = E2EImportIngressIDSequence.values(
+      let shareReset = try E2EImportIngressIDSequence.values(
         channel: .shareExtension,
         reset: true,
         libraryURL: shareFirstURL
       )
       try writeDurableLibrary(suffixes: [102, 103, 104], to: shareFirstURL)
-      let documentAfterShareFirst = E2EImportIngressIDSequence.values(
+      let documentAfterShareFirst = try E2EImportIngressIDSequence.values(
         channel: .documentOpen,
         reset: false,
         libraryURL: shareFirstURL

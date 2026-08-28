@@ -109,6 +109,36 @@
     }
   }
 
+  struct E2EShareFixturePayload {
+    let payload: Data
+    let envelope: Data
+    let handoff: ShareImportHandoff
+
+    static func parse(
+      environment: [String: String],
+      expectedHandoffID: UUID
+    ) throws -> E2EShareFixturePayload {
+      guard
+        let payloadBase64 = environment["PLAYER_E2E_SHARE_PAYLOAD_BASE64"],
+        let payload = Data(base64Encoded: payloadBase64),
+        let envelopeBase64 = environment["PLAYER_E2E_SHARE_ENVELOPE_BASE64"],
+        let envelope = Data(base64Encoded: envelopeBase64)
+      else { throw PlayerCoreError.fileOperation("The synthetic share handoff is unavailable.") }
+
+      let decoder = JSONDecoder()
+      decoder.dateDecodingStrategy = .iso8601
+      let handoff = try decoder.decode(ShareImportHandoff.self, from: envelope)
+      guard handoff.id == expectedHandoffID, handoff.items.count == 1 else {
+        throw PlayerCoreError.fileOperation("The synthetic share envelope is invalid.")
+      }
+      return E2EShareFixturePayload(
+        payload: payload,
+        envelope: envelope,
+        handoff: handoff
+      )
+    }
+  }
+
   enum E2EImportIngressIDSequence {
     private static let prefix = "70000000-0000-0000-0000-"
 
@@ -117,25 +147,32 @@
       reset: Bool,
       libraryURL: URL,
       count: Int = 16
-    ) -> [UUID] {
+    ) throws -> [UUID] {
       let minimumSuffix = channel == .shareExtension ? 102 : 1
       let firstSuffix = reset
         ? minimumSuffix
-        : nextDurableSuffix(in: libraryURL, minimum: minimumSuffix)
+        : try nextDurableSuffix(in: libraryURL, minimum: minimumSuffix)
       return (firstSuffix..<(firstSuffix + count)).compactMap {
         UUID(uuidString: prefix + String(format: "%012d", $0))
       }
     }
 
-    static func nextDurableSuffix(in libraryURL: URL, minimum: Int) -> Int {
+    static func nextDurableSuffix(in libraryURL: URL, minimum: Int) throws -> Int {
+      guard FileManager.default.fileExists(atPath: libraryURL.path) else { return minimum }
+      let data = try Data(contentsOf: libraryURL)
       guard
-        let data = try? Data(contentsOf: libraryURL),
         let encoded = String(data: data, encoding: .utf8),
-        let expression = try? NSRegularExpression(
-          pattern: "70000000-0000-0000-0000-([0-9]{12})",
-          options: [.caseInsensitive]
+        let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+        root["library"] is [String: Any]
+      else {
+        throw PlayerCoreError.fileOperation(
+          "The persisted Import Ingress E2E library is invalid."
         )
-      else { return minimum }
+      }
+      let expression = try NSRegularExpression(
+        pattern: "70000000-0000-0000-0000-([0-9]{12})",
+        options: [.caseInsensitive]
+      )
       let range = NSRange(encoded.startIndex..<encoded.endIndex, in: encoded)
       let suffixes = expression.matches(in: encoded, range: range).compactMap { match -> Int? in
         guard let suffixRange = Range(match.range(at: 1), in: encoded) else { return nil }
@@ -224,6 +261,20 @@
     static func importIngressEnvironment(reset: Bool) throws -> PlayerEnvironment {
       let arguments = ProcessInfo.processInfo.arguments
       let options = try E2EImportIngressArguments.parse(arguments: arguments)
+      let shareFixture: E2EShareFixturePayload?
+      if options.channel == .shareExtension {
+        guard let expectedHandoffID = options.shareHandoffID else {
+          throw PlayerCoreError.fileOperation(
+            "The share-extension Import Ingress E2E fixture has no handoff."
+          )
+        }
+        shareFixture = try E2EShareFixturePayload.parse(
+          environment: ProcessInfo.processInfo.environment,
+          expectedHandoffID: expectedHandoffID
+        )
+      } else {
+        shareFixture = nil
+      }
       let support = try FileManager.default.url(
         for: .applicationSupportDirectory,
         in: .userDomainMask,
@@ -238,7 +289,7 @@
       try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
 
       let libraryURL = root.appending(path: "Library.json")
-      let ids = E2EImportIngressIDSequence.values(
+      let ids = try E2EImportIngressIDSequence.values(
         channel: options.channel,
         reset: reset,
         libraryURL: libraryURL
@@ -247,16 +298,14 @@
         throw PlayerCoreError.fileOperation("The Import Ingress E2E ID stream is empty.")
       }
       if options.channel == .shareExtension {
-        guard let expectedHandoffID = options.shareHandoffID else {
-          throw PlayerCoreError.fileOperation(
-            "The share-extension Import Ingress E2E fixture has no handoff."
-          )
+        guard let shareFixture else {
+          throw PlayerCoreError.fileOperation("The synthetic share fixture was not validated.")
         }
         try configureShareFixture(
           root: root,
           jobID: jobID,
           reset: reset,
-          expectedHandoffID: expectedHandoffID
+          fixture: shareFixture
         )
       } else {
         E2EImportIngressBridge.shared.configureDocument(jobID: jobID, rootURL: root)
@@ -284,23 +333,11 @@
       root: URL,
       jobID: UUID,
       reset: Bool,
-      expectedHandoffID: UUID
+      fixture: E2EShareFixturePayload
     ) throws {
-      let environment = ProcessInfo.processInfo.environment
-      guard
-        let payloadBase64 = environment["PLAYER_E2E_SHARE_PAYLOAD_BASE64"],
-        let payload = Data(base64Encoded: payloadBase64),
-        let envelopeBase64 = environment["PLAYER_E2E_SHARE_ENVELOPE_BASE64"],
-        let envelope = Data(base64Encoded: envelopeBase64)
-      else { throw PlayerCoreError.fileOperation("The synthetic share handoff is unavailable.") }
-
-      let decoder = JSONDecoder()
-      decoder.dateDecodingStrategy = .iso8601
-      let handoff = try decoder.decode(ShareImportHandoff.self, from: envelope)
-      guard
-        handoff.id == expectedHandoffID,
-        handoff.items.count == 1
-      else { throw PlayerCoreError.fileOperation("The synthetic share envelope is invalid.") }
+      let payload = fixture.payload
+      let envelope = fixture.envelope
+      let handoff = fixture.handoff
 
       let sourceURL = root.appending(path: "ShareProviderSource.m4a")
       try payload.write(to: sourceURL, options: .atomic)
