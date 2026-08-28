@@ -342,18 +342,18 @@ final class LibraryOrganizationUITests: XCTestCase {
             axis: .horizontal,
             endpoint: \.atLeft
           )
-          && elementIsFullyVisible(
-            anyElement(app, "bookshelf-continue-book-\(self.books[0])"),
+          && self.elementIsFullyVisible(
+            self.anyElement(app, "bookshelf-continue-book-\(self.books[0])"),
             within: continueShelf,
             requiresHittable: false
           )
-          && elementIsFullyVisible(
-            anyElement(app, "bookshelf-recent-book-\(self.books[4])"),
+          && self.elementIsFullyVisible(
+            self.anyElement(app, "bookshelf-recent-book-\(self.books[4])"),
             within: recentShelf,
             requiresHittable: false
           )
-          && elementIsFullyVisible(
-            anyElement(app, "all-books-book-\(self.books[3])"),
+          && self.elementIsFullyVisible(
+            self.anyElement(app, "all-books-book-\(self.books[3])"),
             within: alphabeticalShelf,
             requiresHittable: false
           )
