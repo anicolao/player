@@ -498,10 +498,36 @@ final class AccessibilityUITests: XCTestCase {
       surface,
       deadline: deadline,
       matching: { $0.isIdle && $0.geometryReady }
-    ), let before = surface.state(), before.hasScrollableRange, !before.atBottom,
-      deadline.remaining >= 0.2
+    ), let before = surface.state(), before.isIdle, before.geometryReady
     else {
-      print("List scroll did not start from a ready scrollable surface: \(failureContext())")
+      print("List scroll did not expose a ready bound surface: \(failureContext())")
+      return false
+    }
+
+    if condition(),
+      let stable = surface.state(),
+      stable.isIdle,
+      stable.geometryReady,
+      stable.interactionID == before.interactionID,
+      stable.completionID == before.completionID,
+      stable.geometryID == before.geometryID,
+      stable.completionGeometryID == before.completionGeometryID,
+      abs(stable.offset - before.offset) <= 0.5,
+      abs(stable.minimum - before.minimum) <= 0.5,
+      abs(stable.maximum - before.maximum) <= 0.5,
+      abs(stable.contentLength - before.contentLength) <= 0.5,
+      abs(stable.containerLength - before.containerLength) <= 0.5,
+      stable.atLeft == before.atLeft,
+      stable.atRight == before.atRight,
+      stable.atTop == before.atTop,
+      stable.atBottom == before.atBottom,
+      condition()
+    {
+      return true
+    }
+
+    guard before.hasScrollableRange, !before.atBottom, deadline.remaining >= 0.2 else {
+      print("List scroll did not start from a scrollable position: \(failureContext())")
       return false
     }
 
