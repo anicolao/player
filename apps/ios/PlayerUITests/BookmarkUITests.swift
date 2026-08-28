@@ -59,8 +59,16 @@ final class BookmarkUITests: XCTestCase {
     probe = try requireProbe(app, count: 2, position: 15_000, clock: 1_700_030_060)
     XCTAssertEqual(probe["order"], "\(boundaryBookmarkID),\(secondBookmarkID)")
 
-    let done = app.buttons["Done"]
+    let doneButtons = app.navigationBars.buttons.matching(
+      NSPredicate(format: "label == %@", "Done")
+    )
+    let done = doneButtons.element
     XCTAssertTrue(done.waitForExistence(timeout: 2))
+    XCTAssertEqual(
+      doneButtons.count,
+      1,
+      "Now Playing must expose one navigation-scoped Done button"
+    )
     done.tap()
     try openBookmarkDetail(app)
 
@@ -101,12 +109,13 @@ final class BookmarkUITests: XCTestCase {
       app,
       "bookmarks:query=:sort=label:count=2:order=\(secondBookmarkID),\(boundaryBookmarkID)"
     )
-    let keyboard = app.keyboards.firstMatch
-    if keyboard.exists {
+    let keyboards = app.keyboards
+    XCTAssertLessThanOrEqual(keyboards.count, 1, "Bookmark search must expose at most one keyboard")
+    if keyboards.count == 1 {
       search.typeKey(.return, modifierFlags: [])
     }
     XCTAssertTrue(
-      waitForPredicate(NSPredicate(format: "exists == false"), on: keyboard),
+      waitForNoElements(keyboards),
       "Bookmark walkthrough must not capture the search keyboard"
     )
     try prepareBookmarkWalkthroughFrame(
@@ -474,7 +483,7 @@ final class BookmarkUITests: XCTestCase {
     let elementType = field.elementType
     let currentField = app.descendants(matching: elementType)[identifier]
     XCTAssertTrue(currentField.waitForExistence(timeout: 2))
-    dismissAppleIntelligenceNotificationIfPresent()
+    XCTAssertTrue(resolveAppleIntelligenceNotification(testCase: self))
     currentField.tap()
 
     let focusExpectation: (identifier: String, value: String)
@@ -576,10 +585,10 @@ final class BookmarkUITests: XCTestCase {
   ) -> CaptureReadiness {
     CaptureReadiness(specification: specification, anchor: anchor) {
       checkNow()
-        && !app.keyboards.firstMatch.exists
-        && !app.alerts.firstMatch.exists
-        && !app.sheets.firstMatch.exists
-        && !app.menus.firstMatch.exists
+        && app.keyboards.count == 0
+        && app.alerts.count == 0
+        && app.sheets.count == 0
+        && app.menus.count == 0
         && !app.descendants(matching: .any)["bookmark-editor"].exists
     }
   }

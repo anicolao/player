@@ -342,7 +342,7 @@ final class AccessibilityUITests: XCTestCase {
           )
           && elementIsFullyVisible(
             firstUpNextBook,
-            within: app.windows.firstMatch,
+            within: app.windows.element,
             obscuredBelow: app.otherElements["mini-player"],
             requiresHittable: false
           )
@@ -551,7 +551,7 @@ final class AccessibilityUITests: XCTestCase {
   }
 
   private func anyElement(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {
-    app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+    uniquelyIdentifiedElement(app, identifier)
   }
 
   private func accessibilityCaptureReadiness(
@@ -563,8 +563,8 @@ final class AccessibilityUITests: XCTestCase {
   ) -> CaptureReadiness {
     CaptureReadiness(specification: specification, anchor: anchor) {
       checkNow()
-        && !app.keyboards.firstMatch.exists
-        && !app.alerts.firstMatch.exists
+        && app.keyboards.count == 0
+        && app.alerts.count == 0
         && !self.hasUnintendedSheet(app, intendedContentID: intendedSheetContentID)
     }
   }
@@ -604,10 +604,11 @@ final class AccessibilityUITests: XCTestCase {
     allowedMinY: ClosedRange<CGFloat>,
     in app: XCUIApplication
   ) -> Bool {
-    guard element.exists, app.windows.firstMatch.exists, !element.frame.isEmpty else {
+    let window = app.windows.element
+    guard element.exists, window.exists, !element.frame.isEmpty else {
       return false
     }
-    let screenY = element.frame.minY - app.windows.firstMatch.frame.minY
+    let screenY = element.frame.minY - window.frame.minY
     return allowedMinY.contains(screenY)
   }
 
@@ -985,7 +986,7 @@ final class AccessibilityUITests: XCTestCase {
       return element.isEnabled
         && element.isHittable
         && element.label.contains(label)
-        && app.windows.firstMatch.frame.intersects(element.frame)
+        && app.windows.element.frame.intersects(element.frame)
     }
   }
 

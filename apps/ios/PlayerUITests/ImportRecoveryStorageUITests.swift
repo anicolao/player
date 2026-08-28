@@ -237,15 +237,7 @@ final class ImportRecoveryStorageUITests: XCTestCase {
   }
 
   private func anyElement(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {
-    app.descendants(matching: .any)
-      .matching(
-        NSPredicate(
-          format: "identifier == %@ OR label == %@",
-          identifier,
-          identifier
-        )
-      )
-      .firstMatch
+    uniquelyIdentifiedElement(app, identifier)
   }
 
   private func recoveryCaptureReadiness(
@@ -256,9 +248,9 @@ final class ImportRecoveryStorageUITests: XCTestCase {
   ) -> CaptureReadiness {
     CaptureReadiness(specification: specification, anchor: anchor) {
       checkNow()
-        && !app.keyboards.firstMatch.exists
-        && !app.alerts.firstMatch.exists
-        && !app.sheets.firstMatch.exists
+        && app.keyboards.count == 0
+        && app.alerts.count == 0
+        && app.sheets.count == 0
     }
   }
 

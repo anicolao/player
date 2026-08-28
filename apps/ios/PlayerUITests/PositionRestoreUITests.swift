@@ -140,7 +140,7 @@ final class PositionRestoreUITests: XCTestCase {
           && recentBook.label.contains("The Midnight Current")
           && elementIsFullyVisible(
             restoredMiniPlayer,
-            within: restoredApp.windows.firstMatch
+            within: restoredApp.windows.element
           )
       }
     )
@@ -159,7 +159,7 @@ final class PositionRestoreUITests: XCTestCase {
       restoredNowPlaying.descendants(matching: .any)["placeholder-artwork"]
     let restoredPlay = restoredApp.buttons["player-play-pause"]
     let restoredSlider = restoredApp.sliders["player-position-slider"]
-    dismissAppleIntelligenceNotificationIfPresent()
+    XCTAssertTrue(resolveAppleIntelligenceNotification(testCase: self))
     try tester.step(
       "restored-now-playing",
       description: "Now Playing opens paused at the safely restored position",
@@ -334,8 +334,8 @@ final class PositionRestoreUITests: XCTestCase {
   ) -> CaptureReadiness {
     CaptureReadiness(specification: specification, anchor: anchor) {
       checkNow()
-        && !app.keyboards.firstMatch.exists
-        && !app.alerts.firstMatch.exists
+        && app.keyboards.count == 0
+        && app.alerts.count == 0
         && !self.hasUnintendedSheet(app, intendedContentID: intendedSheetContentID)
     }
   }

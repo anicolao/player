@@ -138,36 +138,87 @@ struct LayoutReadinessState {
 }
 
 @MainActor
-func dismissAppleIntelligenceNotificationIfPresent(
+func resolveAppleIntelligenceNotification(
+  testCase: XCTestCase,
   file: StaticString = #filePath,
   line: UInt = #line
-) {
-  guard !SystemInterruptionReadiness.didDismissAppleIntelligenceNotification else { return }
+) -> Bool {
   let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-  let notificationTitle = springboard.staticTexts["Ready for Apple Intelligence"]
-  // This runs before every screenshot until the one-time system notification appears.
-  // An immediate query keeps the normal absent-notification path free of polling latency.
-  guard notificationTitle.exists else { return }
-  notificationTitle.swipeUp()
-  let dismissed = waitForPredicate(
-    NSPredicate(format: "exists == false"),
-    on: notificationTitle,
-    timeout: 1
+  let notificationTitles = springboard.staticTexts.matching(
+    NSPredicate(format: "label == %@", "Ready for Apple Intelligence")
   )
-  XCTAssertTrue(
-    dismissed,
-    "The simulator's Apple Intelligence notification should not obscure the walkthrough",
-    file: file,
-    line: line
-  )
-  if dismissed {
-    SystemInterruptionReadiness.didDismissAppleIntelligenceNotification = true
+
+  if notificationTitles.count == 0,
+    SystemInterruptionReadiness.appleIntelligenceState == .unobserved
+  {
+    let appearanceDeadline = EventDeadline(timeout: 1)
+    _ = waitForExistence(notificationTitles.element, deadline: appearanceDeadline)
   }
+  guard notificationTitles.count > 0 else {
+    SystemInterruptionReadiness.appleIntelligenceState = .observedAbsent
+    return true
+  }
+  guard notificationTitles.count == 1 else {
+    attachSystemInterruptionEvidence(
+      springboard,
+      reason: "multiple Apple Intelligence notifications were present",
+      testCase: testCase
+    )
+    XCTFail(
+      "Expected one Apple Intelligence notification, found \(notificationTitles.count)",
+      file: file,
+      line: line
+    )
+    return false
+  }
+
+  let notificationTitle = notificationTitles.element
+  notificationTitle.swipeUp()
+  let dismissed = waitForNoElements(notificationTitles, deadline: EventDeadline())
+  guard dismissed else {
+    attachSystemInterruptionEvidence(
+      springboard,
+      reason: "Apple Intelligence notification did not dismiss",
+      testCase: testCase
+    )
+    XCTFail(
+      "The simulator's Apple Intelligence notification remained after dismissal; "
+        + "count=\(notificationTitles.count), hierarchy=\(springboard.debugDescription)",
+      file: file,
+      line: line
+    )
+    return false
+  }
+  SystemInterruptionReadiness.appleIntelligenceState = .dismissed
+  return true
 }
 
 @MainActor
 private enum SystemInterruptionReadiness {
-  static var didDismissAppleIntelligenceNotification = false
+  enum ObservationState {
+    case unobserved
+    case observedAbsent
+    case dismissed
+  }
+
+  static var appleIntelligenceState = ObservationState.unobserved
+}
+
+@MainActor
+private func attachSystemInterruptionEvidence(
+  _ springboard: XCUIApplication,
+  reason: String,
+  testCase: XCTestCase
+) {
+  let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+  screenshot.name = "system-overlay-\(reason.replacingOccurrences(of: " ", with: "-"))"
+  screenshot.lifetime = .keepAlways
+  testCase.add(screenshot)
+
+  let hierarchy = XCTAttachment(string: springboard.debugDescription)
+  hierarchy.name = "system-overlay-springboard-hierarchy"
+  hierarchy.lifetime = .keepAlways
+  testCase.add(hierarchy)
 }
 
 @MainActor
@@ -180,6 +231,31 @@ func waitForPredicate(
   let expectation = XCTNSPredicateExpectation(predicate: predicate, object: element)
   _ = XCTWaiter.wait(for: [expectation], timeout: timeout)
   return predicate.evaluate(with: element)
+}
+
+@MainActor
+func waitForNoElements(
+  _ query: XCUIElementQuery,
+  deadline: EventDeadline = EventDeadline()
+) -> Bool {
+  if query.count == 0 { return true }
+  guard query.count == 1 else { return false }
+  let previouslyVisibleElement = query.element
+  guard deadline.remaining > 0 else { return false }
+  let expectation = XCTNSPredicateExpectation(
+    predicate: NSPredicate(format: "exists == false"),
+    object: previouslyVisibleElement
+  )
+  _ = XCTWaiter.wait(for: [expectation], timeout: deadline.remaining)
+  return query.count == 0
+}
+
+@MainActor
+func uniquelyIdentifiedElement(
+  _ application: XCUIApplication,
+  _ identifier: String
+) -> XCUIElement {
+  application.descendants(matching: .any).matching(identifier: identifier).element
 }
 
 @MainActor
@@ -565,6 +641,7 @@ struct CaptureReadiness {
 
 private enum TestStepError: Error {
   case captureNotReady(String)
+  case systemOverlayNotDismissed
 }
 
 @MainActor
@@ -596,6 +673,7 @@ final class TestStepHelper {
   )
   private var steps: [Step] = []
   private var nextScreenshotIndex = 0
+  private var systemOverlayResolved = true
 
   init(testCase: XCTestCase, startIndex: Int = 0) {
     self.testCase = testCase
@@ -634,6 +712,9 @@ final class TestStepHelper {
     }
 
     dismissAppleIntelligenceNotificationIfPresent()
+    guard systemOverlayResolved else {
+      throw TestStepError.systemOverlayNotDismissed
+    }
 
     let filename = String(format: "%03d-%@.png", nextScreenshotIndex, identifier)
     if let captureReadiness {
@@ -707,6 +788,10 @@ final class TestStepHelper {
 
       \(checks)
       """
+  }
+
+  private func dismissAppleIntelligenceNotificationIfPresent() {
+    systemOverlayResolved = resolveAppleIntelligenceNotification(testCase: testCase)
   }
 }
 

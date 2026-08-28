@@ -102,7 +102,7 @@ final class LibraryOrganizationUITests: XCTestCase {
           ).count >= 3
           && elementIsFullyVisible(
             addAudiobook,
-            within: app.tabBars.firstMatch,
+            within: app.tabBars.element,
             requiresHittable: false
           )
       }
@@ -133,8 +133,16 @@ final class LibraryOrganizationUITests: XCTestCase {
     app.buttons["mark-finished-\(books[2])"].tap()
     let finishedAlert = app.alerts["Mark as finished?"]
     XCTAssertTrue(finishedAlert.waitForExistence(timeout: 2))
-    let confirmFinished = finishedAlert.buttons["confirm-mark-finished"].firstMatch
+    let confirmFinishedQuery = finishedAlert.buttons.matching(
+      identifier: "confirm-mark-finished"
+    )
+    let confirmFinished = confirmFinishedQuery.element
     XCTAssertTrue(confirmFinished.waitForExistence(timeout: 2))
+    XCTAssertEqual(
+      confirmFinishedQuery.count,
+      1,
+      "The finished confirmation must expose one scoped confirm action"
+    )
     confirmFinished.tap()
     try requireValue(
       anyElement(app, "book-state-probe"),
@@ -470,8 +478,14 @@ final class LibraryOrganizationUITests: XCTestCase {
     restoredApp.buttons["move-book-to-trash-toolbar"].tap()
     let removalSheet = restoredApp.sheets["Move this audiobook to Trash?"]
     XCTAssertTrue(removalSheet.waitForExistence(timeout: 2))
-    let confirmRemoval = removalSheet.buttons["remove-book-to-trash"].firstMatch
+    let confirmRemovalQuery = removalSheet.buttons.matching(identifier: "remove-book-to-trash")
+    let confirmRemoval = confirmRemovalQuery.element
     XCTAssertTrue(confirmRemoval.waitForExistence(timeout: 2))
+    XCTAssertEqual(
+      confirmRemovalQuery.count,
+      1,
+      "The Trash confirmation must expose one scoped remove action"
+    )
     confirmRemoval.tap()
     navigateBack(
       restoredApp,
@@ -915,15 +929,7 @@ final class LibraryOrganizationUITests: XCTestCase {
   }
 
   private func anyElement(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {
-    app.descendants(matching: .any)
-      .matching(
-        NSPredicate(
-          format: "identifier == %@ OR label == %@",
-          identifier,
-          identifier
-        )
-      )
-      .firstMatch
+    uniquelyIdentifiedElement(app, identifier)
   }
 
   private func navigateBack(
@@ -1101,9 +1107,9 @@ final class LibraryOrganizationUITests: XCTestCase {
   ) -> CaptureReadiness {
     CaptureReadiness(specification: specification, anchor: anchor) {
       checkNow()
-        && !app.keyboards.firstMatch.exists
-        && !app.alerts.firstMatch.exists
-        && !app.sheets.firstMatch.exists
+        && app.keyboards.count == 0
+        && app.alerts.count == 0
+        && app.sheets.count == 0
     }
   }
 
@@ -1162,11 +1168,7 @@ final class LibraryOrganizationUITests: XCTestCase {
   ) -> [XCUIElement] {
     app.descendants(matching: .any)
       .matching(
-        NSPredicate(
-          format: "identifier BEGINSWITH %@ OR label BEGINSWITH %@",
-          identifierPrefix,
-          identifierPrefix
-        )
+        NSPredicate(format: "identifier BEGINSWITH %@", identifierPrefix)
       )
       .allElementsBoundByIndex
       .filter { elementIsFullyVisible($0, within: container, requiresHittable: false) }

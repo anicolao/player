@@ -347,7 +347,7 @@ final class LaunchUITests: XCTestCase {
   }
 
   private func anyElement(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {
-    app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+    uniquelyIdentifiedElement(app, identifier)
   }
 
   private func launchCaptureReadiness(
@@ -359,8 +359,8 @@ final class LaunchUITests: XCTestCase {
   ) -> CaptureReadiness {
     CaptureReadiness(specification: specification, anchor: anchor) {
       checkNow()
-        && !app.keyboards.firstMatch.exists
-        && !app.alerts.firstMatch.exists
+        && app.keyboards.count == 0
+        && app.alerts.count == 0
         && !self.hasUnintendedSheet(app, intendedContentID: intendedSheetContentID)
     }
   }
@@ -396,9 +396,10 @@ final class LaunchUITests: XCTestCase {
     _ screen: XCUIElement,
     in app: XCUIApplication
   ) -> Bool {
-    guard screen.exists, app.windows.firstMatch.exists else { return false }
+    let window = app.windows.element
+    guard screen.exists, window.exists else { return false }
     let screenFrame = screen.frame
-    let windowFrame = app.windows.firstMatch.frame
+    let windowFrame = window.frame
     return !screenFrame.isEmpty
       && screenFrame.width >= windowFrame.width - 2
       && windowFrame.intersects(screenFrame)

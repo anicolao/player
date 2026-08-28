@@ -432,7 +432,7 @@ final class AppStoreListingUITests: XCTestCase {
   }
 
   private func anyElement(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {
-    app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+    uniquelyIdentifiedElement(app, identifier)
   }
 
   private func marketingCaptureReadiness(
@@ -444,8 +444,8 @@ final class AppStoreListingUITests: XCTestCase {
   ) -> CaptureReadiness {
     CaptureReadiness(specification: specification, anchor: anchor) {
       checkNow()
-        && !app.keyboards.firstMatch.exists
-        && !app.alerts.firstMatch.exists
+        && app.keyboards.count == 0
+        && app.alerts.count == 0
         && !self.hasUnintendedSheet(app, intendedContentID: intendedSheetContentID)
     }
   }

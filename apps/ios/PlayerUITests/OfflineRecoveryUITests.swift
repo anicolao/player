@@ -61,22 +61,22 @@ final class OfflineRecoveryUITests: XCTestCase {
         self.hasExactValue(recoveryProbe, expectedRecovery)
           && elementIsFullyVisible(
             app.staticTexts["Your library needs recovery"],
-            within: app.windows.firstMatch,
+            within: app.windows.element,
             requiresHittable: false
           )
           && elementIsFullyVisible(
             app.buttons["startup-recovery-restore"],
-            within: app.windows.firstMatch
+            within: app.windows.element
           )
           && elementIsFullyVisible(
             app.buttons["startup-recovery-diagnostics"],
-            within: app.windows.firstMatch
+            within: app.windows.element
           )
           && elementIsFullyVisible(
             app.buttons["startup-recovery-fresh"],
-            within: app.windows.firstMatch
+            within: app.windows.element
           )
-          && !app.progressIndicators.firstMatch.exists
+          && app.progressIndicators.count == 0
       }
     )
 
@@ -113,19 +113,19 @@ final class OfflineRecoveryUITests: XCTestCase {
         )
           && elementIsFullyVisible(
             app.staticTexts["Core library works without Internet"],
-            within: app.windows.firstMatch,
+            within: app.windows.element,
             requiresHittable: false
           )
           && elementIsFullyVisible(
             app.staticTexts["Quarantined app-owned items"],
-            within: app.windows.firstMatch,
+            within: app.windows.element,
             requiresHittable: false
           )
           && elementIsFullyVisible(
             app.buttons["diagnostics-export"],
-            within: app.windows.firstMatch
+            within: app.windows.element
           )
-          && !app.progressIndicators.firstMatch.exists
+          && app.progressIndicators.count == 0
       }
     )
 
@@ -159,16 +159,16 @@ final class OfflineRecoveryUITests: XCTestCase {
           )
           && elementIsFullyVisible(
             app.buttons["diagnostics-export"],
-            within: app.windows.firstMatch
+            within: app.windows.element
           )
-          && !app.progressIndicators.firstMatch.exists
+          && app.progressIndicators.count == 0
       }
     )
     tester.generateDocs()
   }
 
   private func anyElement(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {
-    app.descendants(matching: .any)[identifier]
+    uniquelyIdentifiedElement(app, identifier)
   }
 
   private func offlineCaptureReadiness(
@@ -179,9 +179,9 @@ final class OfflineRecoveryUITests: XCTestCase {
   ) -> CaptureReadiness {
     CaptureReadiness(specification: specification, anchor: anchor) {
       checkNow()
-        && !app.keyboards.firstMatch.exists
-        && !app.alerts.firstMatch.exists
-        && !app.sheets.firstMatch.exists
+        && app.keyboards.count == 0
+        && app.alerts.count == 0
+        && app.sheets.count == 0
     }
   }
 

@@ -144,7 +144,7 @@ final class ImportIngressResilienceUITests: XCTestCase {
   }
 
   private func anyElement(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {
-    app.descendants(matching: .any)[identifier]
+    uniquelyIdentifiedElement(app, identifier)
   }
 
   private func requireValue(_ element: XCUIElement, _ expected: String) throws {
