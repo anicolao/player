@@ -743,7 +743,6 @@ final class TestStepHelper {
         description: description,
         filename: filename,
         verifications: verifications.map(\.specification)
-          + (captureReadiness.map { [$0.specification] } ?? [])
       )
     )
   }
