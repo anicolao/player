@@ -33,6 +33,7 @@
 - [x] Narrator browsing is available
 - [x] The tab pill includes the Add Audiobook action
 - [x] The pill-integrated Add Audiobook action is directly tappable
+- [x] At capture, the exact five-book organization and paused player are settled at the Library and Recently Added starts with visible cover-bearing cards
 
 ## A custom collection retains the listener's manual book order
 
@@ -43,6 +44,7 @@
 - [x] The named collection contains exactly two books in curated order
 - [x] The first ordered collection book is visible
 - [x] The second ordered collection book is visible
+- [x] At capture, the exact two-book collection order and its cover-bearing rows are fully visible on idle production List geometry
 
 ## All Books presents square audiobook artwork at the left ends of burnt-orange wooden shelves
 
@@ -57,6 +59,7 @@
 - [x] Continue Listening exposes the resumable square cover
 - [x] Recently Added exposes the newest square cover
 - [x] The complete A–Z shelf exposes its first sorted audiobook
+- [x] At capture, the exact shelf order and all visible cover-bearing shelves are idle at their production starts
 
 ## The books carry their wooden shelf to its visible right end
 
@@ -67,6 +70,7 @@
 - [x] The oldest audiobook remains on the shared shelf
 - [x] The final audiobook is fully reachable at the shelf end
 - [x] The wooden shelf's right endpoint is fully visible
+- [x] At capture, the exact shelf state is idle with Recently Added at its right endpoint, its final cover and wooden end fully visible, and every other visible scroll surface settled
 
 ## The final Library control scrolls completely above the persistent player
 
@@ -78,6 +82,7 @@
 - [x] The persistent player remains available below Library content
 - [x] Trash is fully clear of the persistent player
 - [x] Library publishes an idle, geometry-confirmed bottom endpoint
+- [x] At capture, the exact four-book/one-Trash organization is idle at the Library bottom with Trash fully clear of the paused player
 
 ## Removing a book creates an exact recoverable Trash transaction
 
@@ -89,6 +94,7 @@
 - [x] The removed book is identifiable in Trash
 - [x] The exact removal transaction can be restored
 - [x] The managed copy can be permanently deleted after confirmation
+- [x] At capture, the exact recoverable Trash transaction, cover-bearing book row, and both actions are fully visible on idle production List geometry
 
 ## Restore returns the book and its organization while list preference persists
 
@@ -99,6 +105,7 @@
 - [x] Restore atomically returns the book to its prior Up Next position
 - [x] The list choice survives restart and Trash restore
 - [x] The restored book is visible again
+- [x] At capture, the exact restored organization and persisted list order are settled with the restored cover-bearing row fully visible
 
 ## Local search finds contributor metadata without a network
 
@@ -109,6 +116,7 @@
 - [x] Normalized contributor search returns exactly the two matching books in title order
 - [x] The local query remains available for immediate refinement
 - [x] The result count and active order are visible
+- [x] At capture, the exact two-book contributor result order and cover-bearing rows are settled on idle search geometry with submitted focus dismissed
 
 ## Search combines a listening-state filter with a meaningful sort
 
@@ -119,6 +127,7 @@
 - [x] Finished books are sorted newest-first
 - [x] The active result summary is explicit
 - [x] All active choices can be cleared in one tap
+- [x] At capture, the exact finished/recent order and two cover-bearing results are settled on idle search geometry with sort/filter menus closed
 
 ## No search matches is distinct from an empty library
 
@@ -129,3 +138,4 @@
 - [x] The durable sort and filter remain active while the query has no matches
 - [x] A dedicated no-match state is shown
 - [x] The no-match state offers one-tap recovery
+- [x] At capture, the exact durable no-match search state is laid out with submitted focus dismissed and its one-tap recovery fully visible
