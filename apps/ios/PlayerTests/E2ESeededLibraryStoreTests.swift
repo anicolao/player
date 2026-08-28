@@ -115,6 +115,54 @@
     }
   }
 
+  final class E2EPersistedLibraryTests: XCTestCase {
+    func testLoadsTheProductionEnvelopeBeforeDerivingFixtureIDs() async throws {
+      let root = temporaryDirectory("valid")
+      defer { try? FileManager.default.removeItem(at: root) }
+      let libraryURL = root.appending(path: "Library.json")
+      let snapshot = LibrarySnapshot(
+        books: [],
+        importJobs: [],
+        currentBookID: nil,
+        collections: [
+          BookCollection(
+            id: UUID(uuidString: "e2100000-0000-0000-0000-000000000001")!,
+            name: "Durable",
+            orderedBookIDs: [],
+            createdAt: Date(timeIntervalSince1970: 1_700_000_000),
+            updatedAt: Date(timeIntervalSince1970: 1_700_000_000)
+          )
+        ]
+      )
+      try await CodableLibraryStore(fileURL: libraryURL).save(snapshot)
+
+      let persisted = try XCTUnwrap(E2EPersistedLibrary.load(from: libraryURL))
+      XCTAssertEqual(persisted.snapshot, snapshot)
+      XCTAssertTrue(
+        persisted.encoded.lowercased().contains("e2100000-0000-0000-0000-000000000001")
+      )
+    }
+
+    func testMalformedExistingEnvelopeFailsWithoutChangingIt() throws {
+      let root = temporaryDirectory("malformed")
+      defer { try? FileManager.default.removeItem(at: root) }
+      try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+      let libraryURL = root.appending(path: "Library.json")
+      let malformed = Data("not-a-library".utf8)
+      try malformed.write(to: libraryURL, options: .atomic)
+
+      XCTAssertThrowsError(try E2EPersistedLibrary.load(from: libraryURL))
+      XCTAssertEqual(try Data(contentsOf: libraryURL), malformed)
+    }
+
+    private func temporaryDirectory(_ name: String) -> URL {
+      FileManager.default.temporaryDirectory.appending(
+        path: "E2EPersistedLibraryTests-\(name)-\(UUID().uuidString)",
+        directoryHint: .isDirectory
+      )
+    }
+  }
+
   final class E2EBookmarkClockTests: XCTestCase {
     private let initialValue = Date(timeIntervalSince1970: 1_700_030_000)
 
@@ -548,6 +596,29 @@
 
   @MainActor
   final class E2EPopulatedLibraryDescriptorTests: XCTestCase {
+    func testCorruptPersistedStoreFailsBeforePopulatedFixtureMediaMutation() throws {
+      let root = temporaryDirectory("corrupt-persisted-library")
+      defer { try? FileManager.default.removeItem(at: root) }
+      try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+      let libraryURL = root.appending(path: "Library.json")
+      let corruptData = Data("corrupt populated fixture".utf8)
+      try corruptData.write(to: libraryURL, options: .atomic)
+
+      XCTAssertThrowsError(
+        try PlayerEnvironment.populatedLibraryEnvironment(
+          reset: false,
+          root: root,
+          descriptorData: descriptorData(validDescriptor()),
+          audio: Data(),
+          covers: fixtureCovers
+        )
+      )
+      XCTAssertEqual(try Data(contentsOf: libraryURL), corruptData)
+      XCTAssertFalse(
+        FileManager.default.fileExists(atPath: root.appending(path: "Media").path)
+      )
+    }
+
     func testMalformedClockCannotResetFixtureRoot() throws {
       try assertInvalidDescriptorPreservesSentinel("malformed-clock") {
         $0["clock"] = "2026-02-30T13:41:00Z"

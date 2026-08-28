@@ -2,6 +2,26 @@ import CryptoKit
 import Foundation
 import UIKit
 
+struct E2EPersistedLibrary {
+  let snapshot: LibrarySnapshot
+  let encoded: String
+
+  static func load(from libraryURL: URL) throws -> E2EPersistedLibrary? {
+    guard FileManager.default.fileExists(atPath: libraryURL.path) else { return nil }
+    let data = try Data(contentsOf: libraryURL)
+    guard let encoded = String(data: data, encoding: .utf8) else {
+      throw PlayerCoreError.fileOperation("The persisted E2E library is not UTF-8 JSON.")
+    }
+    struct Envelope: Decodable {
+      var library: LibrarySnapshot
+    }
+    let decoder = JSONDecoder()
+    decoder.dateDecodingStrategy = .iso8601
+    let envelope = try decoder.decode(Envelope.self, from: data)
+    return E2EPersistedLibrary(snapshot: envelope.library, encoded: encoded)
+  }
+}
+
 struct E2EPlaybackControlConfiguration: Equatable {
   static let disabled = E2EPlaybackControlConfiguration(
     eventControls: false,
@@ -1011,6 +1031,8 @@ extension PlayerEnvironment {
         directoryHint: .isDirectory
       )
       if reset { try resetE2EFixtureRoot(root) }
+      let libraryURL = root.appending(path: "Library.json")
+      let persistedLibrary = try E2EPersistedLibrary.load(from: libraryURL)
 
       let bookID = UUID(uuidString: "52000000-0000-0000-0000-000000000001")!
       let firstAssetID = UUID(uuidString: "52000000-0000-0000-0000-000000000002")!
@@ -1103,8 +1125,7 @@ extension PlayerEnvironment {
         ),
         positionJournal: [pause]
       )
-      let libraryURL = root.appending(path: "Library.json")
-      let firstAvailableSuffix = nextSleepTimerIDSuffix(in: libraryURL)
+      let firstAvailableSuffix = nextSleepTimerIDSuffix(in: persistedLibrary?.encoded)
       let ids = (firstAvailableSuffix...(firstAvailableSuffix + 79)).map {
         UUID(uuidString: String(format: "52000000-0000-0000-0000-%012d", $0))!
       }
@@ -1123,10 +1144,9 @@ extension PlayerEnvironment {
       )
     }
 
-    private static func nextSleepTimerIDSuffix(in libraryURL: URL) -> Int {
+    private static func nextSleepTimerIDSuffix(in encoded: String?) -> Int {
       guard
-        let data = try? Data(contentsOf: libraryURL),
-        let encoded = String(data: data, encoding: .utf8),
+        let encoded,
         let expression = try? NSRegularExpression(
           pattern: "52000000-0000-0000-0000-([0-9]{12})",
           options: [.caseInsensitive]
@@ -1152,6 +1172,8 @@ extension PlayerEnvironment {
         directoryHint: .isDirectory
       )
       if reset { try resetE2EFixtureRoot(root) }
+      let libraryURL = root.appending(path: "Library.json")
+      let persistedLibrary = try E2EPersistedLibrary.load(from: libraryURL)
 
       let bookID = UUID(uuidString: "53000000-0000-0000-0000-000000000001")!
       let firstAssetID = UUID(uuidString: "53000000-0000-0000-0000-000000000002")!
@@ -1239,8 +1261,7 @@ extension PlayerEnvironment {
         ),
         positionJournal: [pause]
       )
-      let libraryURL = root.appending(path: "Library.json")
-      let firstAvailableSuffix = nextBookmarkIDSuffix(in: libraryURL)
+      let firstAvailableSuffix = nextBookmarkIDSuffix(in: persistedLibrary?.encoded)
       let ids = (firstAvailableSuffix...(firstAvailableSuffix + 39)).map {
         UUID(uuidString: String(format: "53000000-0000-0000-0000-%012d", $0))!
       }
@@ -1262,10 +1283,9 @@ extension PlayerEnvironment {
       )
     }
 
-    private static func nextBookmarkIDSuffix(in libraryURL: URL) -> Int {
+    private static func nextBookmarkIDSuffix(in encoded: String?) -> Int {
       guard
-        let data = try? Data(contentsOf: libraryURL),
-        let encoded = String(data: data, encoding: .utf8),
+        let encoded,
         let expression = try? NSRegularExpression(
           pattern: "53000000-0000-0000-0000-([0-9]{12})",
           options: [.caseInsensitive]
@@ -1350,6 +1370,8 @@ extension PlayerEnvironment {
         directoryHint: .isDirectory
       )
       if reset { try resetE2EFixtureRoot(root) }
+      let libraryURL = root.appending(path: "Library.json")
+      let persistedLibrary = try E2EPersistedLibrary.load(from: libraryURL)?.snapshot
 
       let bookID = UUID(uuidString: "51000000-0000-0000-0000-000000000001")!
       let assetID = UUID(uuidString: "51000000-0000-0000-0000-000000000002")!
@@ -1441,16 +1463,6 @@ extension PlayerEnvironment {
         positionJournal: [pauseEvent],
         smartRewindPreferences: configuration.preferences
       )
-      struct SnapshotEnvelope: Decodable {
-        var library: LibrarySnapshot
-      }
-      let libraryURL = root.appending(path: "Library.json")
-      let snapshotDecoder = JSONDecoder()
-      snapshotDecoder.dateDecodingStrategy = .iso8601
-      let persistedLibrary = try? snapshotDecoder.decode(
-        SnapshotEnvelope.self,
-        from: Data(contentsOf: libraryURL)
-      ).library
       let journalIDs = persistedLibrary?.positionJournal.map(\.id) ?? []
       let transactionIDs = persistedLibrary?.resumeRewindTransactions.flatMap {
           [$0.id, $0.preRewindEventID, $0.rewindEventID]
@@ -1750,6 +1762,8 @@ extension PlayerEnvironment {
 
       if reset { try resetE2EFixtureRoot(root) }
       try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+      let libraryFileURL = root.appending(path: "Library.json")
+      let persistedLibrary = try E2EPersistedLibrary.load(from: libraryFileURL)?.snapshot
 
       let clock = validated.clock
       var books: [Book] = []
@@ -1867,15 +1881,8 @@ extension PlayerEnvironment {
         trackedBookID: descriptor.books[4].id,
         expectedChecksum: descriptor.audio.sha256
       )
-      let libraryFileURL = root.appending(path: "Library.json")
       let generatedIDs: [UUID]
-      if
-        let persistedData = try? Data(contentsOf: libraryFileURL),
-        let envelope = try? JSONSerialization.jsonObject(with: persistedData) as? [String: Any],
-        let library = envelope["library"] as? [String: Any],
-        let collections = library["collections"] as? [[String: Any]],
-        collections.contains(where: { ($0["id"] as? String)?.lowercased() == collectionID.uuidString.lowercased() })
-      {
+      if persistedLibrary?.collections.contains(where: { $0.id == collectionID }) == true {
         generatedIDs = [trashID]
       } else {
         generatedIDs = [collectionID, trashID]
