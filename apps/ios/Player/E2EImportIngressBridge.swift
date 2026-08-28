@@ -1,6 +1,13 @@
 #if E2E
   import Foundation
 
+  private func suspendImportPhaseUntilCancellation() async throws {
+    let (events, continuation) = AsyncStream<Void>.makeStream()
+    defer { continuation.finish() }
+    for await _ in events {}
+    try Task.checkCancellation()
+  }
+
   struct E2EImportIngressArguments: Equatable {
     enum Channel: String, CaseIterable {
       case documentOpen = "document-open"
@@ -363,7 +370,7 @@
     func discardStaging(for jobID: UUID) async { await base.discardStaging(for: jobID) }
 
     func acquireSelection(_ selectedURLs: [URL], jobID: UUID) async throws -> [AcquiredAudioFile] {
-      if pauseAtAcquire { try await Task.sleep(for: .seconds(3_600)) }
+      if pauseAtAcquire { try await suspendImportPhaseUntilCancellation() }
       return try await base.acquireSelection(selectedURLs, jobID: jobID)
     }
 
@@ -394,7 +401,7 @@
     }
 
     func inspect(url: URL) async throws -> InspectedAudio {
-      if pauseAtInspect { try await Task.sleep(for: .seconds(3_600)) }
+      if pauseAtInspect { try await suspendImportPhaseUntilCancellation() }
       return result
     }
   }

@@ -250,8 +250,10 @@ if rg -q 'PlayerUITests/[A-Za-z0-9_]+/test[A-Za-z0-9_]+' "${workflow}"; then
 fi
 
 if rg -n --pcre2 '\b(?:sleep|usleep)\s*\(|DispatchQueue\.[^\n]*asyncAfter|Task\.sleep' \
-  "${ui_test_root}" --glob '*.swift'; then
-  fail "fixed sleeps are forbidden in UI tests"
+  "${ui_test_root}" --glob '*.swift' \
+  || rg -n --pcre2 '\b(?:sleep|usleep)\s*\(|DispatchQueue\.[^\n]*asyncAfter|Task\.sleep' \
+  "${repository_root}/apps/ios/Player" --glob 'E2E*.swift'; then
+  fail "fixed sleeps are forbidden in UI tests and E2E product adapters"
 fi
 
 if rg -n --pcre2 'timeout:\s*(?:[3-9]|[1-9][0-9]+)(?:\.0+)?\b' \
