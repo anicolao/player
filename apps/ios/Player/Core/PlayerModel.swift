@@ -590,6 +590,27 @@ final class PlayerModel {
     await enqueueImport(ImportRequest(entryPoint: .files, selectedURLs: selectedURLs))
   }
 
+  @discardableResult
+  func handleSystemFileSelection(
+    _ outcome: SystemSelectionOutcome<[URL]>
+  ) async -> UUID? {
+    switch outcome {
+    case .selected(let urls):
+      return await importAudioSelection(from: urls)
+    case .cancelled:
+      return nil
+    case .failed(let failure):
+      let detail = failure.message.trimmingCharacters(in: .whitespacesAndNewlines)
+      let suffix = detail.isEmpty ? "" : " \(detail)"
+      present(
+        "Files couldn’t provide the selected audiobook.\(suffix) Download it in Files or choose another copy, then try again.",
+        in: .importFlow,
+        recoveryAction: .acknowledge
+      )
+      return nil
+    }
+  }
+
   func importFromComputer(_ selectedURLs: [URL]) async -> DirectImportOutcome {
     let previousBookIDs = Set(library.books.map(\.id))
     guard let jobID = await enqueueImport(
@@ -736,21 +757,21 @@ final class PlayerModel {
       present(PlayerCoreError.invalidAssetSelection, in: .importFlow, owner: errorOwner)
       return nil
     }
-    let securityScopedURLs = request.selectedURLs.filter {
-      $0.startAccessingSecurityScopedResource()
-    }
-    defer {
-      securityScopedURLs.forEach { $0.stopAccessingSecurityScopedResource() }
-    }
     do {
-      let sources = try makeDurableSources(for: request)
+      let sources = try await environment.media.referenceImportSources(
+        request.selectedURLs,
+        displayNames: request.sourceDisplayNames
+      )
+      let entryPoint: ImportEntryPoint = request.entryPoint == .files
+        && sources.contains(where: \.isDirectory)
+        ? .folder : request.entryPoint
       if request.selectedURLs.count == 1,
         request.selectedURLs[0].pathExtension.lowercased() == "zip"
       {
         return await importZipArchive(
           from: request.selectedURLs[0],
           checkpoint: ImportQueueCheckpoint(
-            entryPoint: request.entryPoint,
+            entryPoint: entryPoint,
             sources: sources,
             shareHandoffID: request.shareHandoffID
           )
@@ -771,7 +792,7 @@ final class PlayerModel {
         createdAt: now,
         updatedAt: now,
         queueCheckpoint: ImportQueueCheckpoint(
-          entryPoint: request.entryPoint,
+          entryPoint: entryPoint,
           sources: sources,
           shareHandoffID: request.shareHandoffID
         )
@@ -3216,44 +3237,6 @@ final class PlayerModel {
     )
   }
 
-  private func makeDurableSources(for request: ImportRequest) throws -> [DurableImportSource] {
-    try request.selectedURLs.enumerated().map { index, url in
-      let values = try url.resourceValues(forKeys: [.isDirectoryKey])
-      let bookmark = try? url.bookmarkData(
-        options: [],
-        includingResourceValuesForKeys: nil,
-        relativeTo: nil
-      )
-      let requestedNames = request.sourceDisplayNames ?? []
-      return DurableImportSource(
-        displayName: index < requestedNames.count ? requestedNames[index] : url.lastPathComponent,
-        bookmarkData: bookmark,
-        fallbackURLString: url.absoluteString,
-        isDirectory: values.isDirectory == true
-      )
-    }
-  }
-
-  private func resolveSources(_ sources: [DurableImportSource]) throws -> [URL] {
-    try sources.map { source in
-      if let bookmark = source.bookmarkData {
-        var stale = false
-        if let resolved = try? URL(
-          resolvingBookmarkData: bookmark,
-          options: [],
-          relativeTo: nil,
-          bookmarkDataIsStale: &stale
-        ), !stale {
-          return resolved
-        }
-      }
-      guard let fallback = URL(string: source.fallbackURLString) else {
-        throw PlayerCoreError.fileOperation("The import source is no longer available.")
-      }
-      return fallback
-    }
-  }
-
   private func executeQueuedImport(jobID: UUID, initialURLs: [URL]?) async {
     let task = Task<Void, Never> { [weak self] in
       guard let self else { return }
@@ -3282,7 +3265,12 @@ final class PlayerModel {
         job.failure = nil
         job.queueCheckpoint = checkpoint
         try await replaceAndPersist(job)
-        let urls = try initialURLs ?? resolveSources(checkpoint.sources)
+        let urls: [URL]
+        if let initialURLs {
+          urls = initialURLs
+        } else {
+          urls = try await environment.media.resolveImportSources(checkpoint.sources)
+        }
         let acquired = try await environment.media.acquireSelection(urls, jobID: jobID)
         checkpoint.acquired = acquired
         checkpoint.acquisitionComplete = true

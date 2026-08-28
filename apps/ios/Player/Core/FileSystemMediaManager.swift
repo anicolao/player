@@ -11,9 +11,18 @@ actor FileSystemMediaManager: MediaManaging {
   private let trashURL: URL
   private let pendingTrashDeletionURL: URL
   private let fileManager: FileManager
+  private let resourceAccess: SecurityScopedResourceAccess
+  private let bookmarkAccess: ImportSourceBookmarkAccess
+  private let beforeAcquisitionCopy: @Sendable (URL, Int) throws -> Void
   private let logger = Logger(subsystem: "com.spnss.player", category: "MediaStorage")
 
-  init(rootURL: URL, fileManager: FileManager = .default) {
+  init(
+    rootURL: URL,
+    fileManager: FileManager = .default,
+    resourceAccess: SecurityScopedResourceAccess = .system,
+    bookmarkAccess: ImportSourceBookmarkAccess = .system,
+    beforeAcquisitionCopy: @escaping @Sendable (URL, Int) throws -> Void = { _, _ in }
+  ) {
     self.rootURL = rootURL.standardizedFileURL
     self.stagingURL = rootURL.appending(path: "Staging", directoryHint: .isDirectory)
     self.mediaURL = rootURL.appending(path: "Media", directoryHint: .isDirectory)
@@ -23,6 +32,9 @@ actor FileSystemMediaManager: MediaManaging {
       directoryHint: .isDirectory
     )
     self.fileManager = fileManager
+    self.resourceAccess = resourceAccess
+    self.bookmarkAccess = bookmarkAccess
+    self.beforeAcquisitionCopy = beforeAcquisitionCopy
   }
 
   func stage(sourceURL: URL, jobID: UUID) throws -> StagedAudio {
@@ -36,6 +48,43 @@ actor FileSystemMediaManager: MediaManaging {
       storageName: "archive",
       allowedExtensions: ["zip"]
     )
+  }
+
+  func referenceImportSources(
+    _ selectedURLs: [URL],
+    displayNames: [String]?
+  ) async throws -> [DurableImportSource] {
+    let lease = resourceAccess.acquire(selectedURLs)
+    defer { lease.release() }
+    let names = displayNames ?? []
+    return try selectedURLs.enumerated().map { index, url in
+      let values = try url.resourceValues(forKeys: [.isDirectoryKey])
+      return DurableImportSource(
+        displayName: index < names.count ? names[index] : url.lastPathComponent,
+        bookmarkData: try bookmarkAccess.create(for: url),
+        fallbackURLString: url.absoluteString,
+        isDirectory: values.isDirectory == true
+      )
+    }
+  }
+
+  func resolveImportSources(_ sources: [DurableImportSource]) async throws -> [URL] {
+    try sources.map { source in
+      if let bookmark = source.bookmarkData {
+        let resolved: ResolvedImportSourceBookmark
+        do {
+          resolved = try bookmarkAccess.resolve(bookmark)
+        } catch {
+          throw unavailableImportSource(source.displayName)
+        }
+        guard !resolved.isStale else { throw unavailableImportSource(source.displayName) }
+        return resolved.url
+      }
+      guard let fallback = URL(string: source.fallbackURLString) else {
+        throw unavailableImportSource(source.displayName)
+      }
+      return fallback
+    }
   }
 
   func zipWorkspace(for jobID: UUID) throws -> ZipImportWorkspace {
@@ -80,79 +129,98 @@ actor FileSystemMediaManager: MediaManaging {
     }
   }
 
-  func acquireSelection(_ selectedURLs: [URL], jobID: UUID) throws -> [AcquiredAudioFile] {
-    var securityScopedURLs: [URL] = []
-    for url in selectedURLs where url.startAccessingSecurityScopedResource() {
-      securityScopedURLs.append(url)
-    }
-    defer { securityScopedURLs.forEach { $0.stopAccessingSecurityScopedResource() } }
+  func acquireSelection(
+    _ selectedURLs: [URL],
+    jobID: UUID
+  ) async throws -> [AcquiredAudioFile] {
+    try acquireSelectionSynchronously(selectedURLs, jobID: jobID)
+  }
 
-    var candidates: [(url: URL, sourceRelativePath: String, commonFolderName: String?)] = []
-    for selectedURL in selectedURLs {
-      let values = try selectedURL.resourceValues(forKeys: [.isDirectoryKey, .isRegularFileKey])
-      if values.isDirectory == true {
-        let keys: Set<URLResourceKey> = [.isRegularFileKey, .isDirectoryKey]
-        guard let enumerator = fileManager.enumerator(
-          at: selectedURL,
-          includingPropertiesForKeys: Array(keys),
-          options: [.skipsHiddenFiles, .skipsPackageDescendants]
-        ) else { continue }
-        var children: [(url: URL, relativePath: String)] = []
-        for case let child as URL in enumerator {
-          let childValues = try child.resourceValues(forKeys: keys)
-          guard
-            childValues.isRegularFile == true,
-            Self.supportedExtensions.contains(child.pathExtension.lowercased())
-          else { continue }
-          let relative = String(child.path.dropFirst(selectedURL.path.count + 1))
-          children.append((child, relative))
+  private func acquireSelectionSynchronously(
+    _ selectedURLs: [URL],
+    jobID: UUID
+  ) throws -> [AcquiredAudioFile] {
+    let lease = resourceAccess.acquire(selectedURLs)
+    defer { lease.release() }
+    let jobDirectory = stagingURL.appending(
+      path: jobID.uuidString.lowercased(),
+      directoryHint: .isDirectory
+    )
+    do {
+      var candidates: [(url: URL, sourceRelativePath: String, commonFolderName: String?)] = []
+      for selectedURL in selectedURLs {
+        let values = try selectedURL.resourceValues(forKeys: [.isDirectoryKey, .isRegularFileKey])
+        if values.isDirectory == true {
+          let keys: Set<URLResourceKey> = [.isRegularFileKey, .isDirectoryKey]
+          guard let enumerator = fileManager.enumerator(
+            at: selectedURL,
+            includingPropertiesForKeys: Array(keys),
+            options: [.skipsHiddenFiles, .skipsPackageDescendants]
+          ) else { continue }
+          var children: [(url: URL, relativePath: String)] = []
+          for case let child as URL in enumerator {
+            try Task.checkCancellation()
+            let childValues = try child.resourceValues(forKeys: keys)
+            guard
+              childValues.isRegularFile == true,
+              Self.supportedExtensions.contains(child.pathExtension.lowercased())
+            else { continue }
+            let relative = String(child.path.dropFirst(selectedURL.path.count + 1))
+            children.append((child, relative))
+          }
+          children.sort {
+            let lhsHasNumber = URL(filePath: $0.relativePath)
+              .deletingPathExtension().lastPathComponent.contains { $0.isNumber }
+            let rhsHasNumber = URL(filePath: $1.relativePath)
+              .deletingPathExtension().lastPathComponent.contains { $0.isNumber }
+            if lhsHasNumber != rhsHasNumber { return lhsHasNumber }
+            return $0.relativePath.localizedStandardCompare($1.relativePath) == .orderedAscending
+          }
+          for child in children {
+            let relativeComponents = child.relativePath.split(separator: "/").map(String.init)
+            let groupingFolder = relativeComponents.count > 1
+              ? relativeComponents[0]
+              : selectedURL.lastPathComponent
+            candidates.append((child.url, child.relativePath, groupingFolder))
+          }
+        } else if values.isRegularFile == true {
+          candidates.append((selectedURL, selectedURL.lastPathComponent, nil))
         }
-        children.sort {
-          let lhsHasNumber = URL(filePath: $0.relativePath)
-            .deletingPathExtension().lastPathComponent.contains { $0.isNumber }
-          let rhsHasNumber = URL(filePath: $1.relativePath)
-            .deletingPathExtension().lastPathComponent.contains { $0.isNumber }
-          if lhsHasNumber != rhsHasNumber { return lhsHasNumber }
-          return $0.relativePath.localizedStandardCompare($1.relativePath) == .orderedAscending
-        }
-        for child in children {
-          let relativeComponents = child.relativePath.split(separator: "/").map(String.init)
-          let groupingFolder = relativeComponents.count > 1
-            ? relativeComponents[0]
-            : selectedURL.lastPathComponent
-          candidates.append((child.url, child.relativePath, groupingFolder))
-        }
-      } else if values.isRegularFile == true {
-        candidates.append((selectedURL, selectedURL.lastPathComponent, nil))
       }
-    }
-    guard !candidates.isEmpty else {
-      throw PlayerCoreError.fileOperation("The selection contains no readable files.")
-    }
+      guard !candidates.isEmpty else {
+        throw PlayerCoreError.fileOperation("The selection contains no readable files.")
+      }
 
-    var requiredBytes: Int64 = 0
-    for candidate in candidates {
-      let fileSize = Int64(try candidate.url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0)
-      let (sum, overflow) = requiredBytes.addingReportingOverflow(max(0, fileSize))
-      requiredBytes = overflow ? .max : sum
-    }
-    try prepareDirectories()
-    let adoptsReceiverFiles = candidates.allSatisfy { isComputerReceiverSource($0.url) }
-    try preflight(requiredBytes: adoptsReceiverFiles ? 0 : requiredBytes)
+      var requiredBytes: Int64 = 0
+      for candidate in candidates {
+        let fileSize = Int64(try candidate.url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0)
+        let (sum, overflow) = requiredBytes.addingReportingOverflow(max(0, fileSize))
+        requiredBytes = overflow ? .max : sum
+      }
+      try prepareDirectories()
+      let adoptsReceiverFiles = candidates.allSatisfy { isComputerReceiverSource($0.url) }
+      try preflight(requiredBytes: adoptsReceiverFiles ? 0 : requiredBytes)
 
-    return try candidates.enumerated().map { index, candidate in
-      let selectedExtension = candidate.url.pathExtension.lowercased()
-      return AcquiredAudioFile(
-        staged: try stageFile(
-          sourceURL: candidate.url,
-          jobID: jobID,
-          storageName: String(format: "item-%05d", index),
-          allowedExtensions: [selectedExtension],
-          performsStoragePreflight: false
-        ),
-        sourceRelativePath: candidate.sourceRelativePath,
-        commonFolderName: candidate.commonFolderName
-      )
+      return try candidates.enumerated().map { index, candidate in
+        try Task.checkCancellation()
+        try beforeAcquisitionCopy(candidate.url, index)
+        let selectedExtension = candidate.url.pathExtension.lowercased()
+        return AcquiredAudioFile(
+          staged: try stageFile(
+            sourceURL: candidate.url,
+            jobID: jobID,
+            storageName: String(format: "item-%05d", index),
+            allowedExtensions: [selectedExtension],
+            performsStoragePreflight: false,
+            acquiresSecurityScope: false
+          ),
+          sourceRelativePath: candidate.sourceRelativePath,
+          commonFolderName: candidate.commonFolderName
+        )
+      }
+    } catch {
+      try? fileManager.removeItem(at: jobDirectory)
+      throw error
     }
   }
 
@@ -161,7 +229,8 @@ actor FileSystemMediaManager: MediaManaging {
     jobID: UUID,
     storageName: String,
     allowedExtensions: Set<String> = supportedExtensions,
-    performsStoragePreflight: Bool = true
+    performsStoragePreflight: Bool = true,
+    acquiresSecurityScope: Bool = true
   ) throws -> StagedAudio {
     let filename = sourceURL.lastPathComponent
     let fileExtension = sourceURL.pathExtension.lowercased()
@@ -169,10 +238,8 @@ actor FileSystemMediaManager: MediaManaging {
       throw PlayerCoreError.unsupportedFile(filename)
     }
 
-    let accessed = sourceURL.startAccessingSecurityScopedResource()
-    defer {
-      if accessed { sourceURL.stopAccessingSecurityScopedResource() }
-    }
+    let lease = acquiresSecurityScope ? resourceAccess.acquire([sourceURL]) : nil
+    defer { lease?.release() }
 
     let values = try sourceURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
     guard values.isRegularFile == true else {
@@ -229,6 +296,12 @@ actor FileSystemMediaManager: MediaManaging {
       try? fileManager.removeItem(at: stagedURL)
       throw error
     }
+  }
+
+  private func unavailableImportSource(_ displayName: String) -> PlayerCoreError {
+    PlayerCoreError.fileOperation(
+      "The import source \(displayName) is no longer available. Download or choose it again in Files."
+    )
   }
 
   func stagedURL(for relativePath: String) throws -> URL {

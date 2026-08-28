@@ -46,6 +46,11 @@ protocol MediaManaging: Sendable {
   func rollback(_ managed: ManagedAudio) async throws
   func managedURL(for relativePath: String) async throws -> URL
   func discardStaging(for jobID: UUID) async
+  func referenceImportSources(
+    _ selectedURLs: [URL],
+    displayNames: [String]?
+  ) async throws -> [DurableImportSource]
+  func resolveImportSources(_ sources: [DurableImportSource]) async throws -> [URL]
   func acquireSelection(_ selectedURLs: [URL], jobID: UUID) async throws -> [AcquiredAudioFile]
   func stageArchive(sourceURL: URL, jobID: UUID) async throws -> StagedAudio
   func zipWorkspace(for jobID: UUID) async throws -> ZipImportWorkspace
@@ -75,6 +80,48 @@ protocol MediaManaging: Sendable {
 }
 
 extension MediaManaging {
+  func referenceImportSources(
+    _ selectedURLs: [URL],
+    displayNames: [String]?
+  ) async throws -> [DurableImportSource] {
+    try selectedURLs.enumerated().map { index, url in
+      let values = try url.resourceValues(forKeys: [.isDirectoryKey])
+      let names = displayNames ?? []
+      return DurableImportSource(
+        displayName: index < names.count ? names[index] : url.lastPathComponent,
+        bookmarkData: try? url.bookmarkData(
+          options: [],
+          includingResourceValuesForKeys: nil,
+          relativeTo: nil
+        ),
+        fallbackURLString: url.absoluteString,
+        isDirectory: values.isDirectory == true
+      )
+    }
+  }
+
+  func resolveImportSources(_ sources: [DurableImportSource]) async throws -> [URL] {
+    try sources.map { source in
+      if let bookmark = source.bookmarkData {
+        var stale = false
+        if let resolved = try? URL(
+          resolvingBookmarkData: bookmark,
+          options: [],
+          relativeTo: nil,
+          bookmarkDataIsStale: &stale
+        ), !stale {
+          return resolved
+        }
+      }
+      guard let fallback = URL(string: source.fallbackURLString) else {
+        throw PlayerCoreError.fileOperation(
+          "The import source \(source.displayName) is no longer available. Choose it again in Files."
+        )
+      }
+      return fallback
+    }
+  }
+
   func acquireSelection(_ selectedURLs: [URL], jobID: UUID) async throws -> [AcquiredAudioFile] {
     throw PlayerCoreError.fileOperation("This media source does not support multi-item acquisition.")
   }

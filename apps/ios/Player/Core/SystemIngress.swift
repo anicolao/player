@@ -123,6 +123,52 @@ final class SecurityScopedResourceLease: @unchecked Sendable {
   }
 }
 
+struct ResolvedImportSourceBookmark: Sendable {
+  var url: URL
+  var isStale: Bool
+}
+
+struct ImportSourceBookmarkAccess: Sendable {
+  private let createBookmark: @Sendable (URL) throws -> Data?
+  private let resolveBookmark: @Sendable (Data) throws -> ResolvedImportSourceBookmark
+
+  static let system = ImportSourceBookmarkAccess(
+    createBookmark: { url in
+      try url.bookmarkData(
+        options: [],
+        includingResourceValuesForKeys: nil,
+        relativeTo: nil
+      )
+    },
+    resolveBookmark: { data in
+      var stale = false
+      let url = try URL(
+        resolvingBookmarkData: data,
+        options: [],
+        relativeTo: nil,
+        bookmarkDataIsStale: &stale
+      )
+      return ResolvedImportSourceBookmark(url: url, isStale: stale)
+    }
+  )
+
+  init(
+    createBookmark: @escaping @Sendable (URL) throws -> Data?,
+    resolveBookmark: @escaping @Sendable (Data) throws -> ResolvedImportSourceBookmark
+  ) {
+    self.createBookmark = createBookmark
+    self.resolveBookmark = resolveBookmark
+  }
+
+  func create(for url: URL) throws -> Data? {
+    try createBookmark(url)
+  }
+
+  func resolve(_ data: Data) throws -> ResolvedImportSourceBookmark {
+    try resolveBookmark(data)
+  }
+}
+
 struct AcquiredCoverArtwork: Equatable, Sendable {
   var data: Data
   var mediaType: String

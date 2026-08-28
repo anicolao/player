@@ -162,9 +162,9 @@ struct ContentView: View {
       allowedContentTypes: importTypes,
       allowsMultipleSelection: true
     ) { result in
-      guard case .success(let urls) = result, !urls.isEmpty else { return }
-      selection = .inbox
-      Task { await model.importAudioSelection(from: urls) }
+      let outcome = SystemFileSelectionClassifier.classify(result)
+      if case .selected = outcome { selection = .inbox }
+      Task { await model.handleSystemFileSelection(outcome) }
     }
     .sheet(
       isPresented: $isReceivingFromComputer,

@@ -172,6 +172,302 @@ final class SystemIngressTests: XCTestCase {
     XCTAssertEqual(probe.stoppedNames, ["valid.png", "corrupt.png", "large.png"])
   }
 
+  func testMediaReferencesAndAcquiresSingleMultipleFolderAndZIPWithoutChangingSources() async throws {
+    let root = temporaryRoot("files-routes")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let sources = root.appending(path: "Sources", directoryHint: .isDirectory)
+    let folder = sources.appending(path: "Folder Book", directoryHint: .isDirectory)
+    let nested = folder.appending(path: "Disc 1", directoryHint: .isDirectory)
+    let storage = root.appending(path: "Storage", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+    let first = sources.appending(path: "First.mp3")
+    let second = sources.appending(path: "Second.m4a")
+    let folderFirst = folder.appending(path: "01.mp3")
+    let folderSecond = nested.appending(path: "02.m4a")
+    let archive = sources.appending(path: "Book.zip")
+    let originals: [URL: Data] = [
+      first: Data("first".utf8),
+      second: Data("second".utf8),
+      folderFirst: Data("folder-first".utf8),
+      folderSecond: Data("folder-second".utf8),
+      archive: Data("synthetic archive source".utf8),
+    ]
+    for (url, data) in originals { try data.write(to: url) }
+    let selected = [first, second, folder, archive]
+    let scope = SecurityScopeProbe(accessibleNames: Set(selected.map(\.lastPathComponent)))
+    let bookmarks = ImportSourceBookmarkAccess(
+      createBookmark: { Data($0.lastPathComponent.utf8) },
+      resolveBookmark: { _ in
+        throw PlayerCoreError.fileOperation("Resolution is not part of initial acquisition.")
+      }
+    )
+    let media = FileSystemMediaManager(
+      rootURL: storage,
+      resourceAccess: scope.access,
+      bookmarkAccess: bookmarks
+    )
+    let mediaInterface: any MediaManaging = media
+
+    let references = try await mediaInterface.referenceImportSources(selected, displayNames: nil)
+    XCTAssertEqual(references.map(\.displayName), selected.map(\.lastPathComponent))
+    XCTAssertEqual(references.map(\.isDirectory), [false, false, true, false])
+    XCTAssertEqual(references.map(\.bookmarkData), selected.map { Data($0.lastPathComponent.utf8) })
+
+    let single = try await mediaInterface.acquireSelection([first], jobID: uuid(1))
+    let multiple = try await mediaInterface.acquireSelection([first, second], jobID: uuid(2))
+    let folderFiles = try await mediaInterface.acquireSelection([folder], jobID: uuid(3))
+    let stagedArchive = try await mediaInterface.stageArchive(sourceURL: archive, jobID: uuid(4))
+    XCTAssertEqual(single.map(\.sourceRelativePath), ["First.mp3"])
+    XCTAssertEqual(multiple.map(\.sourceRelativePath), ["First.mp3", "Second.m4a"])
+    XCTAssertEqual(folderFiles.map(\.sourceRelativePath), ["01.mp3", "Disc 1/02.m4a"])
+    XCTAssertEqual(folderFiles.map(\.commonFolderName), ["Folder Book", "Disc 1"])
+    XCTAssertEqual(stagedArchive.originalFilename, "Book.zip")
+    for (url, data) in originals {
+      XCTAssertEqual(try Data(contentsOf: url), data, "Acquisition changed \(url.lastPathComponent)")
+    }
+    XCTAssertEqual(scope.startedNames, scope.stoppedNames)
+  }
+
+  func testSecondItemFailureRemovesTheWholeJobStagingDirectoryAndPreservesSources() async throws {
+    let root = temporaryRoot("files-transaction")
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let first = root.appending(path: "First.mp3")
+    let second = root.appending(path: "Second.mp3")
+    let firstData = Data("first source remains".utf8)
+    let secondData = Data("second source remains".utf8)
+    try firstData.write(to: first)
+    try secondData.write(to: second)
+    let jobID = uuid(10)
+    let storage = root.appending(path: "Storage")
+    let scope = SecurityScopeProbe(accessibleNames: ["First.mp3", "Second.mp3"])
+    let media = FileSystemMediaManager(
+      rootURL: storage,
+      resourceAccess: scope.access,
+      bookmarkAccess: noBookmarkAccess,
+      beforeAcquisitionCopy: { url, index in
+        if index == 1 {
+          throw PlayerCoreError.fileOperation("Provider withdrew \(url.lastPathComponent).")
+        }
+      }
+    )
+
+    do {
+      _ = try await media.acquireSelection([first, second], jobID: jobID)
+      XCTFail("The second provider item should fail acquisition")
+    } catch let error as PlayerCoreError {
+      XCTAssertEqual(error, .fileOperation("Provider withdrew Second.mp3."))
+    }
+
+    XCTAssertFalse(FileManager.default.fileExists(
+      atPath: storage.appending(path: "Staging/\(jobID.uuidString.lowercased())").path
+    ))
+    XCTAssertEqual(try Data(contentsOf: first), firstData)
+    XCTAssertEqual(try Data(contentsOf: second), secondData)
+    XCTAssertEqual(scope.startedNames, ["First.mp3", "Second.mp3"])
+    XCTAssertEqual(scope.stoppedNames, ["First.mp3", "Second.mp3"])
+  }
+
+  func testCancellationAfterFirstItemRemovesTheWholeJobStagingDirectoryAndPreservesSources() async throws {
+    let root = temporaryRoot("files-cancellation")
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let first = root.appending(path: "First.mp3")
+    let second = root.appending(path: "Second.mp3")
+    let firstData = Data("first cancellation source remains".utf8)
+    let secondData = Data("second cancellation source remains".utf8)
+    try firstData.write(to: first)
+    try secondData.write(to: second)
+    let jobID = uuid(11)
+    let storage = root.appending(path: "Storage")
+    let scope = SecurityScopeProbe(accessibleNames: ["First.mp3", "Second.mp3"])
+    let media = FileSystemMediaManager(
+      rootURL: storage,
+      resourceAccess: scope.access,
+      bookmarkAccess: noBookmarkAccess,
+      beforeAcquisitionCopy: { _, index in
+        if index == 1 { throw CancellationError() }
+      }
+    )
+
+    do {
+      _ = try await media.acquireSelection([first, second], jobID: jobID)
+      XCTFail("Cancellation after the first staged item should stop acquisition")
+    } catch is CancellationError {
+      // Expected.
+    }
+
+    XCTAssertFalse(FileManager.default.fileExists(
+      atPath: storage.appending(path: "Staging/\(jobID.uuidString.lowercased())").path
+    ))
+    XCTAssertEqual(try Data(contentsOf: first), firstData)
+    XCTAssertEqual(try Data(contentsOf: second), secondData)
+    XCTAssertEqual(scope.startedNames, ["First.mp3", "Second.mp3"])
+    XCTAssertEqual(scope.stoppedNames, ["First.mp3", "Second.mp3"])
+  }
+
+  @MainActor
+  func testSystemPickerCancellationAndProviderFailureCreateNoImportJob() async throws {
+    let root = temporaryRoot("picker-outcomes")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let model = makeModel(
+      store: InMemoryLibraryStore(),
+      media: FileSystemMediaManager(rootURL: root, bookmarkAccess: noBookmarkAccess)
+    )
+    await model.restore()
+
+    let cancelledJobID = await model.handleSystemFileSelection(.cancelled)
+    XCTAssertNil(cancelledJobID)
+    XCTAssertTrue(model.library.importJobs.isEmpty)
+    XCTAssertNil(model.presentationError(in: .importFlow))
+
+    let failure = SystemSelectionFailure(NSError(
+      domain: "CloudProvider",
+      code: 19,
+      userInfo: [NSLocalizedDescriptionKey: "The cloud item is offline."]
+    ))
+    let failedJobID = await model.handleSystemFileSelection(.failed(failure))
+    XCTAssertNil(failedJobID)
+    XCTAssertTrue(model.library.importJobs.isEmpty)
+    let presented = try XCTUnwrap(model.presentationError(in: .importFlow))
+    XCTAssertTrue(presented.message.contains("Files couldn’t provide"))
+    XCTAssertTrue(presented.message.contains("Download it in Files"))
+    XCTAssertTrue(presented.message.contains("cloud item is offline"))
+  }
+
+  @MainActor
+  func testSelectedFolderUsesFolderEntryPointAndMixedZIPIsRejectedBeforeCreatingAJob() async throws {
+    let root = temporaryRoot("selection-classification")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let folder = root.appending(path: "Folder Book", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    let chapter = folder.appending(path: "01.mp3")
+    try Data("chapter".utf8).write(to: chapter)
+    let folderStore = InMemoryLibraryStore()
+    let folderModel = makeModel(
+      store: folderStore,
+      media: FileSystemMediaManager(
+        rootURL: root.appending(path: "FolderStorage"),
+        bookmarkAccess: noBookmarkAccess
+      )
+    )
+    await folderModel.restore()
+
+    let folderJobID = await folderModel.handleSystemFileSelection(.selected([folder]))
+    let folderJob = try XCTUnwrap(folderModel.library.importJobs.first(where: {
+      $0.id == folderJobID
+    }))
+    XCTAssertEqual(folderJob.queueCheckpoint?.entryPoint, .folder)
+    XCTAssertEqual(folderJob.queueCheckpoint?.sources.first?.isDirectory, true)
+
+    let archive = root.appending(path: "Book.zip")
+    let audio = root.appending(path: "Extra.mp3")
+    let archiveData = Data("archive source".utf8)
+    let audioData = Data("audio source".utf8)
+    try archiveData.write(to: archive)
+    try audioData.write(to: audio)
+    let mixedModel = makeModel(
+      store: InMemoryLibraryStore(),
+      media: FileSystemMediaManager(
+        rootURL: root.appending(path: "MixedStorage"),
+        bookmarkAccess: noBookmarkAccess
+      )
+    )
+    await mixedModel.restore()
+    let mixedJobID = await mixedModel.handleSystemFileSelection(.selected([archive, audio]))
+    XCTAssertNil(mixedJobID)
+    XCTAssertTrue(mixedModel.library.importJobs.isEmpty)
+    XCTAssertTrue(
+      try XCTUnwrap(mixedModel.presentationError(in: .importFlow)).message
+        .contains("Import one ZIP archive at a time")
+    )
+    XCTAssertEqual(try Data(contentsOf: archive), archiveData)
+    XCTAssertEqual(try Data(contentsOf: audio), audioData)
+  }
+
+  @MainActor
+  func testRestartResolvesBookmarkThenHoldsScopeThroughDurableAcquisition() async throws {
+    let root = temporaryRoot("bookmark-restart")
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let source = root.appending(path: "Restarted.mp3")
+    let sourceData = Data("restart source".utf8)
+    try sourceData.write(to: source)
+    let bookmarkData = Data("restart-bookmark".utf8)
+    let bookmarkProbe = BookmarkResolutionProbe(result: .success(
+      ResolvedImportSourceBookmark(url: source, isStale: false)
+    ))
+    let scope = SecurityScopeProbe(accessibleNames: [source.lastPathComponent])
+    let jobID = uuid(20)
+    let store = InMemoryLibraryStore(snapshot: interruptedImportSnapshot(
+      jobID: jobID,
+      source: source,
+      bookmarkData: bookmarkData
+    ))
+    let model = makeModel(
+      store: store,
+      media: FileSystemMediaManager(
+        rootURL: root.appending(path: "Storage"),
+        resourceAccess: scope.access,
+        bookmarkAccess: bookmarkProbe.access
+      )
+    )
+
+    await model.restore()
+
+    let resumed = try XCTUnwrap(model.library.importJobs.first(where: { $0.id == jobID }))
+    XCTAssertEqual(resumed.phase, .ready)
+    XCTAssertEqual(resumed.queueCheckpoint?.acquisitionComplete, true)
+    XCTAssertEqual(bookmarkProbe.resolvedPayloads, [bookmarkData])
+    XCTAssertEqual(scope.startedNames, [source.lastPathComponent])
+    XCTAssertEqual(scope.stoppedNames, [source.lastPathComponent])
+    XCTAssertEqual(try Data(contentsOf: source), sourceData)
+  }
+
+  @MainActor
+  func testStaleRestartBookmarkFailsActionablyWithoutOpeningScopeOrLeavingStaging() async throws {
+    let root = temporaryRoot("bookmark-stale")
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let source = root.appending(path: "Unavailable.mp3")
+    let sourceData = Data("unavailable source".utf8)
+    try sourceData.write(to: source)
+    let bookmarkData = Data("stale-bookmark".utf8)
+    let bookmarkProbe = BookmarkResolutionProbe(result: .success(
+      ResolvedImportSourceBookmark(url: source, isStale: true)
+    ))
+    let scope = SecurityScopeProbe(accessibleNames: [source.lastPathComponent])
+    let jobID = uuid(30)
+    let storage = root.appending(path: "Storage")
+    let store = InMemoryLibraryStore(snapshot: interruptedImportSnapshot(
+      jobID: jobID,
+      source: source,
+      bookmarkData: bookmarkData
+    ))
+    let model = makeModel(
+      store: store,
+      media: FileSystemMediaManager(
+        rootURL: storage,
+        resourceAccess: scope.access,
+        bookmarkAccess: bookmarkProbe.access
+      )
+    )
+
+    await model.restore()
+
+    let failed = try XCTUnwrap(model.library.importJobs.first(where: { $0.id == jobID }))
+    XCTAssertEqual(failed.phase, .failed)
+    XCTAssertEqual(failed.failure?.reasonCode, "acquisition-transient")
+    XCTAssertTrue(failed.failure?.message.contains("choose it again in Files") == true)
+    XCTAssertEqual(bookmarkProbe.resolvedPayloads, [bookmarkData])
+    XCTAssertTrue(scope.startedNames.isEmpty)
+    XCTAssertTrue(scope.stoppedNames.isEmpty)
+    XCTAssertFalse(FileManager.default.fileExists(
+      atPath: storage.appending(path: "Staging/\(jobID.uuidString.lowercased())").path
+    ))
+    XCTAssertEqual(try Data(contentsOf: source), sourceData)
+  }
+
   private func imageData(type: UTType, width: Int, height: Int) throws -> Data {
     let colorSpace = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
     let context = try XCTUnwrap(CGContext(
@@ -204,6 +500,69 @@ final class SystemIngressTests: XCTestCase {
       directoryHint: .isDirectory
     )
   }
+
+  private var noBookmarkAccess: ImportSourceBookmarkAccess {
+    ImportSourceBookmarkAccess(
+      createBookmark: { _ in nil },
+      resolveBookmark: { _ in
+        throw PlayerCoreError.fileOperation("No bookmark was created for this local fixture.")
+      }
+    )
+  }
+
+  private func uuid(_ value: Int) -> UUID {
+    UUID(uuidString: String(format: "81000000-0000-0000-0000-%012d", value))!
+  }
+
+  @MainActor
+  private func makeModel(
+    store: InMemoryLibraryStore,
+    media: any MediaManaging
+  ) -> PlayerModel {
+    let ids = (100...140).map(uuid)
+    return PlayerModel(environment: PlayerEnvironment(
+      persistence: store,
+      media: media,
+      inspector: DeterministicAudioInspector(result: .success(InspectedAudio(
+        title: "System Files Book",
+        authors: ["Fixture Author"],
+        durationSeconds: 30,
+        artworkData: nil,
+        container: "MP3"
+      ))),
+      playback: DeterministicPlaybackController(),
+      ids: DeterministicPlayerIDGenerator(values: ids)
+    ))
+  }
+
+  private func interruptedImportSnapshot(
+    jobID: UUID,
+    source: URL,
+    bookmarkData: Data
+  ) -> LibrarySnapshot {
+    let date = Date(timeIntervalSince1970: 1_700_000_000)
+    return LibrarySnapshot(
+      books: [],
+      importJobs: [ImportJob(
+        id: jobID,
+        sourceFilename: source.lastPathComponent,
+        phase: .acquiring,
+        progress: .none,
+        createdAt: date,
+        updatedAt: date,
+        queueCheckpoint: ImportQueueCheckpoint(
+          entryPoint: .files,
+          sources: [DurableImportSource(
+            displayName: source.lastPathComponent,
+            bookmarkData: bookmarkData,
+            fallbackURLString: source.absoluteString,
+            isDirectory: false
+          )]
+        )
+      )],
+      currentBookID: nil
+    )
+  }
 }
 
 private final class SecurityScopeProbe: @unchecked Sendable {
@@ -230,4 +589,26 @@ private final class SecurityScopeProbe: @unchecked Sendable {
 
   var startedNames: [String] { lock.withLock { starts } }
   var stoppedNames: [String] { lock.withLock { stops } }
+}
+
+private final class BookmarkResolutionProbe: @unchecked Sendable {
+  private let lock = NSLock()
+  private let result: Result<ResolvedImportSourceBookmark, PlayerCoreError>
+  private var payloads: [Data] = []
+
+  init(result: Result<ResolvedImportSourceBookmark, PlayerCoreError>) {
+    self.result = result
+  }
+
+  var access: ImportSourceBookmarkAccess {
+    ImportSourceBookmarkAccess(
+      createBookmark: { _ in nil },
+      resolveBookmark: { [self] data in
+        lock.withLock { payloads.append(data) }
+        return try result.get()
+      }
+    )
+  }
+
+  var resolvedPayloads: [Data] { lock.withLock { payloads } }
 }
