@@ -116,6 +116,43 @@ if rg -n --pcre2 'timeout:\s*(?:[3-9]|[1-9][0-9]+)(?:\.0+)?\b' \
   fail "UI-test transition timeouts may not exceed two seconds"
 fi
 
+step_helper="${ui_test_root}/TestStepHelper.swift"
+step_dismiss_line="$(rg -n '^[[:space:]]{4}dismissAppleIntelligenceNotificationIfPresent\(\)$' \
+  "${step_helper}" | cut -d: -f1)"
+step_deadline_line="$(rg -n '^[[:space:]]{6}let deadline = EventDeadline\(\)$' \
+  "${step_helper}" | cut -d: -f1)"
+step_readiness_line="$(rg -n 'let isReady = waitForCaptureReadiness\(' \
+  "${step_helper}" | cut -d: -f1)"
+step_screenshot_line="$(rg -n '^[[:space:]]{4}let screenshot = XCUIScreen\.main\.screenshot\(\)$' \
+  "${step_helper}" | cut -d: -f1)"
+[[ -n "${step_dismiss_line}" && -n "${step_deadline_line}" \
+  && -n "${step_readiness_line}" && -n "${step_screenshot_line}" \
+  && "${step_dismiss_line}" -lt "${step_deadline_line}" \
+  && "${step_deadline_line}" -lt "${step_readiness_line}" \
+  && "${step_readiness_line}" -lt "${step_screenshot_line}" ]] \
+  || fail "capture readiness must use one deadline after system-notification dismissal and immediately before the screenshot"
+
+smart_rewind_capture="$(awk '
+  /"smart-rewind-applied"/ { capture = 1 }
+  capture { print }
+  capture && /restoredUndo\.tap\(\)/ { exit }
+' "${ui_test_root}/SmartRewindUITests.swift")"
+for required_capture_evidence in \
+  'restoredNowPlaying.value' \
+  'restoredBanner.value' \
+  'elementIsFullyVisible(restoredUndo' \
+  'LayoutReadinessState(restoredLayoutReadiness.value)' \
+  'restored.keyboards.firstMatch.exists' \
+  'restored.alerts.firstMatch.exists' \
+  'hasUnintendedSheet'; do
+  printf '%s\n' "${smart_rewind_capture}" | rg -Fq "${required_capture_evidence}" \
+    || fail "Smart Rewind capture readiness is missing ${required_capture_evidence}"
+done
+if printf '%s\n' "${smart_rewind_capture}" \
+  | rg -q --pcre2 '\b(?:waitFor|sleep|usleep)\b|Task\.sleep|Thread\.sleep'; then
+  fail "Smart Rewind capture readiness must remain a nonblocking state snapshot"
+fi
+
 termination_helper="${ui_test_root}/TestStepHelper.swift"
 if rg -n '\.terminate\(\)' \
   "${ui_test_root}" --glob '*.swift' --glob '!TestStepHelper.swift'; then

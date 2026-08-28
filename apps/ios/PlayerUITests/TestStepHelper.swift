@@ -541,6 +541,32 @@ struct StepVerification {
 }
 
 @MainActor
+struct CaptureReadiness {
+  let specification: String
+  let anchor: XCUIElement
+  let checkNow: @MainActor () -> Bool
+}
+
+private enum TestStepError: Error {
+  case captureNotReady(String)
+}
+
+@MainActor
+private func waitForCaptureReadiness(
+  _ readiness: CaptureReadiness,
+  deadline: EventDeadline
+) -> Bool {
+  if readiness.checkNow() { return true }
+  guard deadline.remaining > 0 else { return false }
+  let expectation = XCTNSPredicateExpectation(
+    predicate: NSPredicate { _, _ in readiness.checkNow() },
+    object: readiness.anchor
+  )
+  _ = XCTWaiter.wait(for: [expectation], timeout: deadline.remaining)
+  return readiness.checkNow()
+}
+
+@MainActor
 final class TestStepHelper {
   static let conditionTimeout: TimeInterval = 2
 
@@ -579,7 +605,8 @@ final class TestStepHelper {
   func step(
     _ identifier: String,
     description: String,
-    verifications: [StepVerification]
+    verifications: [StepVerification],
+    captureReadiness: CaptureReadiness? = nil
   ) throws {
     for verification in verifications {
       XCTAssertTrue(
@@ -593,9 +620,22 @@ final class TestStepHelper {
     dismissAppleIntelligenceNotificationIfPresent()
 
     let filename = String(format: "%03d-%@.png", nextScreenshotIndex, identifier)
-    nextScreenshotIndex += 1
+    if let captureReadiness {
+      let deadline = EventDeadline()
+      let isReady = waitForCaptureReadiness(captureReadiness, deadline: deadline)
+      XCTAssertTrue(
+        isReady,
+        captureReadiness.specification,
+        file: #filePath,
+        line: #line
+      )
+      guard isReady else {
+        throw TestStepError.captureNotReady(captureReadiness.specification)
+      }
+    }
 
     let screenshot = XCUIScreen.main.screenshot()
+    nextScreenshotIndex += 1
     let attachment = XCTAttachment(screenshot: screenshot)
     attachment.name = filename
     attachment.lifetime = .keepAlways
@@ -606,6 +646,7 @@ final class TestStepHelper {
         description: description,
         filename: filename,
         verifications: verifications.map(\.specification)
+          + (captureReadiness.map { [$0.specification] } ?? [])
       )
     )
   }

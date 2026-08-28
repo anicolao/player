@@ -84,25 +84,51 @@ final class SmartRewindUITests: XCTestCase {
     XCTAssertTrue(restoredUndo.waitForExistence(timeout: 2))
     let restoredNowPlaying = restored.otherElements["now-playing-screen"]
     let restoredBanner = restored.descendants(matching: .any)["smart-rewind-banner"]
+    let restoredLayoutReadiness =
+      restored.descendants(matching: .any)["now-playing-layout-readiness"]
+    let expectedNowPlaying = playerValue(status: "paused", position: 100_000)
+    let expectedBanner =
+      "rewound|\(bookID)|from=110000|to=100000|by=10000|away=600|clamped=true|status=applied"
     try tester.step(
       "smart-rewind-applied",
       description: "Now Playing explains the durable chapter-clamped rewind before Undo",
       verifications: [
         .valueEquals(
           restoredNowPlaying,
-          playerValue(status: "paused", position: 100_000),
+          expectedNowPlaying,
           "Now Playing is paused exactly at the safe 100,000 ms chapter boundary"
         ),
         .valueEquals(
           restoredBanner,
-          "rewound|\(bookID)|from=110000|to=100000|by=10000|away=600|clamped=true|status=applied",
+          expectedBanner,
           "The explanation identifies the original position, clamped target, elapsed absence, and applied transaction"
         ),
         .exists(
           restoredUndo,
           "A one-tap Undo remains available after process termination and relaunch"
         ),
-      ]
+      ],
+      captureReadiness: CaptureReadiness(
+        specification: "At capture, the exact restored rewind state, explanation, and fully visible Undo are settled without a keyboard, alert, or unrelated sheet",
+        anchor: restoredLayoutReadiness
+      ) {
+        let hasUnintendedSheet = restored.sheets.allElementsBoundByIndex.contains { sheet in
+          sheet.identifier != "now-playing-screen"
+            && !sheet.descendants(matching: .any)["now-playing-screen"].exists
+        }
+        guard
+          restoredNowPlaying.exists,
+          restoredNowPlaying.value.map(String.init(describing:)) == expectedNowPlaying,
+          restoredBanner.exists,
+          restoredBanner.value.map(String.init(describing:)) == expectedBanner,
+          elementIsFullyVisible(restoredUndo, within: restoredNowPlaying),
+          let layout = LayoutReadinessState(restoredLayoutReadiness.value),
+          layout.containerID == "now-playing-screen"
+        else { return false }
+        return !restored.keyboards.firstMatch.exists
+          && !restored.alerts.firstMatch.exists
+          && !hasUnintendedSheet
+      }
     )
     restoredUndo.tap()
 
