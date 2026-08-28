@@ -102,6 +102,42 @@
     }
   }
 
+  enum E2EImportIngressIDSequence {
+    private static let prefix = "70000000-0000-0000-0000-"
+
+    static func values(
+      channel: E2EImportIngressArguments.Channel,
+      reset: Bool,
+      libraryURL: URL,
+      count: Int = 16
+    ) -> [UUID] {
+      let minimumSuffix = channel == .shareExtension ? 102 : 1
+      let firstSuffix = reset
+        ? minimumSuffix
+        : nextDurableSuffix(in: libraryURL, minimum: minimumSuffix)
+      return (firstSuffix..<(firstSuffix + count)).compactMap {
+        UUID(uuidString: prefix + String(format: "%012d", $0))
+      }
+    }
+
+    static func nextDurableSuffix(in libraryURL: URL, minimum: Int) -> Int {
+      guard
+        let data = try? Data(contentsOf: libraryURL),
+        let encoded = String(data: data, encoding: .utf8),
+        let expression = try? NSRegularExpression(
+          pattern: "70000000-0000-0000-0000-([0-9]{12})",
+          options: [.caseInsensitive]
+        )
+      else { return minimum }
+      let range = NSRange(encoded.startIndex..<encoded.endIndex, in: encoded)
+      let suffixes = expression.matches(in: encoded, range: range).compactMap { match -> Int? in
+        guard let suffixRange = Range(match.range(at: 1), in: encoded) else { return nil }
+        return Int(encoded[suffixRange])
+      }
+      return max(minimum, (suffixes.max() ?? (minimum - 1)) + 1)
+    }
+  }
+
   @MainActor
   final class E2EImportIngressBridge {
     static let shared = E2EImportIngressBridge()
@@ -194,14 +230,21 @@
       if reset { try resetE2EFixtureRoot(root) }
       try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
 
-      let jobID: UUID
+      let libraryURL = root.appending(path: "Library.json")
+      let ids = E2EImportIngressIDSequence.values(
+        channel: options.channel,
+        reset: reset,
+        libraryURL: libraryURL
+      )
+      guard let jobID = ids.first else {
+        throw PlayerCoreError.fileOperation("The Import Ingress E2E ID stream is empty.")
+      }
       if options.channel == .shareExtension {
         guard let expectedHandoffID = options.shareHandoffID else {
           throw PlayerCoreError.fileOperation(
             "The share-extension Import Ingress E2E fixture has no handoff."
           )
         }
-        jobID = UUID(uuidString: "70000000-0000-0000-0000-000000000102")!
         try configureShareFixture(
           root: root,
           jobID: jobID,
@@ -209,7 +252,6 @@
           expectedHandoffID: expectedHandoffID
         )
       } else {
-        jobID = UUID(uuidString: "70000000-0000-0000-0000-000000000001")!
         E2EImportIngressBridge.shared.configureDocument(jobID: jobID, rootURL: root)
       }
 
@@ -221,12 +263,8 @@
         artworkData: nil,
         container: "M4A"
       )
-      let idPrefix = options.channel == .shareExtension ? 102 : 1
-      let ids = (idPrefix..<(idPrefix + 16)).compactMap {
-        UUID(uuidString: String(format: "70000000-0000-0000-0000-%012d", $0))
-      }
       return PlayerEnvironment(
-        persistence: CodableLibraryStore(fileURL: root.appending(path: "Library.json")),
+        persistence: CodableLibraryStore(fileURL: libraryURL),
         media: E2EImportPauseMediaManager(base: media, pauseAtAcquire: options.pause == .acquire),
         inspector: E2EImportPauseInspector(result: inspected, pauseAtInspect: options.pause == .inspect),
         playback: DeterministicPlaybackController(),

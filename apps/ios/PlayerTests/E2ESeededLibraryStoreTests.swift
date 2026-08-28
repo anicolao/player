@@ -672,6 +672,202 @@
     }
   }
 
+  final class E2EImportIngressIDSequenceTests: XCTestCase {
+    func testResetAlwaysPreservesCanonicalDocumentAndShareStreams() throws {
+      let libraryURL = try durableLibraryURL("reset-canonical", suffixes: [999])
+      defer { try? FileManager.default.removeItem(at: libraryURL.deletingLastPathComponent()) }
+
+      XCTAssertEqual(
+        suffixes(E2EImportIngressIDSequence.values(
+          channel: .documentOpen,
+          reset: true,
+          libraryURL: libraryURL
+        )),
+        Array(1...16)
+      )
+      XCTAssertEqual(
+        suffixes(E2EImportIngressIDSequence.values(
+          channel: .shareExtension,
+          reset: true,
+          libraryURL: libraryURL
+        )),
+        Array(102...117)
+      )
+    }
+
+    func testStreamsAdvanceAcrossTrueFalseFalseRelaunches() throws {
+      for (channel, firstSuffix) in [
+        (E2EImportIngressArguments.Channel.documentOpen, 1),
+        (.shareExtension, 102),
+      ] {
+        let root = temporaryDirectory("three-launches-\(channel.rawValue)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let libraryURL = root.appending(path: "Library.json")
+
+        let resetIDs = E2EImportIngressIDSequence.values(
+          channel: channel,
+          reset: true,
+          libraryURL: libraryURL
+        )
+        try writeDurableLibrary(
+          suffixes: Array(firstSuffix...(firstSuffix + 2)),
+          to: libraryURL
+        )
+        let firstResumeIDs = E2EImportIngressIDSequence.values(
+          channel: channel,
+          reset: false,
+          libraryURL: libraryURL
+        )
+        try writeDurableLibrary(
+          suffixes: Array(firstSuffix...(firstSuffix + 5)),
+          to: libraryURL
+        )
+        let secondResumeIDs = E2EImportIngressIDSequence.values(
+          channel: channel,
+          reset: false,
+          libraryURL: libraryURL
+        )
+        let launchSuffixes = [resetIDs.first, firstResumeIDs.first, secondResumeIDs.first]
+          .compactMap { $0 }
+          .compactMap { suffix($0) }
+
+        XCTAssertEqual(
+          launchSuffixes,
+          [firstSuffix, firstSuffix + 3, firstSuffix + 6]
+        )
+        XCTAssertEqual(Set(launchSuffixes).count, 3)
+        XCTAssertEqual(
+          suffixes(firstResumeIDs),
+          Array((firstSuffix + 3)...(firstSuffix + 18))
+        )
+        XCTAssertEqual(
+          suffixes(secondResumeIDs),
+          Array((firstSuffix + 6)...(firstSuffix + 21))
+        )
+      }
+    }
+
+    func testMixedChannelDurableIDsAreUniqueAndIndependentOfJSONAndLaunchOrder() throws {
+      let ascendingURL = try durableLibraryURL(
+        "ascending-order",
+        suffixes: [1, 3, 102, 104]
+      )
+      let descendingURL = try durableLibraryURL(
+        "descending-order",
+        suffixes: [104, 102, 3, 1]
+      )
+      defer {
+        try? FileManager.default.removeItem(at: ascendingURL.deletingLastPathComponent())
+        try? FileManager.default.removeItem(at: descendingURL.deletingLastPathComponent())
+      }
+
+      for libraryURL in [ascendingURL, descendingURL] {
+        let document = E2EImportIngressIDSequence.values(
+          channel: .documentOpen,
+          reset: false,
+          libraryURL: libraryURL
+        )
+        let share = E2EImportIngressIDSequence.values(
+          channel: .shareExtension,
+          reset: false,
+          libraryURL: libraryURL
+        )
+        XCTAssertEqual(suffix(document.first), 105)
+        XCTAssertEqual(suffix(share.first), 105)
+        XCTAssertFalse(Set(suffixes(document)).contains(104))
+        XCTAssertFalse(Set(suffixes(share)).contains(104))
+      }
+
+      let documentFirstURL = temporaryDirectory("document-first")
+        .appending(path: "Library.json")
+      let shareFirstURL = temporaryDirectory("share-first")
+        .appending(path: "Library.json")
+      defer {
+        try? FileManager.default.removeItem(at: documentFirstURL.deletingLastPathComponent())
+        try? FileManager.default.removeItem(at: shareFirstURL.deletingLastPathComponent())
+      }
+
+      let documentReset = E2EImportIngressIDSequence.values(
+        channel: .documentOpen,
+        reset: true,
+        libraryURL: documentFirstURL
+      )
+      try writeDurableLibrary(suffixes: [1, 2, 3], to: documentFirstURL)
+      let shareAfterDocument = E2EImportIngressIDSequence.values(
+        channel: .shareExtension,
+        reset: false,
+        libraryURL: documentFirstURL
+      )
+      try writeDurableLibrary(suffixes: [1, 2, 3, 102, 103, 104], to: documentFirstURL)
+      let documentAfterShare = E2EImportIngressIDSequence.values(
+        channel: .documentOpen,
+        reset: false,
+        libraryURL: documentFirstURL
+      )
+
+      let shareReset = E2EImportIngressIDSequence.values(
+        channel: .shareExtension,
+        reset: true,
+        libraryURL: shareFirstURL
+      )
+      try writeDurableLibrary(suffixes: [102, 103, 104], to: shareFirstURL)
+      let documentAfterShareFirst = E2EImportIngressIDSequence.values(
+        channel: .documentOpen,
+        reset: false,
+        libraryURL: shareFirstURL
+      )
+
+      XCTAssertEqual(
+        [documentReset.first, shareAfterDocument.first, documentAfterShare.first]
+          .compactMap { $0 }
+          .compactMap { suffix($0) },
+        [1, 102, 105]
+      )
+      XCTAssertEqual(suffix(shareReset.first), 102)
+      XCTAssertEqual(suffix(documentAfterShareFirst.first), 105)
+    }
+
+    private func durableLibraryURL(_ name: String, suffixes: [Int]) throws -> URL {
+      let root = temporaryDirectory(name)
+      let libraryURL = root.appending(path: "Library.json")
+      try writeDurableLibrary(suffixes: suffixes, to: libraryURL)
+      return libraryURL
+    }
+
+    private func writeDurableLibrary(suffixes: [Int], to url: URL) throws {
+      try FileManager.default.createDirectory(
+        at: url.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+      )
+      let identifiers = suffixes.map {
+        String(format: "70000000-0000-0000-0000-%012d", $0)
+      }
+      let data = try JSONSerialization.data(withJSONObject: [
+        "library": ["durable-identifiers": identifiers]
+      ])
+      try data.write(to: url, options: .atomic)
+    }
+
+    private func temporaryDirectory(_ name: String) -> URL {
+      FileManager.default.temporaryDirectory.appending(
+        path: "E2EImportIngressIDSequenceTests-\(name)-\(UUID().uuidString)",
+        directoryHint: .isDirectory
+      )
+    }
+
+    private func suffixes(_ identifiers: [UUID]) -> [Int] {
+      identifiers.compactMap { suffix($0) }
+    }
+
+    private func suffix(_ identifier: UUID?) -> Int? {
+      identifier.flatMap { suffix($0) }
+    }
+
+    private func suffix(_ identifier: UUID) -> Int? {
+      Int(identifier.uuidString.suffix(12))
+    }
+  }
+
   final class E2EMetadataRichBookNamespaceTests: XCTestCase {
     func testNamespaceIsRequired() {
       for arguments in [[], ["-e2e"]] {
