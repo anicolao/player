@@ -192,7 +192,25 @@ final class SleepTimerUITests: XCTestCase {
         StepVerification(specification: "The persisted timer remains cancellable") {
           elementIsFullyVisible(cancelSleepTimer, within: activeScreen)
         },
-      ]
+      ],
+      captureReadiness: CaptureReadiness(
+        specification:
+          "At capture, the exact persisted end-of-track timer and Cancel action are idle, fully visible, and free of unrelated transient UI",
+        anchor: activeSurface.readiness
+      ) {
+        guard let state = activeSurface.state() else { return false }
+        return state.isIdle
+          && activeScreen.exists
+          && activeScreen.value.map(String.init(describing:))
+            == "sleep-timer:active=\(self.timer101):selection=end-track:remaining=20:target=90000:fade=true:phase=active:history=0"
+          && restored.descendants(matching: .any)["active-sleep-timer"].value
+            .map(String.init(describing:))
+            == "timer=\(self.timer101):selection=end-track:remaining=20:target=90000:fade=true:phase=active"
+          && elementIsFullyVisible(cancelSleepTimer, within: activeScreen)
+          && !restored.keyboards.firstMatch.exists
+          && !restored.alerts.firstMatch.exists
+          && !self.hasUnintendedSheet(restored, intendedContentID: "sleep-timer-screen")
+      }
     )
     let sleepTimerDone = restored.navigationBars["Sleep Timer"].buttons["Done"]
     XCTAssertTrue(sleepTimerDone.waitForExistence(timeout: 2))
@@ -285,7 +303,30 @@ final class SleepTimerUITests: XCTestCase {
         StepVerification(specification: "A prominent contextual Resume action is available exactly once") {
           elementIsFullyVisible(contextResume, within: nowPlayingViewport)
         },
-      ]
+      ],
+      captureReadiness: CaptureReadiness(
+        specification:
+          "At capture, the exact paused sleep-stop context and single Resume action have settled in Now Playing with no transient UI",
+        anchor: expired.descendants(matching: .any)["now-playing-layout-readiness"]
+      ) {
+        guard
+          let layout = LayoutReadinessState(
+            expired.descendants(matching: .any)["now-playing-layout-readiness"].value
+          )
+        else { return false }
+        return layout.containerID == "now-playing-screen"
+          && expired.otherElements["now-playing-screen"].value.map(String.init(describing:))
+            == "player:paused:\(self.bookID):1:90000"
+          && contextBanner.value.map(String.init(describing:))
+            == "history=52000000-0000-0000-0000-000000000106:book=\(self.bookID):stop=90000:until=1700020600"
+          && elementIsFullyVisible(
+            contextBanner, within: nowPlayingViewport, requiresHittable: false
+          )
+          && elementIsFullyVisible(contextResume, within: nowPlayingViewport)
+          && !expired.keyboards.firstMatch.exists
+          && !expired.alerts.firstMatch.exists
+          && !expired.sheets.firstMatch.exists
+      }
     )
 
     let normalPlayPause = expired.buttons["player-play-pause"]
@@ -358,6 +399,16 @@ final class SleepTimerUITests: XCTestCase {
 
   private func tapTrailingSwitchControl(_ element: XCUIElement) {
     element.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+  }
+
+  private func hasUnintendedSheet(
+    _ app: XCUIApplication,
+    intendedContentID: String
+  ) -> Bool {
+    app.sheets.allElementsBoundByIndex.contains { sheet in
+      sheet.identifier != intendedContentID
+        && !sheet.descendants(matching: .any)[intendedContentID].exists
+    }
   }
 
   private func requireProbe(
