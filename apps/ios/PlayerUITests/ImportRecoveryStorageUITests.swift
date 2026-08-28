@@ -57,22 +57,26 @@ final class ImportRecoveryStorageUITests: XCTestCase {
     XCTAssertTrue(app.buttons["settings-storage"].waitForExistence(timeout: 2))
     app.buttons["settings-storage"].tap()
     let storage = anyElement(app, "storage-screen")
+    let expectedStorage =
+      "storage:used=5632:managed=4096:staging=768:trash=512:database=256:available=8192:reclaimable=1280:books=1"
+    let storageBook = anyElement(app, "storage-book-\(existingBookID)")
+    let clearStaging = app.buttons["clear-staging-\(stagingJobID)"]
     try tester.step(
       "storage-recovery",
       description: "Settings shows what Player uses and what can be reclaimed safely",
       verifications: [
         .valueEquals(
           storage,
-          "storage:used=5632:managed=4096:staging=768:trash=512:database=256:available=8192:reclaimable=1280:books=1",
+          expectedStorage,
           "Managed, staging, trash, database, available, and reclaimable bytes are exact"
         ),
         .valueEquals(
-          anyElement(app, "storage-book-\(existingBookID)"),
+          storageBook,
           "book=\(existingBookID):bytes=4096:files=2",
           "Per-book managed usage is visible without exposing private metadata"
         ),
         .exists(
-          app.buttons["clear-staging-\(stagingJobID)"],
+          clearStaging,
           "Recoverable orphan staging has an explicit cleanup action"
         ),
         .notExists(
@@ -83,7 +87,22 @@ final class ImportRecoveryStorageUITests: XCTestCase {
           app.buttons["clear-storage-database"],
           "The library database cannot be cleared from the recoverable-storage surface"
         ),
-      ]
+      ],
+      captureReadiness: recoveryCaptureReadiness(
+        app: app,
+        specification: "At capture, the exact storage accounting, per-book usage, and safe staging cleanup are fully visible while managed media/database cleanup remains unavailable",
+        anchor: storage
+      ) {
+        self.hasExactValue(storage, expectedStorage)
+          && self.hasExactValue(
+            storageBook,
+            "book=\(self.existingBookID):bytes=4096:files=2"
+          )
+          && elementIsFullyVisible(storageBook, within: storage, requiresHittable: false)
+          && elementIsFullyVisible(clearStaging, within: storage)
+          && !app.buttons["clear-managed-\(self.existingBookID)"].exists
+          && !app.buttons["clear-storage-database"].exists
+      }
     )
 
     app.buttons["clear-staging-\(stagingJobID)"].tap()
@@ -218,7 +237,33 @@ final class ImportRecoveryStorageUITests: XCTestCase {
   }
 
   private func anyElement(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {
-    app.descendants(matching: .any)[identifier]
+    app.descendants(matching: .any)
+      .matching(
+        NSPredicate(
+          format: "identifier == %@ OR label == %@",
+          identifier,
+          identifier
+        )
+      )
+      .firstMatch
+  }
+
+  private func recoveryCaptureReadiness(
+    app: XCUIApplication,
+    specification: String,
+    anchor: XCUIElement,
+    checkNow: @escaping @MainActor () -> Bool
+  ) -> CaptureReadiness {
+    CaptureReadiness(specification: specification, anchor: anchor) {
+      checkNow()
+        && !app.keyboards.firstMatch.exists
+        && !app.alerts.firstMatch.exists
+        && !app.sheets.firstMatch.exists
+    }
+  }
+
+  private func hasExactValue(_ element: XCUIElement, _ expected: String) -> Bool {
+    element.exists && element.value.map(String.init(describing:)) == expected
   }
 
   private func navigateBack(

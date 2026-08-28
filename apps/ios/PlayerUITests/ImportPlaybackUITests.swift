@@ -71,13 +71,16 @@ final class ImportPlaybackUITests: XCTestCase {
     app.buttons["review-import-job-\(jobID)"].tap()
 
     let addToLibrary = app.buttons["add-import-to-library"]
+    let reviewScreen = anyElement(app, "review-import-screen")
+    let expectedReview = "proposal:ready:1-book:1-tracks:0-warnings"
+    let reviewArtwork = anyElement(app, "placeholder-artwork")
 
     try tester.step(
       "review-import",
       description: "The inspected audiobook is ready for review",
       verifications: [
         .exists(
-          app.descendants(matching: .any)["review-import-screen"],
+          reviewScreen,
           "The Review Import screen is visible"
         ),
         .exists(app.staticTexts["The Lighthouse Signal"], "The inspected title is presented"),
@@ -90,7 +93,24 @@ final class ImportPlaybackUITests: XCTestCase {
         StepVerification(specification: "The primary action is visible, enabled, and directly tappable") {
           addToLibrary.exists && addToLibrary.isEnabled && addToLibrary.isHittable
         },
-      ]
+      ],
+      captureReadiness: importCaptureReadiness(
+        app: app,
+        specification: "At capture, the exact ready one-book/one-track proposal, placeholder artwork, metadata, and enabled pinned commit action are fully settled",
+        anchor: reviewScreen
+      ) {
+        self.hasExactValue(reviewScreen, expectedReview)
+          && self.hasExactValue(addToLibrary, "ready:enabled")
+          && addToLibrary.isEnabled
+          && elementIsFullyVisible(addToLibrary, within: reviewScreen)
+          && elementIsFullyVisible(
+            reviewArtwork,
+            within: reviewScreen,
+            requiresHittable: false
+          )
+          && app.staticTexts["The Lighthouse Signal"].exists
+          && app.staticTexts["Mara Vale"].exists
+      }
     )
 
     addToLibrary.tap()
@@ -120,6 +140,18 @@ final class ImportPlaybackUITests: XCTestCase {
     )
     app.tabBars.buttons["Library"].tap()
     XCTAssertTrue(libraryScreen.waitForStringValue("ready:library-1-books", timeout: 2))
+    let organizer = anyElement(app, "library-organizer-probe")
+    let artwork = anyElement(app, "library-artwork-probe")
+    let libraryScroll = anyElement(app, "library-root-scroll")
+    let libraryReadiness = anyElement(app, "library-root-scroll-readiness")
+    let recentShelf = anyElement(app, "library-home-recent-shelf-scroll")
+    let recentReadiness = anyElement(app, "library-home-recent-shelf-scroll-readiness")
+    let recentBook = anyElement(
+      app,
+      "recent-book-10000000-0000-0000-0000-000000000004"
+    )
+    let expectedOrganizer =
+      "library:books=1:continue=:up-next=:finished=:collections=0:trash=0:view=shelf:current=none:position=0"
 
     try tester.step(
       "committed-library",
@@ -142,39 +174,106 @@ final class ImportPlaybackUITests: XCTestCase {
         ) {
           addAudiobook.exists && addAudiobook.isHittable
         },
-      ]
+      ],
+      captureReadiness: importCaptureReadiness(
+        app: app,
+        specification: "At capture, the exact one-book committed Library and no-artwork evidence are idle at the Library and Recently Added starts with the book card fully visible",
+        anchor: recentReadiness
+      ) {
+        self.hasExactValue(libraryScreen, "ready:library-1-books")
+          && self.hasExactValue(organizer, expectedOrganizer)
+          && self.hasExactValue(artwork, "artwork:ready=:count=0")
+          && self.isSettled(
+            libraryReadiness,
+            containerID: "library-root-scroll",
+            axis: .vertical,
+            endpoint: \.atTop
+          )
+          && self.isSettled(
+            recentReadiness,
+            containerID: "library-home-recent-shelf-scroll",
+            axis: .horizontal,
+            endpoint: \.atLeft
+          )
+          && elementIsFullyVisible(
+            recentBook,
+            within: recentShelf,
+            requiresHittable: false
+          )
+          && elementIsFullyVisible(addAudiobook, within: app.tabBars.firstMatch)
+      }
     )
 
     app.staticTexts["The Lighthouse Signal"].tap()
+    let bookDetail = anyElement(app, "book-detail-screen")
+    let bookScroll = anyElement(app, "book-detail-scroll")
+    let bookReadiness = anyElement(app, "book-detail-scroll-readiness")
+    let playBook = app.buttons["play-book"]
     try tester.step(
       "book-detail",
       description: "Book Detail exposes the playable managed audiobook",
       verifications: [
         .exists(
-          app.descendants(matching: .any)["book-detail-screen"],
+          bookDetail,
           "The Book Detail screen is visible"
         ),
-        .exists(app.buttons["play-book"], "The audiobook has a Play action"),
+        .exists(playBook, "The audiobook has a Play action"),
         .exists(app.staticTexts["1 file · 18m"], "The inspected asset count and duration are retained"),
-      ]
+      ],
+      captureReadiness: importCaptureReadiness(
+        app: app,
+        specification: "At capture, the exact committed book detail is idle at its production scroll start with playable metadata and action fully visible",
+        anchor: bookReadiness
+      ) {
+        self.hasExactValue(
+          bookDetail,
+          "book:ready:10000000-0000-0000-0000-000000000004:1-chapters:m4a"
+        )
+          && self.isSettled(
+            bookReadiness,
+            containerID: "book-detail-scroll",
+            axis: .vertical,
+            endpoint: \.atTop
+          )
+          && elementIsFullyVisible(playBook, within: bookScroll)
+          && app.staticTexts["The Lighthouse Signal"].exists
+          && app.staticTexts["1 file · 18m"].exists
+      }
     )
 
     app.buttons["play-book"].tap()
     XCTAssertTrue(app.buttons["player-play-pause"].waitForExistence(timeout: 2))
     app.buttons["player-play-pause"].tap()
+    let nowPlaying = app.otherElements["now-playing-screen"]
+    let nowPlayingLayout = anyElement(app, "now-playing-layout-readiness")
+    let playerButton = app.buttons["player-play-pause"]
+    let playerSlider = app.sliders["player-position-slider"]
+    let expectedPlayer =
+      "player:paused:10000000-0000-0000-0000-000000000004:0:0"
 
     try tester.step(
       "paused-now-playing",
       description: "Now Playing has loaded and paused the managed audio",
       verifications: [
         .valueEquals(
-          app.otherElements["now-playing-screen"],
-          "player:paused:10000000-0000-0000-0000-000000000004:0:0",
+          nowPlaying,
+          expectedPlayer,
           "The deterministic engine acknowledges a paused loaded book"
         ),
         .exists(app.staticTexts["The Lighthouse Signal"], "Now Playing retains the book identity"),
-        .exists(app.buttons["player-play-pause"], "The transport remains available"),
-      ]
+        .exists(playerButton, "The transport remains available"),
+      ],
+      captureReadiness: importCaptureReadiness(
+        app: app,
+        specification: "At capture, the exact paused zero-position player state and transport are fully laid out without transient presentation",
+        anchor: nowPlayingLayout
+      ) {
+        self.hasExactValue(nowPlaying, expectedPlayer)
+          && self.hasSettledLayout(nowPlayingLayout, containerID: "now-playing-screen")
+          && elementIsFullyVisible(playerButton, within: nowPlaying)
+          && elementIsFullyVisible(playerSlider, within: nowPlaying)
+          && app.staticTexts["The Lighthouse Signal"].exists
+      }
     )
 
     tester.generateDocs()
@@ -190,5 +289,60 @@ final class ImportPlaybackUITests: XCTestCase {
     ]
     app.launchEnvironment["TZ"] = "America/Toronto"
     return app
+  }
+
+  private func importCaptureReadiness(
+    app: XCUIApplication,
+    specification: String,
+    anchor: XCUIElement,
+    checkNow: @escaping @MainActor () -> Bool
+  ) -> CaptureReadiness {
+    CaptureReadiness(specification: specification, anchor: anchor) {
+      checkNow()
+        && !app.keyboards.firstMatch.exists
+        && !app.alerts.firstMatch.exists
+        && !app.sheets.firstMatch.exists
+    }
+  }
+
+  private func hasExactValue(_ element: XCUIElement, _ expected: String) -> Bool {
+    element.exists && element.value.map(String.init(describing:)) == expected
+  }
+
+  private func isSettled(
+    _ readiness: XCUIElement,
+    containerID: String,
+    axis: E2EScrollAxis,
+    endpoint: KeyPath<ScrollReadinessState, Bool>? = nil
+  ) -> Bool {
+    guard
+      let state = ScrollReadinessState(readiness.value),
+      state.containerID == containerID,
+      state.axis == axis,
+      state.geometryReady,
+      state.isIdle
+    else { return false }
+    let hasCorrelatedCompletion = state.interactionID == 0
+      ? state.completionID == 0
+      : state.completionID == state.interactionID && state.completionGeometryID > 0
+    guard hasCorrelatedCompletion else { return false }
+    return endpoint.map { state[keyPath: $0] } ?? true
+  }
+
+  private func hasSettledLayout(_ readiness: XCUIElement, containerID: String) -> Bool {
+    guard let state = LayoutReadinessState(readiness.value) else { return false }
+    return state.containerID == containerID
+  }
+
+  private func anyElement(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {
+    app.descendants(matching: .any)
+      .matching(
+        NSPredicate(
+          format: "identifier == %@ OR label == %@",
+          identifier,
+          identifier
+        )
+      )
+      .firstMatch
   }
 }
