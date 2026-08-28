@@ -2161,7 +2161,11 @@ extension PlayerEnvironment {
       }
 
       let selection = [folder] + looseFiles.map { loose.appending(path: $0) }
-      E2EMultifileAcquisition.shared.configure(selectionURLs: selection)
+      let playerDataRoot = root.appending(path: "PlayerData", directoryHint: .isDirectory)
+      E2EMultifileAcquisition.shared.configure(
+        selectionURLs: selection,
+        storageRootURL: playerDataRoot
+      )
       let ids = [
         "30000000-0000-0000-0000-000000000001",
         "30000000-0000-0000-0000-000000000101",
@@ -2181,7 +2185,7 @@ extension PlayerEnvironment {
       ].compactMap(UUID.init(uuidString:))
       return PlayerEnvironment(
         persistence: CodableLibraryStore(fileURL: root.appending(path: "Library.json")),
-        media: FileSystemMediaManager(rootURL: root.appending(path: "PlayerData")),
+        media: FileSystemMediaManager(rootURL: playerDataRoot),
         inspector: DeterministicAudioInspector(
           result: .success(
             InspectedAudio(
@@ -2463,19 +2467,192 @@ extension PlayerEnvironment {
   }
 
   @MainActor
+  struct E2EMultifileFilesystemEvidence: Equatable {
+    let stagingFileCount: Int
+    let managedFileCount: Int
+    let managedFileSetExact: Bool
+    let managedPathsExact: Bool
+    let managedPresenceExact: Bool
+    let managedByteCountsExact: Bool
+    let managedChecksumsExact: Bool
+
+    var probeFields: String {
+      [
+        "staging-files=\(stagingFileCount)",
+        "managed-files=\(managedFileCount)",
+        "managed-file-set=\(managedFileSetExact ? "exact" : "mismatch")",
+        "managed-paths=\(managedPathsExact ? "exact" : "mismatch")",
+        "managed-presence=\(managedPresenceExact ? "exact" : "missing")",
+        "managed-bytes=\(managedByteCountsExact ? "exact" : "mismatch")",
+        "managed-checksums=\(managedChecksumsExact ? "exact" : "mismatch")",
+      ].joined(separator: ":")
+    }
+
+    static func inspect(
+      storageRootURL: URL,
+      library: LibrarySnapshot,
+      fileManager: FileManager = .default
+    ) throws -> E2EMultifileFilesystemEvidence {
+      let root = storageRootURL.standardizedFileURL
+      let stagingRoot = root.appending(path: "Staging", directoryHint: .isDirectory)
+      let mediaRoot = root.appending(path: "Media", directoryHint: .isDirectory)
+      let staging = try inventory(beneath: stagingRoot, relativeTo: root, fileManager: fileManager)
+      let managed = try inventory(beneath: mediaRoot, relativeTo: root, fileManager: fileManager)
+      let managedByPath = Dictionary(grouping: managed, by: \.relativePath)
+
+      var expectedPaths: Set<String> = []
+      var pathsExact = true
+      var presenceExact = true
+      var byteCountsExact = true
+      var checksumsExact = true
+      var hasDuplicateExpectedPath = false
+
+      for book in library.books {
+        for asset in book.assets {
+          let fileExtension = URL(filePath: asset.originalFilename).pathExtension.lowercased()
+          guard !fileExtension.isEmpty else {
+            pathsExact = false
+            presenceExact = false
+            byteCountsExact = false
+            checksumsExact = false
+            continue
+          }
+          let expectedPath = [
+            "Media",
+            book.id.uuidString.lowercased(),
+            "\(asset.id.uuidString.lowercased()).\(fileExtension)",
+          ].joined(separator: "/")
+          if !expectedPaths.insert(expectedPath).inserted { hasDuplicateExpectedPath = true }
+          if asset.managedRelativePath != expectedPath { pathsExact = false }
+
+          guard let matches = managedByPath[expectedPath], matches.count == 1,
+            let record = matches.first
+          else {
+            presenceExact = false
+            byteCountsExact = false
+            checksumsExact = false
+            continue
+          }
+          if record.byteCount != asset.byteCount { byteCountsExact = false }
+          if record.checksumSHA256.lowercased() != asset.checksumSHA256.lowercased() {
+            checksumsExact = false
+          }
+        }
+      }
+
+      let actualPaths = Set(managed.map(\.relativePath))
+      let fileSetExact = !hasDuplicateExpectedPath
+        && managedByPath.values.allSatisfy { $0.count == 1 }
+        && actualPaths == expectedPaths
+      return E2EMultifileFilesystemEvidence(
+        stagingFileCount: staging.count,
+        managedFileCount: managed.count,
+        managedFileSetExact: fileSetExact,
+        managedPathsExact: pathsExact && !hasDuplicateExpectedPath,
+        managedPresenceExact: presenceExact,
+        managedByteCountsExact: byteCountsExact,
+        managedChecksumsExact: checksumsExact
+      )
+    }
+
+    private struct FileEvidence {
+      let relativePath: String
+      let byteCount: Int64
+      let checksumSHA256: String
+    }
+
+    private static func inventory(
+      beneath categoryRoot: URL,
+      relativeTo storageRoot: URL,
+      fileManager: FileManager
+    ) throws -> [FileEvidence] {
+      guard fileManager.fileExists(atPath: categoryRoot.path) else { return [] }
+      let categoryValues = try categoryRoot.resourceValues(
+        forKeys: [.isDirectoryKey, .isSymbolicLinkKey]
+      )
+      guard categoryValues.isDirectory == true, categoryValues.isSymbolicLink != true else {
+        throw PlayerCoreError.fileOperation("The E2E storage inventory root is unsafe.")
+      }
+      let rootPrefix = storageRoot.standardizedFileURL.path + "/"
+      var enumerationError: Error?
+      guard let enumerator = fileManager.enumerator(
+        at: categoryRoot,
+        includingPropertiesForKeys: [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey],
+        errorHandler: { _, error in
+          enumerationError = error
+          return false
+        }
+      ) else {
+        throw PlayerCoreError.fileOperation("The E2E storage inventory is unavailable.")
+      }
+
+      var evidence: [FileEvidence] = []
+      for case let child as URL in enumerator {
+        let values = try child.resourceValues(
+          forKeys: [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey]
+        )
+        guard values.isSymbolicLink != true else {
+          throw PlayerCoreError.fileOperation("The E2E storage inventory contains an unsafe entry.")
+        }
+        if values.isDirectory == true { continue }
+        guard values.isRegularFile == true else {
+          throw PlayerCoreError.fileOperation("The E2E storage inventory contains an unsafe entry.")
+        }
+        let standardized = child.standardizedFileURL
+        guard standardized.path.hasPrefix(rootPrefix) else {
+          throw PlayerCoreError.fileOperation("The E2E storage inventory escaped its root.")
+        }
+        evidence.append(FileEvidence(
+          relativePath: String(standardized.path.dropFirst(rootPrefix.count)),
+          byteCount: Int64(values.fileSize ?? 0),
+          checksumSHA256: try checksum(of: standardized)
+        ))
+      }
+      if enumerationError != nil {
+        throw PlayerCoreError.fileOperation("The E2E storage inventory could not read every entry.")
+      }
+      return evidence.sorted { $0.relativePath < $1.relativePath }
+    }
+
+    private static func checksum(of url: URL) throws -> String {
+      let handle = try FileHandle(forReadingFrom: url)
+      defer { try? handle.close() }
+      var hasher = SHA256()
+      while let chunk = try handle.read(upToCount: 64 * 1_024), !chunk.isEmpty {
+        hasher.update(data: chunk)
+      }
+      return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+  }
+
+  @MainActor
   final class E2EMultifileAcquisition {
     static let shared = E2EMultifileAcquisition()
 
     private(set) var selectionURLs: [URL] = []
     private var sourceBytes: [String: Data] = [:]
+    private var storageRootURL: URL?
 
     var isConfigured: Bool { !selectionURLs.isEmpty }
 
-    func configure(selectionURLs: [URL]) {
+    func configure(selectionURLs: [URL], storageRootURL: URL) {
       self.selectionURLs = selectionURLs
+      self.storageRootURL = storageRootURL.standardizedFileURL
       sourceBytes = sourceFiles(in: selectionURLs).reduce(into: [:]) { result, url in
         result[url.path] = try? Data(contentsOf: url)
       }
+    }
+
+    func filesystemEvidence(
+      library: LibrarySnapshot
+    ) throws -> E2EMultifileFilesystemEvidence {
+      guard let storageRootURL else {
+        throw PlayerCoreError.fileOperation("The multifile E2E storage root is unavailable.")
+      }
+      return try E2EMultifileFilesystemEvidence.inspect(
+        storageRootURL: storageRootURL,
+        library: library
+      )
     }
 
     var sourceIsUnchanged: Bool {

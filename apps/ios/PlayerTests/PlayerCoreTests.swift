@@ -143,6 +143,148 @@ final class PlayerCoreTests: XCTestCase {
       )
     }
 
+    func testMultifileFilesystemEvidenceVerifiesExactManagedCommit() throws {
+      let fixture = try multifileEvidenceFixture()
+      defer { try? FileManager.default.removeItem(at: fixture.root) }
+
+      let evidence = try E2EMultifileFilesystemEvidence.inspect(
+        storageRootURL: fixture.root,
+        library: fixture.library
+      )
+
+      XCTAssertEqual(evidence.stagingFileCount, 0)
+      XCTAssertEqual(evidence.managedFileCount, 8)
+      XCTAssertTrue(evidence.managedFileSetExact)
+      XCTAssertTrue(evidence.managedPathsExact)
+      XCTAssertTrue(evidence.managedPresenceExact)
+      XCTAssertTrue(evidence.managedByteCountsExact)
+      XCTAssertTrue(evidence.managedChecksumsExact)
+      XCTAssertEqual(
+        evidence.probeFields,
+        "staging-files=0:managed-files=8:managed-file-set=exact:managed-paths=exact:managed-presence=exact:managed-bytes=exact:managed-checksums=exact"
+      )
+    }
+
+    func testMultifileFilesystemEvidenceFailsClosedOnLeftoverStaging() throws {
+      let fixture = try multifileEvidenceFixture()
+      defer { try? FileManager.default.removeItem(at: fixture.root) }
+      let staging = fixture.root.appending(
+        path: "Staging/\(fixture.jobID.uuidString.lowercased())/leftover.partial"
+      )
+      try FileManager.default.createDirectory(
+        at: staging.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+      )
+      try Data("leftover".utf8).write(to: staging)
+
+      let evidence = try E2EMultifileFilesystemEvidence.inspect(
+        storageRootURL: fixture.root,
+        library: fixture.library
+      )
+
+      XCTAssertEqual(evidence.stagingFileCount, 1)
+      XCTAssertTrue(evidence.managedFileSetExact)
+    }
+
+    func testMultifileFilesystemEvidenceFailsClosedOnMissingManagedFile() throws {
+      let fixture = try multifileEvidenceFixture()
+      defer { try? FileManager.default.removeItem(at: fixture.root) }
+      try FileManager.default.removeItem(at: fixture.managedURLs[3])
+
+      let evidence = try E2EMultifileFilesystemEvidence.inspect(
+        storageRootURL: fixture.root,
+        library: fixture.library
+      )
+
+      XCTAssertEqual(evidence.managedFileCount, 7)
+      XCTAssertFalse(evidence.managedFileSetExact)
+      XCTAssertFalse(evidence.managedPresenceExact)
+      XCTAssertFalse(evidence.managedByteCountsExact)
+      XCTAssertFalse(evidence.managedChecksumsExact)
+    }
+
+    func testMultifileFilesystemEvidenceRejectsChangedBytesWrongPathsAndExtraFiles() throws {
+      let fixture = try multifileEvidenceFixture()
+      defer { try? FileManager.default.removeItem(at: fixture.root) }
+      let changed = try Data(contentsOf: fixture.managedURLs[0]).map { $0 ^ 0xff }
+      try Data(changed).write(to: fixture.managedURLs[0], options: .atomic)
+      var library = fixture.library
+      library.books[0].assets[1].managedRelativePath = "Media/wrong/path.m4a"
+      let extra = fixture.root.appending(path: "Media/extra.m4a")
+      try Data("extra".utf8).write(to: extra)
+
+      let evidence = try E2EMultifileFilesystemEvidence.inspect(
+        storageRootURL: fixture.root,
+        library: library
+      )
+
+      XCTAssertEqual(evidence.managedFileCount, 9)
+      XCTAssertFalse(evidence.managedFileSetExact)
+      XCTAssertFalse(evidence.managedPathsExact)
+      XCTAssertTrue(evidence.managedPresenceExact)
+      XCTAssertTrue(evidence.managedByteCountsExact)
+      XCTAssertFalse(evidence.managedChecksumsExact)
+    }
+
+    private struct MultifileEvidenceFixture {
+      let root: URL
+      let library: LibrarySnapshot
+      let jobID: UUID
+      let managedURLs: [URL]
+    }
+
+    private func multifileEvidenceFixture() throws -> MultifileEvidenceFixture {
+      let root = FileManager.default.temporaryDirectory.appending(
+        path: "PlayerMultifileEvidenceTests-\(UUID().uuidString)",
+        directoryHint: .isDirectory
+      )
+      let bookID = UUID(uuidString: "3f000000-0000-0000-0000-000000000100")!
+      let jobID = UUID(uuidString: "3f000000-0000-0000-0000-000000000001")!
+      let media = root.appending(
+        path: "Media/\(bookID.uuidString.lowercased())",
+        directoryHint: .isDirectory
+      )
+      try FileManager.default.createDirectory(at: media, withIntermediateDirectories: true)
+
+      var assets: [AudioAsset] = []
+      var managedURLs: [URL] = []
+      for index in 1...8 {
+        let assetID = UUID(
+          uuidString: String(format: "3f000000-0000-0000-0000-%012d", 100 + index)
+        )!
+        let bytes = Data("multifile-evidence-\(index)".utf8)
+        let relativePath = "Media/\(bookID.uuidString.lowercased())/\(assetID.uuidString.lowercased()).m4a"
+        let managedURL = root.appending(path: relativePath)
+        try bytes.write(to: managedURL)
+        managedURLs.append(managedURL)
+        assets.append(AudioAsset(
+          id: assetID,
+          originalFilename: "Part \(index).m4a",
+          managedRelativePath: relativePath,
+          checksumSHA256: SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined(),
+          byteCount: Int64(bytes.count),
+          durationSeconds: 60,
+          container: "M4A",
+          importOrder: index - 1
+        ))
+      }
+      let book = Book(
+        id: bookID,
+        title: "Evidence",
+        authors: [],
+        durationSeconds: 480,
+        artworkData: nil,
+        assets: assets,
+        dateAdded: Date(timeIntervalSince1970: 1_700_000_000)
+      )
+      return MultifileEvidenceFixture(
+        root: root,
+        library: LibrarySnapshot(books: [book], importJobs: [], currentBookID: nil),
+        jobID: jobID,
+        managedURLs: managedURLs
+      )
+    }
+
     func testScrollReadinessProtocolParsesBoundFiniteEndpointGeometry() {
       let horizontal = ScrollReadinessState(
         scrollReadinessValue(
@@ -1796,7 +1938,8 @@ final class PlayerCoreTests: XCTestCase {
     let second = root.appending(path: "Book Part 2.m4a")
     try FileManager.default.copyItem(at: tone, to: first)
     try FileManager.default.copyItem(at: tone, to: second)
-    let media = FileSystemMediaManager(rootURL: root.appending(path: "Storage"))
+    let storageRoot = root.appending(path: "Storage", directoryHint: .isDirectory)
+    let media = FileSystemMediaManager(rootURL: storageRoot)
     let store = InMemoryLibraryStore()
     let ids = (1...8).map {
       UUID(uuidString: String(format: "c0000000-0000-0000-0000-%012d", $0))!
@@ -1827,6 +1970,8 @@ final class PlayerCoreTests: XCTestCase {
     XCTAssertEqual(ready.phase, .ready)
     let firstStaged = try XCTUnwrap(ready.stagedAssets.first)
     let secondStaged = ready.stagedAssets[1]
+    let firstStagedURL = try await media.stagedURL(for: firstStaged.stagedRelativePath)
+    let firstStagedChecksum = try checksum(firstStagedURL)
     let missingURL = try await media.stagedURL(for: secondStaged.stagedRelativePath)
     try FileManager.default.removeItem(at: missingURL)
 
@@ -1836,6 +1981,18 @@ final class PlayerCoreTests: XCTestCase {
     XCTAssertEqual(model.library.importJobs.first?.phase, .ready)
     let rolledBackURL = try await media.stagedURL(for: firstStaged.stagedRelativePath)
     XCTAssertTrue(FileManager.default.fileExists(atPath: rolledBackURL.path))
+    XCTAssertEqual(try checksum(rolledBackURL), firstStagedChecksum)
+    let managedRoot = storageRoot.appending(path: "Media", directoryHint: .isDirectory)
+    let managedFiles = FileManager.default.enumerator(
+      at: managedRoot,
+      includingPropertiesForKeys: [.isRegularFileKey]
+    )?.compactMap { entry -> URL? in
+      guard let url = entry as? URL,
+        (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
+      else { return nil }
+      return url
+    } ?? []
+    XCTAssertTrue(managedFiles.isEmpty, "Rollback must leave no managed asset behind")
     let persisted = await store.load()
     XCTAssertTrue(persisted.books.isEmpty)
     XCTAssertEqual(persisted.importJobs.first?.phase, .ready)

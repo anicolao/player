@@ -60,4 +60,4 @@
 
 - [x] Exactly one book appears after the transaction commits
 - [x] The populated Library exposes the stable corrected book
-- [x] All eight assets committed together, staging cleared, and rollback remains available
+- [x] All eight exact managed files exist with matching paths, sizes, and checksums after staging is cleared

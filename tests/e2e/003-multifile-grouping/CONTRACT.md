@@ -98,7 +98,7 @@ Review Import as `proposal:ready:1-book:8-tracks:0-warnings:revision-7`.
 Before commit, `commit-probe` is:
 
 ```text
-transaction:pending:books=0:assets=0:staging=8:source-unchanged=true
+transaction:pending:books=0:assets=0:staging-records=8:staging-files=8:source-unchanged=true
 ```
 
 `add-import-to-library` performs one recoverable transaction for the single
@@ -106,9 +106,14 @@ proposal. No partial library book may be observable. Success exposes final book
 `recent-book-30000000-0000-0000-0000-000000000100` in the populated Library and:
 
 ```text
-transaction:committed:books=1:assets=8:staging=0:source-unchanged=true:rollback=available
+transaction:committed:books=1:assets=8:staging-files=0:managed-files=8:managed-file-set=exact:managed-paths=exact:managed-presence=exact:managed-bytes=exact:managed-checksums=exact:source-unchanged=true
 ```
 
-The commit probe reads production library, managed-storage, staging, transaction,
-and pre/post source-checksum state. It is read-only and must not synthesize a
-success result.
+The commit probe recursively enumerates the real staging and managed-storage
+roots. It independently derives every expected managed path from the committed
+book and asset identifiers, rejects missing or extra files, and streams every
+managed file to verify its byte count and SHA-256 checksum. It also checks the
+pre/post source bytes. The probe is read-only and fails closed when inventory is
+unavailable or unsafe; it must not synthesize a success result. Rollback is
+validated separately by the production transaction unit test that forces a
+mid-commit failure and verifies that no managed file or partial book remains.

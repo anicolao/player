@@ -264,7 +264,7 @@ final class MultifileGroupingUITests: XCTestCase {
     let commitProbe = anyElement(app, "commit-probe")
     try requireValue(
       commitProbe,
-      "transaction:pending:books=0:assets=0:staging=8:source-unchanged=true"
+      "transaction:pending:books=0:assets=0:staging-records=8:staging-files=8:source-unchanged=true"
     )
     readyAddToLibrary.tap()
 
@@ -275,6 +275,8 @@ final class MultifileGroupingUITests: XCTestCase {
     let recentShelfReadiness = anyElement(app, "library-home-recent-shelf-scroll-readiness")
     let artworkProbe = anyElement(app, "library-artwork-probe")
     let committedProbe = anyElement(app, "commit-probe")
+    let committedEvidence =
+      "transaction:committed:books=1:assets=8:staging-files=0:managed-files=8:managed-file-set=exact:managed-paths=exact:managed-presence=exact:managed-bytes=exact:managed-checksums=exact:source-unchanged=true"
     try tester.step(
       "atomic-commit",
       description: "The corrected selection appears atomically as one complete library book",
@@ -287,8 +289,8 @@ final class MultifileGroupingUITests: XCTestCase {
         .exists(committedBook, "The populated Library exposes the stable corrected book"),
         .valueEquals(
           committedProbe,
-          "transaction:committed:books=1:assets=8:staging=0:source-unchanged=true:rollback=available",
-          "All eight assets committed together, staging cleared, and rollback remains available"
+          committedEvidence,
+          "All eight exact managed files exist with matching paths, sizes, and checksums after staging is cleared"
         ),
       ],
       captureReadiness: CaptureReadiness(
@@ -311,7 +313,7 @@ final class MultifileGroupingUITests: XCTestCase {
           && self.hasExactValue(library, "ready:library-1-books")
           && self.hasExactValue(
             committedProbe,
-            "transaction:committed:books=1:assets=8:staging=0:source-unchanged=true:rollback=available"
+            committedEvidence
           )
           && self.hasExactValue(artworkProbe, "artwork:ready=:count=0")
           && elementIsFullyVisible(committedBook, within: recentShelf)

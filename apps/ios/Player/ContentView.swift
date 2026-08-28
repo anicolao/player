@@ -2629,13 +2629,15 @@ func compactPlaybackTime(_ seconds: Double) -> String {
     private var commitValue: String {
       guard let job = multifileJob else { return "transaction:unavailable" }
       let assetCount = model.library.books.reduce(0) { $0 + $1.assets.count }
-      if job.phase == .committed {
-        let rollbackAvailable = model.library.books.allSatisfy {
-          $0.assets.allSatisfy { !$0.managedRelativePath.isEmpty }
-        }
-        return "transaction:committed:books=\(model.library.books.count):assets=\(assetCount):staging=0:source-unchanged=\(E2EMultifileAcquisition.shared.sourceIsUnchanged):rollback=\(rollbackAvailable ? "available" : "unavailable")"
+      guard let filesystem = try? E2EMultifileAcquisition.shared.filesystemEvidence(
+        library: model.library
+      ) else {
+        return "transaction:invalid:reason=filesystem-evidence-unavailable"
       }
-      return "transaction:pending:books=\(model.library.books.count):assets=\(assetCount):staging=\(job.stagedAssets.count):source-unchanged=\(E2EMultifileAcquisition.shared.sourceIsUnchanged)"
+      if job.phase == .committed {
+        return "transaction:committed:books=\(model.library.books.count):assets=\(assetCount):\(filesystem.probeFields):source-unchanged=\(E2EMultifileAcquisition.shared.sourceIsUnchanged)"
+      }
+      return "transaction:pending:books=\(model.library.books.count):assets=\(assetCount):staging-records=\(job.stagedAssets.count):staging-files=\(filesystem.stagingFileCount):source-unchanged=\(E2EMultifileAcquisition.shared.sourceIsUnchanged)"
     }
 
     private var sourceState: String {
