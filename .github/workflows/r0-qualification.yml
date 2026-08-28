@@ -38,21 +38,21 @@ jobs:
     name: Story qualification ${{ matrix.lane }}
     needs: preflight
     runs-on: macos-26
-    timeout-minutes: 180
+    timeout-minutes: 210
     strategy:
       fail-fast: false
       matrix:
         include:
           - lane: lane-1
-            stories: '["007-sleep-timer","012-monetization"]'
+            stories: '["007-sleep-timer","002-import-and-play"]'
           - lane: lane-2
-            stories: '["005-play-and-restore","011-offline-recovery"]'
+            stories: '["005-play-and-restore","001-ios-launch"]'
           - lane: lane-3
-            stories: '["008-library-search","001-ios-launch","004-metadata-repair"]'
+            stories: '["008-library-search","011-offline-recovery","010-library-backup"]'
           - lane: lane-4
-            stories: '["013-app-store-listing","006-safe-zip-import","010-library-backup"]'
+            stories: '["009-accessible-core-journeys","004-metadata-repair","012-monetization"]'
           - lane: lane-5
-            stories: '["002-import-and-play","009-accessible-core-journeys","003-multifile-grouping"]'
+            stories: '["013-app-store-listing","006-safe-zip-import","003-multifile-grouping"]'
     defaults:
       run:
         shell: nix develop --command bash --noprofile --norc -e -o pipefail {0}

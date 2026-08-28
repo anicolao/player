@@ -2,6 +2,7 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "${script_dir}/qualification/qualification-support.sh"
 ios_dir="$(cd "${script_dir}/.." && pwd)"
 repository_root="$(cd "${ios_dir}/../.." && pwd)"
 story=""
@@ -120,17 +121,7 @@ for ((attempt = 1; attempt <= attempt_count; attempt += 1)); do
   else
     result="failed"
     failure_count=$((failure_count + 1))
-    if [[ -f "${retained_output}/Diagnostics/ScreenshotComparison/summary.json" ]] \
-      && [[ "$(jq -r '.failureCount // 0' \
-        "${retained_output}/Diagnostics/ScreenshotComparison/summary.json")" -gt 0 ]]; then
-      signature="screenshot-comparison"
-    elif [[ -f "${retained_output}/Logs/test.log" ]]; then
-      signature="$(rg -m 1 -o '[A-Za-z0-9_]+UITests\.test[A-Za-z0-9_]+' \
-        "${retained_output}/Logs/test.log" || true)"
-      if [[ -z "${signature}" ]]; then signature="test-exit-${attempt_status}"; fi
-    else
-      signature="harness-exit-${attempt_status}"
-    fi
+    signature="$(qualification_failure_signature "${retained_output}" "${attempt_status}")"
   fi
 
   printf '%s\t%s\t%s\t%s\t%s\n' \

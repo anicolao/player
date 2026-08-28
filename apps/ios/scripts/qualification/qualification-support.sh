@@ -12,6 +12,45 @@ qualification_phase_was_recorded() {
   ' "${timings}"
 }
 
+qualification_failed_ui_tests_from_xcresult() {
+  local result_bundle="$1"
+  local tests_json
+  [[ -d "${result_bundle}" ]] || return 1
+  tests_json="$(xcrun xcresulttool get test-results tests \
+    --path "${result_bundle}" --format json 2>/dev/null)" || return 1
+  jq -r '
+    def is_failure:
+      ((.testStatus? // .status? // .result? // "") | tostring | ascii_downcase)
+        as $outcome
+      | $outcome == "failure" or $outcome == "failed";
+    .. | objects | select(is_failure)
+    | [.identifier?, .name?, .testName?][] | strings
+    | capture("(?<class>[A-Za-z0-9_]+UITests)[./ ](?<method>test[A-Za-z0-9_]+)")?
+    | select(. != null)
+    | "\(.class).\(.method)"
+  ' <<< "${tests_json}" | LC_ALL=C sort -u
+}
+
+qualification_failed_ui_tests_from_log() {
+  local test_log="$1"
+  [[ -f "${test_log}" ]] || return 1
+  sed -nE \
+    "s/^[[:space:]]*Test Case '-\\[[^ ]*\\.([A-Za-z0-9_]+UITests) (test[A-Za-z0-9_]+)\\]' failed.*$/\\1.\\2/p" \
+    "${test_log}" | LC_ALL=C sort -u
+}
+
+qualification_failed_ui_tests() {
+  local retained="$1"
+  local failed_tests
+  failed_tests="$(qualification_failed_ui_tests_from_xcresult \
+    "${retained}/Results/Story.xcresult" || true)"
+  if [[ -z "${failed_tests}" ]]; then
+    failed_tests="$(qualification_failed_ui_tests_from_log \
+      "${retained}/Logs/test.log" || true)"
+  fi
+  printf '%s\n' "${failed_tests}"
+}
+
 qualification_failure_signature() {
   local retained="$1" exit_code="$2"
   local failure_evidence="${retained}/Diagnostics/FailureEvidence.json"
@@ -19,8 +58,7 @@ qualification_failure_signature() {
   if [[ -f "${failure_evidence}" ]] \
     && [[ "$(jq -r '.testExitCode // 0' "${failure_evidence}")" -ne 0 ]]; then
     local failed_tests
-    failed_tests="$( { rg -o '[A-Za-z0-9_]+UITests\.test[A-Za-z0-9_]+' \
-      "${test_log}" 2>/dev/null || true; } | LC_ALL=C sort -u | paste -sd+ -)"
+    failed_tests="$(qualification_failed_ui_tests "${retained}" | sed '/^$/d' | paste -sd+ -)"
     echo "ui-test:${failed_tests:-unidentified}:exit-$(jq -r '.testExitCode' "${failure_evidence}")"
   elif [[ -f "${retained}/Diagnostics/ScreenshotComparison/summary.json" ]] \
     && [[ "$(jq -r '.failureCount // 0' \

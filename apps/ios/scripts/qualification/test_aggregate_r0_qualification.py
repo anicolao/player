@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -251,11 +252,46 @@ class QualificationAggregatorTests(unittest.TestCase):
         write_json(retained / "Diagnostics/FailureEvidence.json", {"testExitCode": 65})
         (retained / "Logs").mkdir(parents=True)
         (retained / "Logs/test.log").write_text(
-            "AccessibilityUITests.testCoreJourneysRemainCompleteAtLargestAccessibilityText()\n",
+            "Test Case '-[PlayerUITests.AccessibilityUITests testAccessibilityPreferenceTogglesUpdateAndPersist]' passed (1.0 seconds).\n"
+            "Test Case '-[PlayerUITests.AccessibilityUITests testCoreJourneysRemainCompleteAtLargestAccessibilityText]' failed (2.0 seconds).\n",
             encoding="utf-8")
         self.assertEqual(
             self.failure_signature(retained, 65),
             "ui-test:AccessibilityUITests.testCoreJourneysRemainCompleteAtLargestAccessibilityText:exit-65")
+
+    def test_failure_signature_reports_each_failed_test_in_stable_order(self):
+        retained = self.root / "two-failed-ui-tests"
+        write_json(retained / "Diagnostics/FailureEvidence.json", {"testExitCode": 65})
+        (retained / "Logs").mkdir(parents=True)
+        (retained / "Logs/test.log").write_text(
+            "Test Case '-[PlayerUITests.ZebraUITests testSecondFailure]' failed (2.0 seconds).\n"
+            "Test Case '-[PlayerUITests.AlphaUITests testFirstFailure]' failed (1.0 seconds).\n",
+            encoding="utf-8")
+        self.assertEqual(
+            self.failure_signature(retained, 65),
+            "ui-test:AlphaUITests.testFirstFailure+ZebraUITests.testSecondFailure:exit-65")
+
+    def test_failure_signature_prefers_xcresult_failed_tests(self):
+        retained = self.root / "xcresult-failed-ui-test"
+        write_json(retained / "Diagnostics/FailureEvidence.json", {"testExitCode": 65})
+        (retained / "Results/Story.xcresult").mkdir(parents=True)
+        (retained / "Logs").mkdir(parents=True)
+        (retained / "Logs/test.log").write_text(
+            "Test Case '-[PlayerUITests.LogFallbackUITests testLogFailure]' failed (1.0 seconds).\n",
+            encoding="utf-8")
+        fake_bin = self.root / "fake-xcresult-bin"
+        fake_bin.mkdir()
+        fake_xcrun = fake_bin / "xcrun"
+        fake_xcrun.write_text(
+            "#!/usr/bin/env bash\n"
+            "cat <<'JSON'\n"
+            '{"tests":[{"result":"Failed","identifier":"PlayerUITests/XCResultUITests/testAuthoritativeFailure()"}]}\n'
+            "JSON\n",
+            encoding="utf-8")
+        fake_xcrun.chmod(0o755)
+        self.assertEqual(
+            self.failure_signature(retained, 65, extra_path=fake_bin),
+            "ui-test:XCResultUITests.testAuthoritativeFailure:exit-65")
 
     def test_failure_signature_identifies_exact_screenshot_and_difference(self):
         retained = self.root / "failed-screenshot"
@@ -266,12 +302,15 @@ class QualificationAggregatorTests(unittest.TestCase):
         self.assertEqual(self.failure_signature(retained, 1),
                          "screenshot:pixel-difference:003-smart-rewind-applied.png")
 
-    def failure_signature(self, retained, exit_code):
+    def failure_signature(self, retained, exit_code, extra_path=None):
         support = Path(__file__).with_name("qualification-support.sh")
+        environment = os.environ.copy()
+        if extra_path is not None:
+            environment["PATH"] = f"{extra_path}:{environment['PATH']}"
         result = subprocess.run(
             ["bash", "-c", '. "$1"; qualification_failure_signature "$2" "$3"',
              "qualification-signature-test", str(support), str(retained), str(exit_code)],
-            check=True, capture_output=True, text=True)
+            check=True, capture_output=True, text=True, env=environment)
         return result.stdout.strip()
 
     def test_rejects_missing_story_or_matrix_lane(self):

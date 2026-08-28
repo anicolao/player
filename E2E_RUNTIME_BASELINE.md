@@ -193,6 +193,35 @@ R0 should classify that launch warning and determine whether it contributes to
 startup cost or instability; its presence must not simply be labeled harmless
 because this baseline happened to pass.
 
+### Xcode launcher diagnostic classification
+
+Retained green evidence in Stories 005, 007, 008, 009, and 012 contains exactly
+43 `Launch com.spnss.player` events and 43 matching
+`IDELaunchParametersSnapshot … no debugger version` warning pairs. All 11 test
+cases in those retained runs passed. The warning is emitted by host
+`xcodebuild[...][MT]` immediately after each `XCUIApplication` launch and before
+automation setup; it is not emitted by Bookshelf.
+
+The audited evidence is each story's `Run.json` and `Logs/test.log` beneath
+`apps/ios/DerivedData/E2E/`: Story 005 at `10f53e21301c`, Story 007 at
+`18ba2730969b`, Story 008 at `918b2d9f1dde`, Story 009 at `0939fbaad3be`, and
+Story 012 at `a92994d11d9e`. These paths identify the locally retained inputs to
+the classification; the warning remains present in uploaded CI test logs.
+
+The warning is therefore classified as a deterministic Xcode 26.6 UI-test
+launcher metadata diagnostic: the optional LLDB debugger-version snapshot is
+unavailable during the test launch. It has no observed association with
+instability across the 43 successful launches and no separately measurable
+stall. Its constant cost is already included in both the baseline and candidate
+timings. It remains visible in retained logs for diagnosis, but an application
+or test failure must never be waived under this warning's signature.
+
+The same retained runs emit one iOS 26.5
+`UIAccessibilityLoaderWebShared` duplicate-bundle warning per test-runner
+session. That warning is also emitted by the Apple Simulator runtime rather
+than Bookshelf; it remains retained as a distinct platform diagnostic and is
+not evidence that an application failure shares this launcher's cause.
+
 ## R0 runtime contract
 
 1. Add direct monotonic timing for environment verification, project/receiver
