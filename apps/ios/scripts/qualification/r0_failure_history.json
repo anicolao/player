@@ -784,6 +784,78 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "The formal exact-SHA qualification run targets the earlier 81380149114c492cc0e041a508ab1abd6768e24f revision, so this later local discovery did not reset an accepted count at the fix SHA."
+    },
+    {
+      "signature": "semantic:008-library-search:shared-existence-deadline-prevented-scroll-action",
+      "story": "008-library-search",
+      "evidence": {
+        "workflowRun": 33191008177,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions artifact 9699711398, job 98916322020",
+        "url": "https://github.com/anicolao/player/actions/runs/33191008177/job/98916322020",
+        "commit": "81380149114c492cc0e041a508ab1abd6768e24f",
+        "observation": "Across ten retained Story 008 attempts, attempts 5-7 and 9-10 failed to reveal either the Trash action or the final Settings row. The readiness diagnostics reported interaction=0 and completion=0: hosted-runner accessibility lookups had consumed the same EventDeadline before the first scroll gesture could occur."
+      },
+      "rootCause": "Independent existence and readiness lookups shared one two-second EventDeadline with the subsequent scroll transition. Slow hosted-runner accessibility resolution could therefore leave the actual product interaction with no time budget even though no gesture had begun.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Give each named existence, readiness, and scroll transition its own bounded EventDeadline while retaining the same semantic endpoint and unobscured-runway assertions.",
+        "commits": [
+          "2f2278b1a19773900f5cd5281ca1d868f9d728d2"
+        ],
+        "validation": "Canonical Story 008 artifact `/tmp/player-r0-deadline-story008` passed both UI tests 2/2, matched all ten screenshots pixel-exact, matched the reviewed README exactly, and retained the complete evidence bundle."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "The first formal exact-SHA batch never achieved an accepted 10/10 Story 008 result, so its consecutive qualification count remained zero."
+    },
+    {
+      "signature": "semantic:007-sleep-timer:shared-existence-deadline-prevented-scroll-action",
+      "story": "007-sleep-timer",
+      "evidence": {
+        "workflowRun": 33191008177,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions artifact 9699825033, job 98916321954",
+        "url": "https://github.com/anicolao/player/actions/runs/33191008177/job/98916321954",
+        "commit": "81380149114c492cc0e041a508ab1abd6768e24f",
+        "observation": "Story 007 attempts 5, 6, and 10 failed to reveal Sleep Timer history, and attempt 7 failed to reveal a bookmark row. Each failure reached its screen but reported interaction=0 because existence/readiness queries exhausted the shared two-second deadline before any scroll gesture."
+      },
+      "rootCause": "The Sleep Timer and bookmark reveal helpers reused an already-running existence deadline for a later, independently named scroll transition, allowing accessibility query latency to prevent the transition from starting.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Bound screen existence and the subsequent event-driven scroll action independently, preserving the two-second maximum for every transition and the same terminal endpoint checks.",
+        "commits": [
+          "2f2278b1a19773900f5cd5281ca1d868f9d728d2"
+        ],
+        "validation": "The full canonical Sleep Timer journey passed in `/tmp/player-r0-deadline-story007` in 153.877 seconds with both screenshots pixel-exact; the exact bookmark selector subsequently passed in `/tmp/player-r0-deadline-bookmark2`."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "The first formal exact-SHA batch never achieved an accepted 10/10 Story 007 result, so its consecutive qualification count remained zero."
+    },
+    {
+      "signature": "screenshot:007-sleep-timer:bookmark-framing-relied-on-scroll-momentum",
+      "story": "007-sleep-timer",
+      "evidence": {
+        "workflowRun": 33191008177,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions artifact 9699825033, job 98916321954",
+        "url": "https://github.com/anicolao/player/actions/runs/33191008177/job/98916321954",
+        "commit": "81380149114c492cc0e041a508ab1abd6768e24f",
+        "observation": "Bookmark capture framing failed on attempts 8-10. On the hosted runner, one fixed fast swipe stopped at vertical offset 351.33 while the correlated production endpoint was 372.33; the subsequent combined multi-element query consumed the remaining deadline before exact unobscured geometry was reached."
+      },
+      "rootCause": "The capture used swipe momentum as a proxy for final framing and repeatedly evaluated an expensive combined element predicate, instead of observing the production scroll endpoint and then checking each required control's actionability.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Scroll until the correlated production readiness probe reports the bottom endpoint, independently require every capture element to exist and be hittable, then assert the reviewed unobscured geometry.",
+        "commits": [
+          "2f2278b1a19773900f5cd5281ca1d868f9d728d2"
+        ],
+        "validation": "The exact bookmark selector passed end-to-end in 73.739 seconds in `/tmp/player-r0-deadline-bookmark2`, and its canonical screenshot 002 matched pixel-exact."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "The first formal exact-SHA batch never achieved an accepted 10/10 Story 007 result, so its consecutive qualification count remained zero."
     }
   ]
 }
