@@ -20,7 +20,7 @@ final class AccessibilityUITests: XCTestCase {
       modelValue: "high-contrast=false:reduce-artwork=false"
     )
 
-    let highContrastDeadline = EventDeadline()
+    let highContrastDeadline = AccessibilityEventDeadline()
     tapSwitchControl(initial.highContrast, deadline: highContrastDeadline)
     XCTAssertTrue(
       initial.preferences.waitForStringValue(
@@ -32,7 +32,7 @@ final class AccessibilityUITests: XCTestCase {
       initial.highContrast.waitForStringValue("1", timeout: highContrastDeadline.remaining)
     )
 
-    let reduceArtworkDeadline = EventDeadline()
+    let reduceArtworkDeadline = AccessibilityEventDeadline()
     tapSwitchControl(initial.reduceArtwork, deadline: reduceArtworkDeadline)
     assertAccessibilityPreferences(
       initial,
@@ -320,12 +320,12 @@ final class AccessibilityUITests: XCTestCase {
   private func openAccessibilityPreferences(
     in app: XCUIApplication
   ) -> (highContrast: XCUIElement, reduceArtwork: XCUIElement, preferences: XCUIElement) {
-    let settingsDeadline = EventDeadline()
+    let settingsDeadline = AccessibilityEventDeadline()
     let settings = app.tabBars.buttons["Settings"]
     XCTAssertTrue(waitForExistence(settings, deadline: settingsDeadline))
     settings.tap()
 
-    let accessibilityDeadline = EventDeadline()
+    let accessibilityDeadline = AccessibilityEventDeadline()
     let accessibility = app.buttons["settings-accessibility"]
     align(
       "e2e-align-settings-accessibility",
@@ -335,7 +335,7 @@ final class AccessibilityUITests: XCTestCase {
     )
     accessibility.tap()
 
-    let controlsDeadline = EventDeadline()
+    let controlsDeadline = AccessibilityEventDeadline()
     let highContrast = app.switches["accessibility-high-contrast"]
     let reduceArtwork = app.switches["accessibility-reduce-artwork"]
     let preferences = anyElement(app, "accessibility-preferences-state")
@@ -353,7 +353,7 @@ final class AccessibilityUITests: XCTestCase {
     ),
     switchValues: (highContrast: String, reduceArtwork: String),
     modelValue: String,
-    deadline: EventDeadline = EventDeadline()
+    deadline: AccessibilityEventDeadline = AccessibilityEventDeadline()
   ) {
     XCTAssertTrue(
       controls.preferences.waitForStringValue(modelValue, timeout: deadline.remaining),
@@ -377,7 +377,7 @@ final class AccessibilityUITests: XCTestCase {
 
   private func tapSwitchControl(
     _ element: XCUIElement,
-    deadline: EventDeadline = EventDeadline()
+    deadline: AccessibilityEventDeadline = AccessibilityEventDeadline()
   ) {
     XCTAssertTrue(waitForExistence(element, deadline: deadline))
     element.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
@@ -387,7 +387,7 @@ final class AccessibilityUITests: XCTestCase {
     _ controlIdentifier: String,
     to element: XCUIElement,
     in app: XCUIApplication,
-    deadline: EventDeadline = EventDeadline()
+    deadline: AccessibilityEventDeadline = AccessibilityEventDeadline()
   ) {
     let control = app.buttons[controlIdentifier]
     XCTAssertTrue(waitForExistence(control, deadline: deadline))
@@ -397,7 +397,7 @@ final class AccessibilityUITests: XCTestCase {
 
   private func waitUntilHittable(
     _ element: XCUIElement,
-    deadline: EventDeadline = EventDeadline()
+    deadline: AccessibilityEventDeadline = AccessibilityEventDeadline()
   ) {
     XCTAssertTrue(
       waitForPredicate(
@@ -407,6 +407,32 @@ final class AccessibilityUITests: XCTestCase {
       ),
       "Expected \(element.identifier) to become visible and hittable"
     )
+  }
+
+  private func waitForExistence(
+    _ element: XCUIElement,
+    deadline: AccessibilityEventDeadline
+  ) -> Bool {
+    element.exists || element.waitForExistence(timeout: deadline.remaining)
+  }
+
+  @discardableResult
+  private func terminateAndWait(
+    _ application: XCUIApplication,
+    deadline: AccessibilityEventDeadline = AccessibilityEventDeadline()
+  ) -> Bool {
+    if application.state == .notRunning { return true }
+    application.terminate()
+    if application.state == .notRunning { return true }
+    guard deadline.remaining > 0 else { return false }
+    let expectation = XCTNSPredicateExpectation(
+      predicate: NSPredicate { object, _ in
+        (object as? XCUIApplication)?.state == .notRunning
+      },
+      object: application
+    )
+    _ = XCTWaiter.wait(for: [expectation], timeout: deadline.remaining)
+    return application.state == .notRunning
   }
 
   private func visibleControl(
@@ -432,5 +458,17 @@ final class AccessibilityUITests: XCTestCase {
     StepVerification(specification: specification) {
       element.waitForExistence(timeout: 2) && element.label.contains(label)
     }
+  }
+}
+
+private struct AccessibilityEventDeadline {
+  private let expiresAt: TimeInterval
+
+  init(timeout: TimeInterval = 2) {
+    expiresAt = ProcessInfo.processInfo.systemUptime + min(timeout, 2)
+  }
+
+  var remaining: TimeInterval {
+    max(0, expiresAt - ProcessInfo.processInfo.systemUptime)
   }
 }
