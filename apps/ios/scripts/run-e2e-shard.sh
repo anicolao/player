@@ -9,6 +9,8 @@ run_core=0
 shard_id=""
 stories=()
 core_simulator_id=""
+core_simulator_lease=""
+simulator_lease_root="${PLAYER_SIMULATOR_LEASE_ROOT:-${ios_dir}/DerivedData/SimulatorLeases}"
 device_type="com.apple.CoreSimulator.SimDeviceType.iPhone-17"
 runtime="com.apple.CoreSimulator.SimRuntime.iOS-26-5"
 
@@ -100,11 +102,10 @@ jq -n \
 
 cleanup() {
   local run_status="$?"
-  trap - EXIT
+  trap - EXIT INT TERM
   set +e
-  if [[ -n "${core_simulator_id}" ]]; then
-    xcrun simctl shutdown "${core_simulator_id}" >/dev/null 2>&1 || true
-    if ! xcrun simctl delete "${core_simulator_id}" >/dev/null 2>&1; then
+  if [[ -f "${core_simulator_lease}" && ! -L "${core_simulator_lease}" ]]; then
+    if ! "${script_dir}/simulator-lease.sh" release "${core_simulator_lease}" "$$"; then
       echo "Could not delete core-test simulator ${core_simulator_id}." >&2
       if [[ "${run_status}" -eq 0 ]]; then run_status=1; fi
     fi
@@ -122,6 +123,8 @@ cleanup() {
   exit "${run_status}"
 }
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 run_core_tests() {
   local fixture_start="${SECONDS}"
@@ -141,8 +144,10 @@ run_core_tests() {
 
   local core_start="${SECONDS}"
   local core_status=0
-  core_simulator_id="$(xcrun simctl create \
-    "Player Core ${shard_id} $$" "${device_type}" "${runtime}")"
+  core_simulator_lease="${simulator_lease_root}/core-shard-${shard_id}-$$.json"
+  core_simulator_id="$("${script_dir}/simulator-lease.sh" acquire \
+    "${core_simulator_lease}" "Player Core ${shard_id} $$" \
+    "${device_type}" "${runtime}" "$$")"
   xcrun simctl boot "${core_simulator_id}"
   xcrun simctl bootstatus "${core_simulator_id}" -b
   xcodebuild -quiet \
@@ -160,9 +165,12 @@ run_core_tests() {
   printf 'core-tests\t%s\t%s\t%s\n' \
     "${core_start}" "${SECONDS}" "${core_status}" \
     >> "${shard_root}/StoryTimings.tsv"
-  xcrun simctl shutdown "${core_simulator_id}" >/dev/null 2>&1 || true
-  if ! xcrun simctl delete "${core_simulator_id}"; then core_status=1; fi
-  core_simulator_id=""
+  if "${script_dir}/simulator-lease.sh" release "${core_simulator_lease}" "$$"; then
+    core_simulator_id=""
+    core_simulator_lease=""
+  else
+    core_status=1
+  fi
   return "${core_status}"
 }
 

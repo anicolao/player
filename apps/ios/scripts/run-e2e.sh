@@ -12,6 +12,8 @@ story_was_set=0
 device_type="com.apple.CoreSimulator.SimDeviceType.iPhone-17"
 runtime="com.apple.CoreSimulator.SimRuntime.iOS-26-5"
 simulator_id=""
+simulator_lease=""
+simulator_lease_root="${PLAYER_SIMULATOR_LEASE_ROOT:-${ios_dir}/DerivedData/SimulatorLeases}"
 recording_stage=""
 parallel_workers="${PLAYER_E2E_PARALLEL_WORKERS:-2}"
 skip_project_generation="${PLAYER_SKIP_PROJECT_GENERATION:-0}"
@@ -191,14 +193,13 @@ capture_failure_diagnostics() {
 
 cleanup() {
   local run_status="$?"
-  trap - EXIT
+  trap - EXIT INT TERM
   set +e
   if [[ "${run_status}" -ne 0 ]]; then
     capture_failure_diagnostics
   fi
-  if [[ -n "${simulator_id}" ]]; then
-    xcrun simctl shutdown "${simulator_id}" >/dev/null 2>&1 || true
-    if ! xcrun simctl delete "${simulator_id}" >/dev/null 2>&1; then
+  if [[ -f "${simulator_lease}" && ! -L "${simulator_lease}" ]]; then
+    if ! "${script_dir}/simulator-lease.sh" release "${simulator_lease}" "$$"; then
       echo "Could not delete E2E simulator ${simulator_id}." >&2
       if [[ "${run_status}" -eq 0 ]]; then run_status=1; fi
     fi
@@ -217,6 +218,8 @@ cleanup() {
   exit "${run_status}"
 }
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 if [[ "${skip_environment_verification}" == "1" ]]; then
   printf 'environment-reuse\t%s\t%s\t0\n' "${SECONDS}" "${SECONDS}" \
@@ -228,7 +231,9 @@ else
 fi
 
 simulator_phase_start="${SECONDS}"
-simulator_id="$(xcrun simctl create "${simulator_name}" "${device_type}" "${runtime}")"
+simulator_lease="${simulator_lease_root}/story-${story_id}-$$.json"
+simulator_id="$("${script_dir}/simulator-lease.sh" acquire \
+  "${simulator_lease}" "${simulator_name}" "${device_type}" "${runtime}" "$$")"
 xcrun simctl boot "${simulator_id}"
 xcrun simctl bootstatus "${simulator_id}" -b
 xcrun simctl ui "${simulator_id}" appearance light

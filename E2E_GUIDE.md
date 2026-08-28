@@ -40,6 +40,14 @@ not reuse a personal simulator. Multi-class stories may use up to two isolated
 XCTest simulator clones so their selected tests can run concurrently without
 sharing application state.
 
+Every simulator created by the E2E and core-test harness has a durable lease
+containing its exact UDID and owning process identity. Normal exit and INT/TERM
+release that lease; the next acquisition reconciles a lease left by a dead
+owner. Reconciliation validates every record before acting and never deletes
+by simulator name, prefix, or glob, so an unrelated personal simulator is not
+part of harness cleanup. A malformed record stops reconciliation without
+deleting anything.
+
 To compare against committed baselines:
 
 ```bash

@@ -9,6 +9,7 @@ lane=""
 expected_sha=""
 attempt_count=10
 output_root="${ios_dir}/DerivedData/R0Qualification/Stories"
+simulator_lease_root="${ios_dir}/DerivedData/SimulatorLeases"
 stories=()
 
 usage() {
@@ -118,6 +119,7 @@ for story in "${stories[@]}"; do
     PLAYER_E2E_PARALLEL_WORKERS=1 \
       PLAYER_E2E_BUILD_DATA="${shared_build}" \
       PLAYER_E2E_OUTPUT="${retained}" \
+      PLAYER_SIMULATOR_LEASE_ROOT="${simulator_lease_root}" \
       PLAYER_SKIP_E2E_BUILD="${skip_build}" \
       PLAYER_SKIP_E2E_ENVIRONMENT_VERIFICATION=1 \
       PLAYER_SKIP_PROJECT_GENERATION=1 \

@@ -13,6 +13,8 @@ run_core=0
 stories=()
 active_worktree=""
 core_simulator_id=""
+core_simulator_lease=""
+simulator_lease_root="${base_ios_dir}/DerivedData/SimulatorLeases"
 
 usage() {
   echo "usage: run-matrix-lane.sh --lane <lane-1..5> --sha <commit> [--matrices 5] [--core] --story <id>..." >&2
@@ -67,11 +69,13 @@ failure_signature() {
 
 cleanup() {
   local status="$?"
-  trap - EXIT
+  trap - EXIT INT TERM
   set +e
-  if [[ -n "${core_simulator_id}" ]]; then
-    xcrun simctl shutdown "${core_simulator_id}" >/dev/null 2>&1 || true
-    xcrun simctl delete "${core_simulator_id}" >/dev/null 2>&1 || true
+  if [[ -f "${core_simulator_lease}" && ! -L "${core_simulator_lease}" ]]; then
+    if ! "${base_ios_dir}/scripts/simulator-lease.sh" release \
+      "${core_simulator_lease}" "$$" >/dev/null 2>&1; then
+      status=1
+    fi
   fi
   if [[ -n "${active_worktree}" ]]; then
     git -C "${repository_root}" worktree remove --force "${active_worktree}" >/dev/null 2>&1 || true
@@ -79,6 +83,8 @@ cleanup() {
   exit "${status}"
 }
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 run_core_gate() {
   local worktree="$1" matrix_root="$2" matrix_index="$3"
@@ -95,9 +101,11 @@ run_core_gate() {
   } 2>&1 | tee "${matrix_root}/Core/Logs/fixtures.log" || fixture_status="${PIPESTATUS[0]}"
 
   if [[ "${fixture_status}" -eq 0 ]]; then
-    core_simulator_id="$(xcrun simctl create "Player R0 Core ${lane} ${matrix_index} $$" \
+    core_simulator_lease="${simulator_lease_root}/core-matrix-${lane}-${matrix_index}-$$.json"
+    core_simulator_id="$("${base_ios_dir}/scripts/simulator-lease.sh" acquire \
+      "${core_simulator_lease}" "Player R0 Core ${lane} ${matrix_index} $$" \
       com.apple.CoreSimulator.SimDeviceType.iPhone-17 \
-      com.apple.CoreSimulator.SimRuntime.iOS-26-5)"
+      com.apple.CoreSimulator.SimRuntime.iOS-26-5 "$$")"
     xcrun simctl boot "${core_simulator_id}"
     xcrun simctl bootstatus "${core_simulator_id}" -b
     xcodebuild -quiet \
@@ -108,9 +116,13 @@ run_core_gate() {
       -resultBundlePath "${matrix_root}/Core/Results/Core.xcresult" \
       test-without-building CODE_SIGNING_ALLOWED=NO \
       2>&1 | tee "${matrix_root}/Core/Logs/tests.log" || core_status="${PIPESTATUS[0]}"
-    xcrun simctl shutdown "${core_simulator_id}" >/dev/null 2>&1 || true
-    xcrun simctl delete "${core_simulator_id}" || core_status=1
-    core_simulator_id=""
+    if "${base_ios_dir}/scripts/simulator-lease.sh" release \
+      "${core_simulator_lease}" "$$"; then
+      core_simulator_id=""
+      core_simulator_lease=""
+    else
+      core_status=1
+    fi
   else
     core_status="${fixture_status}"
   fi
@@ -160,6 +172,7 @@ for ((matrix_index = 1; matrix_index <= matrix_count; matrix_index += 1)); do
     PLAYER_E2E_PARALLEL_WORKERS=1 \
       PLAYER_E2E_BUILD_DATA="${shared_build}" \
       PLAYER_E2E_OUTPUT="${retained}" \
+      PLAYER_SIMULATOR_LEASE_ROOT="${simulator_lease_root}" \
       PLAYER_SKIP_E2E_BUILD="${skip_build}" \
       PLAYER_SKIP_E2E_ENVIRONMENT_VERIFICATION=1 \
       PLAYER_SKIP_PROJECT_GENERATION=1 \
