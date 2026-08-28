@@ -36,6 +36,79 @@ extension XCUIElement {
 }
 
 @MainActor
+func scrollUntil(
+  _ condition: @escaping () -> Bool,
+  tracking element: XCUIElement,
+  timeout: TimeInterval = TestStepHelper.conditionTimeout,
+  gesture: () -> Void
+) -> Bool {
+  if condition() { return true }
+
+  let deadline = Date().addingTimeInterval(timeout)
+  var previousGeometry = scrollGeometry(of: element)
+  while Date() < deadline {
+    gesture()
+    if condition() { return true }
+
+    let remaining = deadline.timeIntervalSinceNow
+    guard remaining > 0 else { break }
+    let geometryBeforeWait = previousGeometry
+    let progressed = XCTNSPredicateExpectation(
+      predicate: NSPredicate { _, _ in
+        condition() || scrollGeometry(of: element) != geometryBeforeWait
+      },
+      object: element
+    )
+    _ = XCTWaiter.wait(for: [progressed], timeout: remaining)
+    if condition() { return true }
+
+    let currentGeometry = scrollGeometry(of: element)
+    guard currentGeometry != previousGeometry else {
+      print(
+        "Scroll made no progress: identifier=\(element.identifier), "
+          + "geometry=\(currentGeometry)"
+      )
+      return false
+    }
+    previousGeometry = currentGeometry
+  }
+  return condition()
+}
+
+@MainActor
+func scrollToSettledEnd(
+  tracking element: XCUIElement,
+  timeout: TimeInterval = TestStepHelper.conditionTimeout,
+  gesture: () -> Void
+) -> Bool {
+  let deadline = Date().addingTimeInterval(timeout)
+  var previousGeometry = scrollGeometry(of: element)
+  while Date() < deadline {
+    gesture()
+    let currentGeometry = scrollGeometry(of: element)
+    if currentGeometry == previousGeometry { return true }
+    previousGeometry = currentGeometry
+  }
+  print(
+    "Scroll did not reach a settled end: identifier=\(element.identifier), "
+      + "latestGeometry=\(previousGeometry)"
+  )
+  return false
+}
+
+@MainActor
+private func scrollGeometry(of element: XCUIElement) -> String {
+  guard element.exists else { return "missing" }
+  let frame = element.frame
+  return [
+    "x=\(frame.minX)",
+    "y=\(frame.minY)",
+    "maxX=\(frame.maxX)",
+    "maxY=\(frame.maxY)",
+  ].joined(separator: ":")
+}
+
+@MainActor
 struct StepVerification {
   let specification: String
   let check: () -> Bool
@@ -154,6 +227,8 @@ final class TestStepHelper {
     description: String,
     verifications: [StepVerification]
   ) throws {
+    dismissAppleIntelligenceNotificationIfPresent()
+
     for verification in verifications {
       XCTAssertTrue(
         verification.check(),
@@ -162,8 +237,6 @@ final class TestStepHelper {
         line: #line
       )
     }
-
-    dismissAppleIntelligenceNotificationIfPresent()
 
     let filename = String(format: "%03d-%@.png", nextScreenshotIndex, identifier)
     nextScreenshotIndex += 1

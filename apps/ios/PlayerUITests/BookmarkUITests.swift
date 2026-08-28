@@ -292,11 +292,14 @@ final class BookmarkUITests: XCTestCase {
   }
 
   private func returnToLibraryRoot(_ app: XCUIApplication) throws {
-    for _ in 0..<2 {
-      let back = app.navigationBars.buttons.element(boundBy: 0)
-      XCTAssertTrue(back.waitForExistence(timeout: 2))
-      back.tap()
-    }
+    let allBooksBack = app.navigationBars["Book Detail"].buttons["All Books"]
+    XCTAssertTrue(allBooksBack.waitForExistence(timeout: 2))
+    allBooksBack.tap()
+    XCTAssertTrue(app.descendants(matching: .any)["all-books-screen"].waitForExistence(timeout: 2))
+
+    let libraryBack = app.navigationBars["All Books"].buttons["Library"]
+    XCTAssertTrue(libraryBack.waitForExistence(timeout: 2))
+    libraryBack.tap()
     XCTAssertTrue(app.descendants(matching: .any)["library-screen"].waitForExistence(timeout: 2))
   }
 
@@ -310,9 +313,7 @@ final class BookmarkUITests: XCTestCase {
     rows: [XCUIElement],
     jumpActions: [XCUIElement]
   ) throws {
-    let scrollView = app.scrollViews.firstMatch
     let miniPlayer = app.otherElements["mini-player"]
-    XCTAssertTrue(scrollView.exists)
     XCTAssertTrue(miniPlayer.exists)
 
     let align = app.buttons["e2e-align-bookmarks-walkthrough"]
@@ -336,12 +337,14 @@ final class BookmarkUITests: XCTestCase {
   }
 
   private func revealBookmarkRow(_ row: XCUIElement, in app: XCUIApplication) throws {
-    let scrollView = app.scrollViews.firstMatch
-    XCTAssertTrue(scrollView.exists)
-    for _ in 0..<5 where !row.exists || !row.isHittable {
-      scrollView.swipeUp(velocity: .slow)
-    }
-    XCTAssertTrue(row.waitForExistence(timeout: 2), "Expected the bookmark row to be reachable by scrolling")
+    let screen = app.descendants(matching: .any)["book-detail-screen"]
+    XCTAssertTrue(screen.waitForExistence(timeout: 2))
+    XCTAssertTrue(
+      scrollUntil({ row.exists && row.isHittable }, tracking: row) {
+        screen.swipeUp(velocity: .slow)
+      },
+      "Expected the bookmark row to become hittable through progress-making Book Detail scrolling"
+    )
   }
 
   private func bookmarkFrameIsUnobscured(
@@ -356,11 +359,20 @@ final class BookmarkUITests: XCTestCase {
   }
 
   private func tapWhenHittable(_ element: XCUIElement, in app: XCUIApplication) throws {
-    let deadline = Date().addingTimeInterval(2)
-    while !element.isHittable && Date() < deadline {
-      app.swipeUp()
+    if element.isHittable {
+      element.tap()
+      return
     }
-    XCTAssertTrue(element.isHittable)
+    let bookDetail = app.descendants(matching: .any)["book-detail-screen"]
+    let libraryScroll = app.descendants(matching: .any)["library-root-scroll"]
+    let scrollContainer = bookDetail.exists ? bookDetail : libraryScroll
+    XCTAssertTrue(scrollContainer.waitForExistence(timeout: 2))
+    XCTAssertTrue(
+      scrollUntil({ element.isHittable }, tracking: element) {
+        scrollContainer.swipeUp(velocity: .slow)
+      },
+      "Expected \(element.identifier) to become hittable through progress-making screen scrolling"
+    )
     element.tap()
   }
 

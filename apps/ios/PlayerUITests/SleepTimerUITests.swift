@@ -294,11 +294,18 @@ final class SleepTimerUITests: XCTestCase {
   }
 
   private func tapWhenHittable(_ element: XCUIElement, in app: XCUIApplication) throws {
-    let deadline = Date().addingTimeInterval(2)
-    while !element.isHittable && Date() < deadline {
-      app.swipeUp()
+    if element.isHittable {
+      element.tap()
+      return
     }
-    XCTAssertTrue(element.isHittable)
+    let screen = app.descendants(matching: .any)["sleep-timer-screen"]
+    XCTAssertTrue(screen.waitForExistence(timeout: 2))
+    XCTAssertTrue(
+      scrollUntil({ element.isHittable }, tracking: element) {
+        screen.swipeUp(velocity: .slow)
+      },
+      "Expected \(element.identifier) to become hittable through progress-making Sleep Timer scrolling"
+    )
     element.tap()
   }
 
@@ -355,11 +362,14 @@ final class SleepTimerUITests: XCTestCase {
     _ expected: String,
     in app: XCUIApplication
   ) throws {
-    let deadline = Date().addingTimeInterval(2)
-    while !element.exists && Date() < deadline {
-      app.swipeUp()
-    }
-    XCTAssertTrue(element.waitForExistence(timeout: 1))
+    let screen = app.descendants(matching: .any)["sleep-timer-screen"]
+    XCTAssertTrue(screen.waitForExistence(timeout: 2))
+    XCTAssertTrue(
+      scrollUntil({ element.exists && element.isHittable }, tracking: element) {
+        screen.swipeUp(velocity: .slow)
+      },
+      "Expected \(element.identifier) to become visible through progress-making Sleep Timer scrolling"
+    )
     try requireValue(element, expected)
   }
 

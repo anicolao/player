@@ -83,14 +83,18 @@ final class LibraryOrganizationUITests: XCTestCase {
     try requireValue(upNext, upNextValue([books[2], books[1], books[4]]))
     app.buttons["up-next-book-\(books[2])"].tap()
     app.buttons["mark-finished-\(books[2])"].tap()
-    app.buttons["confirm-mark-finished"].firstMatch.tap()
+    let finishedAlert = app.alerts["Mark as finished?"]
+    XCTAssertTrue(finishedAlert.waitForExistence(timeout: 2))
+    let confirmFinished = finishedAlert.buttons["confirm-mark-finished"].firstMatch
+    XCTAssertTrue(confirmFinished.waitForExistence(timeout: 2))
+    confirmFinished.tap()
     try requireValue(
       anyElement(app, "book-state-probe"),
       "book:\(books[2]):finished=true:position=120000"
     )
-    navigateBack(app)
+    navigateBack(app, label: "Up Next", destination: upNext)
     try requireValue(upNext, upNextValue([books[1], books[4]]))
-    navigateBack(app)
+    navigateBack(app, label: "Library", destination: anyElement(app, "library-screen"))
     try requireValue(
       organizer,
       organizerValue(
@@ -158,8 +162,8 @@ final class LibraryOrganizationUITests: XCTestCase {
         .exists(anyElement(app, "collection-book-\(books[0])"), "The second ordered collection book is visible"),
       ]
     )
-    navigateBack(app)
-    navigateBack(app)
+    navigateBack(app, label: "Collections", destination: anyElement(app, "collections-screen"))
+    navigateBack(app, label: "Library", destination: anyElement(app, "library-screen"))
 
     app.buttons["browse-all-books"].tap()
     let allBooks = anyElement(app, "all-books-probe")
@@ -189,16 +193,33 @@ final class LibraryOrganizationUITests: XCTestCase {
       ]
     )
     let recentShelf = anyElement(app, "all-books-recent-shelf-scroll")
-    let oldestRecentBook = app.buttons["bookshelf-recent-book-\(books[0])"]
-    recentShelf.swipeLeft()
-    recentShelf.swipeLeft()
+    let oldestRecentBook = anyElement(app, "bookshelf-recent-book-\(books[0])")
+    let recentShelfRightEnd = anyElement(app, "all-books-recent-shelf-scroll-right-end")
+    let finalBookIsFullyVisible = {
+      oldestRecentBook.exists
+        && oldestRecentBook.frame.minX >= recentShelf.frame.minX
+        && oldestRecentBook.frame.maxX <= recentShelf.frame.maxX
+    }
+    XCTAssertTrue(
+      scrollUntil(
+        {
+          finalBookIsFullyVisible() && recentShelfRightEnd.exists
+            && recentShelfRightEnd.frame.maxX <= recentShelf.frame.maxX
+        },
+        tracking: recentShelfRightEnd
+      ) {
+        recentShelf.swipeLeft(velocity: .fast)
+      },
+      "The Recently Added shelf must reveal its final book and right end through progress-making scrolling"
+    )
     try tester.step(
       "square-cover-bookshelf-right-end",
       description: "The books carry their wooden shelf to its visible right end",
       verifications: [
         .exists(oldestRecentBook, "The oldest audiobook remains on the shared shelf"),
         StepVerification(specification: "The final audiobook is fully reachable at the shelf end") {
-          oldestRecentBook.isHittable
+          finalBookIsFullyVisible() && recentShelfRightEnd.exists
+            && recentShelfRightEnd.frame.maxX <= recentShelf.frame.maxX
         },
       ]
     )
@@ -215,63 +236,50 @@ final class LibraryOrganizationUITests: XCTestCase {
     try requireValue(restoredAllBooks, allBooksValue(view: "list", order: allBookOrder))
     restoredApp.buttons["all-books-book-\(books[4])"].tap()
     restoredApp.buttons["move-book-to-trash-toolbar"].tap()
-    restoredApp.buttons["remove-book-to-trash"].firstMatch.tap()
-    navigateBack(restoredApp)
-    let openTrash = restoredApp.buttons["open-trash"].firstMatch
+    let removalSheet = restoredApp.sheets["Move this audiobook to Trash?"]
+    XCTAssertTrue(removalSheet.waitForExistence(timeout: 2))
+    let confirmRemoval = removalSheet.buttons["remove-book-to-trash"].firstMatch
+    XCTAssertTrue(confirmRemoval.waitForExistence(timeout: 2))
+    confirmRemoval.tap()
+    navigateBack(
+      restoredApp,
+      label: "Library",
+      destination: anyElement(restoredApp, "library-screen")
+    )
+    let openTrash = restoredApp.buttons["open-trash"]
     let miniPlayer = restoredApp.otherElements["mini-player"]
     XCTAssertTrue(openTrash.waitForExistence(timeout: 2))
     XCTAssertTrue(miniPlayer.waitForExistence(timeout: 2))
-    for _ in 0..<5
-    where !openTrash.isHittable || openTrash.frame.maxY > miniPlayer.frame.minY - 4 {
-      restoredApp.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.72))
-        .press(
-          forDuration: 0.05,
-          thenDragTo: restoredApp.coordinate(
-            withNormalizedOffset: CGVector(dx: 0.92, dy: 0.28)
-          ),
-          withVelocity: .slow,
-          thenHoldForDuration: 0
-        )
-    }
+    XCTAssertTrue(
+      scrollUntil(
+        { openTrash.isHittable && openTrash.frame.maxY <= miniPlayer.frame.minY - 4 },
+        tracking: openTrash
+      ) {
+        upwardDrag(in: restoredApp, velocity: .slow)
+      },
+      "Trash must become tappable above the mini-player through progress-making Library scrolling"
+    )
     XCTAssertTrue(openTrash.isHittable, "Trash must remain tappable above the mini-player")
     XCTAssertLessThanOrEqual(
       openTrash.frame.maxY,
       miniPlayer.frame.minY - 4,
       "Library content must have enough bottom runway to scroll Trash fully above the mini-player"
     )
-    var previousTrashFrame = openTrash.frame
-    for _ in 0..<8 {
-      restoredApp.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.62))
-        .press(
-          forDuration: 0.05,
-          thenDragTo: restoredApp.coordinate(
-            withNormalizedOffset: CGVector(dx: 0.92, dy: 0.18)
-          ),
-          withVelocity: .fast,
-          thenHoldForDuration: 0
-        )
-      let nextTrashFrame = openTrash.frame
-      if abs(nextTrashFrame.minY - previousTrashFrame.minY) <= 1 { break }
-      previousTrashFrame = nextTrashFrame
-    }
+    XCTAssertTrue(
+      scrollToSettledEnd(tracking: openTrash) {
+        restoredApp.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.62))
+          .press(
+            forDuration: 0.05,
+            thenDragTo: restoredApp.coordinate(
+              withNormalizedOffset: CGVector(dx: 0.92, dy: 0.18)
+            ),
+            withVelocity: .fast,
+            thenHoldForDuration: 0
+          )
+      },
+      "Library scrolling must reach a geometry-settled bottom edge within two seconds"
+    )
     let settledTrashFrame = openTrash.frame
-    for _ in 0..<3 {
-      restoredApp.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.62))
-        .press(
-          forDuration: 0.05,
-          thenDragTo: restoredApp.coordinate(
-            withNormalizedOffset: CGVector(dx: 0.92, dy: 0.18)
-          ),
-          withVelocity: .fast,
-          thenHoldForDuration: 0
-        )
-      XCTAssertEqual(
-        openTrash.frame.minY,
-        settledTrashFrame.minY,
-        accuracy: 1,
-        "Repeated bottom-edge gestures must settle instead of restarting Library bounce"
-      )
-    }
     try tester.step(
       "trash-clear-of-player",
       description: "The final Library control scrolls completely above the persistent player",
@@ -304,7 +312,11 @@ final class LibraryOrganizationUITests: XCTestCase {
       trash,
       "trash:transactions=0:books=none:assets=0:bytes=0:restorable=false:managed-checksum-preserved=true"
     )
-    navigateBack(restoredApp)
+    navigateBack(
+      restoredApp,
+      label: "Library",
+      destination: anyElement(restoredApp, "library-screen")
+    )
     restoredApp.buttons["browse-all-books"].tap()
     let restoredOrganizer = anyElement(restoredApp, "library-organizer-probe")
     try tester.step(
@@ -329,7 +341,11 @@ final class LibraryOrganizationUITests: XCTestCase {
       ]
     )
 
-    navigateBack(restoredApp)
+    navigateBack(
+      restoredApp,
+      label: "Library",
+      destination: anyElement(restoredApp, "library-screen")
+    )
     restoredApp.buttons["open-library-search"].tap()
     try requireValue(anyElement(restoredApp, "library-search-screen"), "ready")
     let searchInput = restoredApp.textFields["library-search-input"]
@@ -454,10 +470,18 @@ final class LibraryOrganizationUITests: XCTestCase {
     app.descendants(matching: .any)[identifier]
   }
 
-  private func navigateBack(_ app: XCUIApplication) {
-    let back = app.navigationBars.buttons.element(boundBy: 0)
+  private func navigateBack(
+    _ app: XCUIApplication,
+    label: String,
+    destination: XCUIElement
+  ) {
+    let back = app.navigationBars.buttons[label]
     XCTAssertTrue(back.waitForExistence(timeout: 2))
     back.tap()
+    XCTAssertTrue(
+      destination.waitForExistence(timeout: 2),
+      "Expected Back to \(label) to reveal \(destination.identifier)"
+    )
   }
 
   private func verifyNonLibraryRunways(_ app: XCUIApplication) {
@@ -475,14 +499,22 @@ final class LibraryOrganizationUITests: XCTestCase {
       anyElement(app, "backup-automatic-explanation"), miniPlayer: miniPlayer, in: app,
       message: "The final Backup content must scroll above the mini-player"
     )
-    navigateBack(app)
+    navigateBack(
+      app,
+      label: "Settings",
+      destination: app.navigationBars["Settings"]
+    )
 
     app.buttons["playback-defaults"].tap()
     assertScrollsAboveMiniPlayer(
       anyElement(app, "transport-seek-context"), miniPlayer: miniPlayer, in: app,
       message: "The final Playback Defaults control must scroll above the mini-player"
     )
-    navigateBack(app)
+    navigateBack(
+      app,
+      label: "Settings",
+      destination: app.navigationBars["Settings"]
+    )
   }
 
   private func assertScrollsAboveMiniPlayer(
@@ -492,18 +524,27 @@ final class LibraryOrganizationUITests: XCTestCase {
     message: String
   ) {
     XCTAssertTrue(element.waitForExistence(timeout: 2), message)
-    for _ in 0..<8
-    where !element.isHittable || element.frame.maxY > miniPlayer.frame.minY - 4 {
-      app.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.72))
-        .press(
-          forDuration: 0.05,
-          thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.28)),
-          withVelocity: .slow,
-          thenHoldForDuration: 0
-        )
-    }
+    XCTAssertTrue(
+      scrollUntil(
+        { element.isHittable && element.frame.maxY <= miniPlayer.frame.minY - 4 },
+        tracking: element
+      ) {
+        upwardDrag(in: app, velocity: .slow)
+      },
+      message
+    )
     XCTAssertTrue(element.isHittable, message)
     XCTAssertLessThanOrEqual(element.frame.maxY, miniPlayer.frame.minY - 4, message)
+  }
+
+  private func upwardDrag(in app: XCUIApplication, velocity: XCUIGestureVelocity) {
+    app.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.72))
+      .press(
+        forDuration: 0.05,
+        thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.28)),
+        withVelocity: velocity,
+        thenHoldForDuration: 0
+      )
   }
 
   private func verifyBrowseAxis(
@@ -518,7 +559,11 @@ final class LibraryOrganizationUITests: XCTestCase {
     XCTAssertTrue(anyElement(app, screen).waitForExistence(timeout: 2))
     try requireValue(anyElement(app, probe), expected)
     for row in requiredRows { XCTAssertTrue(anyElement(app, row).exists) }
-    navigateBack(app)
+    navigateBack(
+      app,
+      label: "Library",
+      destination: anyElement(app, "library-screen")
+    )
   }
 
   private func organizerValue(

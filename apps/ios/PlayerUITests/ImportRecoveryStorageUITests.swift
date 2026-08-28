@@ -96,7 +96,7 @@ final class ImportRecoveryStorageUITests: XCTestCase {
       "scenario=low-space:source-unchanged=true:staging-cleared=768:managed-unchanged=true:database-unchanged=true"
     )
 
-    navigateBack(app)
+    navigateBack(app, label: "Settings", destination: app.buttons["settings-storage"])
     app.buttons["Inbox"].tap()
     try requireValue(
       anyElement(app, "import-recovery-screen"),
@@ -159,7 +159,11 @@ final class ImportRecoveryStorageUITests: XCTestCase {
       anyElement(app, "book-detail-screen"),
       "book:ready:\(existingBookID):1-chapters:m4b"
     )
-    navigateBack(app)
+    navigateBack(
+      app,
+      label: "Review Import",
+      destination: anyElement(app, "import-recovery-screen")
+    )
 
     app.buttons["continue-partial-import"].tap()
     try requireValue(
@@ -217,10 +221,18 @@ final class ImportRecoveryStorageUITests: XCTestCase {
     app.descendants(matching: .any)[identifier]
   }
 
-  private func navigateBack(_ app: XCUIApplication) {
-    let back = app.navigationBars.buttons.element(boundBy: 0)
+  private func navigateBack(
+    _ app: XCUIApplication,
+    label: String,
+    destination: XCUIElement
+  ) {
+    let back = app.navigationBars.buttons[label]
     XCTAssertTrue(back.waitForExistence(timeout: 2))
     back.tap()
+    XCTAssertTrue(
+      destination.waitForExistence(timeout: 2),
+      "Expected Back to \(label) to reveal \(destination.identifier)"
+    )
   }
 
   private func requireValue(_ element: XCUIElement, _ expected: String) throws {

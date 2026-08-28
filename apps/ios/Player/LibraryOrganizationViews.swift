@@ -583,6 +583,14 @@ private struct BookshelfSection<Content: View>: View {
         .padding(.horizontal, metrics.shelfEndInset)
         .padding(.top, metrics.topInset)
         .frame(minWidth: availableWidth, alignment: .leading)
+        #if E2E
+          .overlay(alignment: .trailing) {
+            Color.white.opacity(0.001)
+              .frame(width: 1, height: 1)
+              .accessibilityElement()
+              .accessibilityIdentifier("\(scrollIdentifier)-right-end")
+          }
+        #endif
         .background(alignment: .topLeading) {
           GeometryReader { shelfGeometry in
             Image("BurntOrangeShelf")
