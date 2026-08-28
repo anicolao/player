@@ -881,14 +881,25 @@ final class AccessibilityUITests: XCTestCase {
     }
 
     var current = before
-    while current.hasScrollableRange, !current.atBottom {
+    while deadline.remaining >= 0.2, current.hasScrollableRange, !current.atBottom {
+      let previous = current
       gesture()
-      let remainingRange = current.maximum - current.offset
-      let requiredProgress = min(current.containerLength * 0.25, remainingRange)
-      guard let after = surface.state(),
+      let remainingRange = previous.maximum - previous.offset
+      let requiredProgress = min(previous.containerLength * 0.25, remainingRange)
+      let observedSettledProgress = waitForScrollReadiness(
+        surface,
+        deadline: deadline
+      ) { after in
+        after.isIdle
+          && after.geometryReady
+          && after.geometryID > previous.geometryID
+          && after.offset >= previous.offset + max(0.5, requiredProgress - 1)
+      }
+      guard observedSettledProgress,
+        let after = surface.state(),
         after.isIdle,
-        after.geometryID > current.geometryID,
-        after.offset >= current.offset + max(0.5, requiredProgress - 1),
+        after.geometryID > previous.geometryID,
+        after.offset >= previous.offset + max(0.5, requiredProgress - 1),
         let stable = surface.state(),
         stable.isIdle,
         stable.geometryID == after.geometryID,
