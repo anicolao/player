@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "workflowRun": 33139873579,
+    "url": "https://github.com/anicolao/player/actions/runs/33139873579",
+    "headCommit": "be102bec195568ecf06d4eea19e51f04c42ef8df",
+    "checkoutCommit": "3a349369c4020aef8f5034e48ae1a45223df9796",
+    "runner": "macos-26",
+    "xcode": "26.6",
+    "runtime": "iOS 26.5"
+  },
+  "thresholds": {
+    "suiteRegression": 0.1,
+    "storyRegression": 0.2
+  },
+  "appStoreAssetCount": 7,
+  "suite": {
+    "logicalWallSeconds": 1195
+  },
+  "stories": {
+    "001-ios-launch": 326,
+    "002-import-and-play": 326,
+    "003-multifile-grouping": 278,
+    "004-metadata-repair": 337,
+    "005-play-and-restore": 692,
+    "006-safe-zip-import": 313,
+    "007-sleep-timer": 704,
+    "008-library-search": 631,
+    "009-accessible-core-journeys": 362,
+    "010-library-backup": 366,
+    "011-offline-recovery": 294,
+    "012-monetization": 208,
+    "013-app-store-listing": 533
+  },
+  "phases": {
+    "attachment-export": 27,
+    "build": 857,
+    "build-reuse": 0,
+    "environment-reuse": 0,
+    "readme-comparison": 2,
+    "screenshot-comparison": 271,
+    "simulator": 1767,
+    "test": 2334,
+    "walkthrough-materialization": 3,
+    "core-fixtures": 17,
+    "core-tests": 173,
+    "app-store-renderer": 12
+  }
+}

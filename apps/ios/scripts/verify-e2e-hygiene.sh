@@ -350,6 +350,10 @@ cmp "${temporary_root}/qualification-expected-stories" \
   || fail "R0 story qualification must request exactly ten attempts"
 [[ "$(rg -c 'matrices 5' "${qualification_workflow}")" -eq 1 ]] \
   || fail "R0 matrix qualification must request exactly five matrices"
+rg -q 'r0_runtime_baseline.json' "${qualification_workflow}" \
+  || fail "R0 qualification must enforce its versioned runtime baseline"
+rg -q 'render-app-store-listing.swift' "${script_dir}/qualification/run-matrix-lane.sh" \
+  || fail "R0 matrix qualification must run the production App Store renderer"
 if rg -n 'continue-on-error:|nick-fields/retry|retry-action' "${qualification_workflow}"; then
   fail "R0 qualification may not retry or waive a failed measurement"
 fi

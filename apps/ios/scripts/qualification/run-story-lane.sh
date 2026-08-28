@@ -81,6 +81,18 @@ failure_signature() {
   fi
 }
 
+phase_was_recorded() {
+  local timings="$1" requested_phase="$2"
+  [[ -f "${timings}" ]] || return 1
+  awk -F '\t' -v requested="${requested_phase}" '
+    $1 == requested {
+      count += 1
+      if (NF != 4 || $2 !~ /^[0-9]+$/ || $3 !~ /^[0-9]+$/ || $3 < $2 || $4 == "") invalid = 1
+    }
+    END { exit !(count == 1 && invalid == 0) }
+  ' "${timings}"
+}
+
 requested="$(printf '%s\n' "${stories[@]}" | sort)"
 [[ "$(printf '%s\n' "${stories[@]}" | sort -u)" == "${requested}" ]] \
   || { echo "A story may appear only once in a lane." >&2; exit 2; }
@@ -130,7 +142,7 @@ for story in "${stories[@]}"; do
     fi
     duration=$((SECONDS - attempt_start))
     test_phase_entered=false
-    if [[ -f "${retained}/Logs/test.log" || -d "${retained}/Results/Story.xcresult" ]]; then
+    if phase_was_recorded "${retained}/PhaseTimings.tsv" test; then
       test_phase_entered=true
     fi
     if ! jq -e --arg sha "${expected_sha}" \
@@ -169,7 +181,7 @@ for story in "${stories[@]}"; do
       --argjson exitCode "${attempt_status}" \
       --argjson testPhaseEntered "${test_phase_entered}" \
       --arg signature "${signature}" \
-      --arg artifact "${attempt_name}" \
+      --arg artifact "Stories/${story}/${attempt_name}" \
       '{attempt: $attempt, startedAt: $startedAt, result: $result,
         durationSeconds: $durationSeconds, exitCode: $exitCode,
         testPhaseEntered: $testPhaseEntered, signature: $signature,

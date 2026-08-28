@@ -44,6 +44,23 @@ This is the authoritative before/after result for the CI topology change, but
 it is not yet the final R0 reliability distribution. The exact-SHA 10/10 story
 and 5/5 matrix qualification must still pass before R0 is complete.
 
+### Machine-readable qualification baseline
+
+The qualification regression gate uses
+`apps/ios/scripts/qualification/r0_runtime_baseline.json`, derived from the
+retained evidence in run 33139873579. The checkout tested by the workflow was
+merge commit `3a349369c4020aef8f5034e48ae1a45223df9796` on a `macos-26` runner
+with Xcode 26.6 and iOS 26.5. Its production shared-build critical lane took
+1,195 seconds, which is the comparable logical complete-matrix wall-clock
+baseline; workflow setup and artifact upload are deliberately excluded.
+
+The same evidence supplies one wall duration for each of the 13 stories and
+aggregate story-phase totals. Core fixture verification, core tests, and the
+production App Store renderer are recorded as additional phases. Qualification
+uses the median of five complete logical matrices, fails above a 10% suite
+regression or 20% per-story regression, and reports minimum/median/p95/maximum
+plus per-phase before/after values.
+
 ## Current-main CI critical path
 
 The successful [GitHub Actions run](https://github.com/anicolao/player/actions/runs/33124661556)
