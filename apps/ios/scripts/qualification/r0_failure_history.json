@@ -981,22 +981,22 @@
       "signature": "screenshot:009-accessible-core-journeys:identical-preflight-not-composited",
       "story": "009-accessible-core-journeys",
       "evidence": {
-        "workflowRun": 33215920897,
+        "workflowRun": 33218779362,
         "workflowAttempt": 1,
-        "artifact": "GitHub Actions job 98999383491 and artifact 9703985081 retained Story 009 expected, actual, and diff evidence",
-        "url": "https://github.com/anicolao/player/actions/runs/33215920897/job/98999383491",
-        "commit": "8c3582c993313aa4a4e8b144886d3ba3049b0a0b",
-        "observation": "Story 009 passed UI 2/2 and six screenshots were exact. Screenshot 002 differed only at y=2319...2622, exactly the native translucent tab backdrop, despite the identical semantic and geometry preflight; 174,367 pixels exceeded 8/255 while all opaque content remained exact."
+        "artifact": "GitHub Actions job 99008209814 and artifact 9704877114 retained Story 009 expected, actual, and diff evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33218779362/job/99008209814",
+        "commit": "4faec877c2ac89d10525d6bdc7f711bd801f84eb",
+        "observation": "The acquisition preflight added by 4faec87 passed, Story 009 passed UI 2/2, and six screenshots were exact. Screenshot 002 still differed only at y=2319...2622: all opaque foreground content and final scroll geometry were exact while the native translucent tab pill showed an earlier scroll frame. Two consecutive screen observations proved that cached backdrop was stationary, not that the material had sampled the current foreground."
       },
-      "rootCause": "Framing the identical Book Detail hierarchy did not force Core Animation to acquire and retain that surface before termination. The later native material could therefore sample an older application surface even though semantic and geometry observations had stabilized.",
+      "rootCause": "The native tab material can retain a stable cached backdrop from an earlier scroll frame after direct relaunch. Consecutive identical screenshots observe cache stability but cannot force the material to resample the currently settled foreground surface.",
       "diagnosisStatus": "confirmed",
       "fix": {
         "status": "verified",
-        "summary": "Acquire the preflight with screenshots and require two consecutive identical composited frames before displacement and canonical relaunch.",
+        "summary": "After semantic scroll framing settles, displace the still-running app with SpringBoard and reactivate that same process; wait on both foreground transitions, then require the existing consecutive composited-frame gate before capture.",
         "commits": [
-          "4faec877c2ac89d10525d6bdc7f711bd801f84eb"
+          "ec637499d3762004aa64a4406cbee2e6a40151d9"
         ],
-        "validation": "Clean full Story 009 artifact `/tmp/player-r0-ci2-fix/apps/ios/DerivedData/E2E/009-accessible-core-journeys.run.e4t1Jc` passed UI 2/2, matched all seven screenshots pixel-exact, and matched the reviewed README. The compositor observation is event driven and each required transition remains bounded to two seconds."
+        "validation": "Two independent fresh-build canonical artifacts, `/tmp/player-r0-ci2-fix/apps/ios/DerivedData/E2E/009-accessible-core-journeys.run.h69x3G` and `.run.noyT8u`, each passed UI 2/2, matched all seven screenshots pixel-exact, and matched the reviewed README. Each foreground transition is event driven and bounded to two seconds; the affected story grew by less than one second."
       },
       "qualificationResetCount": 0,
       "resetEvidence": "The pull-request run was not an accepted formal exact-SHA qualification attempt, so no consecutive Story 009 qualification count existed to reset."
