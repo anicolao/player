@@ -25,7 +25,7 @@ final class BackupUITests: XCTestCase {
       additionalPreconditions: [
         "The fixture contains one synthetic M4B payload, artwork, progress, organization, and a bookmark",
         "Export and restore call the production package writer, streaming checksum verifier, and atomic media replacement",
-        "The system document picker itself is represented by deterministic E2E controls; its production entry points remain visible above",
+        "The production Export and Restore buttons drive deterministic adapters only at the otherwise unavailable Files boundary",
       ]
     )
     app.launch()
@@ -53,22 +53,24 @@ final class BackupUITests: XCTestCase {
         ),
         .exists(app.buttons["backup-export"], "A system-destination export begins here"),
         .exists(app.buttons["backup-restore"], "A Bookshelf backup can be selected from Files"),
-        .exists(
-          app.buttons["e2e-backup-export"],
-          "The deterministic production export action is available"),
       ],
       captureReadiness: backupCaptureReadiness(
         app,
         expectedProbe:
-          "backup:restored:books=1:bookmarks=1:position=42000:media=1:audio=true",
+          "backup:books=1:bookmarks=1:position=42000:media=1:audio=true:catalog=true:files=0:kind=none:payloads=0:prepared=0",
         specification:
           "At capture, the verified one-book library and production backup choices are idle at the top with no transient UI"
       )
     )
 
-    tapWalkthroughAction("e2e-backup-export", in: app)
+    tapProductionAction("backup-export", in: app)
+    try requireOperation("awaiting-files-includingMedia", in: app)
+    let save = app.buttons["e2e-files-save-backup"]
+    XCTAssertTrue(save.waitForExistence(timeout: 2))
+    save.tap()
+    try requireOperation("succeeded-export-includingMedia", in: app)
     try requireProbeValue(
-      "backup:exported:books=1:bookmarks=1:position=42000:media=1:audio=true",
+      "backup:books=1:bookmarks=1:position=42000:media=1:audio=true:catalog=true:files=1:kind=includingMedia:payloads=1:prepared=0",
       in: app
     )
     requireBackupTopVisible(app)
@@ -78,22 +80,22 @@ final class BackupUITests: XCTestCase {
       verifications: [
         .valueEquals(
           anyElement(app, "backup-e2e-probe"),
-          "backup:exported:books=1:bookmarks=1:position=42000:media=1:audio=true",
+          "backup:books=1:bookmarks=1:position=42000:media=1:audio=true:catalog=true:files=1:kind=includingMedia:payloads=1:prepared=0",
           "The prepared package retains the complete catalog and exactly one managed audio file"
         )
       ],
       captureReadiness: backupCaptureReadiness(
         app,
         expectedProbe:
-          "backup:exported:books=1:bookmarks=1:position=42000:media=1:audio=true",
+          "backup:books=1:bookmarks=1:position=42000:media=1:audio=true:catalog=true:files=1:kind=includingMedia:payloads=1:prepared=0",
         specification:
           "At capture, the checksum-verified portable export and unchanged source library are settled at the top with no transient UI"
       )
     )
 
-    tapWalkthroughAction("e2e-backup-clear", in: app)
+    tapWalkthroughAction("e2e-fixture-clear-library", in: app)
     try requireProbeValue(
-      "backup:cleared:books=0:bookmarks=0:position=-1:media=0:audio=false",
+      "backup:books=0:bookmarks=0:position=-1:media=0:audio=false:catalog=false:files=1:kind=includingMedia:payloads=1:prepared=0",
       in: app
     )
     requireBackupTopVisible(app)
@@ -103,22 +105,30 @@ final class BackupUITests: XCTestCase {
       verifications: [
         .valueEquals(
           anyElement(app, "backup-e2e-probe"),
-          "backup:cleared:books=0:bookmarks=0:position=-1:media=0:audio=false",
+          "backup:books=0:bookmarks=0:position=-1:media=0:audio=false:catalog=false:files=1:kind=includingMedia:payloads=1:prepared=0",
           "No catalog record or managed audio copy remains"
         )
       ],
       captureReadiness: backupCaptureReadiness(
         app,
         expectedProbe:
-          "backup:cleared:books=0:bookmarks=0:position=-1:media=0:audio=false",
+          "backup:books=0:bookmarks=0:position=-1:media=0:audio=false:catalog=false:files=1:kind=includingMedia:payloads=1:prepared=0",
         specification:
           "At capture, the cleared catalog and absent managed audio are settled at the top with no transient UI"
       )
     )
 
-    tapWalkthroughAction("e2e-backup-restore", in: app)
+    tapProductionAction("backup-restore", in: app)
+    try requireOperation("awaiting-restore-selection", in: app)
+    let selectedBackup = app.buttons["e2e-files-select-backup"]
+    XCTAssertTrue(selectedBackup.waitForExistence(timeout: 2))
+    selectedBackup.tap()
+    let restore = app.buttons["Restore Backup"]
+    XCTAssertTrue(restore.waitForExistence(timeout: 2))
+    restore.tap()
+    try requireOperation("succeeded-portable-restore", in: app)
     try requireProbeValue(
-      "backup:restored:books=1:bookmarks=1:position=42000:media=1:audio=true",
+      "backup:books=1:bookmarks=1:position=42000:media=1:audio=true:catalog=true:files=1:kind=includingMedia:payloads=1:prepared=0",
       in: app
     )
     requireBackupTopVisible(app)
@@ -128,14 +138,14 @@ final class BackupUITests: XCTestCase {
       verifications: [
         .valueEquals(
           anyElement(app, "backup-e2e-probe"),
-          "backup:restored:books=1:bookmarks=1:position=42000:media=1:audio=true",
+          "backup:books=1:bookmarks=1:position=42000:media=1:audio=true:catalog=true:files=1:kind=includingMedia:payloads=1:prepared=0",
           "Book, bookmark, listening position, and exactly one audio file are restored"
         )
       ],
       captureReadiness: backupCaptureReadiness(
         app,
         expectedProbe:
-          "backup:restored:books=1:bookmarks=1:position=42000:media=1:audio=true",
+          "backup:books=1:bookmarks=1:position=42000:media=1:audio=true:catalog=true:files=1:kind=includingMedia:payloads=1:prepared=0",
         specification:
           "At capture, the integrity-verified catalog, position, bookmark, and one managed audio file are restored and settled at the top with no transient UI"
       )
@@ -210,6 +220,20 @@ final class BackupUITests: XCTestCase {
       "Expected \(identifier) to become enabled"
     )
     trigger.tap()
+  }
+
+  private func tapProductionAction(_ identifier: String, in app: XCUIApplication) {
+    let button = app.buttons[identifier]
+    XCTAssertTrue(button.waitForExistence(timeout: 2))
+    XCTAssertTrue(
+      waitForPredicate(NSPredicate(format: "enabled == true"), on: button),
+      "Expected production action \(identifier) to become enabled"
+    )
+    button.tap()
+  }
+
+  private func requireOperation(_ expected: String, in app: XCUIApplication) throws {
+    try requireValue(anyElement(app, "backup-operation-state"), expected, in: app)
   }
 
   private func requireValue(

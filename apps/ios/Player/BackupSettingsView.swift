@@ -70,6 +70,7 @@ struct BackupSettingsView: View {
   @State private var operationTask: Task<Void, Never>?
   #if E2E
     @State private var e2eRevision = 0
+    @State private var isPresentingE2ERestoreSelection = false
   #endif
 
   var body: some View {
@@ -158,8 +159,7 @@ struct BackupSettingsView: View {
             BackupSettingsSection("Restore") {
               BackupSettingsRow {
                 Button {
-                  operationState = .awaitingRestoreSelection
-                  isChoosingRestore = true
+                  beginRestoreSelection()
                 } label: {
                   Label("Choose Bookshelf Backup", systemImage: "square.and.arrow.down")
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -236,46 +236,6 @@ struct BackupSettingsView: View {
                 }
               }
             }
-            #if E2E
-              if E2EBackupBridge.shared.isConfigured {
-                BackupSettingsSection("Deterministic walkthrough") {
-                  BackupSettingsRow {
-                    Button("Create Verified Backup") {
-                      Task {
-                        await runE2EAction { try await E2EBackupBridge.shared.export(using: model) }
-                      }
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.tint)
-                    .accessibilityIdentifier("e2e-backup-export")
-                  }
-                  BackupSettingsDivider()
-                  BackupSettingsRow {
-                    Button("Clear Fixture Library") {
-                      Task {
-                        await runE2EAction { try await E2EBackupBridge.shared.clear(using: model) }
-                      }
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.tint)
-                    .accessibilityIdentifier("e2e-backup-clear")
-                  }
-                  BackupSettingsDivider()
-                  BackupSettingsRow {
-                    Button("Restore Verified Backup") {
-                      Task {
-                        await runE2EAction {
-                          try await E2EBackupBridge.shared.restore(using: model)
-                        }
-                      }
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.tint)
-                    .accessibilityIdentifier("e2e-backup-restore")
-                  }
-                }
-              }
-            #endif
           }
           .padding(.horizontal, 16)
           .padding(.top, 16)
@@ -292,16 +252,8 @@ struct BackupSettingsView: View {
         #if E2E
           .overlay(alignment: .topLeading) {
             if E2EBackupBridge.shared.isConfigured {
-              HStack(spacing: 0) {
-                e2eTriggerButton("e2e-backup-export") {
-                  try await E2EBackupBridge.shared.export(using: model)
-                }
-                e2eTriggerButton("e2e-backup-clear") {
-                  try await E2EBackupBridge.shared.clear(using: model)
-                }
-                e2eTriggerButton("e2e-backup-restore") {
-                  try await E2EBackupBridge.shared.restore(using: model)
-                }
+              e2eTriggerButton("e2e-fixture-clear-library") {
+                try await E2EBackupBridge.shared.clear(using: model)
               }
             }
           }
@@ -327,20 +279,16 @@ struct BackupSettingsView: View {
       allowedContentTypes: [.playerLibraryBackup],
       allowsMultipleSelection: false
     ) { result in
-      guard case .success(let urls) = result, let url = urls.first else {
-        if case .failure(let error) = result,
-           !SystemSelectionCancellation.isCancellation(error)
-        {
-          presentRecoveryError(error)
-        } else {
-          operationState = .cancelled
-        }
-        return
-      }
-      pendingRestoreURL = url
-      operationState = .confirmingPortableRestore
-      confirmsPortableRestore = true
+      handleRestoreSelection(result)
     }
+    #if E2E
+      .sheet(isPresented: $isPresentingE2ERestoreSelection) {
+        E2EBackupRestoreSelector { result in
+          isPresentingE2ERestoreSelection = false
+          handleRestoreSelection(result)
+        }
+      }
+    #endif
     .confirmationDialog(
       "Replace this library?",
       isPresented: $confirmsPortableRestore,
@@ -374,10 +322,25 @@ struct BackupSettingsView: View {
       )
     }
     .sheet(item: $preparedBackup, onDismiss: cancelUndeliveredPreparedBackup) { backup in
-      SystemBackupExporter(url: backup.url) { outcome in
-        finishExport(backup, outcome: outcome)
-      }
+      #if E2E
+        if E2EBackupBridge.shared.isConfigured {
+          E2EBackupExporter(
+            backup: backup,
+            onOutcome: { finishExport(backup, outcome: $0) },
+            onFailure: { finishExport(backup, failure: $0) }
+          )
+        } else {
+          SystemBackupExporter(url: backup.url) { outcome in
+            finishExport(backup, outcome: outcome)
+          }
+          .ignoresSafeArea()
+        }
+      #else
+        SystemBackupExporter(url: backup.url) { outcome in
+          finishExport(backup, outcome: outcome)
+        }
         .ignoresSafeArea()
+      #endif
     }
     .alert(
       localError?.title ?? "Couldn’t Complete Backup",
@@ -399,6 +362,33 @@ struct BackupSettingsView: View {
     case .includingMedia:
       "Choose a Files destination. This self-contained backup can restore your library and its audio."
     }
+  }
+
+  private func beginRestoreSelection() {
+    operationState = .awaitingRestoreSelection
+    #if E2E
+      if E2EBackupBridge.shared.isConfigured {
+        isPresentingE2ERestoreSelection = true
+        return
+      }
+    #endif
+    isChoosingRestore = true
+  }
+
+  private func handleRestoreSelection(_ result: Result<[URL], Error>) {
+    guard case .success(let urls) = result, let url = urls.first else {
+      if case .failure(let error) = result,
+        !SystemSelectionCancellation.isCancellation(error)
+      {
+        presentRecoveryError(error)
+      } else {
+        operationState = .cancelled
+      }
+      return
+    }
+    pendingRestoreURL = url
+    operationState = .confirmingPortableRestore
+    confirmsPortableRestore = true
   }
 
   private func prepareExport() async {
@@ -431,6 +421,7 @@ struct BackupSettingsView: View {
   ) {
     guard preparedBackupToDiscard?.url == backup.url else { return }
     preparedBackupToDiscard = nil
+    preparedBackup = nil
     operationState = .finalizingExport(backup.kind.rawValue)
     startOperation {
       await model.discardPreparedLibraryBackup(backup)
@@ -441,6 +432,24 @@ struct BackupSettingsView: View {
       case .cancelled:
         operationState = .cancelled
       }
+      #if E2E
+        e2eRevision += 1
+      #endif
+    }
+  }
+
+  private func finishExport(_ backup: PreparedLibraryBackup, failure: any Error) {
+    guard preparedBackupToDiscard?.url == backup.url else { return }
+    preparedBackupToDiscard = nil
+    preparedBackup = nil
+    operationState = .finalizingExport(backup.kind.rawValue)
+    startOperation {
+      await model.discardPreparedLibraryBackup(backup)
+      operationState = .failed("export")
+      localError = PlayerPresentationError.presenting(failure, in: .backup)
+      #if E2E
+        e2eRevision += 1
+      #endif
     }
   }
 
@@ -455,6 +464,9 @@ struct BackupSettingsView: View {
       message = "Library restored from the verified Bookshelf backup."
       operationState = .succeeded("portable-restore")
       await reloadAutomaticBackups()
+      #if E2E
+        e2eRevision += 1
+      #endif
     } catch is CancellationError {
       operationState = .cancelled
     } catch {
@@ -530,6 +542,84 @@ struct BackupSettingsView: View {
     )
   }
 }
+
+#if E2E
+  private struct E2EBackupExporter: View {
+    let backup: PreparedLibraryBackup
+    let onOutcome: @MainActor (BackupExportPickerOutcome) -> Void
+    let onFailure: @MainActor (any Error) -> Void
+
+    var body: some View {
+      NavigationStack {
+        VStack(spacing: 20) {
+          Image(systemName: "folder.badge.plus")
+            .font(.system(size: 44))
+            .foregroundStyle(.tint)
+          Text("Choose a destination in Files")
+            .font(.headline)
+          Text(
+            "This deterministic boundary stands in only for the system Files destination picker."
+          )
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+          Button("Save") {
+            do {
+              try E2EBackupBridge.shared.saveToFiles(backup)
+              onOutcome(.saved)
+            } catch {
+              onFailure(error)
+            }
+          }
+          .buttonStyle(.borderedProminent)
+          .accessibilityIdentifier("e2e-files-save-backup")
+          Button("Cancel") { onOutcome(.cancelled) }
+            .accessibilityIdentifier("e2e-files-cancel-export")
+        }
+        .padding(28)
+        .navigationTitle("Files")
+        .navigationBarTitleDisplayMode(.inline)
+      }
+    }
+  }
+
+  private struct E2EBackupRestoreSelector: View {
+    let onSelection: @MainActor (Result<[URL], Error>) -> Void
+
+    var body: some View {
+      NavigationStack {
+        List {
+          Button("Bookshelf Backup") {
+            select { try E2EBackupBridge.shared.selectedBackupFromFiles() }
+          }
+          .accessibilityIdentifier("e2e-files-select-backup")
+          Button("Tampered Backup") {
+            select { try E2EBackupBridge.shared.tamperedBackupFromFiles() }
+          }
+          .accessibilityIdentifier("e2e-files-select-tampered-backup")
+          Button("Incompatible Backup") {
+            select { try E2EBackupBridge.shared.incompatibleBackupFromFiles() }
+          }
+          .accessibilityIdentifier("e2e-files-select-incompatible-backup")
+          Button("Cancel", role: .cancel) {
+            onSelection(.failure(CancellationError()))
+          }
+          .accessibilityIdentifier("e2e-files-cancel-restore")
+        }
+        .navigationTitle("Files")
+        .navigationBarTitleDisplayMode(.inline)
+      }
+    }
+
+    private func select(_ selection: () throws -> URL) {
+      do {
+        onSelection(.success([try selection()]))
+      } catch {
+        onSelection(.failure(error))
+      }
+    }
+  }
+#endif
 
 private struct BackupSettingsSection<Content: View>: View {
   let title: String?
@@ -631,7 +721,9 @@ struct SystemBackupExporter: UIViewControllerRepresentable {
   ) {}
 
   @MainActor
-  final class Coordinator: NSObject, UIDocumentPickerDelegate, UIAdaptivePresentationControllerDelegate {
+  final class Coordinator: NSObject, UIDocumentPickerDelegate,
+    UIAdaptivePresentationControllerDelegate
+  {
     private let onOutcome: @MainActor (BackupExportPickerOutcome) -> Void
     private var didFinish = false
 

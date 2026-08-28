@@ -4043,7 +4043,7 @@ extension PlayerEnvironment {
     private var expectedLibrary: LibrarySnapshot?
     private var expectedAudio: Data?
     private var managedRelativePath: String?
-    private var preparedBackup: PreparedLibraryBackup?
+    private var selectedFilesBackupURL: URL?
 
     var isConfigured: Bool { rootURL != nil }
 
@@ -4057,11 +4057,75 @@ extension PlayerEnvironment {
       self.expectedLibrary = expectedLibrary
       self.expectedAudio = expectedAudio
       self.managedRelativePath = managedRelativePath
-      preparedBackup = nil
+      selectedFilesBackupURL = nil
     }
 
-    func export(using model: PlayerModel) async throws {
-      preparedBackup = try await model.prepareLibraryBackup(kind: .includingMedia)
+    func saveToFiles(_ backup: PreparedLibraryBackup) throws {
+      guard let rootURL else {
+        throw PlayerCoreError.fileOperation("The simulated Files boundary is unavailable.")
+      }
+      let filesRoot = rootURL.appending(path: "E2EFiles", directoryHint: .isDirectory)
+      try FileManager.default.createDirectory(at: filesRoot, withIntermediateDirectories: true)
+      let destination = filesRoot.appending(
+        path: "Bookshelf-\(backup.kind.rawValue).playerbackup",
+        directoryHint: .isDirectory
+      )
+      if FileManager.default.fileExists(atPath: destination.path) {
+        try FileManager.default.removeItem(at: destination)
+      }
+      try FileManager.default.copyItem(at: backup.url, to: destination)
+      selectedFilesBackupURL = destination
+    }
+
+    func selectedBackupFromFiles() throws -> URL {
+      guard let selectedFilesBackupURL else {
+        throw PlayerCoreError.fileOperation("No backup has been saved to simulated Files.")
+      }
+      return selectedFilesBackupURL
+    }
+
+    func tamperedBackupFromFiles() throws -> URL {
+      let source = try selectedBackupFromFiles()
+      let destination = source.deletingLastPathComponent().appending(
+        path: "Bookshelf-tampered.playerbackup",
+        directoryHint: .isDirectory
+      )
+      if FileManager.default.fileExists(atPath: destination.path) {
+        try FileManager.default.removeItem(at: destination)
+      }
+      try FileManager.default.copyItem(at: source, to: destination)
+      let manifestURL = destination.appending(path: "manifest.json")
+      var manifest = try JSONDecoder.playerDecoder.decode(
+        PortableLibraryManifest.self,
+        from: Data(contentsOf: manifestURL)
+      )
+      if !manifest.media.isEmpty {
+        manifest.media[0].checksumSHA256 = String(repeating: "0", count: 64)
+      } else if !manifest.library.books.isEmpty {
+        manifest.library.books[0].title = "Tampered title"
+      }
+      try JSONEncoder.playerEncoder.encode(manifest).write(to: manifestURL, options: .atomic)
+      return destination
+    }
+
+    func incompatibleBackupFromFiles() throws -> URL {
+      let source = try selectedBackupFromFiles()
+      let destination = source.deletingLastPathComponent().appending(
+        path: "Bookshelf-incompatible.playerbackup",
+        directoryHint: .isDirectory
+      )
+      if FileManager.default.fileExists(atPath: destination.path) {
+        try FileManager.default.removeItem(at: destination)
+      }
+      try FileManager.default.copyItem(at: source, to: destination)
+      let manifestURL = destination.appending(path: "manifest.json")
+      var manifest = try JSONDecoder.playerDecoder.decode(
+        PortableLibraryManifest.self,
+        from: Data(contentsOf: manifestURL)
+      )
+      manifest.formatVersion = PortableLibraryManifest.currentFormatVersion + 1
+      try JSONEncoder.playerEncoder.encode(manifest).write(to: manifestURL, options: .atomic)
+      return destination
     }
 
     func clear(using model: PlayerModel) async throws {
@@ -4071,15 +4135,6 @@ extension PlayerEnvironment {
         try FileManager.default.removeItem(at: mediaRoot)
       }
       try await model.replaceLibraryForBackupE2E(with: .empty)
-    }
-
-    func restore(using model: PlayerModel) async throws {
-      guard let preparedBackup else {
-        throw PlayerCoreError.fileOperation("The deterministic backup has not been exported.")
-      }
-      try await model.restoreLibraryBackup(from: preparedBackup.url)
-      await model.discardPreparedLibraryBackup(preparedBackup)
-      self.preparedBackup = nil
     }
 
     func value(for model: PlayerModel) -> String {
@@ -4100,19 +4155,36 @@ extension PlayerEnvironment {
       } else {
         mediaFiles = 0
       }
-      let state: String
-      if equivalentCatalog(model.library, expectedLibrary), audioMatches, preparedBackup != nil {
-        state = "exported"
-      } else if model.library == .empty, mediaFiles == 0, preparedBackup != nil {
-        state = "cleared"
-      } else if equivalentCatalog(model.library, expectedLibrary), audioMatches,
-        preparedBackup == nil
+      let filesEvidence: String
+      if let selectedFilesBackupURL,
+        let data = try? Data(contentsOf: selectedFilesBackupURL.appending(path: "manifest.json")),
+        let manifest = try? JSONDecoder.playerDecoder.decode(
+          PortableLibraryManifest.self,
+          from: data
+        )
       {
-        state = "restored"
+        filesEvidence = "files=1:kind=\(manifest.kind.rawValue):payloads=\(manifest.media.count)"
       } else {
-        state = "unexpected"
+        filesEvidence = "files=0:kind=none:payloads=0"
       }
-      return "backup:\(state):books=\(model.library.books.count):bookmarks=\(model.library.bookmarks.count):position=\(model.library.playbackPosition?.positionMilliseconds ?? -1):media=\(mediaFiles):audio=\(audioMatches)"
+      let preparedRoot = rootURL.appending(path: "BackupExports", directoryHint: .isDirectory)
+      let preparedCount =
+        (try? FileManager.default.contentsOfDirectory(
+          at: preparedRoot,
+          includingPropertiesForKeys: nil,
+          options: [.skipsHiddenFiles]
+        ).count) ?? 0
+      let catalogMatches = equivalentCatalog(model.library, expectedLibrary)
+      return [
+        "backup:books=\(model.library.books.count)",
+        "bookmarks=\(model.library.bookmarks.count)",
+        "position=\(model.library.playbackPosition?.positionMilliseconds ?? -1)",
+        "media=\(mediaFiles)",
+        "audio=\(audioMatches)",
+        "catalog=\(catalogMatches)",
+        filesEvidence,
+        "prepared=\(preparedCount)",
+      ].joined(separator: ":")
     }
 
     private func equivalentCatalog(
