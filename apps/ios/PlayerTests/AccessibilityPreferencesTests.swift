@@ -59,3 +59,34 @@ final class AccessibilityPreferencesTests: XCTestCase {
     return (directory, file, CodableLibraryStore(fileURL: file))
   }
 }
+
+final class E2EDynamicTypeConfigurationTests: XCTestCase {
+  func testAbsentValueDefaultsToMedium() throws {
+    XCTAssertEqual(
+      try E2EDynamicTypeConfiguration.parse(environment: [:]),
+      .medium
+    )
+  }
+
+  func testEveryCanonicalValueParsesExactly() throws {
+    for configuration in E2EDynamicTypeConfiguration.allCases {
+      XCTAssertEqual(
+        try E2EDynamicTypeConfiguration.parse(environment: [
+          E2EDynamicTypeConfiguration.environmentKey: configuration.rawValue,
+        ]),
+        configuration
+      )
+    }
+  }
+
+  func testExplicitEmptyWhitespaceAndUnknownValuesFailClosed() {
+    for value in ["", " ", " accessibility5", "accessibility5 ", "extra-large"] {
+      XCTAssertThrowsError(
+        try E2EDynamicTypeConfiguration.parse(environment: [
+          E2EDynamicTypeConfiguration.environmentKey: value,
+        ]),
+        "Expected strict Dynamic Type parsing to reject \(value.debugDescription)"
+      )
+    }
+  }
+}

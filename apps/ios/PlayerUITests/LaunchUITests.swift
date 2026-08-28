@@ -2,6 +2,22 @@ import XCTest
 
 @MainActor
 final class LaunchUITests: XCTestCase {
+  func testRejectsUnknownDynamicTypeConfigurationInsteadOfUsingMedium() {
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    app.launchArguments = [
+      "-e2e", "-e2e-reset", "-e2e-fixture", "empty-library",
+      "-AppleLanguages", "(en)", "-AppleLocale", "en_CA",
+      "-NSTreatUnknownArgumentsAsOpen", "NO",
+    ]
+    app.launchEnvironment["TZ"] = "America/Toronto"
+    app.launchEnvironment["PLAYER_E2E_DYNAMIC_TYPE"] = "accessibility-5"
+    app.launch()
+
+    XCTAssertTrue(app.staticTexts["Local Storage Unavailable"].waitForExistence(timeout: 2))
+    XCTAssertFalse(app.descendants(matching: .any)["library-screen"].exists)
+  }
+
   func testRejectsUnknownFixtureWithoutFallingBackToProduction() {
     continueAfterFailure = false
     let app = XCUIApplication()

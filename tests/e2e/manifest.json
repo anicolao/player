@@ -1,6 +1,7 @@
 [
   {"story":"001-ios-launch","tests":[
     "PlayerUITests/LaunchUITests/testLaunchesIntoEmptyLibrary",
+    "PlayerUITests/LaunchUITests/testRejectsUnknownDynamicTypeConfigurationInsteadOfUsingMedium",
     "PlayerUITests/LaunchUITests/testRejectsUnknownFixtureWithoutFallingBackToProduction"
   ]},
   {"story":"002-import-and-play","tests":[

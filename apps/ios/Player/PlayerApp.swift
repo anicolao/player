@@ -5,17 +5,30 @@ import UIKit
 struct PlayerApp: App {
   @State private var model: PlayerModel?
   @State private var launchErrorMessage: String?
+  #if E2E
+    @State private var e2eDynamicTypeSize: DynamicTypeSize
+  #endif
 
   init() {
     #if E2E
       UIView.setAnimationsEnabled(false)
     #endif
     do {
+      #if E2E
+        _e2eDynamicTypeSize = State(
+          initialValue: try E2EDynamicTypeConfiguration.parse(
+            environment: ProcessInfo.processInfo.environment
+          ).dynamicTypeSize
+        )
+      #endif
       _model = State(
         initialValue: PlayerModel(environment: try PlayerEnvironment.launchEnvironment())
       )
       _launchErrorMessage = State(initialValue: nil)
     } catch {
+      #if E2E
+        _e2eDynamicTypeSize = State(initialValue: .medium)
+      #endif
       _model = State(initialValue: nil)
       _launchErrorMessage = State(initialValue: error.localizedDescription)
     }
@@ -53,16 +66,33 @@ struct PlayerApp: App {
     }
   }
 
-  #if E2E
-    private var e2eDynamicTypeSize: DynamicTypeSize {
-      switch ProcessInfo.processInfo.environment["PLAYER_E2E_DYNAMIC_TYPE"] {
-      case "accessibility5": .accessibility5
-      case "large": .large
-      default: .medium
+}
+
+#if E2E
+  enum E2EDynamicTypeConfiguration: String, CaseIterable {
+    static let environmentKey = "PLAYER_E2E_DYNAMIC_TYPE"
+
+    case medium
+    case large
+    case accessibility5
+
+    static func parse(environment: [String: String]) throws -> Self {
+      guard let value = environment[environmentKey] else { return .medium }
+      guard let configuration = Self(rawValue: value) else {
+        throw PlayerCoreError.fileOperation("Invalid E2E Dynamic Type value: \(value)")
+      }
+      return configuration
+    }
+
+    var dynamicTypeSize: DynamicTypeSize {
+      switch self {
+      case .medium: .medium
+      case .large: .large
+      case .accessibility5: .accessibility5
       }
     }
-  #endif
-}
+  }
+#endif
 
 private struct LaunchStorageUnavailableView: View {
   let detail: String?
