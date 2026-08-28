@@ -182,6 +182,95 @@
     }
   }
 
+  enum E2EImportIngressDurableLibrary {
+    private struct Envelope: Decodable {
+      let library: LibrarySnapshot
+    }
+
+    static func loadIfPresent(at url: URL) throws -> LibrarySnapshot? {
+      guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+      do {
+        return try JSONDecoder.playerDecoder.decode(
+          Envelope.self,
+          from: Data(contentsOf: url)
+        ).library
+      } catch {
+        throw PlayerCoreError.fileOperation(
+          "The persisted Import Ingress E2E library could not be observed."
+        )
+      }
+    }
+  }
+
+  struct E2EShareIngressSnapshot: Equatable {
+    let jobIDs: Set<UUID>
+    let receipt: ShareImportReceipt?
+
+    static let empty = E2EShareIngressSnapshot(jobIDs: [], receipt: nil)
+
+    static func capture(
+      library: LibrarySnapshot,
+      handoffID: UUID
+    ) -> E2EShareIngressSnapshot? {
+      let receipts = library.shareImportReceipts.filter { $0.handoffID == handoffID }
+      guard receipts.count <= 1 else { return nil }
+      let jobIDs = Set(library.importJobs.map(\.id))
+      guard let receipt = receipts.first else {
+        return E2EShareIngressSnapshot(jobIDs: jobIDs, receipt: nil)
+      }
+      guard jobIDs.contains(receipt.jobID) else { return nil }
+      return E2EShareIngressSnapshot(jobIDs: jobIDs, receipt: receipt)
+    }
+  }
+
+  struct E2EShareIngressEvidence: Equatable {
+    enum Outcome: String, Equatable {
+      case consumed
+      case deduplicated
+      case unverified
+    }
+
+    let outcome: Outcome
+    let jobID: UUID?
+
+    static func evaluate(
+      baseline: E2EShareIngressSnapshot,
+      current: E2EShareIngressSnapshot?,
+      expectedFingerprint: String,
+      initialPendingCount: Int,
+      initialProcessingCount: Int,
+      processingRevision: Int,
+      pendingCount: Int,
+      processingCount: Int
+    ) -> E2EShareIngressEvidence {
+      guard
+        initialPendingCount + initialProcessingCount == 1,
+        processingRevision > 0,
+        pendingCount == 0,
+        processingCount == 0,
+        let current,
+        let receipt = current.receipt,
+        receipt.payloadFingerprint == expectedFingerprint
+      else { return E2EShareIngressEvidence(outcome: .unverified, jobID: nil) }
+
+      if let originalReceipt = baseline.receipt {
+        guard
+          originalReceipt.payloadFingerprint == expectedFingerprint,
+          receipt == originalReceipt,
+          current.jobIDs == baseline.jobIDs
+        else { return E2EShareIngressEvidence(outcome: .unverified, jobID: nil) }
+        return E2EShareIngressEvidence(outcome: .deduplicated, jobID: receipt.jobID)
+      }
+
+      var expectedJobIDs = baseline.jobIDs
+      expectedJobIDs.insert(receipt.jobID)
+      guard current.jobIDs == expectedJobIDs else {
+        return E2EShareIngressEvidence(outcome: .unverified, jobID: nil)
+      }
+      return E2EShareIngressEvidence(outcome: .consumed, jobID: receipt.jobID)
+    }
+  }
+
   @MainActor
   final class E2EImportIngressBridge {
     static let shared = E2EImportIngressBridge()
@@ -189,9 +278,13 @@
     private(set) var channel: String?
     private(set) var handoffID: UUID?
     private(set) var expectedJobID: UUID?
-    private(set) var isShareReplay = false
     private(set) var queue: AppGroupImportHandoffQueue?
     private(set) var queueRootURL: URL?
+    private var shareBaseline = E2EShareIngressSnapshot.empty
+    private var sharePayloadFingerprint: String?
+    private var shareLibraryURL: URL?
+    private var initialPendingRequestCount = 0
+    private var initialProcessingRequestCount = 0
     private var sourceURL: URL?
     private var sourceBytes: Data?
     private var documentBaselineURL: URL?
@@ -203,9 +296,13 @@
       channel = "document-open"
       expectedJobID = jobID
       handoffID = nil
-      isShareReplay = false
       queue = nil
       queueRootURL = nil
+      shareBaseline = .empty
+      sharePayloadFingerprint = nil
+      shareLibraryURL = nil
+      initialPendingRequestCount = 0
+      initialProcessingRequestCount = 0
       documentBaselineURL = rootURL.appending(path: "DocumentSourceBaseline.bin")
       documentSourceReferenceURL = rootURL.appending(path: "DocumentSourceReference.txt")
       sourceBytes = documentBaselineURL.flatMap { try? Data(contentsOf: $0) }
@@ -229,16 +326,22 @@
       queueRootURL: URL,
       sourceURL: URL,
       sourceBytes: Data,
-      isReplay: Bool
+      payloadFingerprint: String,
+      libraryURL: URL,
+      baseline: E2EShareIngressSnapshot
     ) {
       channel = "share-extension"
-      expectedJobID = jobID
+      expectedJobID = baseline.receipt?.jobID ?? jobID
       self.handoffID = handoffID
-      isShareReplay = isReplay
       self.queue = queue
       self.queueRootURL = queueRootURL
       self.sourceURL = sourceURL
       self.sourceBytes = sourceBytes
+      shareBaseline = baseline
+      sharePayloadFingerprint = payloadFingerprint
+      shareLibraryURL = libraryURL
+      initialPendingRequestCount = pendingRequestCount
+      initialProcessingRequestCount = processingRequestCount
     }
 
     var sourceIsUnchanged: Bool {
@@ -248,6 +351,28 @@
 
     var pendingRequestCount: Int { requestCount(in: "Pending") }
     var processingRequestCount: Int { requestCount(in: "Processing") }
+
+    func shareEvidence(processingRevision: Int) -> E2EShareIngressEvidence {
+      guard
+        let handoffID,
+        let sharePayloadFingerprint,
+        let shareLibraryURL,
+        let durableLibrary = try? E2EImportIngressDurableLibrary.loadIfPresent(at: shareLibraryURL)
+      else { return E2EShareIngressEvidence(outcome: .unverified, jobID: nil) }
+      return E2EShareIngressEvidence.evaluate(
+        baseline: shareBaseline,
+        current: E2EShareIngressSnapshot.capture(
+          library: durableLibrary,
+          handoffID: handoffID
+        ),
+        expectedFingerprint: sharePayloadFingerprint,
+        initialPendingCount: initialPendingRequestCount,
+        initialProcessingCount: initialProcessingRequestCount,
+        processingRevision: processingRevision,
+        pendingCount: pendingRequestCount,
+        processingCount: processingRequestCount
+      )
+    }
 
     private func requestCount(in directory: String) -> Int {
       guard let root = queueRootURL else { return 0 }
@@ -289,6 +414,7 @@
       try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
 
       let libraryURL = root.appending(path: "Library.json")
+      let durableLibrary = try E2EImportIngressDurableLibrary.loadIfPresent(at: libraryURL)
       let ids = try E2EImportIngressIDSequence.values(
         channel: options.channel,
         reset: reset,
@@ -304,11 +430,22 @@
         try configureShareFixture(
           root: root,
           jobID: jobID,
-          reset: reset,
-          fixture: shareFixture
+          fixture: shareFixture,
+          durableLibrary: durableLibrary
         )
       } else {
-        E2EImportIngressBridge.shared.configureDocument(jobID: jobID, rootURL: root)
+        let resumedDocumentJobs = durableLibrary?.importJobs.filter {
+          $0.queueCheckpoint?.entryPoint == .documentOpen
+        } ?? []
+        guard resumedDocumentJobs.count <= 1 else {
+          throw PlayerCoreError.fileOperation(
+            "The persisted document ingress fixture has ambiguous resumed jobs."
+          )
+        }
+        E2EImportIngressBridge.shared.configureDocument(
+          jobID: resumedDocumentJobs.first?.id ?? jobID,
+          rootURL: root
+        )
       }
 
       let media = FileSystemMediaManager(rootURL: root.appending(path: "PlayerData"))
@@ -332,8 +469,8 @@
     private static func configureShareFixture(
       root: URL,
       jobID: UUID,
-      reset: Bool,
-      fixture: E2EShareFixturePayload
+      fixture: E2EShareFixturePayload,
+      durableLibrary: LibrarySnapshot?
     ) throws {
       let payload = fixture.payload
       let envelope = fixture.envelope
@@ -355,7 +492,13 @@
         path: handoff.id.uuidString.lowercased(),
         directoryHint: .isDirectory
       )
-      if !FileManager.default.fileExists(atPath: request.path) {
+      let processingRequest = processing.appending(
+        path: handoff.id.uuidString.lowercased(),
+        directoryHint: .isDirectory
+      )
+      if !FileManager.default.fileExists(atPath: request.path),
+        !FileManager.default.fileExists(atPath: processingRequest.path)
+      {
         let itemURL = request.appending(path: handoff.items[0].relativePath)
         try FileManager.default.createDirectory(
           at: itemURL.deletingLastPathComponent(),
@@ -364,6 +507,14 @@
         try payload.write(to: itemURL, options: .atomic)
         try envelope.write(to: request.appending(path: "handoff.json"), options: .atomic)
       }
+      guard let baseline = E2EShareIngressSnapshot.capture(
+        library: durableLibrary ?? .empty,
+        handoffID: handoff.id
+      ) else {
+        throw PlayerCoreError.fileOperation(
+          "The persisted share ingress evidence is internally inconsistent."
+        )
+      }
       E2EImportIngressBridge.shared.configureShare(
         jobID: jobID,
         handoffID: handoff.id,
@@ -371,7 +522,9 @@
         queueRootURL: queueRoot,
         sourceURL: sourceURL,
         sourceBytes: payload,
-        isReplay: !reset
+        payloadFingerprint: handoff.payloadFingerprint,
+        libraryURL: root.appending(path: "Library.json"),
+        baseline: baseline
       )
     }
 

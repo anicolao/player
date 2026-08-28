@@ -1355,6 +1355,112 @@
     }
   }
 
+  final class E2EShareIngressEvidenceTests: XCTestCase {
+    private let handoffID = UUID(
+      uuidString: "70000000-0000-0000-0000-000000000101"
+    )!
+    private let jobID = UUID(
+      uuidString: "70000000-0000-0000-0000-000000000102"
+    )!
+    private let fingerprint = "share-payload-fingerprint"
+
+    func testConsumptionRequiresObservedReceiptJobAndQueueTransitions() {
+      let evidence = E2EShareIngressEvidence.evaluate(
+        baseline: .empty,
+        current: snapshotWithReceipt,
+        expectedFingerprint: fingerprint,
+        initialPendingCount: 1,
+        initialProcessingCount: 0,
+        processingRevision: 1,
+        pendingCount: 0,
+        processingCount: 0
+      )
+
+      XCTAssertEqual(evidence, E2EShareIngressEvidence(outcome: .consumed, jobID: jobID))
+    }
+
+    func testReplayBaselineCannotReportDeduplicatedWithoutProductionProcessing() {
+      let evidence = E2EShareIngressEvidence.evaluate(
+        baseline: snapshotWithReceipt,
+        current: snapshotWithReceipt,
+        expectedFingerprint: fingerprint,
+        initialPendingCount: 1,
+        initialProcessingCount: 0,
+        processingRevision: 0,
+        pendingCount: 1,
+        processingCount: 0
+      )
+
+      XCTAssertEqual(evidence, E2EShareIngressEvidence(outcome: .unverified, jobID: nil))
+    }
+
+    func testDeduplicationRequiresRetainedReceiptJobSetAndDrainedRequest() {
+      let evidence = E2EShareIngressEvidence.evaluate(
+        baseline: snapshotWithReceipt,
+        current: snapshotWithReceipt,
+        expectedFingerprint: fingerprint,
+        initialPendingCount: 1,
+        initialProcessingCount: 0,
+        processingRevision: 1,
+        pendingCount: 0,
+        processingCount: 0
+      )
+
+      XCTAssertEqual(
+        evidence,
+        E2EShareIngressEvidence(outcome: .deduplicated, jobID: jobID)
+      )
+    }
+
+    func testDeduplicationAcceptsAnObservedRecoveredProcessingRequest() {
+      let evidence = E2EShareIngressEvidence.evaluate(
+        baseline: snapshotWithReceipt,
+        current: snapshotWithReceipt,
+        expectedFingerprint: fingerprint,
+        initialPendingCount: 0,
+        initialProcessingCount: 1,
+        processingRevision: 1,
+        pendingCount: 0,
+        processingCount: 0
+      )
+
+      XCTAssertEqual(
+        evidence,
+        E2EShareIngressEvidence(outcome: .deduplicated, jobID: jobID)
+      )
+    }
+
+    func testDeduplicationFailsClosedWhenDurableReceiptChanges() {
+      var changed = receipt
+      changed.payloadFingerprint = "different-payload"
+      let evidence = E2EShareIngressEvidence.evaluate(
+        baseline: snapshotWithReceipt,
+        current: E2EShareIngressSnapshot(jobIDs: [jobID], receipt: changed),
+        expectedFingerprint: fingerprint,
+        initialPendingCount: 1,
+        initialProcessingCount: 0,
+        processingRevision: 1,
+        pendingCount: 0,
+        processingCount: 0
+      )
+
+      XCTAssertEqual(evidence, E2EShareIngressEvidence(outcome: .unverified, jobID: nil))
+    }
+
+    private var snapshotWithReceipt: E2EShareIngressSnapshot {
+      E2EShareIngressSnapshot(jobIDs: [jobID], receipt: receipt)
+    }
+
+    private var receipt: ShareImportReceipt {
+      ShareImportReceipt(
+        handoffID: handoffID,
+        payloadFingerprint: fingerprint,
+        jobID: jobID,
+        receivedAt: Date(timeIntervalSince1970: 1_700_000_000)
+      )
+    }
+  }
+
   final class E2EMetadataRichBookNamespaceTests: XCTestCase {
     func testNamespaceIsRequired() {
       for arguments in [[], ["-e2e"]] {

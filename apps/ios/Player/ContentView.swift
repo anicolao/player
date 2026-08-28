@@ -2769,18 +2769,30 @@ func compactPlaybackTime(_ seconds: Double) -> String {
     }
 
     private var shareValue: String {
-      _ = queueRevision
       let bridge = E2EImportIngressBridge.shared
-      guard let handoffID = bridge.handoffID, let job = expectedJob else {
+      guard let handoffID = bridge.handoffID else {
         return "handoff:share-extension:idle"
+      }
+      let evidence = bridge.shareEvidence(processingRevision: queueRevision)
+      guard
+        let jobID = evidence.jobID,
+        let job = model.library.importJobs.first(where: { $0.id == jobID })
+      else {
+        return [
+          "handoff:share-extension:unverified",
+          "id=\(handoffID.uuidString.lowercased())",
+          "jobs=\(model.library.importJobs.count)",
+          "pending=\(bridge.pendingRequestCount)",
+          "processing=\(bridge.processingRequestCount)",
+          "source-unchanged=\(bridge.sourceIsUnchanged)",
+        ].joined(separator: ":")
       }
       let receipt = model.library.shareImportReceipts.first(where: {
         $0.handoffID == handoffID
       })
-      let outcome = bridge.isShareReplay ? "deduplicated" : "consumed"
-      let receiptState = bridge.isShareReplay ? "retained" : "recorded"
+      let receiptState = evidence.outcome == .deduplicated ? "retained" : "recorded"
       return [
-        "handoff:share-extension:\(outcome)",
+        "handoff:share-extension:\(evidence.outcome.rawValue)",
         "id=\(handoffID.uuidString.lowercased())",
         "job=\(job.id.uuidString.lowercased())",
         "jobs=\(model.library.importJobs.count)",
