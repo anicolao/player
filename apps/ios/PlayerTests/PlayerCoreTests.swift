@@ -305,6 +305,28 @@ final class PlayerCoreTests: XCTestCase {
       XCTAssertTrue(range.atEnd)
     }
 
+    func testScrollEndpointRangeIncludesScrollContentInsets() {
+      let top = E2EScrollEndpointRange(
+        visibleRect: CGRect(x: 0, y: -168, width: 402, height: 874),
+        contentSize: CGSize(width: 402, height: 857),
+        axis: .vertical,
+        contentInsets: .init(top: 168, leading: 0, bottom: 104, trailing: 0)
+      )
+      XCTAssertEqual(top.minimum, -168, accuracy: 0.001)
+      XCTAssertEqual(top.maximum, 87, accuracy: 0.001)
+      XCTAssertTrue(top.atStart)
+      XCTAssertFalse(top.atEnd)
+
+      let bottom = E2EScrollEndpointRange(
+        visibleRect: CGRect(x: 0, y: 87, width: 402, height: 874),
+        contentSize: CGSize(width: 402, height: 857),
+        axis: .vertical,
+        contentInsets: .init(top: 168, leading: 0, bottom: 104, trailing: 0)
+      )
+      XCTAssertFalse(bottom.atStart)
+      XCTAssertTrue(bottom.atEnd)
+    }
+
     private func scrollReadinessValue(
       container: String,
       axis: String,

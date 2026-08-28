@@ -57,6 +57,7 @@ extension View {
       visibleRect: CGRect,
       contentSize: CGSize,
       axis: E2EScrollAxis,
+      contentInsets: EdgeInsets = EdgeInsets(),
       tolerance: CGFloat = 1
     ) {
       switch axis {
@@ -64,19 +65,23 @@ extension View {
         offset = visibleRect.minX
         contentLength = contentSize.width
         containerLength = visibleRect.width
-        atStart = visibleRect.minX <= tolerance
-        atEnd = visibleRect.maxX >= contentSize.width - tolerance
+        minimum = -contentInsets.leading
+        maximum = max(
+          minimum,
+          contentSize.width + contentInsets.trailing - visibleRect.width
+        )
       case .vertical:
         offset = visibleRect.minY
         contentLength = contentSize.height
         containerLength = visibleRect.height
-        atStart = visibleRect.minY <= tolerance
-        atEnd = visibleRect.maxY >= contentSize.height - tolerance
+        minimum = -contentInsets.top
+        maximum = max(
+          minimum,
+          contentSize.height + contentInsets.bottom - visibleRect.height
+        )
       }
-      // SwiftUI computes visibleRect from content offset, insets, and container size.
-      // Normalize to content coordinates so List and ScrollView margin behavior agree.
-      minimum = 0
-      maximum = max(0, contentLength - containerLength)
+      atStart = offset <= minimum + tolerance
+      atEnd = offset >= maximum - tolerance
     }
   }
 
@@ -176,6 +181,7 @@ extension View {
         visibleRect: geometry.visibleRect,
         contentSize: geometry.contentSize,
         axis: axis,
+        contentInsets: geometry.contentInsets,
         tolerance: tolerance
       )
 
