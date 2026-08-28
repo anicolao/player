@@ -60,12 +60,12 @@
       "rootCause": "Supported implementation-defect hypothesis: ConsecutiveScreenObservation compared PNG-encoded Data, whose representation can differ even when the decoded pixel buffers are identical.",
       "diagnosisStatus": "supported-hypothesis",
       "fix": {
-        "status": "pending-focused-validation",
+        "status": "verified",
         "summary": "Compare CGImage pixel-buffer metadata and bytes rather than PNG representations.",
         "commits": [
           "fe608daec98237267d04a119ff0b6084d68d7f4c"
         ],
-        "validation": "Pending focused repeated Story 008 passes at fe608da; reclassify from retained artifacts if the gate recurs."
+        "validation": "Fresh-build artifact `/tmp/player-story008-fixed2.1787922357` and no-build repeat `/tmp/player-story008-repeat.1787922600`, both at f575fd9fffff0635cfc9bf529b63acb1b7fa9b01 and containing fe608da, each passed UI 1/1, matched all 10 canonical screenshots exactly, matched the reviewed README exactly, and produced valid evidence. The original diagnosis remains a supported hypothesis because its failed gate did not retain the two internal frame samples."
       },
       "qualificationResetCount": 1,
       "resetEvidence": "Reliability attempt 1 failed at exact SHA 0939406eca22ffa1b6b363ed3011d6a6d2502ef7, resetting Story 008's consecutive qualification count to zero."
@@ -209,12 +209,12 @@
       "rootCause": "The newly strict semantic readiness assertion carried an incorrect expected chapter count for the deterministic import fixture.",
       "diagnosisStatus": "confirmed",
       "fix": {
-        "status": "pending-focused-validation",
+        "status": "verified",
         "summary": "Match the capture predicate to the fixture's truthful zero-chapter M4A state while retaining all playable-metadata and geometry requirements.",
         "commits": [
           "46dfd8b004ecd0e78585251132d499b95d1af037"
         ],
-        "validation": "The exact expectation is corrected in source; a post-fix canonical Story 002 run is still required."
+        "validation": "Exact-SHA artifact `/tmp/player-story002-focus.1787921549` at 123a24900b2f38dd548be6161bcac8c02b5581d8 passed UI 6/6, accepted all 6 canonical screenshots with zero comparison failures, matched the reviewed README exactly, and produced a valid EvidenceManifest."
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This CI failure preceded the formal exact-SHA R0 qualification sequence, so no qualification count existed to reset."
@@ -232,12 +232,12 @@
       "rootCause": "The reviewed Story 005 README was not updated when capture-readiness text was removed from generated user-facing verification copy.",
       "diagnosisStatus": "confirmed",
       "fix": {
-        "status": "pending-focused-validation",
+        "status": "verified",
         "summary": "Remove the stale reviewed bullet so generated and reviewed walkthrough contracts describe the same semantic assertions.",
         "commits": [
           "037c9fb7b83c0e1c510dae61f1ec1a8e12a47860"
         ],
-        "validation": "The reviewed README now matches the generated contract by inspection; a post-fix canonical Story 005 run is still required."
+        "validation": "Exact-SHA artifact `/tmp/player-005-play-and-restore-focus.1787921703` at 123a24900b2f38dd548be6161bcac8c02b5581d8 passed UI 5/5, accepted all 4 canonical screenshots with zero comparison failures, matched the reviewed README exactly, and produced a valid EvidenceManifest."
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This CI failure preceded the formal exact-SHA R0 qualification sequence, so no qualification count existed to reset."
@@ -255,12 +255,12 @@
       "rootCause": "PlayerModel persisted and published the cancelled import job before await discardStaging completed, exposing a semantically cancelled state while two staging files still existed.",
       "diagnosisStatus": "confirmed",
       "fix": {
-        "status": "pending-focused-validation",
+        "status": "verified",
         "summary": "Serialize duplicate cancellation requests, persist the cancelled snapshot without publishing it, await staging cleanup, and only then publish the cancelled library state.",
         "commits": [
           "ce3312b6da23900638e47a502cb551dd14a31db9"
         ],
-        "validation": "A deterministic checkpoint/release unit test proves cancellation is not published before cleanup; a post-fix canonical Story 006 run is still required."
+        "validation": "After local host disk cleanup, exact-SHA artifact `/tmp/player-006-safe-zip-import-retry.1787921972` at 123a24900b2f38dd548be6161bcac8c02b5581d8 passed both UI tests, matched all 3 screenshots exactly, matched the reviewed README exactly, and produced a valid EvidenceManifest."
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This CI failure preceded the formal exact-SHA R0 qualification sequence, so no qualification count existed to reset."
@@ -278,15 +278,59 @@
       "rootCause": "The test equated nested accessibility aliases with duplicate controls instead of determining physical uniqueness from shared frame, identifier, label, and hittability.",
       "diagnosisStatus": "confirmed",
       "fix": {
-        "status": "pending-focused-validation",
+        "status": "verified",
         "summary": "Accept nested aliases only when every match resolves to the same physical frame and consistent identifier, label, and hittable state.",
         "commits": [
           "48edda491798307c7b4ca48041110f80cfde98a4"
         ],
-        "validation": "The selector now proves one physical action by geometry and semantics; a post-fix canonical Story 008 run is still required."
+        "validation": "Fresh-build artifact `/tmp/player-story008-fixed2.1787922357` and no-build repeat `/tmp/player-story008-repeat.1787922600` at f575fd9fffff0635cfc9bf529b63acb1b7fa9b01 each passed UI 1/1, matched all 10 canonical screenshots exactly, and matched the reviewed README exactly."
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This CI failure preceded the formal exact-SHA R0 qualification sequence, so no qualification count existed to reset."
+    },
+    {
+      "signature": "selector:008-library-search:confirm-finished-ambiguous-element-dereference",
+      "story": "008-library-search",
+      "evidence": {
+        "artifact": "/tmp/player-008-library-search-retry.1787921972",
+        "url": "local-artifact:/tmp/player-008-library-search-retry.1787921972",
+        "commit": "123a24900b2f38dd548be6161bcac8c02b5581d8",
+        "observation": "After the finished-confirmation query correctly accepted two nested aliases as one physical action, LibraryOrganizationUITests.swift:144 still dereferenced the multi-match query through `.element`, making the Mark Finished action ambiguous."
+      },
+      "rootCause": "The physical-uniqueness assertion was alias-aware, but the subsequent action lookup retained XCTest's single-query `.element` assumption even though the accessibility hierarchy intentionally exposed two aliases.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Select an enabled, hittable concrete alias from all matches, then retain the shared-frame, identifier, and label assertions proving that every alias represents the same physical Mark Finished action.",
+        "commits": [
+          "4741e23e8844c20daf891fed68e806bd88acae22"
+        ],
+        "validation": "Fresh-build artifact `/tmp/player-story008-fixed2.1787922357` and no-build repeat `/tmp/player-story008-repeat.1787922600` at f575fd9fffff0635cfc9bf529b63acb1b7fa9b01 each passed UI 1/1, matched all 10 canonical screenshots exactly, and matched the reviewed README exactly."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This local selector failure occurred before formal exact-SHA R0 qualification, so no qualification count existed to reset."
+    },
+    {
+      "signature": "selector:008-library-search:trash-confirmation-nested-alias-count-2",
+      "story": "008-library-search",
+      "evidence": {
+        "artifact": "/tmp/player-story008-fixed.1787922158",
+        "url": "local-artifact:/tmp/player-story008-fixed.1787922158",
+        "commit": "4741e23e8844c20daf891fed68e806bd88acae22",
+        "observation": "LibraryOrganizationUITests.swift:502 asserted that the Trash confirmation query contained one element, but XCTest reported count 2 because the same physical remove action was exposed through nested accessibility aliases."
+      },
+      "rootCause": "The Trash selector equated accessibility-query cardinality with physical control cardinality instead of correlating nested aliases by frame, identifier, label, and interactability.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Require every Trash alias to resolve to the same physical frame, identifier, and label, and tap one enabled, hittable concrete alias.",
+        "commits": [
+          "f575fd9fffff0635cfc9bf529b63acb1b7fa9b01"
+        ],
+        "validation": "Fresh-build artifact `/tmp/player-story008-fixed2.1787922357` and no-build repeat `/tmp/player-story008-repeat.1787922600` at f575fd9fffff0635cfc9bf529b63acb1b7fa9b01 each passed UI 1/1, matched all 10 canonical screenshots exactly, and matched the reviewed README exactly."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This local selector failure occurred before formal exact-SHA R0 qualification, so no qualification count existed to reset."
     },
     {
       "signature": "reveal:009-accessible-core-journeys:settings-accessibility-not-fully-visible",
