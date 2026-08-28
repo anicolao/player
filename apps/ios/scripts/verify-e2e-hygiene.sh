@@ -261,6 +261,12 @@ if rg -n --pcre2 'timeout:\s*(?:[3-9]|[1-9][0-9]+)(?:\.0+)?\b' \
   fail "UI-test transition timeouts may not exceed two seconds"
 fi
 
+if rg -n -U --pcre2 \
+  '\.accessibilityIdentifier\(\s*"[^"\n]*[-_:]\([A-Za-z_]' \
+  "${repository_root}/apps/ios/Player" --glob '*.swift'; then
+  fail "accessibility identifiers must interpolate dynamic values instead of exposing literal parenthesized expressions"
+fi
+
 step_helper="${ui_test_root}/TestStepHelper.swift"
 step_dismiss_line="$(rg -n '^[[:space:]]{4}dismissAppleIntelligenceNotificationIfPresent\(\)$' \
   "${step_helper}" | cut -d: -f1)"

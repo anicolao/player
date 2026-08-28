@@ -183,7 +183,9 @@ struct LibrarySearchView: View {
               BookRow(book: book)
             }
             .buttonStyle(.plain)
-            .accessibilityIdentifier("search-result-(book.id.uuidString.lowercased())")
+            .accessibilityLabel("\(book.title), \(book.authors.first ?? "Unknown Author")")
+            .accessibilityHint("Opens audiobook details")
+            .accessibilityIdentifier("search-result-\(book.id.uuidString.lowercased())")
           }
         }
         .padding(.horizontal, 20)

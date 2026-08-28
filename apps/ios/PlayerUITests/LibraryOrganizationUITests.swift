@@ -837,6 +837,31 @@ final class LibraryOrganizationUITests: XCTestCase {
       }
     )
 
+    let expectedSearchResultIDs = [books[4], books[2]].map { "search-result-\($0)" }
+    let visibleSearchResults = visibleElements(
+      in: restoredApp,
+      identifierPrefix: "search-result-",
+      within: searchResultsScroll
+    )
+    XCTAssertEqual(visibleSearchResults.count, 2)
+    XCTAssertEqual(Set(visibleSearchResults.map(\.identifier)), Set(expectedSearchResultIDs))
+    XCTAssertEqual(Set(visibleSearchResults.map(\.label)), Set([
+      "Quiet Maps, Mina Sol",
+      "The Clockwork Orchard, Mina Sol",
+    ]))
+
+    for bookID in [books[4], books[2]] {
+      let searchResult = anyElement(restoredApp, "search-result-\(bookID)")
+      XCTAssertTrue(searchResult.waitForExistence(timeout: 2))
+      searchResult.tap()
+      try requireValue(
+        anyElement(restoredApp, "book-detail-screen"),
+        "book:ready:\(bookID):1-chapters:m4b"
+      )
+      navigateBack(restoredApp, label: "Search", destination: searchProbe)
+      try requireValue(searchProbe, expectedMetadataSearch)
+    }
+
     restoredApp.buttons["clear-search-query"].tap()
     searchInput.tap()
     searchInput.typeText("Quiet Evenings\n")
