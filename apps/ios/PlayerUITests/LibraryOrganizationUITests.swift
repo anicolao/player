@@ -497,12 +497,19 @@ final class LibraryOrganizationUITests: XCTestCase {
     let removalSheet = restoredApp.sheets["Move this audiobook to Trash?"]
     XCTAssertTrue(removalSheet.waitForExistence(timeout: 2))
     let confirmRemovalQuery = removalSheet.buttons.matching(identifier: "remove-book-to-trash")
-    let confirmRemoval = confirmRemovalQuery.element
-    XCTAssertTrue(confirmRemoval.waitForExistence(timeout: 2))
-    XCTAssertEqual(
-      confirmRemovalQuery.count,
-      1,
-      "The Trash confirmation must expose one scoped remove action"
+    let confirmRemovalMatches = confirmRemovalQuery.allElementsBoundByIndex
+    XCTAssertFalse(confirmRemovalMatches.isEmpty)
+    let confirmRemoval = try XCTUnwrap(
+      confirmRemovalMatches.first(where: { $0.isEnabled && $0.isHittable }),
+      "The physical Trash confirmation must expose an interactable accessibility alias"
+    )
+    XCTAssertTrue(
+      confirmRemovalMatches.allSatisfy {
+        $0.frame == confirmRemoval.frame
+          && $0.identifier == "remove-book-to-trash"
+          && $0.label == confirmRemoval.label
+      },
+      "Nested accessibility aliases must resolve to one scoped Trash action"
     )
     confirmRemoval.tap()
     navigateBack(
