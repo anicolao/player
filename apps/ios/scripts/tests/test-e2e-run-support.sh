@@ -323,5 +323,9 @@ test_exit_line="$(rg -n -F -m 1 'exit "${test_status}"' "${run_e2e}" | cut -d: -
   || fail "UI-test failures exit before screenshot evidence is materialized"
 rg -Fq -- '--retain-all-evidence' "${run_e2e}" \
   || fail "UI-test failure comparison does not retain matching expected and actual images"
+rg -Fq 'cp -R "${baseline_story}/." "${recording_stage}/"' "${run_e2e}" \
+  || fail "baseline recording does not preserve reviewed auxiliary story files"
+rg -Fq 'find "${recording_stage}/screenshots/ios" -type f -depth -delete' "${run_e2e}" \
+  || fail "baseline recording does not replace the complete prior screenshot set"
 
 echo "E2E output, build provenance, and failure-evidence tests passed."
