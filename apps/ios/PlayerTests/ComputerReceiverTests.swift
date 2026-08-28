@@ -5,11 +5,13 @@ import Network
 @MainActor
 final class ComputerReceiverTests: XCTestCase {
   func testCanonicalReceiverScenariosAndMirroringTipOverridesParseExactly() throws {
-    let production = try E2EComputerReceiverLaunchConfiguration.parse(arguments: [
-      "Player", "-e2e-computer-receiver-ready", "-e2e-show-mirroring-tip",
-    ])
+    let production = try E2EComputerReceiverLaunchConfiguration.parse(
+      arguments: ["Player"],
+      e2eLaunchConfiguration: nil
+    )
     XCTAssertNil(production.scenario)
     XCTAssertEqual(production.mirroringTip, .automatic)
+    XCTAssertEqual(production.transportRoot, .production)
 
     let ready = try receiverConfiguration(arguments: [])
     XCTAssertEqual(ready.scenario, .ready)
@@ -49,7 +51,11 @@ final class ComputerReceiverTests: XCTestCase {
       let arguments = ["Player", "-e2e", "-e2e-computer-receiver-ready"]
         + additionalArguments
       XCTAssertThrowsError(
-        try E2EComputerReceiverLaunchConfiguration.parse(arguments: arguments),
+        try E2EComputerReceiverLaunchConfiguration.parse(
+          arguments: arguments,
+          e2eLaunchConfiguration: e2eLaunch(fixture: .emptyLibrary),
+          launchIdentifier: "receiver-test"
+        ),
         "Expected invalid receiver scenario to be rejected: \(arguments)"
       )
     }
@@ -60,7 +66,11 @@ final class ComputerReceiverTests: XCTestCase {
       "-e2e-computer-receiver-paused",
     ] {
       XCTAssertThrowsError(
-        try E2EComputerReceiverLaunchConfiguration.parse(arguments: ["Player", "-e2e", phase])
+        try E2EComputerReceiverLaunchConfiguration.parse(
+          arguments: ["Player", "-e2e", phase],
+          e2eLaunchConfiguration: e2eLaunch(fixture: .emptyLibrary),
+          launchIdentifier: "receiver-test"
+        )
       )
     }
   }
@@ -90,6 +100,123 @@ final class ComputerReceiverTests: XCTestCase {
         "Expected unknown receiver option to be rejected: \(argument)"
       )
     }
+  }
+
+  func testReceiverRootIsPrivateToFixtureScenarioAndLaunch() throws {
+    let ready = try receiverConfiguration(arguments: [], launchIdentifier: "launch-101")
+    let completed = try receiverConfiguration(
+      arguments: ["-e2e-computer-receiver-completed"],
+      launchIdentifier: "launch-101"
+    )
+    let nextLaunch = try receiverConfiguration(arguments: [], launchIdentifier: "launch-102")
+
+    XCTAssertEqual(
+      ready.transportRoot,
+      .e2e(namespace: "PlayerE2EComputerReceiver-empty-library-ready-launch-101")
+    )
+    XCTAssertNotEqual(ready.transportRoot, completed.transportRoot)
+    XCTAssertNotEqual(ready.transportRoot, nextLaunch.transportRoot)
+  }
+
+  func testIsolatedReceiverControllerLeavesProductionTransportRootUntouched() throws {
+    let sandbox = temporaryRoot()
+    defer { try? FileManager.default.removeItem(at: sandbox) }
+    let support = sandbox.appending(path: "ApplicationSupport", directoryHint: .isDirectory)
+    let temporary = sandbox.appending(path: "Temporary", directoryHint: .isDirectory)
+    let productionRoot = support
+      .appending(path: "Player", directoryHint: .isDirectory)
+      .appending(path: "ComputerReceiver", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: productionRoot, withIntermediateDirectories: true)
+    let sentinel = productionRoot.appending(path: "production-sentinel.txt")
+    let sentinelData = Data("must-not-be-deleted-by-e2e".utf8)
+    try sentinelData.write(to: sentinel, options: .atomic)
+
+    let configuration = try receiverConfiguration(
+      arguments: [],
+      launchIdentifier: "isolated-root"
+    )
+    let controller = ComputerReceiverController(
+      launchConfiguration: configuration,
+      applicationSupportURL: support,
+      temporaryDirectory: temporary
+    )
+
+    XCTAssertEqual(
+      controller.transportRootURL,
+      temporary.appending(
+        path: "PlayerE2EComputerReceiver-empty-library-ready-isolated-root",
+        directoryHint: .isDirectory
+      ).standardizedFileURL
+    )
+    XCTAssertTrue(FileManager.default.fileExists(atPath: controller.transportRootURL.path))
+    XCTAssertEqual(try Data(contentsOf: sentinel), sentinelData)
+  }
+
+  func testInvalidReceiverConfigurationCannotMutateFixtureOrProductionReceiverRoots() throws {
+    let fixtureRoot = FileManager.default.temporaryDirectory.appending(
+      path: "PlayerE2EEmptyLibrary",
+      directoryHint: .isDirectory
+    )
+    try? FileManager.default.removeItem(at: fixtureRoot)
+    try FileManager.default.createDirectory(at: fixtureRoot, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+    let fixtureSentinel = fixtureRoot.appending(path: "fixture-sentinel.txt")
+    let fixtureData = Data("fixture-must-survive".utf8)
+    try fixtureData.write(to: fixtureSentinel, options: .atomic)
+
+    let receiverSandbox = temporaryRoot()
+    defer { try? FileManager.default.removeItem(at: receiverSandbox) }
+    let receiverSupport = receiverSandbox.appending(
+      path: "ApplicationSupport",
+      directoryHint: .isDirectory
+    )
+    let productionReceiverRoot = receiverSupport
+      .appending(path: "Player", directoryHint: .isDirectory)
+      .appending(path: "ComputerReceiver", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(
+      at: productionReceiverRoot,
+      withIntermediateDirectories: true
+    )
+    let receiverSentinel = productionReceiverRoot.appending(path: "receiver-sentinel.txt")
+    let receiverData = Data("receiver-must-survive".utf8)
+    try receiverData.write(to: receiverSentinel, options: .atomic)
+
+    let arguments = [
+      "Player", "-e2e", "-e2e-reset", "-e2e-fixture", "empty-library",
+      "-e2e-computer-receiver-paused",
+    ]
+    XCTAssertThrowsError(
+      try {
+        let launch = try XCTUnwrap(E2ELaunchConfiguration.parse(arguments: arguments))
+        let receiver = try E2EComputerReceiverLaunchConfiguration.parse(
+          arguments: arguments,
+          e2eLaunchConfiguration: launch,
+          launchIdentifier: "invalid-launch"
+        )
+        _ = try PlayerEnvironment.launchEnvironment(
+          e2eLaunchConfiguration: launch,
+          playbackControls: .disabled
+        )
+        _ = ComputerReceiverController(
+          launchConfiguration: receiver,
+          applicationSupportURL: receiverSupport,
+          temporaryDirectory: receiverSandbox.appending(path: "Temporary")
+        )
+      }()
+    )
+    XCTAssertEqual(try Data(contentsOf: fixtureSentinel), fixtureData)
+    XCTAssertEqual(try Data(contentsOf: receiverSentinel), receiverData)
+  }
+
+  func testMirroringTipPolicyUsesInjectedConfiguration() throws {
+    let automatic = try receiverConfiguration(arguments: [])
+    let shown = try receiverConfiguration(arguments: ["-e2e-show-mirroring-tip"])
+    let hidden = try receiverConfiguration(arguments: ["-e2e-hide-mirroring-tip"])
+
+    XCTAssertTrue(MirroringTipPolicy.shouldShow(configuration: automatic, region: "CA"))
+    XCTAssertFalse(MirroringTipPolicy.shouldShow(configuration: automatic, region: "FR"))
+    XCTAssertTrue(MirroringTipPolicy.shouldShow(configuration: shown, region: "FR"))
+    XCTAssertFalse(MirroringTipPolicy.shouldShow(configuration: hidden, region: "CA"))
   }
 
   func testInjectedBindingServesRawHTTPGetThroughProductionServerPath() async throws {
@@ -140,11 +267,21 @@ final class ComputerReceiverTests: XCTestCase {
   }
 
   private func receiverConfiguration(
-    arguments: [String]
+    arguments: [String],
+    launchIdentifier: String = "receiver-test"
   ) throws -> E2EComputerReceiverLaunchConfiguration {
-    try E2EComputerReceiverLaunchConfiguration.parse(arguments: [
-      "Player", "-e2e", "-e2e-computer-receiver-ready",
-    ] + arguments)
+    try E2EComputerReceiverLaunchConfiguration.parse(
+      arguments: [
+        "Player", "-e2e", "-e2e-fixture", "empty-library",
+        "-e2e-computer-receiver-ready",
+      ] + arguments,
+      e2eLaunchConfiguration: e2eLaunch(fixture: .emptyLibrary),
+      launchIdentifier: launchIdentifier
+    )
+  }
+
+  private func e2eLaunch(fixture: E2EFixture) -> E2ELaunchConfiguration {
+    E2ELaunchConfiguration(fixture: fixture, resetPolicy: .reset)
   }
 
   func testFolderTransferPreservesBookNameAndRemovesIncomingCopyAfterImport() async throws {

@@ -89,15 +89,18 @@ struct ContentView: View {
   @State private var sharedImportQueueRevision = 0
   @State private var pendingDocumentURLs: [URL] = []
   @State private var presentedPlayerBook: Book?
+  private let receiverConfiguration: E2EComputerReceiverLaunchConfiguration
   private let launchNavigation: E2ELaunchNavigationConfiguration
   private let playbackControls: E2EPlaybackControlConfiguration
 
   init(
     model: PlayerModel,
+    receiverConfiguration: E2EComputerReceiverLaunchConfiguration,
     launchNavigation: E2ELaunchNavigationConfiguration,
     playbackControls: E2EPlaybackControlConfiguration
   ) {
     self.model = model
+    self.receiverConfiguration = receiverConfiguration
     self.launchNavigation = launchNavigation
     self.playbackControls = playbackControls
     switch launchNavigation.section {
@@ -172,6 +175,7 @@ struct ContentView: View {
     ) {
       ComputerReceiverView(
         model: model,
+        launchConfiguration: receiverConfiguration,
         chooseFromFiles: {
           chooseFilesAfterReceiverDismisses = true
           isReceivingFromComputer = false

@@ -3,8 +3,23 @@ import SwiftUI
 import UniformTypeIdentifiers
 import UIKit
 
-#if E2E
-  struct E2EComputerReceiverLaunchConfiguration: Equatable {
+struct E2EComputerReceiverLaunchConfiguration: Equatable {
+  enum TransportRoot: Equatable {
+    case production
+    case e2e(namespace: String)
+
+    func url(applicationSupportURL: URL, temporaryDirectory: URL) -> URL {
+      switch self {
+      case .production:
+        applicationSupportURL
+          .appending(path: "Player", directoryHint: .isDirectory)
+          .appending(path: "ComputerReceiver", directoryHint: .isDirectory)
+      case .e2e(let namespace):
+        temporaryDirectory.appending(path: namespace, directoryHint: .isDirectory)
+      }
+    }
+  }
+
     enum Scenario: String, CaseIterable {
       case ready
       case dropProgress = "drop-progress"
@@ -27,13 +42,36 @@ import UIKit
 
     let scenario: Scenario?
     let mirroringTip: MirroringTip
+    let transportRoot: TransportRoot
 
-    static func parse(arguments: [String]) throws -> E2EComputerReceiverLaunchConfiguration {
-      guard arguments.contains("-e2e") else {
-        return E2EComputerReceiverLaunchConfiguration(
-          scenario: nil,
-          mirroringTip: .automatic
-        )
+    static let production = E2EComputerReceiverLaunchConfiguration(
+      scenario: nil,
+      mirroringTip: .automatic,
+      transportRoot: .production
+    )
+
+    static func parse(
+      arguments: [String],
+      e2eLaunchConfiguration: E2ELaunchConfiguration?,
+      launchIdentifier: String = String(ProcessInfo.processInfo.processIdentifier)
+    ) throws -> E2EComputerReceiverLaunchConfiguration {
+      guard let e2eLaunchConfiguration else {
+        guard !arguments.contains(where: isReceiverArgument) else {
+          throw PlayerCoreError.fileOperation(
+            "Computer Receiver E2E options require E2E launch mode."
+          )
+        }
+        return .production
+      }
+      guard !launchIdentifier.isEmpty,
+        launchIdentifier.utf8.allSatisfy({
+          (UInt8(ascii: "a")...UInt8(ascii: "z")).contains($0)
+            || (UInt8(ascii: "A")...UInt8(ascii: "Z")).contains($0)
+            || (UInt8(ascii: "0")...UInt8(ascii: "9")).contains($0)
+            || $0 == UInt8(ascii: "-")
+        })
+      else {
+        throw PlayerCoreError.fileOperation("Invalid Computer Receiver E2E launch identifier.")
       }
 
       let recognizedArguments: Set<String> = [
@@ -85,10 +123,16 @@ import UIKit
         )
       }
       let mirroringTip: MirroringTip = showsTip ? .show : (hidesTip ? .hide : .automatic)
+      let scenarioName = scenario?.rawValue ?? "live"
 
       return E2EComputerReceiverLaunchConfiguration(
         scenario: scenario,
-        mirroringTip: mirroringTip
+        mirroringTip: mirroringTip,
+        transportRoot: .e2e(
+          namespace:
+            "PlayerE2EComputerReceiver-\(e2eLaunchConfiguration.fixture.rawValue)-"
+            + "\(scenarioName)-\(launchIdentifier)"
+        )
       )
     }
 
@@ -99,7 +143,6 @@ import UIKit
         || argument.hasPrefix("-e2e-hide-mirroring-tip")
     }
   }
-#endif
 
 @MainActor
 @Observable
@@ -127,44 +170,49 @@ final class ComputerReceiverController {
   private(set) var httpExchange: ComputerReceiverHTTPExchange?
   @ObservationIgnored private let server: ComputerReceiverServer
   @ObservationIgnored private let mirroringDropAdapter: MirroringDropAdapter
+  let transportRootURL: URL
   #if E2E
     @ObservationIgnored private let simulatedScenario: E2EComputerReceiverLaunchConfiguration.Scenario?
-    @ObservationIgnored private let launchConfigurationError: String?
   #endif
   @ObservationIgnored private var startTask: Task<Void, Never>?
   @ObservationIgnored private var dropTask: Task<Void, Never>?
   @ObservationIgnored private var dropOperation: MirroringDropMaterializationOperation?
   @ObservationIgnored private var activeDropSession: (any UIDropSession)?
 
-  init(fileManager: FileManager = .default, bundle: Bundle = .main) {
+  init(
+    fileManager: FileManager = .default,
+    bundle: Bundle = .main,
+    launchConfiguration: E2EComputerReceiverLaunchConfiguration = .production,
+    applicationSupportURL: URL? = nil,
+    temporaryDirectory: URL? = nil
+  ) {
     #if E2E
-      let launchConfiguration: E2EComputerReceiverLaunchConfiguration?
-      do {
-        launchConfiguration = try E2EComputerReceiverLaunchConfiguration.parse(
-          arguments: ProcessInfo.processInfo.arguments
-        )
-        launchConfigurationError = nil
-      } catch {
-        launchConfiguration = nil
-        launchConfigurationError = error.localizedDescription
-      }
-      simulatedScenario = launchConfiguration?.scenario
+      simulatedScenario = launchConfiguration.scenario
     #endif
-    let support = (try? fileManager.url(
+    let support = applicationSupportURL ?? (try? fileManager.url(
       for: .applicationSupportDirectory,
       in: .userDomainMask,
       appropriateFor: nil,
       create: true
     )) ?? fileManager.temporaryDirectory
-    let root = support
-      .appending(path: "Player", directoryHint: .isDirectory)
-      .appending(path: "ComputerReceiver", directoryHint: .isDirectory)
+    let root = launchConfiguration.transportRoot.url(
+      applicationSupportURL: support,
+      temporaryDirectory: temporaryDirectory ?? fileManager.temporaryDirectory
+    )
       .standardizedFileURL
-    // Receiver sessions cannot resume after process death. Remove leftovers on
-    // the first screen construction in this process, but never when reopening
-    // the screen while an accepted background import is still using the root.
-    if Self.preparedTransportRoots.insert(root.path).inserted {
-      try? fileManager.removeItem(at: root)
+    transportRootURL = root
+    switch launchConfiguration.transportRoot {
+    case .production:
+      // Receiver sessions cannot resume after process death. Remove leftovers
+      // on first construction, but preserve accepted background imports when
+      // the production screen is reopened in the same process.
+      if Self.preparedTransportRoots.insert(root.path).inserted {
+        try? fileManager.removeItem(at: root)
+        try? fileManager.createDirectory(at: root, withIntermediateDirectories: true)
+      }
+    case .e2e:
+      // The launch identifier makes this root private to one E2E app process.
+      // Reopening the sheet in that process must retain accepted imports.
       try? fileManager.createDirectory(at: root, withIntermediateDirectories: true)
     }
     #if E2E
@@ -191,12 +239,6 @@ final class ComputerReceiverController {
   }
 
   func start(model: PlayerModel) {
-    #if E2E
-      if let launchConfigurationError {
-        phase = .failed(launchConfigurationError)
-        return
-      }
-    #endif
     guard startTask == nil else { return }
     phase = .starting
     startTask = Task { [weak self] in
@@ -360,11 +402,27 @@ final class ComputerReceiverController {
 struct ComputerReceiverView: View {
   @Environment(\.dismiss) private var dismiss
   @Bindable var model: PlayerModel
-  @State private var controller = ComputerReceiverController()
+  @State private var controller: ComputerReceiverController
   @State private var showStopConfirmation = false
   @State private var isDropTargeted = false
+  let launchConfiguration: E2EComputerReceiverLaunchConfiguration
   let chooseFromFiles: () -> Void
   let didFinish: (_ needsInbox: Bool) -> Void
+
+  init(
+    model: PlayerModel,
+    launchConfiguration: E2EComputerReceiverLaunchConfiguration,
+    chooseFromFiles: @escaping () -> Void,
+    didFinish: @escaping (_ needsInbox: Bool) -> Void
+  ) {
+    self.model = model
+    self.launchConfiguration = launchConfiguration
+    _controller = State(initialValue: ComputerReceiverController(
+      launchConfiguration: launchConfiguration
+    ))
+    self.chooseFromFiles = chooseFromFiles
+    self.didFinish = didFinish
+  }
 
   var body: some View {
     NavigationStack {
@@ -379,6 +437,12 @@ struct ComputerReceiverView: View {
           .padding(.horizontal, 24)
           .padding(.vertical, 28)
         }
+        .accessibilityIdentifier("computer-receiver-scroll")
+        .e2eScrollReadiness(
+          id: "computer-receiver-scroll-readiness",
+          containerID: "computer-receiver-scroll",
+          axis: .vertical
+        )
         .playerMiniPlayerScrollRunway()
         if isDropTargeted { dropOverlay }
       }
@@ -603,7 +667,7 @@ struct ComputerReceiverView: View {
           .foregroundStyle(PlayerColor.secondary)
       }
 
-      if MirroringTipPolicy.shouldShow {
+      if MirroringTipPolicy.shouldShow(configuration: launchConfiguration) {
         HStack(alignment: .top, spacing: 16) {
           Image(systemName: "laptopcomputer.and.iphone")
             .font(.title2)
@@ -857,20 +921,16 @@ enum MirroringTipPolicy {
     "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE",
   ]
 
-  static var shouldShow: Bool {
-    #if E2E
-      guard
-        let launchConfiguration = try? E2EComputerReceiverLaunchConfiguration.parse(
-          arguments: ProcessInfo.processInfo.arguments
-        )
-      else { return false }
-      switch launchConfiguration.mirroringTip {
+  static func shouldShow(
+    configuration: E2EComputerReceiverLaunchConfiguration,
+    region: String? = Locale.current.region?.identifier
+  ) -> Bool {
+      switch configuration.mirroringTip {
       case .show: return true
       case .hide: return false
       case .automatic: break
       }
-    #endif
-    guard let region = Locale.current.region?.identifier else { return false }
+    guard let region else { return false }
     return !europeanUnionRegions.contains(region)
   }
 }

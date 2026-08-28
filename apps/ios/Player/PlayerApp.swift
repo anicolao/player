@@ -6,6 +6,7 @@ struct PlayerApp: App {
   @State private var model: PlayerModel?
   @State private var launchErrorMessage: String?
   private let e2eLaunchConfiguration: E2ELaunchConfiguration?
+  private let receiverConfiguration: E2EComputerReceiverLaunchConfiguration
   private let launchNavigation: E2ELaunchNavigationConfiguration
   private let playbackControls: E2EPlaybackControlConfiguration
   #if E2E
@@ -21,6 +22,21 @@ struct PlayerApp: App {
         )
       } catch {
         e2eLaunchConfiguration = nil
+        receiverConfiguration = .production
+        launchNavigation = .library
+        playbackControls = .disabled
+        _e2eDynamicTypeSize = State(initialValue: .medium)
+        _model = State(initialValue: nil)
+        _launchErrorMessage = State(initialValue: error.localizedDescription)
+        return
+      }
+      do {
+        receiverConfiguration = try E2EComputerReceiverLaunchConfiguration.parse(
+          arguments: ProcessInfo.processInfo.arguments,
+          e2eLaunchConfiguration: e2eLaunchConfiguration
+        )
+      } catch {
+        receiverConfiguration = .production
         launchNavigation = .library
         playbackControls = .disabled
         _e2eDynamicTypeSize = State(initialValue: .medium)
@@ -65,6 +81,7 @@ struct PlayerApp: App {
       }
     #else
       e2eLaunchConfiguration = nil
+      receiverConfiguration = .production
       launchNavigation = .library
       playbackControls = .disabled
     #endif
@@ -89,6 +106,7 @@ struct PlayerApp: App {
         if let model {
           ContentView(
             model: model,
+            receiverConfiguration: receiverConfiguration,
             launchNavigation: launchNavigation,
             playbackControls: playbackControls
           )
