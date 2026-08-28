@@ -115,6 +115,8 @@ final class TransportControlsUITests: XCTestCase {
         "The second launch reuses the same durable store and managed media",
       ]
     )
+    let restoredNowPlaying = restored.otherElements["now-playing-screen"]
+    let layoutReadiness = restored.descendants(matching: .any)["now-playing-layout-readiness"]
     try tester.step(
       "transport-controls",
       description: "Now Playing restores the custom speed, skips, chapter scrubber, and position",
@@ -125,7 +127,7 @@ final class TransportControlsUITests: XCTestCase {
           "The complete per-book override survived termination"
         ),
         .valueEquals(
-          restored.otherElements["now-playing-screen"],
+          restoredNowPlaying,
           "player:paused:\(bookID):1:55000",
           "The configured skip result restored at the acknowledged book position"
         ),
@@ -134,7 +136,36 @@ final class TransportControlsUITests: XCTestCase {
         .exists(restored.buttons["player-skip-backward"], "The custom backward skip is available"),
         .exists(restored.buttons["player-skip-forward"], "The custom forward skip is available"),
         .exists(restored.sliders["player-position-slider"], "The chapter scrubber is available"),
-      ]
+      ],
+      captureReadiness: CaptureReadiness(
+        specification:
+          "At capture, the durable per-book transport override and exact paused position are rendered with decoded artwork, settled geometry, and no transient UI",
+        anchor: layoutReadiness
+      ) {
+        guard let layout = LayoutReadinessState(layoutReadiness.value) else { return false }
+        return layout.containerID == "now-playing-screen"
+          && restoredNowPlaying.exists
+          && restoredNowPlaying.value.map(String.init(describing:))
+            == "player:paused:\(self.bookID):1:55000"
+          && restoredTransport.exists
+          && restoredTransport.value.map(String.init(describing:))
+            == "rate=1.25:back=10:forward=30:seek=chapter:source=book"
+          && elementIsFullyVisible(
+            restoredNowPlaying.descendants(matching: .any)["embedded-cover-artwork"],
+            within: restoredNowPlaying,
+            requiresHittable: false
+          )
+          && elementIsFullyVisible(
+            restored.sliders["player-position-slider"], within: restoredNowPlaying
+          )
+          && elementIsFullyVisible(
+            restored.buttons["player-play-pause"], within: restoredNowPlaying
+          )
+          && elementIsFullyVisible(restoredTransport, within: restoredNowPlaying)
+          && !restored.keyboards.firstMatch.exists
+          && !restored.alerts.firstMatch.exists
+          && !restored.sheets.firstMatch.exists
+      }
     )
     tester.generateDocs()
   }
