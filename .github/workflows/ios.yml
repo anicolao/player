@@ -171,7 +171,7 @@ jobs:
             apps/ios/DerivedData/E2E/${{ matrix.story_1 }}/Results/Story.xcresult/
             build/app-store-listing/screenshots/
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
 
       - name: Upload second story diagnostics
         if: ${{ always() && matrix.story_2 != '' }}
@@ -187,7 +187,7 @@ jobs:
             apps/ios/DerivedData/E2E/${{ matrix.story_2 }}/Attachments/
             apps/ios/DerivedData/E2E/${{ matrix.story_2 }}/Results/Story.xcresult/
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
 
       - name: Upload third story diagnostics
         if: ${{ always() && matrix.story_3 != '' }}
@@ -203,7 +203,7 @@ jobs:
             apps/ios/DerivedData/E2E/${{ matrix.story_3 }}/Attachments/
             apps/ios/DerivedData/E2E/${{ matrix.story_3 }}/Results/Story.xcresult/
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
 
       - name: Upload shard and core diagnostics
         if: always()
@@ -216,7 +216,7 @@ jobs:
             apps/ios/DerivedData/E2EShards/${{ matrix.shard }}/Logs/
             apps/ios/DerivedData/E2EShards/${{ matrix.shard }}/Core/
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
 
   ios-tests:
     name: Core tests and exact E2E walkthroughs
