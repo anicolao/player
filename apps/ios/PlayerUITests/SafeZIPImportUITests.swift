@@ -54,7 +54,35 @@ final class SafeZIPImportUITests: XCTestCase {
           traversalApp.buttons["retry-import"],
           "An unchanged path-traversal archive is not offered a meaningless retry"
         ),
-      ]
+      ],
+      captureReadiness: zipCaptureReadiness(
+        app: traversalApp,
+        specification: "At capture, the exact terminal path-traversal failure and zero-extraction safety evidence are settled with both valid recovery actions visible and no retry or transient presentation",
+        anchor: traversalError
+      ) {
+        self.hasExactValue(
+          traversalError,
+          "zip-error:path-traversal:terminal:change-selection"
+        )
+          && self.hasExactValue(
+            traversalProbe,
+            "zip:traversal:rejected:path-traversal:entries=3:extracted=0:source-unchanged=true:outside-writes=0"
+          )
+          && elementIsFullyVisible(
+            traversalApp.staticTexts["This archive wasn’t imported"],
+            within: traversalError,
+            requiresHittable: false
+          )
+          && elementIsFullyVisible(
+            traversalApp.buttons["change-import-selection"],
+            within: traversalError
+          )
+          && elementIsFullyVisible(
+            traversalApp.buttons["cancel-import"],
+            within: traversalError
+          )
+          && !traversalApp.buttons["retry-import"].exists
+      }
     )
     traversalApp.buttons["cancel-import"].tap()
     try requireValue(
@@ -111,6 +139,8 @@ final class SafeZIPImportUITests: XCTestCase {
     )
     validApp.buttons["review-import-job-\(jobID)"].tap()
     let reviewImport = anyElement(validApp, "review-import-screen")
+    let reviewScrollReadiness = anyElement(validApp, "review-import-scroll-readiness")
+    let addToLibrary = validApp.buttons["add-import-to-library"]
     try tester.step(
       "retry-ready",
       description: "Retrying a temporary inspection failure produces one safe reviewable book",
@@ -125,8 +155,37 @@ final class SafeZIPImportUITests: XCTestCase {
           "zip:valid:ready:entries=2:extracted=2:books=1:source-unchanged=true:outside-writes=0",
           "Retry retains source integrity and never writes outside extraction staging"
         ),
-        .exists(validApp.buttons["add-import-to-library"], "The safe proposal can continue"),
-      ]
+        .exists(addToLibrary, "The safe proposal can continue"),
+      ],
+      captureReadiness: zipCaptureReadiness(
+        app: validApp,
+        specification: "At capture, the exact warning-free two-track proposal is idle at the top with placeholder artwork, review metadata, and pinned Add action fully visible",
+        anchor: reviewScrollReadiness
+      ) {
+        self.hasExactValue(
+          reviewImport,
+          "proposal:ready:1-book:2-tracks:0-warnings"
+        )
+          && self.hasExactValue(
+            validProbe,
+            "zip:valid:ready:entries=2:extracted=2:books=1:source-unchanged=true:outside-writes=0"
+          )
+          && self.hasSettledAtTop(
+            reviewScrollReadiness,
+            containerID: "review-import-scroll"
+          )
+          && elementIsFullyVisible(
+            validApp.descendants(matching: .any)["placeholder-artwork"],
+            within: reviewImport,
+            requiresHittable: false
+          )
+          && elementIsFullyVisible(
+            validApp.staticTexts["Safe Signals"],
+            within: reviewImport,
+            requiresHittable: false
+          )
+          && elementIsFullyVisible(addToLibrary, within: reviewImport)
+      }
     )
 
     tester.generateDocs()
@@ -184,6 +243,39 @@ final class SafeZIPImportUITests: XCTestCase {
       )
       throw SafeZIPImportTestError.semanticStateUnavailable
     }
+  }
+
+  private func zipCaptureReadiness(
+    app: XCUIApplication,
+    specification: String,
+    anchor: XCUIElement,
+    checkNow: @escaping @MainActor () -> Bool
+  ) -> CaptureReadiness {
+    CaptureReadiness(specification: specification, anchor: anchor) {
+      checkNow()
+        && !app.keyboards.firstMatch.exists
+        && !app.alerts.firstMatch.exists
+        && !app.sheets.firstMatch.exists
+        && !app.menus.firstMatch.exists
+    }
+  }
+
+  private func hasExactValue(_ element: XCUIElement, _ expected: String) -> Bool {
+    element.exists && element.value.map(String.init(describing:)) == expected
+  }
+
+  private func hasSettledAtTop(_ probe: XCUIElement, containerID: String) -> Bool {
+    guard let state = ScrollReadinessState(probe.value) else { return false }
+    let completionIsCorrelated = state.interactionID == 0
+      ? state.completionID == 0
+      : state.completionID == state.interactionID
+        && state.completionGeometryID == state.geometryID
+    return state.containerID == containerID
+      && state.axis == .vertical
+      && state.isIdle
+      && state.geometryReady
+      && completionIsCorrelated
+      && state.atTop
   }
 }
 

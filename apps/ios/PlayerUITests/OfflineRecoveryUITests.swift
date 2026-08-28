@@ -52,7 +52,32 @@ final class OfflineRecoveryUITests: XCTestCase {
           app.buttons["startup-recovery-diagnostics"],
           "A sanitized support report remains available before recovery"
         ),
-      ]
+      ],
+      captureReadiness: offlineCaptureReadiness(
+        app: app,
+        specification: "At capture, the exact preserved recovery state is laid out with every recovery choice fully visible and no working indicator or transient presentation",
+        anchor: recoveryProbe
+      ) {
+        self.hasExactValue(recoveryProbe, expectedRecovery)
+          && elementIsFullyVisible(
+            app.staticTexts["Your library needs recovery"],
+            within: app.windows.firstMatch,
+            requiresHittable: false
+          )
+          && elementIsFullyVisible(
+            app.buttons["startup-recovery-restore"],
+            within: app.windows.firstMatch
+          )
+          && elementIsFullyVisible(
+            app.buttons["startup-recovery-diagnostics"],
+            within: app.windows.firstMatch
+          )
+          && elementIsFullyVisible(
+            app.buttons["startup-recovery-fresh"],
+            within: app.windows.firstMatch
+          )
+          && !app.progressIndicators.firstMatch.exists
+      }
     )
 
     app.buttons["startup-recovery-restore"].tap()
@@ -76,7 +101,32 @@ final class OfflineRecoveryUITests: XCTestCase {
           app.buttons["diagnostics-export"],
           "The recovered library can create a sanitized support bundle"
         ),
-      ]
+      ],
+      captureReadiness: offlineCaptureReadiness(
+        app: app,
+        specification: "At capture, the exact reconciled offline diagnostics are fully laid out with the quarantined count and export action visible and idle",
+        anchor: diagnosticsProbe
+      ) {
+        self.hasExactValue(
+          diagnosticsProbe,
+          "diagnostics:sanitized=true:offline=true:quarantined=3"
+        )
+          && elementIsFullyVisible(
+            app.staticTexts["Core library works without Internet"],
+            within: app.windows.firstMatch,
+            requiresHittable: false
+          )
+          && elementIsFullyVisible(
+            app.staticTexts["Quarantined app-owned items"],
+            within: app.windows.firstMatch,
+            requiresHittable: false
+          )
+          && elementIsFullyVisible(
+            app.buttons["diagnostics-export"],
+            within: app.windows.firstMatch
+          )
+          && !app.progressIndicators.firstMatch.exists
+      }
     )
 
     let verify = app.buttons["e2e-verify-diagnostics"]
@@ -96,12 +146,46 @@ final class OfflineRecoveryUITests: XCTestCase {
           expectedSanitized,
           "Title, contributor, bookmark text, filename, checksum, path, secret, and listening history are absent"
         )
-      ]
+      ],
+      captureReadiness: offlineCaptureReadiness(
+        app: app,
+        specification: "At capture, the verified allowlisted diagnostics remain in the same settled offline layout with no exporter, progress, or system presentation",
+        anchor: sanitizedProbe
+      ) {
+        self.hasExactValue(sanitizedProbe, expectedSanitized)
+          && self.hasExactValue(
+            diagnosticsProbe,
+            "diagnostics:sanitized=true:offline=true:quarantined=3"
+          )
+          && elementIsFullyVisible(
+            app.buttons["diagnostics-export"],
+            within: app.windows.firstMatch
+          )
+          && !app.progressIndicators.firstMatch.exists
+      }
     )
     tester.generateDocs()
   }
 
   private func anyElement(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {
     app.descendants(matching: .any)[identifier]
+  }
+
+  private func offlineCaptureReadiness(
+    app: XCUIApplication,
+    specification: String,
+    anchor: XCUIElement,
+    checkNow: @escaping @MainActor () -> Bool
+  ) -> CaptureReadiness {
+    CaptureReadiness(specification: specification, anchor: anchor) {
+      checkNow()
+        && !app.keyboards.firstMatch.exists
+        && !app.alerts.firstMatch.exists
+        && !app.sheets.firstMatch.exists
+    }
+  }
+
+  private func hasExactValue(_ element: XCUIElement, _ expected: String) -> Bool {
+    element.exists && element.value.map(String.init(describing:)) == expected
   }
 }

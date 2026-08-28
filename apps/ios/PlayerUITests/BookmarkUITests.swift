@@ -142,7 +142,40 @@ final class BookmarkUITests: XCTestCase {
           "book=\(bookID)|asset=\(secondAssetID)|chapter=crossing|bookMs=60000|assetMs=0|label=The Crossing · 1:00|note=none",
           "The exact-boundary bookmark visibly retains its following asset and chapter context"
         ),
-      ]
+      ],
+      captureReadiness: bookmarkCaptureReadiness(
+        app: app,
+        specification: "At capture, the exact two-bookmark label ordering and durable bookmark model are settled with both complete cards unobscured and no transient editor, menu, keyboard, or alert",
+        anchor: app.descendants(matching: .any)["book-detail-scroll-readiness"]
+      ) {
+        guard
+          let value = app.descendants(matching: .any)["bookmarks-state-probe"].value as? String,
+          let state = BookmarkProbe(value)
+        else { return false }
+        return state["count"] == "2"
+          && state["order"] == "\(self.boundaryBookmarkID),\(self.secondBookmarkID)"
+          && state["transactions"] == "0"
+          && state["position"] == "15000"
+          && self.hasExactValue(
+            app.descendants(matching: .any)["bookmarks-screen"],
+            "bookmarks:query=:sort=label:count=2:order=\(self.secondBookmarkID),\(self.boundaryBookmarkID)"
+          )
+          && self.hasSettledScroll(
+            app.descendants(matching: .any)["book-detail-scroll-readiness"],
+            containerID: "book-detail-scroll"
+          )
+          && self.hasExactValue(app.buttons["bookmarks-segment"], "selected")
+          && app.buttons["bookmarks-segment"].isHittable
+          && self.bookmarkFrameIsUnobscured(
+            [secondRow, boundaryRow],
+            actions: [
+              app.buttons["jump-to-bookmark-\(self.secondBookmarkID)"],
+              app.buttons["jump-to-bookmark-\(self.boundaryBookmarkID)"],
+            ],
+            above: app.otherElements["mini-player"]
+          )
+          && app.otherElements["mini-player"].exists
+      }
     )
 
     let jump = app.buttons["jump-to-bookmark-\(boundaryBookmarkID)"]
@@ -533,6 +566,39 @@ final class BookmarkUITests: XCTestCase {
     if reset { app.launchArguments.insert("-e2e-reset", at: 1) }
     app.launchEnvironment["TZ"] = "America/Toronto"
     return app
+  }
+
+  private func bookmarkCaptureReadiness(
+    app: XCUIApplication,
+    specification: String,
+    anchor: XCUIElement,
+    checkNow: @escaping @MainActor () -> Bool
+  ) -> CaptureReadiness {
+    CaptureReadiness(specification: specification, anchor: anchor) {
+      checkNow()
+        && !app.keyboards.firstMatch.exists
+        && !app.alerts.firstMatch.exists
+        && !app.sheets.firstMatch.exists
+        && !app.menus.firstMatch.exists
+        && !app.descendants(matching: .any)["bookmark-editor"].exists
+    }
+  }
+
+  private func hasExactValue(_ element: XCUIElement, _ expected: String) -> Bool {
+    element.exists && element.value.map(String.init(describing:)) == expected
+  }
+
+  private func hasSettledScroll(_ probe: XCUIElement, containerID: String) -> Bool {
+    guard let state = ScrollReadinessState(probe.value) else { return false }
+    let completionIsCorrelated = state.interactionID == 0
+      ? state.completionID == 0
+      : state.completionID == state.interactionID
+        && state.completionGeometryID == state.geometryID
+    return state.containerID == containerID
+      && state.axis == .vertical
+      && state.isIdle
+      && state.geometryReady
+      && completionIsCorrelated
   }
 }
 

@@ -87,6 +87,12 @@ final class PositionRestoreUITests: XCTestCase {
 
     let libraryScreen = restoredApp.descendants(matching: .any)["library-screen"]
     let restoredMiniPlayer = restoredApp.otherElements["mini-player"]
+    let libraryScrollReadiness =
+      restoredApp.descendants(matching: .any)["library-root-scroll-readiness"]
+    let recentShelf = restoredApp.scrollViews["library-home-recent-shelf-scroll"]
+    let recentShelfReadiness =
+      restoredApp.descendants(matching: .any)["library-home-recent-shelf-scroll-readiness"]
+    let recentBook = restoredApp.buttons["recent-book-\(fixtureBookID)"]
     try tester.step(
       "restored-library",
       description: "Library restores the paused current book in its mini-player",
@@ -103,7 +109,40 @@ final class PositionRestoreUITests: XCTestCase {
           acknowledged: acknowledgedPausedState.positionMilliseconds,
           "The mini-player is paused at most 500 ms behind and never ahead of the acknowledged position"
         ),
-      ]
+      ],
+      captureReadiness: positionCaptureReadiness(
+        app: restoredApp,
+        specification: "At capture, the exact one-book Library is idle at the top with the recent shelf at its start, placeholder cover card visible, and paused mini-player at the acknowledged position",
+        anchor: libraryScrollReadiness
+      ) {
+        self.hasExactValue(libraryScreen, "ready:library-1-books")
+          && self.hasRestoredPosition(
+            restoredMiniPlayer,
+            acknowledged: acknowledgedPausedState.positionMilliseconds
+          )
+          && self.hasSettledScroll(
+            libraryScrollReadiness,
+            containerID: "library-root-scroll",
+            axis: .vertical,
+            atStart: true
+          )
+          && self.hasSettledScroll(
+            recentShelfReadiness,
+            containerID: "library-home-recent-shelf-scroll",
+            axis: .horizontal,
+            atStart: true
+          )
+          && elementIsFullyVisible(
+            recentBook,
+            within: recentShelf,
+            requiresHittable: false
+          )
+          && recentBook.label.contains("The Midnight Current")
+          && elementIsFullyVisible(
+            restoredMiniPlayer,
+            within: restoredApp.windows.firstMatch
+          )
+      }
     )
 
     let restoredMiniState = try requirePlaybackState(restoredMiniPlayer, status: "paused")
@@ -114,6 +153,12 @@ final class PositionRestoreUITests: XCTestCase {
     restoredMiniPlayer.tap()
 
     let restoredNowPlaying = restoredApp.otherElements["now-playing-screen"]
+    let nowPlayingLayoutReadiness =
+      restoredApp.descendants(matching: .any)["now-playing-layout-readiness"]
+    let restoredArtwork =
+      restoredNowPlaying.descendants(matching: .any)["placeholder-artwork"]
+    let restoredPlay = restoredApp.buttons["player-play-pause"]
+    let restoredSlider = restoredApp.sliders["player-position-slider"]
     dismissAppleIntelligenceNotificationIfPresent()
     try tester.step(
       "restored-now-playing",
@@ -133,7 +178,37 @@ final class PositionRestoreUITests: XCTestCase {
           restoredApp.sliders["player-position-slider"],
           "The restored position remains adjustable"
         ),
-      ]
+      ],
+      captureReadiness: positionCaptureReadiness(
+        app: restoredApp,
+        specification: "At capture, the exact safely restored paused state has settled Now Playing geometry with placeholder artwork, timeline, and Play control fully visible",
+        anchor: nowPlayingLayoutReadiness,
+        intendedSheetContentID: "now-playing-screen"
+      ) {
+        self.hasRestoredPosition(
+          restoredNowPlaying,
+          acknowledged: acknowledgedPausedState.positionMilliseconds
+        )
+          && self.hasSettledLayout(
+            nowPlayingLayoutReadiness,
+            containerID: "now-playing-screen"
+          )
+          && elementIsFullyVisible(
+            restoredArtwork,
+            within: restoredNowPlaying,
+            requiresHittable: false
+          )
+          && elementIsFullyVisible(restoredPlay, within: restoredNowPlaying)
+          && elementIsFullyVisible(restoredSlider, within: restoredNowPlaying)
+          && self.hasExactValue(
+            restoredApp.staticTexts["player-elapsed-time"],
+            "1m00s"
+          )
+          && self.hasExactValue(
+            restoredApp.staticTexts["player-remaining-time"],
+            "1m00s"
+          )
+      }
     )
 
     let restoredNowPlayingState = try requirePlaybackState(
@@ -247,6 +322,73 @@ final class PositionRestoreUITests: XCTestCase {
         && state.chapterIndex == 0
         && state.positionMilliseconds <= acknowledged
         && state.positionMilliseconds >= acknowledged - self.restoreToleranceMilliseconds
+    }
+  }
+
+  private func positionCaptureReadiness(
+    app: XCUIApplication,
+    specification: String,
+    anchor: XCUIElement,
+    intendedSheetContentID: String? = nil,
+    checkNow: @escaping @MainActor () -> Bool
+  ) -> CaptureReadiness {
+    CaptureReadiness(specification: specification, anchor: anchor) {
+      checkNow()
+        && !app.keyboards.firstMatch.exists
+        && !app.alerts.firstMatch.exists
+        && !self.hasUnintendedSheet(app, intendedContentID: intendedSheetContentID)
+    }
+  }
+
+  private func hasRestoredPosition(
+    _ element: XCUIElement,
+    acknowledged: Int
+  ) -> Bool {
+    guard let state = PlaybackSemanticState(element.value as? String) else { return false }
+    return state.status == "paused"
+      && state.bookID == fixtureBookID
+      && state.chapterIndex == 0
+      && state.positionMilliseconds <= acknowledged
+      && state.positionMilliseconds >= acknowledged - restoreToleranceMilliseconds
+  }
+
+  private func hasExactValue(_ element: XCUIElement, _ expected: String) -> Bool {
+    element.exists && element.value.map(String.init(describing:)) == expected
+  }
+
+  private func hasSettledScroll(
+    _ probe: XCUIElement,
+    containerID: String,
+    axis: E2EScrollAxis,
+    atStart: Bool
+  ) -> Bool {
+    guard let state = ScrollReadinessState(probe.value) else { return false }
+    let completionIsCorrelated = state.interactionID == 0
+      ? state.completionID == 0
+      : state.completionID == state.interactionID
+        && state.completionGeometryID == state.geometryID
+    let isAtStart = axis == .vertical ? state.atTop : state.atLeft
+    return state.containerID == containerID
+      && state.axis == axis
+      && state.isIdle
+      && state.geometryReady
+      && completionIsCorrelated
+      && (!atStart || isAtStart)
+  }
+
+  private func hasSettledLayout(_ probe: XCUIElement, containerID: String) -> Bool {
+    guard let state = LayoutReadinessState(probe.value) else { return false }
+    return state.containerID == containerID
+  }
+
+  private func hasUnintendedSheet(
+    _ app: XCUIApplication,
+    intendedContentID: String?
+  ) -> Bool {
+    app.sheets.allElementsBoundByIndex.contains { sheet in
+      guard let intendedContentID else { return true }
+      return sheet.identifier != intendedContentID
+        && !sheet.descendants(matching: .any)[intendedContentID].exists
     }
   }
 
