@@ -227,14 +227,18 @@ final class ComputerReceiverTests: XCTestCase {
 
   func testLocalHTTPFlowServesSveltePairsUploadsAndCompletes() async throws {
     let root = temporaryRoot()
-    defer { try? FileManager.default.removeItem(at: root) }
-    let capture = ReceiverImportCapture()
-    let server = ComputerReceiverServer(rootURL: root, bundle: .main)
+    let importReceived = expectation(description: "Receiver handed the completed import to the app")
+    let capture = ReceiverImportCapture(receivedSignal: importReceived)
+    let server = ComputerReceiverServer(
+      rootURL: root,
+      bundle: .main,
+      portPreference: try isolatedPortPreference()
+    )
+    registerCleanup(for: server, root: root)
     let ready = try await server.start(
       importHandler: { urls in await capture.importURLs(urls) },
       eventHandler: { _ in }
     )
-    defer { Task { await server.stop() } }
     let port = try XCTUnwrap(URL(string: ready.address)?.port)
     let baseURL = try XCTUnwrap(URL(string: "http://127.0.0.1:\(port)"))
 
@@ -283,10 +287,7 @@ final class ComputerReceiverTests: XCTestCase {
     )
     XCTAssertEqual(completeResponse.statusCode, 202)
 
-    for _ in 0..<40 {
-      if await capture.receivedData != nil { break }
-      try await Task.sleep(for: .milliseconds(25))
-    }
+    await fulfillment(of: [importReceived], timeout: 2)
     let receivedData = await capture.receivedData
     let receivedFolderName = await capture.receivedFolderName
     XCTAssertEqual(receivedData, audio)
@@ -309,7 +310,7 @@ final class ComputerReceiverTests: XCTestCase {
   func testReceiverReusesItsLastBoundPortWhenAvailable() async throws {
     let suiteName = "ComputerReceiverPortPreference-\(UUID().uuidString)"
     let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-    defer { defaults.removePersistentDomain(forName: suiteName) }
+    addTeardownBlock { defaults.removePersistentDomain(forName: suiteName) }
     let preference = ComputerReceiverPortPreference(
       userDefaults: defaults,
       key: "preferredPort",
@@ -317,16 +318,13 @@ final class ComputerReceiverTests: XCTestCase {
     )
     let firstRoot = temporaryRoot()
     let secondRoot = temporaryRoot()
-    defer {
-      try? FileManager.default.removeItem(at: firstRoot)
-      try? FileManager.default.removeItem(at: secondRoot)
-    }
 
     let firstServer = ComputerReceiverServer(
       rootURL: firstRoot,
       bundle: .main,
       portPreference: preference
     )
+    registerCleanup(for: firstServer, root: firstRoot)
     let firstReady = try await firstServer.start(
       importHandler: { _ in
         DirectImportOutcome(
@@ -346,6 +344,7 @@ final class ComputerReceiverTests: XCTestCase {
       bundle: .main,
       portPreference: preference
     )
+    registerCleanup(for: secondServer, root: secondRoot)
     let secondReady = try await secondServer.start(
       importHandler: { _ in
         DirectImportOutcome(
@@ -438,14 +437,21 @@ final class ComputerReceiverTests: XCTestCase {
 
   func testInterruptedHTTPRequestResumesFromDurableServerOffset() async throws {
     let root = temporaryRoot()
-    defer { try? FileManager.default.removeItem(at: root) }
-    let capture = ReceiverImportCapture()
-    let server = ComputerReceiverServer(rootURL: root, bundle: .main)
+    let importReceived = expectation(description: "Receiver handed the resumed import to the app")
+    let uploadPaused = expectation(description: "Receiver durably paused the interrupted upload")
+    let capture = ReceiverImportCapture(receivedSignal: importReceived)
+    let server = ComputerReceiverServer(
+      rootURL: root,
+      bundle: .main,
+      portPreference: try isolatedPortPreference()
+    )
+    registerCleanup(for: server, root: root)
     let ready = try await server.start(
       importHandler: { urls in await capture.importURLs(urls) },
-      eventHandler: { _ in }
+      eventHandler: { event in
+        if case .paused = event { uploadPaused.fulfill() }
+      }
     )
-    defer { Task { await server.stop() } }
     let port = try XCTUnwrap(URL(string: ready.address)?.port)
     let baseURL = try XCTUnwrap(URL(string: "http://127.0.0.1:\(port)"))
     let pairBody = try JSONEncoder().encode(["code": ready.pairingCode])
@@ -480,24 +486,17 @@ final class ComputerReceiverTests: XCTestCase {
       bodyPrefix: prefix
     )
 
-    var pausedStatus: StatusResponse?
-    for _ in 0..<80 {
-      let (data, response) = try await request(
-        baseURL.appending(path: "api/imports/\(created.id)"),
-        method: "GET",
-        body: nil,
-        headers: auth
-      )
-      if response.statusCode == 200 {
-        let status = try JSONDecoder().decode(StatusResponse.self, from: data)
-        if status.fileOffsets == [Int64(prefix.count)] {
-          pausedStatus = status
-          break
-        }
-      }
-      try await Task.sleep(for: .milliseconds(25))
-    }
-    XCTAssertEqual(pausedStatus?.completedBytes, Int64(prefix.count))
+    await fulfillment(of: [uploadPaused], timeout: 2)
+    let (pausedData, pausedResponse) = try await request(
+      baseURL.appending(path: "api/imports/\(created.id)"),
+      method: "GET",
+      body: nil,
+      headers: auth
+    )
+    XCTAssertEqual(pausedResponse.statusCode, 200)
+    let pausedStatus = try JSONDecoder().decode(StatusResponse.self, from: pausedData)
+    XCTAssertEqual(pausedStatus.fileOffsets, [Int64(prefix.count)])
+    XCTAssertEqual(pausedStatus.completedBytes, Int64(prefix.count))
 
     let remainder = Data(audio.dropFirst(prefix.count))
     let (_, resumedResponse) = try await request(
@@ -516,19 +515,29 @@ final class ComputerReceiverTests: XCTestCase {
       body: nil,
       headers: auth
     )
-    for _ in 0..<40 {
-      if await capture.receivedData != nil { break }
-      try await Task.sleep(for: .milliseconds(25))
-    }
+    await fulfillment(of: [importReceived], timeout: 2)
     let receivedData = await capture.receivedData
     XCTAssertEqual(receivedData, audio)
   }
 
   func testAcceptedHTTPImportSurvivesReceiverStop() async throws {
     let root = temporaryRoot()
-    defer { try? FileManager.default.removeItem(at: root) }
-    let capture = DelayedReceiverImportCapture()
-    let server = ComputerReceiverServer(rootURL: root, bundle: .main)
+    let importStarted = expectation(description: "Accepted import started")
+    let importFinished = expectation(description: "Accepted import finished after receiver stopped")
+    let capture = ControlledReceiverImportCapture(
+      startedSignal: importStarted,
+      finishedSignal: importFinished
+    )
+    let server = ComputerReceiverServer(
+      rootURL: root,
+      bundle: .main,
+      portPreference: try isolatedPortPreference()
+    )
+    addTeardownBlock {
+      await capture.releaseImport()
+      await server.stop()
+      try? FileManager.default.removeItem(at: root)
+    }
     let ready = try await server.start(
       importHandler: { urls in await capture.importURLs(urls) },
       eventHandler: { _ in }
@@ -571,15 +580,53 @@ final class ComputerReceiverTests: XCTestCase {
     )
     XCTAssertEqual(completeResponse.statusCode, 202)
 
+    await fulfillment(of: [importStarted], timeout: 2)
     await server.stop()
-    for _ in 0..<80 {
-      if await capture.finished { break }
-      try await Task.sleep(for: .milliseconds(25))
-    }
+    await capture.releaseImport()
+    await fulfillment(of: [importFinished], timeout: 2)
     let finished = await capture.finished
     let wasCancelled = await capture.wasCancelled
     XCTAssertTrue(finished)
     XCTAssertFalse(wasCancelled)
+  }
+
+  func testReceiverOwnershipLeavesNoPortDefaultsOrRootsInForwardAndReverseOrder() async throws {
+    var reusablePort: UInt16?
+
+    for identifier in [1, 2, 3, 3, 2, 1] {
+      let suiteName = "ComputerReceiverOwnership-\(identifier)-\(UUID().uuidString)"
+      let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+      let key = "preferredPort"
+      let preference = ComputerReceiverPortPreference(
+        userDefaults: defaults,
+        key: key,
+        defaultPort: reusablePort
+      )
+      let root = temporaryRoot()
+      let server = ComputerReceiverServer(
+        rootURL: root,
+        bundle: .main,
+        portPreference: preference
+      )
+      registerCleanup(for: server, root: root)
+      addTeardownBlock { defaults.removePersistentDomain(forName: suiteName) }
+
+      let ready = try await server.start(
+        importHandler: successfulReceiverImport,
+        eventHandler: { _ in }
+      )
+      let boundPort = UInt16(try XCTUnwrap(URL(string: ready.address)?.port))
+      if let reusablePort { XCTAssertEqual(boundPort, reusablePort) }
+      else { reusablePort = boundPort }
+
+      await server.stop()
+      try? FileManager.default.removeItem(at: root)
+      defaults.removePersistentDomain(forName: suiteName)
+
+      XCTAssertFalse(FileManager.default.fileExists(atPath: root.path))
+      XCTAssertNil(defaults.object(forKey: key))
+      XCTAssertTrue(defaults.persistentDomain(forName: suiteName)?.isEmpty ?? true)
+    }
   }
 
   private func temporaryRoot() -> URL {
@@ -587,6 +634,24 @@ final class ComputerReceiverTests: XCTestCase {
       path: "ComputerReceiverTests-\(UUID().uuidString)",
       directoryHint: .isDirectory
     )
+  }
+
+  private func isolatedPortPreference() throws -> ComputerReceiverPortPreference {
+    let suiteName = "ComputerReceiverPortPreference-\(UUID().uuidString)"
+    let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    addTeardownBlock { defaults.removePersistentDomain(forName: suiteName) }
+    return ComputerReceiverPortPreference(
+      userDefaults: defaults,
+      key: "preferredPort",
+      defaultPort: nil
+    )
+  }
+
+  private func registerCleanup(for server: ComputerReceiverServer, root: URL) {
+    addTeardownBlock {
+      await server.stop()
+      try? FileManager.default.removeItem(at: root)
+    }
   }
 
   private func request(
@@ -662,14 +727,20 @@ private struct StatusResponse: Decodable {
 }
 
 private actor ReceiverImportCapture {
+  private let receivedSignal: XCTestExpectation
   var receivedData: Data?
   var receivedFolderName: String?
+
+  init(receivedSignal: XCTestExpectation) {
+    self.receivedSignal = receivedSignal
+  }
 
   func importURLs(_ urls: [URL]) -> DirectImportOutcome {
     receivedFolderName = urls.first?.lastPathComponent
     if let first = urls.first?.appending(path: "Chapter 01.mp3") {
       receivedData = try? Data(contentsOf: first)
     }
+    receivedSignal.fulfill()
     return DirectImportOutcome(
       state: .completed,
       message: "HTTP Test Book added",
@@ -679,22 +750,43 @@ private actor ReceiverImportCapture {
   }
 }
 
-private actor DelayedReceiverImportCapture {
+private actor ControlledReceiverImportCapture {
+  private let startedSignal: XCTestExpectation
+  private let finishedSignal: XCTestExpectation
+  private var releaseContinuation: CheckedContinuation<Void, Never>?
+  private var isReleased = false
   var finished = false
   var wasCancelled = false
 
+  init(startedSignal: XCTestExpectation, finishedSignal: XCTestExpectation) {
+    self.startedSignal = startedSignal
+    self.finishedSignal = finishedSignal
+  }
+
   func importURLs(_ urls: [URL]) async -> DirectImportOutcome {
-    do {
-      try await Task.sleep(for: .milliseconds(250))
-    } catch is CancellationError {
-      wasCancelled = true
-    } catch {}
+    startedSignal.fulfill()
+    await waitUntilReleased()
+    wasCancelled = Task.isCancelled
     finished = true
+    finishedSignal.fulfill()
     return DirectImportOutcome(
       state: .completed,
       message: "Slow Book added",
       addedBookCount: 1,
       cleanupIncomingFiles: true
     )
+  }
+
+  func releaseImport() {
+    isReleased = true
+    releaseContinuation?.resume()
+    releaseContinuation = nil
+  }
+
+  private func waitUntilReleased() async {
+    guard !isReleased else { return }
+    await withCheckedContinuation { continuation in
+      releaseContinuation = continuation
+    }
   }
 }
