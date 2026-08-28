@@ -1294,20 +1294,47 @@ private struct CaptureGeometryObservation: Equatable, CustomStringConvertible {
 
 @MainActor
 private final class ConsecutiveScreenObservation {
-  private var previousRepresentation: Data?
+  private var previousObservation: ScreenPixelObservation?
 
   func isStable() -> Bool {
-    let representation = XCUIScreen.main.screenshot().pngRepresentation
-    defer { previousRepresentation = representation }
-    guard let previousRepresentation else {
+    guard let observation = ScreenPixelObservation(XCUIScreen.main.screenshot()) else {
+      print("Capture readiness could not decode the composited screen pixels")
+      return false
+    }
+    defer { previousObservation = observation }
+    guard let previousObservation else {
       print("Capture readiness observed the first composited screen; awaiting an identical observation")
       return false
     }
-    let stable = previousRepresentation == representation
+    let stable = previousObservation == observation
     if !stable {
       print("Capture readiness observed a compositor change; awaiting an identical observation")
     }
     return stable
+  }
+}
+
+@MainActor
+private struct ScreenPixelObservation: Equatable {
+  let width: Int
+  let height: Int
+  let bytesPerRow: Int
+  let bitsPerComponent: Int
+  let bitsPerPixel: Int
+  let bitmapInfo: UInt32
+  let pixels: Data
+
+  init?(_ screenshot: XCUIScreenshot) {
+    guard let image = screenshot.image.cgImage,
+      let providerData = image.dataProvider?.data
+    else { return nil }
+    width = image.width
+    height = image.height
+    bytesPerRow = image.bytesPerRow
+    bitsPerComponent = image.bitsPerComponent
+    bitsPerPixel = image.bitsPerPixel
+    bitmapInfo = image.bitmapInfo.rawValue
+    pixels = providerData as Data
   }
 }
 
