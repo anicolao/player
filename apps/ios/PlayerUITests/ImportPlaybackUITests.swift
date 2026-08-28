@@ -227,7 +227,7 @@ final class ImportPlaybackUITests: XCTestCase {
       ) {
         self.hasExactValue(
           bookDetail,
-          "book:ready:10000000-0000-0000-0000-000000000004:1-chapters:m4a"
+          "book:ready:10000000-0000-0000-0000-000000000004:0-chapters:m4a"
         )
           && self.isSettled(
             bookReadiness,
