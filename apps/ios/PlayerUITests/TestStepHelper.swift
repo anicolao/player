@@ -336,7 +336,7 @@ func scrollUntil(
     print("Scroll surface is not scrollable: \(scrollReadinessDiagnostic(surface))")
     return false
   }
-  if condition() && !requiresInteraction { return true }
+  if !requiresInteraction && condition() { return true }
 
   var observedInteraction = false
   var lastCorrelatedState: ScrollReadinessState?
@@ -357,6 +357,7 @@ func scrollUntil(
     guard deadline.remaining >= 0.2 else { break }
     gesture()
 
+    var settledState: ScrollReadinessState?
     let correlated = waitForScrollReadiness(
       surface,
       deadline: deadline,
@@ -375,10 +376,12 @@ func scrollUntil(
           && after.geometryID > before.geometryID
           && after.isIdle
           && condition()
-        return phaseCompletion || listGeometryFallback
+        let isCorrelated = phaseCompletion || listGeometryFallback
+        if isCorrelated { settledState = after }
+        return isCorrelated
       }
     )
-    guard correlated else {
+    guard correlated, let settledState else {
       let context = failureContext()
       print(
         "Scroll gesture lacked settled, progress-making evidence: "
@@ -388,8 +391,8 @@ func scrollUntil(
       return false
     }
     observedInteraction = true
-    lastCorrelatedState = surface.state()
-    if condition() && (!requiresInteraction || observedInteraction) { return true }
+    lastCorrelatedState = settledState
+    if condition() { return true }
   }
 
   if observedInteraction,

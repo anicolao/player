@@ -54,6 +54,13 @@ final class AccessibilityUITests: XCTestCase {
       switchValues: (highContrast: "1", reduceArtwork: "1"),
       modelValue: "high-contrast=true:reduce-artwork=true"
     )
+    XCTAssertTrue(terminateAndWait(restoredApp))
+    let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+    springboard.activate()
+    XCTAssertTrue(
+      springboard.wait(for: .runningForeground, timeout: 2),
+      "SpringBoard should own the foreground after the preference process is terminated"
+    )
   }
 
   func testCoreJourneysRemainCompleteAtLargestAccessibilityText() throws {
@@ -126,13 +133,25 @@ final class AccessibilityUITests: XCTestCase {
       }
     )
 
+    let reviewPrimaryAction = anyElement(app, "review-import-primary-action")
     let edit = revealWithUserScroll(
       { app.buttons["edit-metadata"] },
       targetID: "edit-metadata",
       in: app,
-      containerID: "review-import-scroll"
+      containerID: "review-import-scroll",
+      obscuredBelow: reviewPrimaryAction,
+      targetMode: .minimumUnobscuredHitRegion(
+        exactLabel: "Edit Details",
+        minimumHeight: 44
+      ),
+      gesture: .reviewImportActions
     )
-    edit.tap()
+    tapCenterOfUnobscuredRegion(
+      edit,
+      within: anyElement(app, "review-import-scroll"),
+      obscuredBelow: reviewPrimaryAction,
+      minimumHeight: 44
+    )
     let titleField = revealWithUserScroll(
       { app.textFields["metadata-title-input"] },
       targetID: "metadata-title-input",
@@ -141,7 +160,7 @@ final class AccessibilityUITests: XCTestCase {
       gesture: .metadataIdentity,
       captureFraming: AccessibilityCaptureFraming(
         anchor: { app.staticTexts["Identity"] },
-        allowedMinY: 90...135
+        targetMinY: 135
       )
     )
     let metadataScreen = anyElement(app, "metadata-editor-screen")
@@ -172,7 +191,7 @@ final class AccessibilityUITests: XCTestCase {
           )
           && self.isFramed(
             app.staticTexts["Identity"],
-            allowedMinY: 90...135,
+            targetMinY: 135,
             in: app
           )
           && elementIsFullyVisible(titleField, within: metadataScreen)
@@ -197,7 +216,7 @@ final class AccessibilityUITests: XCTestCase {
       gesture: .bookDetailActions,
       captureFraming: AccessibilityCaptureFraming(
         anchor: { app.staticTexts["Narrated by Imani Chen"] },
-        allowedMinY: 40...100
+        targetMinY: 100
       )
     )
     let bookDetailScreen = anyElement(app, "book-detail-screen")
@@ -228,7 +247,7 @@ final class AccessibilityUITests: XCTestCase {
           )
           && self.isFramed(
             app.staticTexts["Narrated by Imani Chen"],
-            allowedMinY: 40...100,
+            targetMinY: 100,
             in: app
           )
           && elementIsFullyVisible(playBook, within: bookDetailScreen)
@@ -237,6 +256,7 @@ final class AccessibilityUITests: XCTestCase {
 
     playBook.tap()
     let slider = app.sliders["player-position-slider"]
+    let nowPlayingScroll = app.scrollViews["now-playing-scroll"]
     let playPause = revealWithUserScroll(
       { app.buttons["player-play-pause"] },
       targetID: "player-play-pause",
@@ -244,8 +264,8 @@ final class AccessibilityUITests: XCTestCase {
       containerID: "now-playing-scroll",
       gesture: .nowPlayingTransport,
       captureFraming: AccessibilityCaptureFraming(
-        anchor: { app.staticTexts["Mara Vale"] },
-        allowedMinY: 75...110
+        anchor: { nowPlayingScroll.staticTexts["Mara Vale"] },
+        targetMinY: 110
       )
     )
     XCTAssertTrue(slider.waitForExistence(timeout: 2))
@@ -285,8 +305,8 @@ final class AccessibilityUITests: XCTestCase {
             containerID: "now-playing-scroll"
           )
           && self.isFramed(
-            app.staticTexts["Mara Vale"],
-            allowedMinY: 75...110,
+            nowPlayingScroll.staticTexts["Mara Vale"],
+            targetMinY: 110,
             in: app
           )
           && elementIsFullyVisible(slider, within: nowPlayingScreen)
@@ -302,13 +322,28 @@ final class AccessibilityUITests: XCTestCase {
       targetID: "open-up-next",
       in: app,
       containerID: "library-root-scroll",
+      targetMode: .minimumUnobscuredHitRegion(
+        exactLabel: "Up Next, 3, Embedded cover artwork, Tides Between Stars, Ari Rowan, "
+          + "Embedded cover artwork, Quiet Maps, Mina Sol, Embedded cover artwork, "
+          + "The Clockwork Orchard, Mina Sol",
+        minimumHeight: 44
+      ),
       gesture: .libraryLongForm
     )
-    upNext.tap()
+    tapCenterOfUnobscuredRegion(
+      upNext,
+      within: anyElement(app, "library-root-scroll"),
+      obscuredBelow: app.otherElements["mini-player"],
+      minimumHeight: 44
+    )
     let upNextScreen = anyElement(app, "up-next-screen")
     let upNextProbe = anyElement(app, "up-next-probe")
     let upNextScrollReadiness = anyElement(app, "up-next-scroll-readiness")
     let firstUpNextBook = app.buttons["up-next-book-\(secondBookID)"]
+    let firstUpNextCover = firstUpNextBook.descendants(matching: .other)
+      .matching(identifier: "embedded-cover-artwork").element
+    let firstUpNextTitle = firstUpNextBook.staticTexts["Tides Between Stars"]
+    let firstUpNextAuthor = firstUpNextBook.staticTexts["Ari Rowan"]
     try tester.step(
       "large-text-non-drag-ordering",
       description: "Up Next offers explicit labeled ordering controls without requiring drag",
@@ -341,11 +376,20 @@ final class AccessibilityUITests: XCTestCase {
             atTop: true
           )
           && elementIsFullyVisible(
-            firstUpNextBook,
+            firstUpNextCover,
             within: app.windows.element,
             obscuredBelow: app.otherElements["mini-player"],
             requiresHittable: false
           )
+          && elementIsFullyVisible(
+            firstUpNextTitle,
+            within: app.windows.element,
+            obscuredBelow: app.otherElements["mini-player"],
+            requiresHittable: false
+          )
+          && firstUpNextAuthor.exists
+          && firstUpNextAuthor.frame.minY
+            < app.otherElements["mini-player"].frame.minY - 4
           && firstUpNextBook.label.contains("Embedded cover artwork")
           && self.hasExactValue(
             app.otherElements["mini-player"],
@@ -370,6 +414,7 @@ final class AccessibilityUITests: XCTestCase {
       in: app,
       containerID: "settings-scroll",
       permitsGeometrySettledFallback: true,
+      targetMode: .uniqueHittableAtBottom,
       gesture: .settingsLongForm
     )
     accessibility.tap()
@@ -377,18 +422,19 @@ final class AccessibilityUITests: XCTestCase {
     tapSwitchControl(highContrast)
     let reduceArtwork = app.switches["accessibility-reduce-artwork"]
     tapSwitchControl(reduceArtwork)
-    let activeSettings = revealWithUserScroll(
-      { app.staticTexts["Active iPhone settings"] },
-      targetID: "Active iPhone settings",
+    _ = revealWithUserScroll(
+      { app.staticTexts["Reduce Motion"] },
+      targetID: "Reduce Motion",
       in: app,
       containerID: "accessibility-settings-scroll",
       permitsGeometrySettledFallback: true,
       gesture: .accessibilitySettingsLongForm,
       captureFraming: AccessibilityCaptureFraming(
         anchor: { app.staticTexts["Reduce Motion"] },
-        allowedMinY: 90...150
+        targetMinY: 150
       )
     )
+    let activeSettings = app.staticTexts["Active iPhone settings"]
     let accessibilityScreen = anyElement(app, "accessibility-settings-screen")
     let accessibilityScrollReadiness = anyElement(
       app, "accessibility-settings-scroll-readiness"
@@ -421,7 +467,7 @@ final class AccessibilityUITests: XCTestCase {
           )
           && self.isFramed(
             app.staticTexts["Reduce Motion"],
-            allowedMinY: 90...150,
+            targetMinY: 150,
             in: app
           )
           && activeSettings.exists
@@ -601,15 +647,30 @@ final class AccessibilityUITests: XCTestCase {
 
   private func isFramed(
     _ element: XCUIElement,
-    allowedMinY: ClosedRange<CGFloat>,
+    targetMinY: CGFloat,
     in app: XCUIApplication
   ) -> Bool {
+    guard let screenY = anchorScreenY(element, in: app) else { return false }
+    return abs(screenY - targetMinY) <= 1
+  }
+
+  private func anchorScreenY(
+    _ element: XCUIElement,
+    in app: XCUIApplication
+  ) -> CGFloat? {
     let window = app.windows.element
-    guard element.exists, window.exists, !element.frame.isEmpty else {
-      return false
-    }
-    let screenY = element.frame.minY - window.frame.minY
-    return allowedMinY.contains(screenY)
+    guard window.exists else { return nil }
+    return anchorScreenY(element, windowMinY: window.frame.minY)
+  }
+
+  private func anchorScreenY(
+    _ element: XCUIElement,
+    windowMinY: CGFloat
+  ) -> CGFloat? {
+    guard element.exists else { return nil }
+    let frame = element.frame
+    guard !frame.isEmpty else { return nil }
+    return frame.minY - windowMinY
   }
 
   private func hasUnintendedSheet(
@@ -638,6 +699,7 @@ final class AccessibilityUITests: XCTestCase {
       in: app,
       containerID: "settings-scroll",
       permitsGeometrySettledFallback: true,
+      targetMode: .uniqueHittableAtBottom,
       gesture: .settingsLongForm,
       deadline: accessibilityDeadline
     )
@@ -697,6 +759,8 @@ final class AccessibilityUITests: XCTestCase {
     in app: XCUIApplication,
     containerID: String,
     permitsGeometrySettledFallback: Bool = false,
+    obscuredBelow explicitObstruction: XCUIElement? = nil,
+    targetMode: AccessibilityRevealTargetMode = .fullyVisible,
     gesture: AccessibilityScrollGesture = .standard,
     captureFraming: AccessibilityCaptureFraming? = nil,
     deadline: EventDeadline = EventDeadline()
@@ -712,21 +776,67 @@ final class AccessibilityUITests: XCTestCase {
       permitsGeometrySettledFallback: permitsGeometrySettledFallback
     )
     let miniPlayer = app.otherElements["mini-player"]
+    let obstruction = explicitObstruction
+      ?? (miniPlayer.exists ? miniPlayer : nil)
     let targetIsVisible = {
-      let element = target()
-      return elementIsFullyVisible(
-        element,
-        within: container,
-        obscuredBelow: miniPlayer.exists ? miniPlayer : nil
-      )
+      switch targetMode {
+      case .uniqueHittableAtBottom:
+        let aliases = app.buttons.matching(identifier: targetID).allElementsBoundByIndex
+        guard let reference = aliases.first else { return false }
+        let physicalAliasesMatch = aliases.allSatisfy {
+          $0.identifier == targetID
+            && $0.label == reference.label
+            && $0.frame == reference.frame
+        }
+        let interactable = aliases.filter {
+          $0.exists
+            && $0.isEnabled
+            && $0.isHittable
+            && app.windows.element.frame.intersects($0.frame)
+        }
+        return physicalAliasesMatch && !interactable.isEmpty
+      case .minimumUnobscuredHitRegion(let exactLabel, let minimumHeight):
+        let element = target()
+        guard element.exists,
+          element.identifier == targetID,
+          element.label == exactLabel,
+          element.isEnabled,
+          element.isHittable
+        else { return false }
+        return self.unobscuredRegion(
+          of: element,
+          within: container,
+          obscuredBelow: obstruction
+        ).height >= minimumHeight
+      case .fullyVisible:
+        let element = target()
+        return elementIsFullyVisible(
+          element,
+          within: container,
+          obscuredBelow: obstruction
+        )
+      }
     }
     let failureContext = {
       let element = target()
+      let aliasDescription: String
+      if case .uniqueHittableAtBottom = targetMode {
+        let aliases = app.buttons.matching(identifier: targetID).allElementsBoundByIndex
+        aliasDescription = ", aliases=" + aliases.map {
+          "{id=\($0.identifier),label=\($0.label),frame=\($0.frame),"
+            + "enabled=\($0.isEnabled),hittable=\($0.isHittable)}"
+        }.joined(separator: ",")
+      } else {
+        aliasDescription = ""
+      }
       guard element.exists else {
-        return "target=\(targetID):missing, container=\(container.frame)"
+        return "target=\(targetID):missing, container=\(container.frame), "
+          + "readiness=\(String(describing: readiness.value))\(aliasDescription)"
       }
       return "target=\(targetID):\(element.frame), "
-        + "target-hittable=\(element.isHittable), container=\(container.frame)"
+        + "target-hittable=\(element.isHittable), container=\(container.frame), "
+        + "obstruction=\(String(describing: obstruction?.frame)), "
+        + "readiness=\(String(describing: readiness.value))\(aliasDescription)"
     }
     let revealed: Bool
     if permitsGeometrySettledFallback {
@@ -734,9 +844,14 @@ final class AccessibilityUITests: XCTestCase {
         targetIsVisible,
         on: surface,
         deadline: deadline,
+        requiresTerminalEndpoint: targetMode.requiresTerminalEndpoint,
         failureContext: failureContext
       ) {
-        performAccessibilityScrollGesture(gesture, in: container)
+        performAccessibilityScrollGesture(
+          gesture,
+          in: container,
+          obscuredBelow: obstruction
+        )
       }
     } else {
       revealed = scrollUntil(
@@ -748,23 +863,30 @@ final class AccessibilityUITests: XCTestCase {
         terminalEndpoint: \.atBottom,
         failureContext: failureContext
       ) {
-        performAccessibilityScrollGesture(gesture, in: container)
+        performAccessibilityScrollGesture(
+          gesture,
+          in: container,
+          obscuredBelow: obstruction
+        )
       }
     }
     XCTAssertTrue(
       revealed,
-      "Expected \(targetID) to become fully visible through settled user scrolling"
+      targetMode.requiresTerminalEndpoint
+        ? "Expected \(targetID) to become uniquely interactable at the settled endpoint"
+        : "Expected \(targetID) to become safely interactable through settled user scrolling"
     )
     if let captureFraming {
+      let framingDeadline = EventDeadline()
       XCTAssertTrue(
         settleCaptureFraming(
           captureFraming,
           on: surface,
           in: app,
-          deadline: deadline
+          deadline: framingDeadline
         ),
         "Expected \(captureFraming.anchor().identifier) to settle at screen y "
-          + "\(captureFraming.allowedMinY)"
+          + "\(captureFraming.targetMinY) ± 1"
       )
     }
     return target()
@@ -772,7 +894,51 @@ final class AccessibilityUITests: XCTestCase {
 
   private struct AccessibilityCaptureFraming {
     let anchor: @MainActor () -> XCUIElement
-    let allowedMinY: ClosedRange<CGFloat>
+    let targetMinY: CGFloat
+  }
+
+  private enum AccessibilityRevealTargetMode {
+    case fullyVisible
+    case uniqueHittableAtBottom
+    case minimumUnobscuredHitRegion(exactLabel: String, minimumHeight: CGFloat)
+
+    var requiresTerminalEndpoint: Bool {
+      if case .uniqueHittableAtBottom = self { return true }
+      return false
+    }
+  }
+
+  private func unobscuredRegion(
+    of element: XCUIElement,
+    within container: XCUIElement,
+    obscuredBelow obstruction: XCUIElement?
+  ) -> CGRect {
+    var containerFrame = container.frame
+    if let obstruction, obstruction.exists {
+      containerFrame.size.height = max(0, min(containerFrame.maxY, obstruction.frame.minY)
+        - containerFrame.minY)
+    }
+    return element.frame.intersection(containerFrame)
+  }
+
+  private func tapCenterOfUnobscuredRegion(
+    _ element: XCUIElement,
+    within container: XCUIElement,
+    obscuredBelow obstruction: XCUIElement?,
+    minimumHeight: CGFloat
+  ) {
+    let region = unobscuredRegion(
+      of: element,
+      within: container,
+      obscuredBelow: obstruction?.exists == true ? obstruction : nil
+    )
+    XCTAssertGreaterThanOrEqual(region.height, minimumHeight)
+    guard element.frame.width > 0, element.frame.height > 0, region.height >= minimumHeight
+    else { return }
+    element.coordinate(withNormalizedOffset: CGVector(
+      dx: (region.midX - element.frame.minX) / element.frame.width,
+      dy: (region.midY - element.frame.minY) / element.frame.height
+    )).tap()
   }
 
   private func settleCaptureFraming(
@@ -781,6 +947,9 @@ final class AccessibilityUITests: XCTestCase {
     in app: XCUIApplication,
     deadline: EventDeadline
   ) -> Bool {
+    let window = app.windows.element
+    guard window.exists else { return false }
+    let windowMinY = window.frame.minY
     guard waitForScrollReadiness(
       surface,
       deadline: deadline,
@@ -789,13 +958,14 @@ final class AccessibilityUITests: XCTestCase {
 
     while deadline.remaining > 0 {
       guard let before = surface.state(), before.isIdle else { return false }
-      if isFramed(framing.anchor(), allowedMinY: framing.allowedMinY, in: app) {
-        return true
-      }
-
       let anchor = framing.anchor()
+      guard let screenY = anchorScreenY(anchor, windowMinY: windowMinY) else {
+        return false
+      }
+      let displacement = screenY - framing.targetMinY
+      if abs(displacement) <= 1 { return true }
       let direction: ScrollProbeDirection
-      if !anchor.exists || anchor.frame.minY > framing.allowedMinY.upperBound {
+      if displacement > 0 {
         guard !before.atBottom else { return false }
         direction = .towardEnd
       } else {
@@ -803,7 +973,8 @@ final class AccessibilityUITests: XCTestCase {
         direction = .towardStart
       }
       guard deadline.remaining >= 0.2 else { return false }
-      performAccessibilityFramingGesture(direction, in: surface.container)
+      performAccessibilityFramingGesture(displacement: displacement, in: surface.container)
+      var settledState: ScrollReadinessState?
       let settled = waitForScrollReadiness(
         surface,
         deadline: deadline,
@@ -815,29 +986,56 @@ final class AccessibilityUITests: XCTestCase {
             && after.completionID > before.completionID
             && after.completionGeometryID == after.geometryID
           let listGeometryFallback = surface.permitsGeometrySettledFallback
-            && self.isFramed(framing.anchor(), allowedMinY: framing.allowedMinY, in: app)
-          return after.isIdle && after.geometryID > before.geometryID
+          let isSettled = after.isIdle && after.geometryID > before.geometryID
             && progressed && (phaseCompletion || listGeometryFallback)
+          if isSettled { settledState = after }
+          return isSettled
         }
       )
-      guard settled else { return false }
+      guard settled, settledState != nil else { return false }
+      if let screenY = anchorScreenY(framing.anchor(), windowMinY: windowMinY),
+        abs(screenY - framing.targetMinY) <= 1
+      {
+        return true
+      }
     }
+    print(
+      "Capture framing deadline expired: target=\(framing.targetMinY), "
+        + "actual=\(String(describing: anchorScreenY(framing.anchor(), in: app))), "
+        + "container=\(surface.containerID), probe=\(String(describing: surface.readiness.value))"
+    )
     return false
   }
 
   private func performAccessibilityFramingGesture(
-    _ direction: ScrollProbeDirection,
+    displacement: CGFloat,
     in element: XCUIElement
   ) {
-    let startY: CGFloat = direction == .towardEnd ? 0.56 : 0.44
-    let endY: CGFloat = direction == .towardEnd ? 0.47 : 0.53
+    let containerHeight = element.frame.height
+    guard containerHeight > 0 else { return }
+    let startY: CGFloat = 0.5
+    // UIScrollView consumes the first ten points while recognizing a pan. Include
+    // that hysteresis in the finger motion so the content moves by the measured
+    // anchor-to-target displacement without a momentum-producing release.
+    let panHysteresis: CGFloat = displacement > 0 ? 10 : -10
+    let fingerDisplacement = displacement + panHysteresis
+    let endY = max(0.1, min(0.9, startY - fingerDisplacement / containerHeight))
+    let distance = abs(fingerDisplacement)
+    let velocity: XCUIGestureVelocity
+    if distance < 50 {
+      velocity = 50
+    } else if distance < 100 {
+      velocity = 100
+    } else {
+      velocity = 300
+    }
     element.coordinate(withNormalizedOffset: CGVector(dx: 0.82, dy: startY))
       .press(
         forDuration: 0.01,
         thenDragTo: element.coordinate(
           withNormalizedOffset: CGVector(dx: 0.82, dy: endY)
         ),
-        withVelocity: 300,
+        withVelocity: velocity,
         thenHoldForDuration: 0.1
       )
   }
@@ -846,6 +1044,7 @@ final class AccessibilityUITests: XCTestCase {
     _ condition: @escaping () -> Bool,
     on surface: ScrollSurface,
     deadline: EventDeadline,
+    requiresTerminalEndpoint: Bool = false,
     failureContext: () -> String,
     gesture: () -> Void
   ) -> Bool {
@@ -859,27 +1058,7 @@ final class AccessibilityUITests: XCTestCase {
       return false
     }
 
-    if condition(),
-      let stable = surface.state(),
-      stable.isIdle,
-      stable.geometryReady,
-      stable.interactionID == before.interactionID,
-      stable.completionID == before.completionID,
-      stable.geometryID == before.geometryID,
-      stable.completionGeometryID == before.completionGeometryID,
-      abs(stable.offset - before.offset) <= 0.5,
-      abs(stable.minimum - before.minimum) <= 0.5,
-      abs(stable.maximum - before.maximum) <= 0.5,
-      abs(stable.contentLength - before.contentLength) <= 0.5,
-      abs(stable.containerLength - before.containerLength) <= 0.5,
-      stable.atLeft == before.atLeft,
-      stable.atRight == before.atRight,
-      stable.atTop == before.atTop,
-      stable.atBottom == before.atBottom,
-      condition()
-    {
-      return true
-    }
+    if !requiresTerminalEndpoint && condition() { return true }
 
     var current = before
     while deadline.remaining >= 0.2, current.hasScrollableRange, !current.atBottom {
@@ -887,24 +1066,19 @@ final class AccessibilityUITests: XCTestCase {
       gesture()
       let remainingRange = previous.maximum - previous.offset
       let requiredProgress = min(previous.containerLength * 0.25, remainingRange)
+      var settledState: ScrollReadinessState?
       let observedSettledProgress = waitForScrollReadiness(
         surface,
         deadline: deadline
       ) { after in
-        after.isIdle
+        let settled = after.isIdle
           && after.geometryReady
           && after.geometryID > previous.geometryID
           && after.offset >= previous.offset + max(0.5, requiredProgress - 1)
+        if settled { settledState = after }
+        return settled
       }
-      guard observedSettledProgress,
-        let after = surface.state(),
-        after.isIdle,
-        after.geometryID > previous.geometryID,
-        after.offset >= previous.offset + max(0.5, requiredProgress - 1),
-        let stable = surface.state(),
-        stable.isIdle,
-        stable.geometryID == after.geometryID,
-        abs(stable.offset - after.offset) <= 0.5
+      guard observedSettledProgress, let settledState
       else {
         print(
           "List scroll lacked stable progress-making geometry: "
@@ -913,8 +1087,8 @@ final class AccessibilityUITests: XCTestCase {
         )
         return false
       }
-      if condition(), condition() { return true }
-      current = stable
+      if condition() && (!requiresTerminalEndpoint || settledState.atBottom) { return true }
+      current = settledState
     }
 
     print("List scroll reached its endpoint before revealing the target: \(failureContext())")
@@ -928,12 +1102,14 @@ final class AccessibilityUITests: XCTestCase {
     case nowPlayingTransport
     case settingsLongForm
     case accessibilitySettingsLongForm
+    case reviewImportActions
     case libraryLongForm
   }
 
   private func performAccessibilityScrollGesture(
     _ gesture: AccessibilityScrollGesture,
-    in element: XCUIElement
+    in element: XCUIElement,
+    obscuredBelow obstruction: XCUIElement?
   ) {
     switch gesture {
     case .standard:
@@ -949,14 +1125,39 @@ final class AccessibilityUITests: XCTestCase {
       directUpwardDrag(in: element, fromY: 0.86, toY: 0.11, velocity: 500)
     case .settingsLongForm:
       // This target sits near the bottom of the Form; finish at the endpoint so it clears chrome.
-      element.swipeUp(velocity: .fast)
+      directUpwardDrag(in: element, fromY: 0.78, toY: 0.22, velocity: 4_000)
     case .accessibilitySettingsLongForm:
       // Underlap the Active iPhone heading while framing Reduce Motion below navigation.
       element.swipeUp(velocity: 2_000)
+    case .reviewImportActions:
+      obstructionAwareUpwardDrag(in: element, obscuredBelow: obstruction)
     case .libraryLongForm:
-      // This velocity targets the measured 778...985-point Up Next clearance window.
-      element.swipeUp(velocity: 1_750)
+      // Keep the touch above the live mini-player instead of guessing where its overlay ends.
+      // scrollUntil observes each bounded move and only continues after correlated progress.
+      obstructionAwareUpwardDrag(in: element, obscuredBelow: obstruction)
     }
+  }
+
+  private func obstructionAwareUpwardDrag(
+    in element: XCUIElement,
+    obscuredBelow obstruction: XCUIElement?
+  ) {
+    guard let obstruction, obstruction.exists, element.frame.height > 0 else {
+      XCTFail("Expected a scroll surface and its pinned obstruction before scrolling")
+      return
+    }
+    let safeStartScreenY = min(element.frame.maxY - 1, obstruction.frame.minY - 12)
+    let safeStartY = (safeStartScreenY - element.frame.minY) / element.frame.height
+    guard safeStartY > 0.05 else {
+      XCTFail("The pinned obstruction left no safe vertical gesture region")
+      return
+    }
+    directUpwardDrag(
+      in: element,
+      fromY: safeStartY,
+      toY: 0.05,
+      velocity: 1_750
+    )
   }
 
   private func directUpwardDrag(
