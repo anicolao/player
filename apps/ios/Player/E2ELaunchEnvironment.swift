@@ -709,7 +709,10 @@ extension PlayerEnvironment {
       let ids = (firstAvailableSuffix...(firstAvailableSuffix + 39)).map {
         UUID(uuidString: String(format: "53000000-0000-0000-0000-%012d", $0))!
       }
-      let clock = E2EBookmarkClock(value: date)
+      let clock = try E2EBookmarkClock(
+        value: date,
+        stateURL: root.appending(path: "BookmarkClock.json")
+      )
       E2EBookmarkBridge.shared.configure(clock: clock)
       return PlayerEnvironment(
         persistence: E2ESeededLibraryStore(

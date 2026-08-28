@@ -36,7 +36,8 @@ final class BookmarkUITests: XCTestCase {
       app.descendants(matching: .any)["bookmark-saved"],
       "bookmark=\(boundaryBookmarkID):book=\(bookID):position=60000"
     )
-    var probe = try requireProbe(app, count: 1, position: 60_000)
+    var probe = try requireProbe(app, count: 1, position: 60_000, clock: 1_700_030_000)
+    XCTAssertEqual(probe["clock"], "1700030000")
     XCTAssertEqual(probe["order"], boundaryBookmarkID)
     XCTAssertEqual(
       probe["items"],
@@ -47,14 +48,15 @@ final class BookmarkUITests: XCTestCase {
     let prepareSecond = app.buttons["e2e-bookmark-second-position"]
     XCTAssertTrue(prepareSecond.waitForExistence(timeout: 2))
     prepareSecond.tap()
-    probe = try requireProbe(app, count: 1, position: 15_000)
+    probe = try requireProbe(app, count: 1, position: 15_000, clock: 1_700_030_060)
+    XCTAssertEqual(probe["clock"], "1700030060")
     XCTAssertEqual(probe.journal, "1:pause@60000,2:seek@15000")
     add.tap()
     try requireValue(
       app.descendants(matching: .any)["bookmark-saved"],
       "bookmark=\(secondBookmarkID):book=\(bookID):position=15000"
     )
-    probe = try requireProbe(app, count: 2, position: 15_000)
+    probe = try requireProbe(app, count: 2, position: 15_000, clock: 1_700_030_060)
     XCTAssertEqual(probe["order"], "\(boundaryBookmarkID),\(secondBookmarkID)")
 
     let done = app.buttons["Done"]
@@ -80,7 +82,7 @@ final class BookmarkUITests: XCTestCase {
     )
 
     try editSecondBookmark(app)
-    probe = try requireProbe(app, count: 2, position: 15_000)
+    probe = try requireProbe(app, count: 2, position: 15_000, clock: 1_700_030_060)
     XCTAssertEqual(
       probe["items"],
       "\(boundaryBookmarkID)~60000~\(secondAssetID)~0~crossing~The Crossing · 1:00~none~1700030000~1700030000;\(secondBookmarkID)~15000~\(firstAssetID)~15000~opening~Écho marker~Return to the café clue~1700030060~1700030060"
@@ -149,18 +151,21 @@ final class BookmarkUITests: XCTestCase {
       app.descendants(matching: .any)["bookmark-jump-confirmation"],
       "bookmark=\(boundaryBookmarkID):position=60000"
     )
-    probe = try requireProbe(app, count: 2, position: 60_000)
+    probe = try requireProbe(app, count: 2, position: 60_000, clock: 1_700_030_060)
     XCTAssertEqual(probe.journal, "1:pause@60000,2:seek@15000,3:seek@60000")
 
     let delete = app.buttons["delete-bookmark-\(boundaryBookmarkID)"]
     XCTAssertTrue(delete.waitForExistence(timeout: 2))
     delete.tap()
-    probe = try requireProbe(app, count: 1, transactions: 1, position: 60_000)
+    probe = try requireProbe(
+      app, count: 1, transactions: 1, position: 60_000, clock: 1_700_030_060
+    )
     XCTAssertEqual(probe["order"], secondBookmarkID)
     XCTAssertEqual(
       probe["deletions"],
-      "\(deletionID)~\(boundaryBookmarkID)~0~deleted~none"
+      "\(deletionID)~\(boundaryBookmarkID)~0~deleted~1700030060~none"
     )
+    XCTAssertEqual(probe["clock"], "1700030060")
     try requireValue(
       app.buttons["undo-delete-bookmark"],
       "transaction=\(deletionID):bookmark=\(boundaryBookmarkID)"
@@ -170,16 +175,22 @@ final class BookmarkUITests: XCTestCase {
     let restored = makeApplication(reset: false)
     restored.launch()
     try openBookmarkDetail(restored)
+    probe = try requireProbe(
+      restored, count: 1, transactions: 1, position: 60_000, clock: 1_700_030_060
+    )
+    XCTAssertEqual(probe["clock"], "1700030060")
     try requireValue(
       restored.buttons["undo-delete-bookmark"],
       "transaction=\(deletionID):bookmark=\(boundaryBookmarkID)"
     )
     restored.buttons["undo-delete-bookmark"].tap()
-    probe = try requireProbe(restored, count: 2, transactions: 1, position: 60_000)
+    probe = try requireProbe(
+      restored, count: 2, transactions: 1, position: 60_000, clock: 1_700_030_060
+    )
     XCTAssertEqual(probe["order"], "\(boundaryBookmarkID),\(secondBookmarkID)")
     XCTAssertEqual(
       probe["deletions"],
-      "\(deletionID)~\(boundaryBookmarkID)~0~undone~set"
+      "\(deletionID)~\(boundaryBookmarkID)~0~undone~1700030060~1700030060"
     )
     XCTAssertFalse(restored.buttons["undo-delete-bookmark"].exists)
 
@@ -469,13 +480,15 @@ final class BookmarkUITests: XCTestCase {
     _ app: XCUIApplication,
     count: Int,
     transactions: Int? = nil,
-    position: Int64
+    position: Int64,
+    clock: Int64
   ) throws -> BookmarkProbe {
     let element = app.descendants(matching: .any)["bookmarks-state-probe"]
     func matches(_ probe: BookmarkProbe) -> Bool {
       probe["count"] == String(count)
         && (transactions == nil || probe["transactions"] == String(transactions!))
         && probe["position"] == String(position)
+        && probe["clock"] == String(clock)
     }
     let predicate = NSPredicate { object, _ in
       guard let element = object as? XCUIElement,
@@ -492,7 +505,7 @@ final class BookmarkUITests: XCTestCase {
     {
       return probe
     }
-    XCTFail("Bookmark probe did not reach count=\(count), transactions=\(transactions.map(String.init) ?? "any"), position=\(position); actual=\(String(describing: element.value))")
+    XCTFail("Bookmark probe did not reach count=\(count), transactions=\(transactions.map(String.init) ?? "any"), position=\(position), clock=\(clock); actual=\(String(describing: element.value))")
     throw BookmarkUITestError.probeUnavailable
   }
 
@@ -525,7 +538,8 @@ final class BookmarkUITests: XCTestCase {
 
 private struct BookmarkProbe {
   private static let keys: Set<String> = [
-    "schema", "count", "order", "items", "transactions", "deletions", "position", "journal",
+    "schema", "count", "order", "items", "transactions", "deletions", "clock", "position",
+    "journal",
   ]
   private static let deletionStatuses: Set<String> = ["deleted", "undone"]
   private static let journalReasons: Set<String> = [
@@ -554,6 +568,7 @@ private struct BookmarkProbe {
       let order = parsed["order"], let items = parsed["items"],
       let transactionCount = Self.nonnegativeInt(parsed["transactions"]),
       let deletions = parsed["deletions"],
+      Self.nonnegativeInt64(parsed["clock"]) != nil,
       Self.nonnegativeInt64(parsed["position"]) != nil,
       let journal = parsed["journal"], Self.validJournal(journal)
     else { return nil }
@@ -606,11 +621,12 @@ private struct BookmarkProbe {
     var transactionIDs: Set<String> = []
     for record in records {
       let values = record.split(separator: "~", omittingEmptySubsequences: false).map(String.init)
-      guard values.count == 5, uuid(values[0]), transactionIDs.insert(values[0]).inserted,
+      guard values.count == 6, uuid(values[0]), transactionIDs.insert(values[0]).inserted,
         uuid(values[1]), nonnegativeInt(values[2]) != nil,
         deletionStatuses.contains(values[3]),
-        (values[3] == "deleted" && values[4] == "none")
-          || (values[3] == "undone" && values[4] == "set")
+        nonnegativeInt64(values[4]) != nil,
+        (values[3] == "deleted" && values[5] == "none")
+          || (values[3] == "undone" && nonnegativeInt64(values[5]) != nil)
       else { return false }
     }
     return true

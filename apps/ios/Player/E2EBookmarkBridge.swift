@@ -1,11 +1,38 @@
 #if E2E
+import Observation
 import SwiftUI
 
 final class E2EBookmarkClock: PlayerClock, @unchecked Sendable {
+  private struct State: Codable {
+    let schemaVersion: Int
+    let secondsSince1970: TimeInterval
+  }
+
+  private static let schemaVersion = 1
+  private static let stateKeys: Set<String> = ["schemaVersion", "secondsSince1970"]
+
   private let lock = NSLock()
+  private let initialValue: Date
+  private let stateURL: URL
   private var value: Date
 
-  init(value: Date) { self.value = value }
+  init(value initialValue: Date, stateURL: URL) throws {
+    guard initialValue.timeIntervalSince1970.isFinite else {
+      throw E2EBookmarkClockError.invalidInitialValue
+    }
+    self.initialValue = initialValue
+    self.stateURL = stateURL
+    if FileManager.default.fileExists(atPath: stateURL.path) {
+      value = try Self.load(from: stateURL, noEarlierThan: initialValue)
+    } else {
+      try FileManager.default.createDirectory(
+        at: stateURL.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+      )
+      try Self.persist(initialValue, to: stateURL)
+      value = initialValue
+    }
+  }
 
   func now() -> Date {
     lock.lock()
@@ -13,27 +40,92 @@ final class E2EBookmarkClock: PlayerClock, @unchecked Sendable {
     return value
   }
 
-  func advance(by seconds: TimeInterval) {
-    lock.lock()
-    value = value.addingTimeInterval(seconds)
-    lock.unlock()
+  func advance(by seconds: TimeInterval) throws {
+    try lock.withLock {
+      guard seconds.isFinite, seconds >= 0 else {
+        throw E2EBookmarkClockError.invalidAdvance
+      }
+      let advanced = value.addingTimeInterval(seconds)
+      guard advanced.timeIntervalSince1970.isFinite, advanced >= initialValue else {
+        throw E2EBookmarkClockError.invalidAdvance
+      }
+      try Self.persist(advanced, to: stateURL)
+      value = advanced
+    }
+  }
+
+  private static func load(from stateURL: URL, noEarlierThan initialValue: Date) throws -> Date {
+    let data = try Data(contentsOf: stateURL)
+    let object: [String: Any]
+    do {
+      guard let decoded = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        throw E2EBookmarkClockError.invalidState
+      }
+      object = decoded
+    } catch {
+      throw E2EBookmarkClockError.invalidState
+    }
+    guard Set(object.keys) == stateKeys else { throw E2EBookmarkClockError.invalidState }
+    let state: State
+    do {
+      state = try JSONDecoder().decode(State.self, from: data)
+    } catch {
+      throw E2EBookmarkClockError.invalidState
+    }
+    guard state.schemaVersion == schemaVersion,
+      state.secondsSince1970.isFinite,
+      state.secondsSince1970 >= initialValue.timeIntervalSince1970
+    else {
+      throw E2EBookmarkClockError.invalidState
+    }
+    return Date(timeIntervalSince1970: state.secondsSince1970)
+  }
+
+  private static func persist(_ value: Date, to stateURL: URL) throws {
+    let state = State(
+      schemaVersion: schemaVersion,
+      secondsSince1970: value.timeIntervalSince1970
+    )
+    try JSONEncoder().encode(state).write(to: stateURL, options: .atomic)
   }
 }
 
+enum E2EBookmarkClockError: Error, Equatable {
+  case invalidInitialValue
+  case invalidState
+  case invalidAdvance
+}
+
 @MainActor
+@Observable
 final class E2EBookmarkBridge {
   static let shared = E2EBookmarkBridge()
 
-  private(set) var clock: E2EBookmarkClock?
+  @ObservationIgnored private var clock: E2EBookmarkClock?
+  private(set) var clockEpochSeconds: Int64?
+  private(set) var clockAdvanceFailed = false
 
   var isConfigured: Bool { clock != nil }
 
   func configure(clock: E2EBookmarkClock) {
     self.clock = clock
+    clockEpochSeconds = Int64(clock.now().timeIntervalSince1970)
+    clockAdvanceFailed = false
   }
 
-  func advanceClock() {
-    clock?.advance(by: 60)
+  func advanceClock() -> Bool {
+    guard let clock else {
+      clockAdvanceFailed = true
+      return false
+    }
+    do {
+      try clock.advance(by: 60)
+      clockEpochSeconds = Int64(clock.now().timeIntervalSince1970)
+      return true
+    } catch {
+      clockAdvanceFailed = true
+      return false
+    }
   }
 }
 
@@ -49,8 +141,9 @@ struct E2EBookmarkControlSurface: View {
         Button {
           Task {
             await model.seek(to: 15, context: .wholeBook)
-            E2EBookmarkBridge.shared.advanceClock()
-            positionControlVisible = false
+            if E2EBookmarkBridge.shared.advanceClock() {
+              positionControlVisible = false
+            }
           }
         } label: {
           Color.white.opacity(0.001)
@@ -98,9 +191,18 @@ struct E2EBookmarkStateProbe: View {
         transaction.bookmark.id.uuidString.lowercased(),
         String(transaction.originalIndex),
         transaction.status.rawValue,
-        transaction.undoneAt == nil ? "none" : "set",
+        String(Int(transaction.deletedAt.timeIntervalSince1970)),
+        transaction.undoneAt.map { String(Int($0.timeIntervalSince1970)) } ?? "none",
       ].joined(separator: "~")
     }.joined(separator: ";")
+    let clockValue: String
+    if E2EBookmarkBridge.shared.clockAdvanceFailed {
+      clockValue = "error"
+    } else if let epoch = E2EBookmarkBridge.shared.clockEpochSeconds {
+      clockValue = String(epoch)
+    } else {
+      clockValue = "unconfigured"
+    }
     let position = model.library.playbackPosition?.positionMilliseconds ?? 0
     let journal = model.library.positionJournal.map {
       "\($0.sequence):\($0.reason.rawValue)@\($0.positionMilliseconds)"
@@ -113,6 +215,7 @@ struct E2EBookmarkStateProbe: View {
       "items=\(bookmarkValues.isEmpty ? "none" : bookmarkValues)",
       "transactions=\(transactions.count)",
       "deletions=\(transactionValues.isEmpty ? "none" : transactionValues)",
+      "clock=\(clockValue)",
       "position=\(position)",
       "journal=\(journal)",
     ].joined(separator: "|")

@@ -115,6 +115,84 @@
     }
   }
 
+  final class E2EBookmarkClockTests: XCTestCase {
+    private let initialValue = Date(timeIntervalSince1970: 1_700_030_000)
+
+    func testMissingClockStateIsSeededAndAdvanceSurvivesReconstruction() throws {
+      let root = temporaryDirectory("reconstruction")
+      defer { try? FileManager.default.removeItem(at: root) }
+      let stateURL = root.appending(path: "BookmarkClock.json")
+
+      let first = try E2EBookmarkClock(value: initialValue, stateURL: stateURL)
+      XCTAssertEqual(first.now(), initialValue)
+      XCTAssertTrue(FileManager.default.fileExists(atPath: stateURL.path))
+      try first.advance(by: 60)
+      XCTAssertEqual(first.now(), initialValue.addingTimeInterval(60))
+
+      let reconstructed = try E2EBookmarkClock(value: initialValue, stateURL: stateURL)
+      XCTAssertEqual(reconstructed.now(), initialValue.addingTimeInterval(60))
+
+      try FileManager.default.removeItem(at: root)
+      let reset = try E2EBookmarkClock(value: initialValue, stateURL: stateURL)
+      XCTAssertEqual(reset.now(), initialValue)
+    }
+
+    func testInvalidAdvanceCannotMoveClockOrPersistedStateBackward() throws {
+      let root = temporaryDirectory("invalid-advance")
+      defer { try? FileManager.default.removeItem(at: root) }
+      let stateURL = root.appending(path: "BookmarkClock.json")
+      let clock = try E2EBookmarkClock(value: initialValue, stateURL: stateURL)
+
+      XCTAssertThrowsError(try clock.advance(by: -1)) { error in
+        XCTAssertEqual(error as? E2EBookmarkClockError, .invalidAdvance)
+      }
+      XCTAssertEqual(clock.now(), initialValue)
+      let reconstructed = try E2EBookmarkClock(value: initialValue, stateURL: stateURL)
+      XCTAssertEqual(reconstructed.now(), initialValue)
+    }
+
+    func testFailedPersistenceDoesNotPublishAdvancedTime() throws {
+      let root = temporaryDirectory("failed-persistence")
+      defer { try? FileManager.default.removeItem(at: root) }
+      let stateURL = root.appending(path: "BookmarkClock.json")
+      let clock = try E2EBookmarkClock(value: initialValue, stateURL: stateURL)
+      try FileManager.default.removeItem(at: stateURL)
+      try FileManager.default.createDirectory(at: stateURL, withIntermediateDirectories: true)
+
+      XCTAssertThrowsError(try clock.advance(by: 60))
+      XCTAssertEqual(clock.now(), initialValue)
+    }
+
+    func testExistingInvalidClockStateFailsClosed() throws {
+      let root = temporaryDirectory("invalid-state")
+      defer { try? FileManager.default.removeItem(at: root) }
+      try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+      let stateURL = root.appending(path: "BookmarkClock.json")
+      let invalidStates = [
+        Data("not-json".utf8),
+        Data(#"{"schemaVersion":2,"secondsSince1970":1700030060}"#.utf8),
+        Data(#"{"schemaVersion":1,"secondsSince1970":1700029999}"#.utf8),
+        Data(#"{"schemaVersion":1,"secondsSince1970":1700030060,"unknown":true}"#.utf8),
+      ]
+
+      for invalidState in invalidStates {
+        try invalidState.write(to: stateURL, options: .atomic)
+        XCTAssertThrowsError(try E2EBookmarkClock(value: initialValue, stateURL: stateURL)) {
+          error in
+          XCTAssertEqual(error as? E2EBookmarkClockError, .invalidState)
+        }
+        XCTAssertEqual(try Data(contentsOf: stateURL), invalidState)
+      }
+    }
+
+    private func temporaryDirectory(_ name: String) -> URL {
+      FileManager.default.temporaryDirectory.appending(
+        path: "E2EBookmarkClockTests-\(name)-\(UUID().uuidString)",
+        directoryHint: .isDirectory
+      )
+    }
+  }
+
   final class E2EMetadataRichBookNamespaceTests: XCTestCase {
     func testDefaultNamespacePreservesTheCanonicalRoot() throws {
       let support = URL(fileURLWithPath: "/fixture-support", isDirectory: true)
