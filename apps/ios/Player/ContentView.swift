@@ -2481,29 +2481,25 @@ func compactPlaybackTime(_ seconds: Double) -> String {
       VStack(alignment: .leading, spacing: 4) {
         probe
         control("Play", identifier: "e2e-remote-play") {
-          await E2EPlaybackEventBridge.shared.sendRemote(.play)
+          E2EPlaybackEventBridge.shared.sendRemote(.play)
         }
         control("Pause", identifier: "e2e-remote-pause") {
-          await E2EPlaybackEventBridge.shared.sendRemote(.pause)
+          E2EPlaybackEventBridge.shared.sendRemote(.pause)
         }
         control("Toggle", identifier: "e2e-remote-toggle") {
-          await E2EPlaybackEventBridge.shared.sendRemote(.togglePlayPause)
+          E2EPlaybackEventBridge.shared.sendRemote(.toggle)
         }
         control("Car Forward", identifier: "e2e-remote-next-track") {
-          await E2EPlaybackEventBridge.shared.sendRemote(
-            RemoteTrackButton.next.playbackCommand(using: model.currentTransportPreferences)
-          )
+          E2EPlaybackEventBridge.shared.sendRemote(.nextTrack)
         }
         control("Car Backward", identifier: "e2e-remote-previous-track") {
-          await E2EPlaybackEventBridge.shared.sendRemote(
-            RemoteTrackButton.previous.playbackCommand(using: model.currentTransportPreferences)
-          )
+          E2EPlaybackEventBridge.shared.sendRemote(.previousTrack)
         }
         control("Interrupt", identifier: "e2e-interruption-began") {
-          await E2EPlaybackEventBridge.shared.sendAudioSession(.interruptionBegan)
+          E2EPlaybackEventBridge.shared.sendAudioSession(.interruptionBegan)
         }
         control("End", identifier: "e2e-interruption-ended-no-resume") {
-          await E2EPlaybackEventBridge.shared.sendAudioSession(
+          E2EPlaybackEventBridge.shared.sendAudioSession(
             .interruptionEnded(shouldResume: false)
           )
         }
@@ -2557,6 +2553,7 @@ func compactPlaybackTime(_ seconds: Double) -> String {
         event.reason.rawValue,
         String(position.positionMilliseconds),
         commands,
+        E2EPlaybackEventBridge.shared.audioSessionEvidence,
       ].joined(separator: "|")
     }
   }

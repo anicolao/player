@@ -7,6 +7,7 @@ final class RemoteInterruptionUITests: XCTestCase {
     "change-position", "change-rate", "next-track-skip-forward", "pause", "play",
     "previous-track-skip-backward", "skip-backward", "skip-forward", "toggle",
   ]
+  private let registeredAudioNotifications: Set<String> = ["interruption", "route-change"]
 
   func testRemoteInterruptionAndBackgroundEventsJournalAcknowledgedPositions() throws {
     continueAfterFailure = false
@@ -26,6 +27,7 @@ final class RemoteInterruptionUITests: XCTestCase {
     )
     assertIdentityAndPersistence(initial, expectedPositionMilliseconds: 12_000)
     XCTAssertEqual(initial.registeredCommands, registeredCommands)
+    assertProductionAdapterEvidence(initial, postedAudioEvent: "none")
 
     app.buttons["e2e-remote-play"].tap()
     let remotelyPlaying = try requireProbe(
@@ -36,6 +38,11 @@ final class RemoteInterruptionUITests: XCTestCase {
       reason: "play"
     )
     assertIdentityAndPersistence(remotelyPlaying, expectedPositionMilliseconds: 12_000)
+    XCTAssertGreaterThanOrEqual(
+      remotelyPlaying.audioSession.activationCount,
+      1,
+      "A remote Play command must activate the injected production audio-session platform"
+    )
 
     app.buttons["e2e-remote-next-track"].tap()
     let skippedForward = try requireProbe(
@@ -102,7 +109,8 @@ final class RemoteInterruptionUITests: XCTestCase {
       status: "paused",
       positionMilliseconds: 27_000,
       sequence: 9,
-      reason: "interruption"
+      reason: "interruption",
+      postedAudioEvent: "interruption-began"
     )
     assertIdentityAndPersistence(interrupted, expectedPositionMilliseconds: 27_000)
 
@@ -112,12 +120,32 @@ final class RemoteInterruptionUITests: XCTestCase {
       status: "paused",
       positionMilliseconds: 27_000,
       sequence: 9,
-      reason: "interruption"
+      reason: "interruption",
+      postedAudioEvent: "interruption-ended-no-resume"
+    )
+    XCTAssertEqual(interruptionEnded.status, interrupted.status)
+    XCTAssertEqual(interruptionEnded.bookID, interrupted.bookID)
+    XCTAssertEqual(interruptionEnded.chapterIndex, interrupted.chapterIndex)
+    XCTAssertEqual(interruptionEnded.positionMilliseconds, interrupted.positionMilliseconds)
+    XCTAssertEqual(interruptionEnded.sequence, interrupted.sequence)
+    XCTAssertEqual(interruptionEnded.reason, interrupted.reason)
+    XCTAssertEqual(
+      interruptionEnded.persistedPositionMilliseconds,
+      interrupted.persistedPositionMilliseconds,
+      "An interruption configured not to resume must not fabricate a position event"
+    )
+    XCTAssertEqual(interruptionEnded.registeredCommands, interrupted.registeredCommands)
+    XCTAssertEqual(
+      interruptionEnded.audioSession.configureCount,
+      interrupted.audioSession.configureCount
     )
     XCTAssertEqual(
-      interruptionEnded,
-      interrupted,
-      "An interruption configured not to resume must not fabricate a position event"
+      interruptionEnded.audioSession.activationCount,
+      interrupted.audioSession.activationCount
+    )
+    XCTAssertEqual(
+      interruptionEnded.audioSession.registeredNotifications,
+      interrupted.audioSession.registeredNotifications
     )
 
     app.buttons["e2e-remote-play"].tap()
@@ -164,7 +192,7 @@ final class RemoteInterruptionUITests: XCTestCase {
     )
     assertIdentityAndPersistence(finalPause, expectedPositionMilliseconds: 27_000)
 
-    app.terminate()
+    XCTAssertTrue(terminateAndWait(app))
     let restoredApp = makeApplication(reset: false)
     restoredApp.launch()
     let restoredProbe = restoredApp.otherElements["e2e-playback-probe"]
@@ -177,6 +205,7 @@ final class RemoteInterruptionUITests: XCTestCase {
     )
     assertIdentityAndPersistence(restored, expectedPositionMilliseconds: 27_000)
     XCTAssertEqual(restored.registeredCommands, registeredCommands)
+    assertProductionAdapterEvidence(restored, postedAudioEvent: "none")
   }
 
   private func makeApplication(reset: Bool) -> XCUIApplication {
@@ -202,13 +231,15 @@ final class RemoteInterruptionUITests: XCTestCase {
     status: String,
     positionMilliseconds: Int,
     sequence: Int,
-    reason: String
+    reason: String,
+    postedAudioEvent: String? = nil
   ) throws -> PlaybackJournalProbe {
     func matches(_ state: PlaybackJournalProbe) -> Bool {
       state.status == status
         && state.positionMilliseconds == positionMilliseconds
         && state.sequence == sequence
         && state.reason == reason
+        && (postedAudioEvent == nil || state.audioSession.latestPostedEvent == postedAudioEvent)
     }
     let predicate = NSPredicate { object, _ in
       guard let element = object as? XCUIElement,
@@ -236,6 +267,17 @@ final class RemoteInterruptionUITests: XCTestCase {
     XCTAssertEqual(state.positionMilliseconds, expectedPositionMilliseconds)
     XCTAssertEqual(state.persistedPositionMilliseconds, expectedPositionMilliseconds)
   }
+
+  private func assertProductionAdapterEvidence(
+    _ state: PlaybackJournalProbe,
+    postedAudioEvent: String
+  ) {
+    XCTAssertEqual(state.registeredCommands, registeredCommands)
+    XCTAssertEqual(state.audioSession.configureCount, 1)
+    XCTAssertGreaterThanOrEqual(state.audioSession.activationCount, 0)
+    XCTAssertEqual(state.audioSession.registeredNotifications, registeredAudioNotifications)
+    XCTAssertEqual(state.audioSession.latestPostedEvent, postedAudioEvent)
+  }
 }
 
 private struct PlaybackJournalProbe: Equatable {
@@ -247,11 +289,12 @@ private struct PlaybackJournalProbe: Equatable {
   let reason: String
   let persistedPositionMilliseconds: Int
   let registeredCommands: Set<String>
+  let audioSession: AudioSessionProbeEvidence
 
   init?(_ value: String?) {
     guard let value else { return nil }
     let fields = value.split(separator: "|", omittingEmptySubsequences: false)
-    guard fields.count == 9,
+    guard fields.count == 10,
           fields[0] == "probe",
           fields[1] == "paused" || fields[1] == "playing",
           UUID(uuidString: String(fields[2])) != nil,
@@ -261,7 +304,8 @@ private struct PlaybackJournalProbe: Equatable {
           ["background", "interruption", "pause", "periodic", "play", "seek"]
             .contains(String(fields[6])),
           let persistedPositionMilliseconds = Int(fields[7]),
-          persistedPositionMilliseconds >= 0
+          persistedPositionMilliseconds >= 0,
+          let audioSession = AudioSessionProbeEvidence(String(fields[9]))
     else { return nil }
 
     status = String(fields[1])
@@ -272,6 +316,35 @@ private struct PlaybackJournalProbe: Equatable {
     reason = String(fields[6])
     self.persistedPositionMilliseconds = persistedPositionMilliseconds
     registeredCommands = Set(fields[8].split(separator: ",").map(String.init))
+    self.audioSession = audioSession
+  }
+}
+
+private struct AudioSessionProbeEvidence: Equatable {
+  let configureCount: Int
+  let activationCount: Int
+  let registeredNotifications: Set<String>
+  let latestPostedEvent: String
+
+  init?(_ value: String) {
+    let fields = value.split(separator: ":", omittingEmptySubsequences: false).map(String.init)
+    guard fields.count == 4,
+      fields[0].hasPrefix("configured="),
+      fields[1].hasPrefix("activated="),
+      fields[2].hasPrefix("observers="),
+      fields[3].hasPrefix("posted="),
+      let configureCount = Int(fields[0].dropFirst("configured=".count)),
+      configureCount >= 0,
+      let activationCount = Int(fields[1].dropFirst("activated=".count)),
+      activationCount >= 0
+    else { return nil }
+
+    self.configureCount = configureCount
+    self.activationCount = activationCount
+    registeredNotifications = Set(
+      fields[2].dropFirst("observers=".count).split(separator: ",").map(String.init)
+    )
+    latestPostedEvent = String(fields[3].dropFirst("posted=".count))
   }
 }
 

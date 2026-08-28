@@ -396,46 +396,168 @@ final class DeterministicPlaybackController: AudioPlaybackControlling {
 }
 
 @MainActor
-final class AVAudioSessionController: NSObject, AudioSessionControlling {
+protocol AudioSessionPlatform: AnyObject {
+  var notificationObject: AnyObject { get }
+  func configureForSpokenAudio(options: AVAudioSession.CategoryOptions) throws
+  func activate() throws
+}
+
+@MainActor
+final class SystemAudioSessionPlatform: AudioSessionPlatform {
+  private let session: AVAudioSession
+
+  init(session: AVAudioSession = .sharedInstance()) {
+    self.session = session
+  }
+
+  var notificationObject: AnyObject { session }
+
+  func configureForSpokenAudio(options: AVAudioSession.CategoryOptions) throws {
+    try session.setCategory(.playback, mode: .spokenAudio, options: options)
+  }
+
+  func activate() throws {
+    try session.setActive(true)
+  }
+}
+
+enum AudioSessionNotificationKind: String, CaseIterable, Sendable {
+  case interruption
+  case routeChange = "route-change"
+
+  var notificationName: Notification.Name {
+    switch self {
+    case .interruption: AVAudioSession.interruptionNotification
+    case .routeChange: AVAudioSession.routeChangeNotification
+    }
+  }
+}
+
+struct AudioSessionNotificationPayload: Sendable {
+  var interruptionType: UInt?
+  var interruptionOptions: UInt?
+  var routeChangeReason: UInt?
+
+  init(
+    interruptionType: UInt? = nil,
+    interruptionOptions: UInt? = nil,
+    routeChangeReason: UInt? = nil
+  ) {
+    self.interruptionType = interruptionType
+    self.interruptionOptions = interruptionOptions
+    self.routeChangeReason = routeChangeReason
+  }
+
+  init(notification: Notification) {
+    interruptionType = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
+    interruptionOptions = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt
+    routeChangeReason = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
+  }
+}
+
+protocol AudioSessionNotificationObservation: AnyObject {}
+
+@MainActor
+protocol AudioSessionNotificationSource: AnyObject {
+  func observe(
+    _ kind: AudioSessionNotificationKind,
+    object: AnyObject,
+    using handler: @escaping @Sendable (AudioSessionNotificationPayload) -> Void
+  ) -> any AudioSessionNotificationObservation
+}
+
+private final class NotificationCenterAudioSessionObservation:
+  AudioSessionNotificationObservation,
+  @unchecked Sendable
+{
+  private let center: NotificationCenter
+  private let token: NSObjectProtocol
+
+  init(center: NotificationCenter, token: NSObjectProtocol) {
+    self.center = center
+    self.token = token
+  }
+
+  deinit {
+    center.removeObserver(token)
+  }
+}
+
+@MainActor
+final class NotificationCenterAudioSessionSource: AudioSessionNotificationSource {
+  private let center: NotificationCenter
+
+  init(center: NotificationCenter = .default) {
+    self.center = center
+  }
+
+  func observe(
+    _ kind: AudioSessionNotificationKind,
+    object: AnyObject,
+    using handler: @escaping @Sendable (AudioSessionNotificationPayload) -> Void
+  ) -> any AudioSessionNotificationObservation {
+    let token = center.addObserver(
+      forName: kind.notificationName,
+      object: object,
+      queue: nil
+    ) { notification in
+      handler(AudioSessionNotificationPayload(notification: notification))
+    }
+    return NotificationCenterAudioSessionObservation(center: center, token: token)
+  }
+}
+
+@MainActor
+final class AVAudioSessionController: AudioSessionControlling {
   // Playback sessions already route to AirPlay and Bluetooth A2DP. Apple only
   // permits explicitly setting those options with `.playAndRecord`; combining
   // them with `.playback` causes `setCategory` to fail with OSStatus -50.
   static let playbackCategoryOptions: AVAudioSession.CategoryOptions = []
 
-  private let session: AVAudioSession
+  private let platform: any AudioSessionPlatform
+  private let notificationSource: any AudioSessionNotificationSource
+  private var notificationObservations: [any AudioSessionNotificationObservation] = []
   private var eventHandler: (@MainActor @Sendable (AudioSessionEvent) async -> Void)?
 
-  init(session: AVAudioSession = .sharedInstance()) {
-    self.session = session
-    super.init()
-    NotificationCenter.default.addObserver(
-      self,
-      selector: #selector(handleInterruptionNotification(_:)),
-      name: AVAudioSession.interruptionNotification,
-      object: session
-    )
-    NotificationCenter.default.addObserver(
-      self,
-      selector: #selector(handleRouteChangeNotification(_:)),
-      name: AVAudioSession.routeChangeNotification,
-      object: session
+  convenience init(session: AVAudioSession = .sharedInstance()) {
+    self.init(
+      platform: SystemAudioSessionPlatform(session: session),
+      notificationSource: NotificationCenterAudioSessionSource()
     )
   }
 
-  deinit {
-    NotificationCenter.default.removeObserver(self)
+  init(
+    platform: any AudioSessionPlatform,
+    notificationSource: any AudioSessionNotificationSource
+  ) {
+    self.platform = platform
+    self.notificationSource = notificationSource
+    notificationObservations = [
+      notificationSource.observe(
+        .interruption,
+        object: platform.notificationObject
+      ) { [weak self] payload in
+        Task { @MainActor [weak self] in
+          self?.handleInterruptionNotification(payload)
+        }
+      },
+      notificationSource.observe(
+        .routeChange,
+        object: platform.notificationObject
+      ) { [weak self] payload in
+        Task { @MainActor [weak self] in
+          self?.handleRouteChangeNotification(payload)
+        }
+      },
+    ]
   }
 
   func configure() throws {
-    try session.setCategory(
-      .playback,
-      mode: .spokenAudio,
-      options: Self.playbackCategoryOptions
-    )
+    try platform.configureForSpokenAudio(options: Self.playbackCategoryOptions)
   }
 
   func activate() throws {
-    try session.setActive(true)
+    try platform.activate()
   }
 
   func installEventHandler(
@@ -444,9 +566,9 @@ final class AVAudioSessionController: NSObject, AudioSessionControlling {
     eventHandler = handler
   }
 
-  @objc private nonisolated func handleInterruptionNotification(_ notification: Notification) {
+  private func handleInterruptionNotification(_ payload: AudioSessionNotificationPayload) {
     guard
-      let rawType = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+      let rawType = payload.interruptionType,
       let type = AVAudioSession.InterruptionType(rawValue: rawType)
     else { return }
 
@@ -455,108 +577,215 @@ final class AVAudioSessionController: NSObject, AudioSessionControlling {
     case .began:
       event = .interruptionBegan
     case .ended:
-      let rawOptions = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
+      let rawOptions = payload.interruptionOptions ?? 0
       event = .interruptionEnded(
         shouldResume: AVAudioSession.InterruptionOptions(rawValue: rawOptions).contains(.shouldResume)
       )
     @unknown default:
       return
     }
-    Task { @MainActor [weak self] in
-      guard let handler = self?.eventHandler else { return }
-      await handler(event)
+    guard let eventHandler else { return }
+    Task { await eventHandler(event) }
+  }
+
+  private func handleRouteChangeNotification(_ payload: AudioSessionNotificationPayload) {
+    guard
+      let rawReason = payload.routeChangeReason,
+      AVAudioSession.RouteChangeReason(rawValue: rawReason) == .oldDeviceUnavailable
+    else { return }
+    guard let eventHandler else { return }
+    Task { await eventHandler(.oldDeviceUnavailable) }
+  }
+}
+
+enum RemoteCommandRegistration: String, CaseIterable, Sendable {
+  case play
+  case pause
+  case toggle
+  case previousTrack = "previous-track-skip-backward"
+  case nextTrack = "next-track-skip-forward"
+  case skipForward = "skip-forward"
+  case skipBackward = "skip-backward"
+  case changePosition = "change-position"
+  case changeRate = "change-rate"
+}
+
+struct RemoteCommandInvocation: Sendable {
+  var interval: Double?
+  var positionTime: Double?
+  var playbackRate: Double?
+
+  init(
+    interval: Double? = nil,
+    positionTime: Double? = nil,
+    playbackRate: Double? = nil
+  ) {
+    self.interval = interval
+    self.positionTime = positionTime
+    self.playbackRate = playbackRate
+  }
+}
+
+enum RemoteCommandDispatchResult {
+  case success
+  case commandFailed
+}
+
+@MainActor
+protocol RemoteCommandCenterSource: AnyObject {
+  func beginReceivingRemoteControlEvents()
+  func setEnabled(_ enabled: Bool, for command: RemoteCommandRegistration)
+  func addTarget(
+    for command: RemoteCommandRegistration,
+    handler: @escaping (RemoteCommandInvocation) -> RemoteCommandDispatchResult
+  ) -> Any
+  func removeTarget(_ target: Any, for command: RemoteCommandRegistration)
+  func setPreferredIntervals(_ intervals: [Double], for command: RemoteCommandRegistration)
+  func setSupportedPlaybackRates(_ rates: [Double])
+}
+
+@MainActor
+final class SystemRemoteCommandCenterSource: RemoteCommandCenterSource {
+  private let center: MPRemoteCommandCenter
+
+  init(center: MPRemoteCommandCenter = .shared()) {
+    self.center = center
+  }
+
+  func beginReceivingRemoteControlEvents() {
+    UIApplication.shared.beginReceivingRemoteControlEvents()
+  }
+
+  func setEnabled(_ enabled: Bool, for command: RemoteCommandRegistration) {
+    mediaCommand(for: command).isEnabled = enabled
+  }
+
+  func addTarget(
+    for command: RemoteCommandRegistration,
+    handler: @escaping (RemoteCommandInvocation) -> RemoteCommandDispatchResult
+  ) -> Any {
+    mediaCommand(for: command).addTarget { event in
+      let invocation = RemoteCommandInvocation(
+        interval: (event as? MPSkipIntervalCommandEvent)?.interval,
+        positionTime: (event as? MPChangePlaybackPositionCommandEvent)?.positionTime,
+        playbackRate: (event as? MPChangePlaybackRateCommandEvent).map {
+          Double($0.playbackRate)
+        }
+      )
+      switch handler(invocation) {
+      case .success: return .success
+      case .commandFailed: return .commandFailed
+      }
     }
   }
 
-  @objc private nonisolated func handleRouteChangeNotification(_ notification: Notification) {
-    guard
-      let rawReason = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
-      AVAudioSession.RouteChangeReason(rawValue: rawReason) == .oldDeviceUnavailable
-    else { return }
-    Task { @MainActor [weak self] in
-      guard let handler = self?.eventHandler else { return }
-      await handler(.oldDeviceUnavailable)
+  func removeTarget(_ target: Any, for command: RemoteCommandRegistration) {
+    mediaCommand(for: command).removeTarget(target)
+  }
+
+  func setPreferredIntervals(_ intervals: [Double], for command: RemoteCommandRegistration) {
+    guard let command = mediaCommand(for: command) as? MPSkipIntervalCommand else { return }
+    command.preferredIntervals = intervals.map(NSNumber.init(value:))
+  }
+
+  func setSupportedPlaybackRates(_ rates: [Double]) {
+    center.changePlaybackRateCommand.supportedPlaybackRates = rates.map(NSNumber.init(value:))
+  }
+
+  private func mediaCommand(for registration: RemoteCommandRegistration) -> MPRemoteCommand {
+    switch registration {
+    case .play: center.playCommand
+    case .pause: center.pauseCommand
+    case .toggle: center.togglePlayPauseCommand
+    case .previousTrack: center.previousTrackCommand
+    case .nextTrack: center.nextTrackCommand
+    case .skipForward: center.skipForwardCommand
+    case .skipBackward: center.skipBackwardCommand
+    case .changePosition: center.changePlaybackPositionCommand
+    case .changeRate: center.changePlaybackRateCommand
     }
   }
 }
 
 @MainActor
 final class MPRemoteCommandController: RemoteCommandControlling {
-  private let center: MPRemoteCommandCenter
-  private var installedTargets: [(MPRemoteCommand, Any)] = []
+  private let source: any RemoteCommandCenterSource
+  private var installedTargets: [(RemoteCommandRegistration, Any)] = []
   private var transportPreferences: TransportPreferences = .default
 
-  init(center: MPRemoteCommandCenter = .shared()) {
-    self.center = center
+  convenience init(center: MPRemoteCommandCenter = .shared()) {
+    self.init(source: SystemRemoteCommandCenterSource(center: center))
+  }
+
+  init(source: any RemoteCommandCenterSource) {
+    self.source = source
   }
 
   func installCommandHandler(
     _ handler: @escaping @MainActor @Sendable (RemotePlaybackCommand) async -> Void
   ) {
-    UIApplication.shared.beginReceivingRemoteControlEvents()
+    source.beginReceivingRemoteControlEvents()
     removeInstalledTargets()
-    install(center.playCommand, event: .play, handler: handler)
-    install(center.pauseCommand, event: .pause, handler: handler)
-    install(center.togglePlayPauseCommand, event: .togglePlayPause, handler: handler)
-    install(center.previousTrackCommand, trackButton: .previous, handler: handler)
-    install(center.nextTrackCommand, trackButton: .next, handler: handler)
+    install(.play, event: .play, handler: handler)
+    install(.pause, event: .pause, handler: handler)
+    install(.toggle, event: .togglePlayPause, handler: handler)
+    install(.previousTrack, trackButton: .previous, handler: handler)
+    install(.nextTrack, trackButton: .next, handler: handler)
 
     updateTransportConfiguration(transportPreferences)
-    center.skipForwardCommand.isEnabled = true
-    let forwardTarget = center.skipForwardCommand.addTarget { event in
-      let seconds = (event as? MPSkipIntervalCommandEvent)?.interval
-        ?? self.transportPreferences.forwardSkipSeconds
+    source.setEnabled(true, for: .skipForward)
+    let forwardTarget = source.addTarget(for: .skipForward) { invocation in
+      let seconds = invocation.interval ?? self.transportPreferences.forwardSkipSeconds
       Task { @MainActor in await handler(.skipForward(seconds: seconds)) }
       return .success
     }
-    installedTargets.append((center.skipForwardCommand, forwardTarget))
-    center.skipBackwardCommand.isEnabled = true
-    let backwardTarget = center.skipBackwardCommand.addTarget { event in
-      let seconds = (event as? MPSkipIntervalCommandEvent)?.interval
-        ?? self.transportPreferences.backwardSkipSeconds
+    installedTargets.append((.skipForward, forwardTarget))
+    source.setEnabled(true, for: .skipBackward)
+    let backwardTarget = source.addTarget(for: .skipBackward) { invocation in
+      let seconds = invocation.interval ?? self.transportPreferences.backwardSkipSeconds
       Task { @MainActor in await handler(.skipBackward(seconds: seconds)) }
       return .success
     }
-    installedTargets.append((center.skipBackwardCommand, backwardTarget))
-    center.changePlaybackPositionCommand.isEnabled = true
-    let positionTarget = center.changePlaybackPositionCommand.addTarget { event in
-      guard let seconds = (event as? MPChangePlaybackPositionCommandEvent)?.positionTime else {
+    installedTargets.append((.skipBackward, backwardTarget))
+    source.setEnabled(true, for: .changePosition)
+    let positionTarget = source.addTarget(for: .changePosition) { invocation in
+      guard let seconds = invocation.positionTime else {
         return .commandFailed
       }
       Task { @MainActor in await handler(.changePosition(seconds: seconds)) }
       return .success
     }
-    installedTargets.append((center.changePlaybackPositionCommand, positionTarget))
-    center.changePlaybackRateCommand.isEnabled = true
-    let rateTarget = center.changePlaybackRateCommand.addTarget { event in
-      guard let rate = (event as? MPChangePlaybackRateCommandEvent)?.playbackRate else {
+    installedTargets.append((.changePosition, positionTarget))
+    source.setEnabled(true, for: .changeRate)
+    let rateTarget = source.addTarget(for: .changeRate) { invocation in
+      guard let rate = invocation.playbackRate else {
         return .commandFailed
       }
-      Task { @MainActor in await handler(.changePlaybackRate(Double(rate))) }
+      Task { @MainActor in await handler(.changePlaybackRate(rate)) }
       return .success
     }
-    installedTargets.append((center.changePlaybackRateCommand, rateTarget))
+    installedTargets.append((.changeRate, rateTarget))
   }
 
   func updateTransportConfiguration(_ preferences: TransportPreferences) {
     guard preferences.isValid else { return }
     transportPreferences = preferences
-    center.skipForwardCommand.preferredIntervals = [NSNumber(value: preferences.forwardSkipSeconds)]
-    center.skipBackwardCommand.preferredIntervals = [NSNumber(value: preferences.backwardSkipSeconds)]
-    center.changePlaybackRateCommand.supportedPlaybackRates = stride(
+    source.setPreferredIntervals([preferences.forwardSkipSeconds], for: .skipForward)
+    source.setPreferredIntervals([preferences.backwardSkipSeconds], for: .skipBackward)
+    source.setSupportedPlaybackRates(stride(
       from: 0.5,
       through: 3.0,
       by: 0.05
-    ).map { NSNumber(value: $0) }
+    ).map { $0 })
   }
 
   private func install(
-    _ command: MPRemoteCommand,
+    _ command: RemoteCommandRegistration,
     event: RemotePlaybackCommand,
     handler: @escaping @MainActor @Sendable (RemotePlaybackCommand) async -> Void
   ) {
-    command.isEnabled = true
-    let target = command.addTarget { _ in
+    source.setEnabled(true, for: command)
+    let target = source.addTarget(for: command) { _ in
       Task { @MainActor in await handler(event) }
       return .success
     }
@@ -564,12 +793,12 @@ final class MPRemoteCommandController: RemoteCommandControlling {
   }
 
   private func install(
-    _ command: MPRemoteCommand,
+    _ command: RemoteCommandRegistration,
     trackButton: RemoteTrackButton,
     handler: @escaping @MainActor @Sendable (RemotePlaybackCommand) async -> Void
   ) {
-    command.isEnabled = true
-    let target = command.addTarget { _ in
+    source.setEnabled(true, for: command)
+    let target = source.addTarget(for: command) { _ in
       let event = trackButton.playbackCommand(using: self.transportPreferences)
       Task { @MainActor in await handler(event) }
       return .success
@@ -579,7 +808,7 @@ final class MPRemoteCommandController: RemoteCommandControlling {
 
   private func removeInstalledTargets() {
     for (command, target) in installedTargets {
-      command.removeTarget(target)
+      source.removeTarget(target, for: command)
     }
     installedTargets.removeAll()
   }

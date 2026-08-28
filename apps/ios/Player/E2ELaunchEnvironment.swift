@@ -295,19 +295,21 @@ extension PlayerEnvironment {
       let ids = (1...12).map {
         UUID(uuidString: String(format: "21000000-0000-0000-0000-%012d", $0))!
       }
-      if eventControls {
-        E2EPlaybackEventBridge.shared.reset()
-      }
+      let playbackEventBridge = E2EPlaybackEventBridge.shared
+      if eventControls { playbackEventBridge.reset() }
       return PlayerEnvironment(
         persistence: E2ESeededLibraryStore(base: persisted, seed: seed),
         media: FileSystemMediaManager(rootURL: root),
         inspector: DeterministicAudioInspector(result: .failure(.unreadableAudio("unused"))),
         playback: DeterministicPlaybackController(),
         audioSession: eventControls
-          ? E2EAudioSessionController()
+          ? AVAudioSessionController(
+            platform: playbackEventBridge,
+            notificationSource: playbackEventBridge
+          )
           : DisabledAudioSessionController(),
         remoteCommands: eventControls
-          ? E2ERemoteCommandController()
+          ? MPRemoteCommandController(source: playbackEventBridge)
           : DisabledRemoteCommandController(),
         clock: FixedPlayerClock(value: date),
         ids: DeterministicPlayerIDGenerator(values: ids),

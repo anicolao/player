@@ -1,3 +1,4 @@
+import AVFAudio
 import XCTest
 @testable import Player
 
@@ -178,6 +179,117 @@ final class TransportPreferencesTests: XCTestCase {
     XCTAssertEqual(durable.books.first?.transportPreferenceOverride?.playbackRate, 1.75)
   }
 
+  func testProductionRemoteAdapterRegistersAndDispatchesEverySystemCommand() async {
+    let source = RecordingRemoteCommandCenterSource()
+    let controller = MPRemoteCommandController(source: source)
+    let preferences = TransportPreferences(
+      playbackRate: 1.25,
+      backwardSkipSeconds: 12,
+      forwardSkipSeconds: 24,
+      seekContext: .chapter
+    )
+    controller.updateTransportConfiguration(preferences)
+
+    let dispatched = expectation(description: "All registered remote commands dispatch")
+    dispatched.expectedFulfillmentCount = RemoteCommandRegistration.allCases.count
+    var received: [RemotePlaybackCommand] = []
+    controller.installCommandHandler { command in
+      received.append(command)
+      dispatched.fulfill()
+    }
+
+    XCTAssertTrue(source.beganReceivingRemoteControlEvents)
+    XCTAssertEqual(source.registrations, Set(RemoteCommandRegistration.allCases))
+    XCTAssertEqual(source.preferredIntervals[.skipBackward], [12])
+    XCTAssertEqual(source.preferredIntervals[.skipForward], [24])
+    XCTAssertEqual(source.supportedPlaybackRates.first, 0.5)
+    XCTAssertEqual(source.supportedPlaybackRates.last, 3)
+
+    let invocations: [(RemoteCommandRegistration, RemoteCommandInvocation)] = [
+      (.play, .init()),
+      (.pause, .init()),
+      (.toggle, .init()),
+      (.previousTrack, .init()),
+      (.nextTrack, .init()),
+      (.skipForward, .init(interval: 33)),
+      (.skipBackward, .init()),
+      (.changePosition, .init(positionTime: 44)),
+      (.changeRate, .init(playbackRate: 1.5)),
+    ]
+    for (registration, invocation) in invocations {
+      assertDispatchSucceeded(source.send(registration, invocation: invocation))
+    }
+
+    await fulfillment(of: [dispatched], timeout: 2)
+    XCTAssertEqual(
+      received,
+      [
+        .play,
+        .pause,
+        .togglePlayPause,
+        .skipBackward(seconds: 12),
+        .skipForward(seconds: 24),
+        .skipForward(seconds: 33),
+        .skipBackward(seconds: 12),
+        .changePosition(seconds: 44),
+        .changePlaybackRate(1.5),
+      ]
+    )
+  }
+
+  func testProductionAudioAdapterConfiguresAndTranslatesInjectedNotifications() async throws {
+    let platform = RecordingAudioSessionPlatform()
+    let notifications = RecordingAudioSessionNotificationSource()
+    let controller = AVAudioSessionController(
+      platform: platform,
+      notificationSource: notifications
+    )
+
+    try controller.configure()
+    try controller.activate()
+    let dispatched = expectation(description: "All audio-session notifications dispatch")
+    dispatched.expectedFulfillmentCount = 3
+    var received: [AudioSessionEvent] = []
+    controller.installEventHandler { event in
+      received.append(event)
+      dispatched.fulfill()
+    }
+
+    XCTAssertEqual(platform.configuredOptions, [AVAudioSessionController.playbackCategoryOptions])
+    XCTAssertEqual(platform.activationCount, 1)
+    XCTAssertEqual(notifications.registrations, Set(AudioSessionNotificationKind.allCases))
+
+    notifications.send(
+      .interruption,
+      payload: AudioSessionNotificationPayload(
+        interruptionType: AVAudioSession.InterruptionType.began.rawValue
+      )
+    )
+    notifications.send(
+      .interruption,
+      payload: AudioSessionNotificationPayload(
+        interruptionType: AVAudioSession.InterruptionType.ended.rawValue,
+        interruptionOptions: AVAudioSession.InterruptionOptions.shouldResume.rawValue
+      )
+    )
+    notifications.send(
+      .routeChange,
+      payload: AudioSessionNotificationPayload(
+        routeChangeReason: AVAudioSession.RouteChangeReason.oldDeviceUnavailable.rawValue
+      )
+    )
+
+    await fulfillment(of: [dispatched], timeout: 2)
+    XCTAssertEqual(
+      received,
+      [
+        .interruptionBegan,
+        .interruptionEnded(shouldResume: true),
+        .oldDeviceUnavailable,
+      ]
+    )
+  }
+
   func testSchemaNineMigratesTransportDefaultsAndWritesCurrentSchema() async throws {
     let directory = FileManager.default.temporaryDirectory.appending(
       path: "TransportMigration-\(UUID().uuidString)",
@@ -253,6 +365,17 @@ final class TransportPreferencesTests: XCTestCase {
     )
   }
 
+  private func assertDispatchSucceeded(
+    _ result: RemoteCommandDispatchResult,
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) {
+    guard case .success = result else {
+      XCTFail("Expected the registered production command to dispatch", file: file, line: line)
+      return
+    }
+  }
+
   private func makeBook() -> Book {
     let bookID = UUID(uuidString: "b1000000-0000-0000-0000-000000000001")!
     let firstID = UUID(uuidString: "b1000000-0000-0000-0000-000000000101")!
@@ -317,6 +440,104 @@ final class TransportPreferencesTests: XCTestCase {
     )
   }
 
+}
+
+@MainActor
+private final class RecordingRemoteCommandCenterSource: RemoteCommandCenterSource {
+  private final class Target {}
+
+  private var targets: [
+    RemoteCommandRegistration: (
+      target: Target,
+      handler: (RemoteCommandInvocation) -> RemoteCommandDispatchResult
+    )
+  ] = [:]
+  private(set) var beganReceivingRemoteControlEvents = false
+  private(set) var registrations: Set<RemoteCommandRegistration> = []
+  private(set) var preferredIntervals: [RemoteCommandRegistration: [Double]] = [:]
+  private(set) var supportedPlaybackRates: [Double] = []
+
+  func beginReceivingRemoteControlEvents() {
+    beganReceivingRemoteControlEvents = true
+  }
+
+  func setEnabled(_ enabled: Bool, for command: RemoteCommandRegistration) {
+    if !enabled { registrations.remove(command) }
+  }
+
+  func addTarget(
+    for command: RemoteCommandRegistration,
+    handler: @escaping (RemoteCommandInvocation) -> RemoteCommandDispatchResult
+  ) -> Any {
+    let target = Target()
+    targets[command] = (target, handler)
+    registrations.insert(command)
+    return target
+  }
+
+  func removeTarget(_ target: Any, for command: RemoteCommandRegistration) {
+    guard
+      let target = target as? Target,
+      targets[command]?.target === target
+    else { return }
+    targets.removeValue(forKey: command)
+    registrations.remove(command)
+  }
+
+  func setPreferredIntervals(_ intervals: [Double], for command: RemoteCommandRegistration) {
+    preferredIntervals[command] = intervals
+  }
+
+  func setSupportedPlaybackRates(_ rates: [Double]) {
+    supportedPlaybackRates = rates
+  }
+
+  func send(
+    _ command: RemoteCommandRegistration,
+    invocation: RemoteCommandInvocation
+  ) -> RemoteCommandDispatchResult {
+    targets[command]?.handler(invocation) ?? .commandFailed
+  }
+}
+
+@MainActor
+private final class RecordingAudioSessionPlatform: AudioSessionPlatform {
+  private(set) var configuredOptions: [AVAudioSession.CategoryOptions] = []
+  private(set) var activationCount = 0
+
+  var notificationObject: AnyObject { self }
+
+  func configureForSpokenAudio(options: AVAudioSession.CategoryOptions) throws {
+    configuredOptions.append(options)
+  }
+
+  func activate() throws {
+    activationCount += 1
+  }
+}
+
+private final class RecordingAudioSessionObservation: AudioSessionNotificationObservation {}
+
+@MainActor
+private final class RecordingAudioSessionNotificationSource: AudioSessionNotificationSource {
+  private var handlers: [
+    AudioSessionNotificationKind: @Sendable (AudioSessionNotificationPayload) -> Void
+  ] = [:]
+  private(set) var registrations: Set<AudioSessionNotificationKind> = []
+
+  func observe(
+    _ kind: AudioSessionNotificationKind,
+    object: AnyObject,
+    using handler: @escaping @Sendable (AudioSessionNotificationPayload) -> Void
+  ) -> any AudioSessionNotificationObservation {
+    handlers[kind] = handler
+    registrations.insert(kind)
+    return RecordingAudioSessionObservation()
+  }
+
+  func send(_ kind: AudioSessionNotificationKind, payload: AudioSessionNotificationPayload) {
+    handlers[kind]?(payload)
+  }
 }
 
 @MainActor

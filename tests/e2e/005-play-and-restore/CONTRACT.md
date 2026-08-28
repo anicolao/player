@@ -75,7 +75,7 @@ The app exposes a read-only `e2e-playback-probe` accessibility element whose
 value is:
 
 ```text
-probe|<paused|playing>|<book-uuid>|<chapter-index>|<position-ms>|<journal-sequence>|<last-reason>|<persisted-position-ms>|<registered-command-csv>
+probe|<paused|playing>|<book-uuid>|<chapter-index>|<position-ms>|<journal-sequence>|<last-reason>|<persisted-position-ms>|<registered-command-csv>|configured=<count>:activated=<count>:observers=<notification-csv>:posted=<latest-event>
 ```
 
 The registered command CSV contains exactly `change-position`, `change-rate`,
@@ -87,9 +87,18 @@ integrity-valid journal event, and production remote-registration state. Reading
 it has no side effects. Absolute-position behavior is covered by the same
 injected production boundary in the core integration suite.
 
+The audio evidence comes from the injected platform and notification source
+used by `AVAudioSessionController`, not from `PlayerModel`. Configuration and
+activation counts are calls made by that production adapter. The observer CSV
+must contain exactly `interruption` and `route-change`. `posted` begins at
+`none`, becomes `interruption-began` when that source publishes an
+AVAudioSession-shaped notification, and becomes
+`interruption-ended-no-resume` for the matching end notification.
+
 The fixture starts with journal sequence 1, reason `pause`, at 12,000 ms. Every
-remote play/pause/seek completes its production-model operation before the E2E
-control action returns. The car/headset next-track event reaches 42,000 ms and
+remote play/pause/seek is awaited through the production playback probe; the
+test never assumes the E2E control action completes the model operation. The
+car/headset next-track event reaches 42,000 ms and
 the previous-track event returns to 27,000 ms through the same configured
 interval mapping used by the production adapter. Each produces one event using
 the existing `play`, `pause`, or `seek` reason and advances the journal sequence
