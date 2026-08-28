@@ -526,31 +526,33 @@ final class AccessibilityUITests: XCTestCase {
       return true
     }
 
-    guard before.hasScrollableRange, !before.atBottom, deadline.remaining >= 0.2 else {
-      print("List scroll did not start from a scrollable position: \(failureContext())")
-      return false
+    var current = before
+    while current.hasScrollableRange, !current.atBottom {
+      gesture()
+      let remainingRange = current.maximum - current.offset
+      let requiredProgress = min(current.containerLength * 0.25, remainingRange)
+      guard let after = surface.state(),
+        after.isIdle,
+        after.geometryID > current.geometryID,
+        after.offset >= current.offset + max(0.5, requiredProgress - 1),
+        let stable = surface.state(),
+        stable.isIdle,
+        stable.geometryID == after.geometryID,
+        abs(stable.offset - after.offset) <= 0.5
+      else {
+        print(
+          "List scroll lacked stable progress-making geometry: "
+            + "container=\(surface.containerID), probe=\(surface.readiness.value), "
+            + failureContext()
+        )
+        return false
+      }
+      if condition(), condition() { return true }
+      current = stable
     }
 
-    gesture()
-    guard let after = surface.state(),
-      after.isIdle,
-      after.geometryID > before.geometryID,
-      after.offset > before.offset + 0.5,
-      condition(),
-      let stable = surface.state(),
-      stable.isIdle,
-      stable.geometryID == after.geometryID,
-      abs(stable.offset - after.offset) <= 0.5,
-      condition()
-    else {
-      print(
-        "List scroll lacked stable progress-making geometry: "
-          + "container=\(surface.containerID), probe=\(surface.readiness.value), "
-          + failureContext()
-      )
-      return false
-    }
-    return true
+    print("List scroll reached its endpoint before revealing the target: \(failureContext())")
+    return false
   }
 
   private enum AccessibilityScrollGesture {
