@@ -176,6 +176,8 @@ jobs:
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
       PLAYER_SKIP_SIMULATOR_LAUNCH: "1"
+      PLAYER_SKIP_PROJECT_GENERATION: "1"
+      PLAYER_E2E_PARALLEL_WORKERS: "2"
 
     steps:
       - name: Checkout repository

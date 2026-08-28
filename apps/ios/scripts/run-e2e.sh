@@ -12,6 +12,8 @@ story_was_set=0
 device_type="com.apple.CoreSimulator.SimDeviceType.iPhone-17"
 runtime="com.apple.CoreSimulator.SimRuntime.iOS-26-5"
 simulator_id=""
+parallel_workers="${PLAYER_E2E_PARALLEL_WORKERS:-2}"
+skip_project_generation="${PLAYER_SKIP_PROJECT_GENERATION:-0}"
 
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 
@@ -67,6 +69,16 @@ done
 
 if [[ ! "${story_id}" =~ ^[0-9]{3}-[a-z0-9][a-z0-9-]*$ ]]; then
   echo "Invalid story identifier: ${story_id}" >&2
+  exit 2
+fi
+
+if [[ ! "${parallel_workers}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "Invalid E2E parallel worker count: ${parallel_workers}." >&2
+  exit 2
+fi
+
+if [[ "${skip_project_generation}" != "0" && "${skip_project_generation}" != "1" ]]; then
+  echo "PLAYER_SKIP_PROJECT_GENERATION must be 0 or 1." >&2
   exit 2
 fi
 
@@ -147,7 +159,14 @@ xcrun simctl status_bar "${simulator_id}" override \
   --cellularMode active \
   --cellularBars 4
 
-"${script_dir}/generate-project.sh"
+if [[ "${skip_project_generation}" == "1" ]]; then
+  if [[ ! -f "${ios_dir}/Player.xcodeproj/project.pbxproj" ]]; then
+    echo "Generated Xcode project is unavailable while generation is disabled." >&2
+    exit 1
+  fi
+else
+  "${script_dir}/generate-project.sh"
+fi
 
 rm -rf "${story_output}"
 mkdir -p "${story_output}/Results"
@@ -161,9 +180,19 @@ xcodebuild build-for-testing \
   CODE_SIGNING_ALLOWED=NO
 
 only_testing_arguments=()
+test_classes=()
 for test_selector in "${test_selectors[@]}"; do
   only_testing_arguments+=("-only-testing:${test_selector}")
+  selector_without_bundle="${test_selector#*/}"
+  test_classes+=("${selector_without_bundle%%/*}")
 done
+
+unique_test_class_count="$(printf '%s\n' "${test_classes[@]}" | sort -u | wc -l | tr -d ' ')"
+parallel_testing="NO"
+if [[ "${parallel_workers}" -gt 1 && "${unique_test_class_count}" -gt 1 ]]; then
+  parallel_testing="YES"
+fi
+echo "E2E execution: ${unique_test_class_count} test class(es), parallel testing ${parallel_testing}."
 
 test_status=0
 xcodebuild test-without-building \
@@ -172,6 +201,8 @@ xcodebuild test-without-building \
   -configuration E2E \
   -destination "platform=iOS Simulator,id=${simulator_id}" \
   -derivedDataPath "${build_data}" \
+  -parallel-testing-enabled "${parallel_testing}" \
+  -maximum-parallel-testing-workers "${parallel_workers}" \
   "${only_testing_arguments[@]}" \
   -resultBundlePath "${result_bundle}" \
   CODE_SIGNING_ALLOWED=NO || test_status=$?

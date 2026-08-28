@@ -415,20 +415,23 @@ final class BookmarkUITests: XCTestCase {
     position: Int64
   ) throws -> BookmarkProbe {
     let element = app.descendants(matching: .any)["bookmarks-state-probe"]
+    func matches(_ probe: BookmarkProbe) -> Bool {
+      probe["count"] == String(count)
+        && (transactions == nil || probe["transactions"] == String(transactions!))
+        && probe["position"] == String(position)
+    }
     let predicate = NSPredicate { object, _ in
       guard let element = object as? XCUIElement,
         let value = element.value as? String,
-        let probe = BookmarkProbe(value),
-        probe["count"] == String(count),
-        transactions == nil || probe["transactions"] == String(transactions!),
-        probe["position"] == String(position)
+        let probe = BookmarkProbe(value)
       else { return false }
-      return true
+      return matches(probe)
     }
     let expectation = XCTNSPredicateExpectation(predicate: predicate, object: element)
-    if XCTWaiter.wait(for: [expectation], timeout: 2) == .completed,
-      let value = element.value as? String,
-      let probe = BookmarkProbe(value)
+    _ = XCTWaiter.wait(for: [expectation], timeout: 2)
+    if let value = element.value as? String,
+      let probe = BookmarkProbe(value),
+      matches(probe)
     {
       return probe
     }

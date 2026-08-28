@@ -123,6 +123,7 @@ schemes:
       gatherCoverageData: false
       targets:
         - PlayerTests
-        - PlayerUITests
+        - name: PlayerUITests
+          parallelizable: true
     archive:
       config: Release

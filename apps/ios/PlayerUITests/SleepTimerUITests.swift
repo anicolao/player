@@ -315,21 +315,25 @@ final class SleepTimerUITests: XCTestCase {
     context: String? = nil
   ) throws -> SleepProbe {
     let element = app.descendants(matching: .any)["sleep-timer-state-probe"]
+    func matches(_ state: SleepProbe) -> Bool {
+      (active == nil || state["active"] == active)
+        && (historyCount == nil || state["history"] == String(historyCount!))
+        && (phase == nil || state["phase"] == phase)
+        && (position == nil || state["position"] == String(position!))
+        && (context == nil || state["context"] == context)
+    }
     let predicate = NSPredicate { object, _ in
       guard let element = object as? XCUIElement,
         let value = element.value as? String,
-        let state = SleepProbe(value),
-        active == nil || state["active"] == active,
-        historyCount == nil || state["history"] == String(historyCount!),
-        phase == nil || state["phase"] == phase,
-        position == nil || state["position"] == String(position!),
-        context == nil || state["context"] == context
+        let state = SleepProbe(value)
       else { return false }
-      return true
+      return matches(state)
     }
     let expectation = XCTNSPredicateExpectation(predicate: predicate, object: element)
-    if XCTWaiter.wait(for: [expectation], timeout: 2) == .completed,
-      let value = element.value as? String, let state = SleepProbe(value)
+    _ = XCTWaiter.wait(for: [expectation], timeout: 2)
+    if let value = element.value as? String,
+      let state = SleepProbe(value),
+      matches(state)
     { return state }
     XCTFail("Sleep timer probe did not reach active=\(active ?? "any") history=\(historyCount.map(String.init) ?? "any") phase=\(phase ?? "any") position=\(position.map(String.init) ?? "any") context=\(context ?? "any"); actual=\(String(describing: element.value))")
     throw SleepTimerUITestError.probeUnavailable

@@ -36,9 +36,10 @@ rm -rf "${core_build_data}"
 run_story() {
   local story="$1"
   shift
-  "${script_dir}/run-e2e.sh" "${story}" "$@"
+  PLAYER_SKIP_PROJECT_GENERATION=1 \
+    "${script_dir}/run-e2e.sh" "${story}" "$@"
   # Retain the materialized reviewable walkthrough while bounding disk use
-  # across all twelve isolated simulator builds.
+  # across all canonical isolated simulator builds.
   rm -rf "${ios_dir}/DerivedData/E2E/${story}/Build"
   rm -rf "${ios_dir}/DerivedData/E2E/${story}/Attachments"
   rm -rf "${ios_dir}/DerivedData/E2E/${story}/Results"

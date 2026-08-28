@@ -32,7 +32,10 @@ Changing any item requires recording and reviewing a complete new baseline set.
 
 ## Run a story
 
-The runner creates and later deletes a simulator named `Player E2E`; it does not reuse a personal simulator.
+The runner creates and later deletes a simulator named for the story; it does
+not reuse a personal simulator. Multi-class stories may use up to two isolated
+XCTest simulator clones so their selected tests can run concurrently without
+sharing application state.
 
 To compare against committed baselines:
 
@@ -59,13 +62,15 @@ apps/ios/scripts/run-e2e.sh --story 002-import-and-play \
 The test result, raw attachments, and materialized actual walkthrough remain under `apps/ios/DerivedData/E2E/<story>/` for diagnosis. The exact comparator is [compare-walkthrough.swift](apps/ios/scripts/compare-walkthrough.swift).
 
 In GitHub Actions, the core suite and each committed story run in isolated
-parallel jobs. Every story uploads its own diagnostics artifact, and the
+parallel jobs. Within a multi-class story, XCTest may run two classes in
+parallel while retaining one combined result bundle and walkthrough. Every
+story uploads its own diagnostics artifact, and the
 `Core tests and exact E2E walkthroughs` aggregate succeeds only when the core
 job and every story job succeed. Serial release work advances only from that
 aggregate green result for the exact commit SHA.
 
 To run the complete serial acceptance suite locally—fixture verification, all
-unit/integration tests, and Stories 001–011—use:
+unit/integration tests, and Stories 001–013—use:
 
 ```bash
 apps/ios/scripts/run-complete-suite.sh
