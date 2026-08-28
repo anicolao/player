@@ -70,7 +70,7 @@ final class LibraryOrganizationUITests: XCTestCase {
 
     app.buttons["resume-book-\(books[0])"].tap()
     try requireValue(anyElement(app, "now-playing-screen"), "player:paused:\(books[0]):0:45000")
-    app.terminate()
+    XCTAssertTrue(terminateAndWait(app))
     app = try makeApplication(reset: false)
     app.launch()
 
@@ -169,6 +169,30 @@ final class LibraryOrganizationUITests: XCTestCase {
     let allBooks = anyElement(app, "all-books-probe")
     let allBookOrder = [books[3], books[0], books[4], books[2], books[1]]
     try requireValue(allBooks, allBooksValue(view: "shelf", order: allBookOrder))
+    let recentShelf = anyElement(app, "all-books-recent-shelf-scroll")
+    let recentShelfReadiness = anyElement(app, "all-books-recent-shelf-scroll-readiness")
+    let recentShelfLeftEnd = anyElement(app, "all-books-recent-shelf-scroll-left-end")
+    let recentShelfSurface = ScrollSurface(
+      container: recentShelf,
+      readiness: recentShelfReadiness,
+      containerID: "all-books-recent-shelf-scroll",
+      axis: .horizontal
+    )
+    let leftDeadline = EventDeadline()
+    XCTAssertTrue(
+      waitForExistence(recentShelf, deadline: leftDeadline)
+        && waitForScrollReadiness(
+          recentShelfSurface,
+          deadline: leftDeadline,
+          matching: { $0.isIdle && $0.atLeft }
+        )
+        && elementIsFullyVisible(
+          recentShelfLeftEnd,
+          within: recentShelf,
+          requiresHittable: false
+        ),
+      "Recently Added must publish its idle left endpoint before capture"
+    )
     try tester.step(
       "square-cover-bookshelves",
       description: "All Books presents square audiobook artwork at the left ends of burnt-orange wooden shelves",
@@ -178,6 +202,17 @@ final class LibraryOrganizationUITests: XCTestCase {
           anyElement(app, "all-books-recent-shelf-scroll"),
           "The books and their wooden shelf share one horizontal scroll surface"
         ),
+        StepVerification(specification: "Recently Added exposes the wooden shelf's left endpoint") {
+          elementIsFullyVisible(
+            recentShelfLeftEnd,
+            within: recentShelf,
+            requiresHittable: false
+          )
+        },
+        StepVerification(specification: "Recently Added is idle at its measured left endpoint") {
+          guard let state = recentShelfSurface.state() else { return false }
+          return state.isIdle && state.atLeft
+        },
         .exists(
           anyElement(app, "bookshelf-continue-book-\(books[0])"),
           "Continue Listening exposes the resumable square cover"
@@ -192,7 +227,6 @@ final class LibraryOrganizationUITests: XCTestCase {
         ),
       ]
     )
-    let recentShelf = anyElement(app, "all-books-recent-shelf-scroll")
     let oldestRecentBook = anyElement(app, "bookshelf-recent-book-\(books[0])")
     let recentShelfRightEnd = anyElement(app, "all-books-recent-shelf-scroll-right-end")
     let finalBookIsFullyVisible = {
@@ -203,14 +237,33 @@ final class LibraryOrganizationUITests: XCTestCase {
     XCTAssertTrue(
       scrollUntil(
         {
-          finalBookIsFullyVisible() && recentShelfRightEnd.exists
-            && recentShelfRightEnd.frame.maxX <= recentShelf.frame.maxX
+          recentShelfSurface.state()?.atRight == true
+            && finalBookIsFullyVisible()
+            && elementIsFullyVisible(
+              recentShelfRightEnd,
+              within: recentShelf,
+              requiresHittable: false
+            )
         },
-        tracking: recentShelfRightEnd
+        on: recentShelfSurface,
+        deadline: EventDeadline(),
+        requiresInteraction: true,
+        requiresScrollableRange: true,
+        terminalEndpoint: \.atRight
       ) {
         recentShelf.swipeLeft(velocity: .fast)
       },
       "The Recently Added shelf must reveal its final book and right end through progress-making scrolling"
+    )
+    XCTAssertTrue(
+      challengeSettledEnd(
+        on: recentShelfSurface,
+        tracking: oldestRecentBook,
+        deadline: EventDeadline()
+      ) {
+        recentShelf.swipeLeft(velocity: .fast)
+      },
+      "The Recently Added shelf must remain settled after one deliberate right-end challenge"
     )
     try tester.step(
       "square-cover-bookshelf-right-end",
@@ -218,14 +271,22 @@ final class LibraryOrganizationUITests: XCTestCase {
       verifications: [
         .exists(oldestRecentBook, "The oldest audiobook remains on the shared shelf"),
         StepVerification(specification: "The final audiobook is fully reachable at the shelf end") {
-          finalBookIsFullyVisible() && recentShelfRightEnd.exists
-            && recentShelfRightEnd.frame.maxX <= recentShelf.frame.maxX
+          recentShelfSurface.state()?.isIdle == true
+            && recentShelfSurface.state()?.atRight == true
+            && finalBookIsFullyVisible()
+        },
+        StepVerification(specification: "The wooden shelf's right endpoint is fully visible") {
+          elementIsFullyVisible(
+            recentShelfRightEnd,
+            within: recentShelf,
+            requiresHittable: false
+          )
         },
       ]
     )
     app.buttons["library-view-list"].tap()
     try requireValue(allBooks, allBooksValue(view: "list", order: allBookOrder))
-    app.terminate()
+    XCTAssertTrue(terminateAndWait(app))
 
     let restoredApp = try makeApplication(reset: false)
     restoredApp.launch()
@@ -248,16 +309,69 @@ final class LibraryOrganizationUITests: XCTestCase {
     )
     let openTrash = restoredApp.buttons["open-trash"]
     let miniPlayer = restoredApp.otherElements["mini-player"]
-    XCTAssertTrue(openTrash.waitForExistence(timeout: 2))
-    XCTAssertTrue(miniPlayer.waitForExistence(timeout: 2))
+    let libraryScroll = anyElement(restoredApp, "library-root-scroll")
+    let libraryScrollReadiness = anyElement(restoredApp, "library-root-scroll-readiness")
+    let librarySurface = ScrollSurface(
+      container: libraryScroll,
+      readiness: libraryScrollReadiness,
+      containerID: "library-root-scroll",
+      axis: .vertical
+    )
     XCTAssertTrue(
       scrollUntil(
-        { openTrash.isHittable && openTrash.frame.maxY <= miniPlayer.frame.minY - 4 },
-        tracking: openTrash
+        { librarySurface.state()?.atTop == true },
+        on: librarySurface,
+        deadline: EventDeadline(),
+        direction: .towardStart,
+        requiresInteraction: true,
+        requiresScrollableRange: true,
+        terminalEndpoint: \.atTop,
+        failureContext: {
+          "target=\(openTrash.frame), target-hittable=\(openTrash.isHittable), "
+            + "mini-player=\(miniPlayer.frame), scroll=\(libraryScroll.frame)"
+        }
       ) {
-        upwardDrag(in: restoredApp, velocity: .slow)
+        libraryScroll.swipeDown(velocity: .fast)
+      },
+      "Library must establish a progress-making top endpoint before testing its bottom runway"
+    )
+    let runwayDeadline = EventDeadline()
+    XCTAssertTrue(waitForExistence(openTrash, deadline: runwayDeadline))
+    XCTAssertTrue(waitForExistence(miniPlayer, deadline: runwayDeadline))
+    XCTAssertTrue(
+      scrollUntil(
+        {
+          librarySurface.state()?.atBottom == true
+            && openTrash.isHittable
+            && elementIsFullyVisible(
+              openTrash,
+              within: libraryScroll,
+              obscuredBelow: miniPlayer
+            )
+        },
+        on: librarySurface,
+        deadline: runwayDeadline,
+        requiresInteraction: true,
+        requiresScrollableRange: true,
+        terminalEndpoint: \.atBottom,
+        failureContext: {
+          "target=\(openTrash.frame), target-hittable=\(openTrash.isHittable), "
+            + "mini-player=\(miniPlayer.frame), scroll=\(libraryScroll.frame)"
+        }
+      ) {
+        fullHeightUpwardDrag(in: libraryScroll)
       },
       "Trash must become tappable above the mini-player through progress-making Library scrolling"
+    )
+    XCTAssertTrue(
+      challengeSettledEnd(
+        on: librarySurface,
+        tracking: openTrash,
+        deadline: EventDeadline()
+      ) {
+        fullHeightUpwardDrag(in: libraryScroll)
+      },
+      "Library must remain settled after one deliberate bottom-end challenge"
     )
     XCTAssertTrue(openTrash.isHittable, "Trash must remain tappable above the mini-player")
     XCTAssertLessThanOrEqual(
@@ -265,29 +379,20 @@ final class LibraryOrganizationUITests: XCTestCase {
       miniPlayer.frame.minY - 4,
       "Library content must have enough bottom runway to scroll Trash fully above the mini-player"
     )
-    XCTAssertTrue(
-      scrollToSettledEnd(tracking: openTrash) {
-        restoredApp.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.62))
-          .press(
-            forDuration: 0.05,
-            thenDragTo: restoredApp.coordinate(
-              withNormalizedOffset: CGVector(dx: 0.92, dy: 0.18)
-            ),
-            withVelocity: .fast,
-            thenHoldForDuration: 0
-          )
-      },
-      "Library scrolling must reach a geometry-settled bottom edge within two seconds"
-    )
-    let settledTrashFrame = openTrash.frame
     try tester.step(
       "trash-clear-of-player",
       description: "The final Library control scrolls completely above the persistent player",
       verifications: [
         .exists(openTrash, "Trash remains visible and tappable above the mini-player"),
         .exists(miniPlayer, "The persistent player remains available below Library content"),
-        StepVerification(specification: "Repeated bottom-edge gestures settle at one stable position") {
-          abs(openTrash.frame.minY - settledTrashFrame.minY) <= 1
+        StepVerification(specification: "Trash is fully clear of the persistent player") {
+          openTrash.isHittable && openTrash.frame.maxY <= miniPlayer.frame.minY - 4
+        },
+        StepVerification(specification: "Library publishes an idle, geometry-confirmed bottom endpoint") {
+          guard let state = ScrollReadinessState(libraryScrollReadiness.value) else {
+            return false
+          }
+          return state.isIdle && state.atBottom
         },
       ]
     )
@@ -353,6 +458,12 @@ final class LibraryOrganizationUITests: XCTestCase {
     searchInput.tap()
     searchInput.typeText("Mina Sol\n")
     let searchProbe = anyElement(restoredApp, "library-search-probe")
+    let searchFocus = anyElement(restoredApp, "library-search-focus-state")
+    let searchSubmitDeadline = EventDeadline()
+    XCTAssertTrue(
+      searchFocus.waitForStringValue("unfocused", timeout: searchSubmitDeadline.remaining),
+      "Submitting local search must dismiss focus before the result layout is captured"
+    )
     try tester.step(
       "metadata-search",
       description: "Local search finds contributor metadata without a network",
@@ -403,7 +514,7 @@ final class LibraryOrganizationUITests: XCTestCase {
       ]
     )
 
-    restoredApp.terminate()
+    XCTAssertTrue(terminateAndWait(restoredApp))
     let searchRelaunch = try makeApplication(reset: false)
     searchRelaunch.launch()
     searchRelaunch.buttons["open-library-search"].tap()
@@ -490,13 +601,24 @@ final class LibraryOrganizationUITests: XCTestCase {
 
     app.tabBars.buttons["Settings"].tap()
     assertScrollsAboveMiniPlayer(
-      app.buttons["settings-diagnostics"], miniPlayer: miniPlayer, in: app,
+      app.buttons["settings-diagnostics"], miniPlayer: miniPlayer,
+      scrollContainer: anyElement(app, "settings-scroll"),
+      readiness: anyElement(app, "settings-scroll-readiness"),
+      permitsGeometrySettledFallback: true,
       message: "The final Settings row must scroll above the mini-player"
     )
 
+    revealSettingsRow(
+      app.buttons["settings-backup"],
+      app: app,
+      direction: .towardStart
+    )
     app.buttons["settings-backup"].tap()
     assertScrollsAboveMiniPlayer(
-      anyElement(app, "backup-automatic-explanation"), miniPlayer: miniPlayer, in: app,
+      anyElement(app, "backup-automatic-explanation"), miniPlayer: miniPlayer,
+      scrollContainer: anyElement(app, "backup-scroll"),
+      readiness: anyElement(app, "backup-scroll-readiness"),
+      permitsGeometrySettledFallback: false,
       message: "The final Backup content must scroll above the mini-player"
     )
     navigateBack(
@@ -505,9 +627,17 @@ final class LibraryOrganizationUITests: XCTestCase {
       destination: app.navigationBars["Settings"]
     )
 
+    revealSettingsRow(
+      app.buttons["playback-defaults"],
+      app: app,
+      direction: .towardEnd
+    )
     app.buttons["playback-defaults"].tap()
     assertScrollsAboveMiniPlayer(
-      anyElement(app, "transport-seek-context"), miniPlayer: miniPlayer, in: app,
+      anyElement(app, "transport-seek-context"), miniPlayer: miniPlayer,
+      scrollContainer: anyElement(app, "transport-preferences-screen"),
+      readiness: anyElement(app, "transport-preferences-scroll-readiness"),
+      permitsGeometrySettledFallback: true,
       message: "The final Playback Defaults control must scroll above the mini-player"
     )
     navigateBack(
@@ -520,31 +650,102 @@ final class LibraryOrganizationUITests: XCTestCase {
   private func assertScrollsAboveMiniPlayer(
     _ element: XCUIElement,
     miniPlayer: XCUIElement,
-    in app: XCUIApplication,
+    scrollContainer: XCUIElement,
+    readiness: XCUIElement,
+    permitsGeometrySettledFallback: Bool,
     message: String
   ) {
-    XCTAssertTrue(element.waitForExistence(timeout: 2), message)
-    XCTAssertTrue(
-      scrollUntil(
-        { element.isHittable && element.frame.maxY <= miniPlayer.frame.minY - 4 },
-        tracking: element
-      ) {
-        upwardDrag(in: app, velocity: .slow)
-      },
-      message
+    let deadline = EventDeadline()
+    XCTAssertTrue(waitForExistence(element, deadline: deadline), message)
+    XCTAssertTrue(waitForExistence(scrollContainer, deadline: deadline), message)
+    let surface = ScrollSurface(
+      container: scrollContainer,
+      readiness: readiness,
+      containerID: scrollContainer.identifier,
+      axis: .vertical,
+      permitsGeometrySettledFallback: permitsGeometrySettledFallback
     )
+    let reachedClearance = scrollUntil(
+      {
+        element.isHittable
+          && elementIsFullyVisible(
+            element,
+            within: scrollContainer,
+            obscuredBelow: miniPlayer
+          )
+      },
+      on: surface,
+      deadline: deadline,
+      terminalEndpoint: \.atBottom,
+      failureContext: {
+        "target=\(element.frame), target-hittable=\(element.isHittable), "
+          + "mini-player=\(miniPlayer.frame), scroll=\(scrollContainer.frame)"
+      }
+    ) {
+      upwardDrag(in: scrollContainer, velocity: .fast)
+    }
+    XCTAssertTrue(reachedClearance, message)
     XCTAssertTrue(element.isHittable, message)
     XCTAssertLessThanOrEqual(element.frame.maxY, miniPlayer.frame.minY - 4, message)
   }
 
-  private func upwardDrag(in app: XCUIApplication, velocity: XCUIGestureVelocity) {
-    app.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.72))
+  private func revealSettingsRow(
+    _ element: XCUIElement,
+    app: XCUIApplication,
+    direction: ScrollProbeDirection
+  ) {
+    let deadline = EventDeadline()
+    let container = anyElement(app, "settings-scroll")
+    let surface = ScrollSurface(
+      container: container,
+      readiness: anyElement(app, "settings-scroll-readiness"),
+      containerID: "settings-scroll",
+      axis: .vertical,
+      permitsGeometrySettledFallback: true
+    )
+    let terminalEndpoint: KeyPath<ScrollReadinessState, Bool> =
+      direction == .towardEnd ? \.atBottom : \.atTop
+    XCTAssertTrue(waitForExistence(element, deadline: deadline))
+    XCTAssertTrue(
+      scrollUntil(
+        { element.isHittable },
+        on: surface,
+        deadline: deadline,
+        direction: direction,
+        terminalEndpoint: terminalEndpoint
+      ) {
+        if direction == .towardEnd {
+          upwardDrag(in: container, velocity: .fast)
+        } else {
+          downwardDrag(in: container, velocity: .fast)
+        }
+      },
+      "The Settings row \(element.identifier) must be revealed before tapping"
+    )
+  }
+
+  private func upwardDrag(in element: XCUIElement, velocity: XCUIGestureVelocity) {
+    element.coordinate(withNormalizedOffset: CGVector(dx: 0.82, dy: 0.72))
       .press(
         forDuration: 0.05,
-        thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.28)),
+        thenDragTo: element.coordinate(withNormalizedOffset: CGVector(dx: 0.82, dy: 0.28)),
         withVelocity: velocity,
         thenHoldForDuration: 0
       )
+  }
+
+  private func downwardDrag(in element: XCUIElement, velocity: XCUIGestureVelocity) {
+    element.coordinate(withNormalizedOffset: CGVector(dx: 0.82, dy: 0.28))
+      .press(
+        forDuration: 0.05,
+        thenDragTo: element.coordinate(withNormalizedOffset: CGVector(dx: 0.82, dy: 0.72)),
+        withVelocity: velocity,
+        thenHoldForDuration: 0
+      )
+  }
+
+  private func fullHeightUpwardDrag(in element: XCUIElement) {
+    element.swipeUp(velocity: .fast)
   }
 
   private func verifyBrowseAxis(

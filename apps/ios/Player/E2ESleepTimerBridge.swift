@@ -106,6 +106,7 @@
       }.joined(separator: ",")
       var tokens = [
         "sleep-timer",
+        "schema=1",
         "active=\(timer?.id.uuidString.lowercased() ?? "none")",
         "selection=\(timer.map { selectionToken($0.selection) } ?? "none")",
         "fade=\(timer.map { String($0.fadeEnabled) } ?? "none")",

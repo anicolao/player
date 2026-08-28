@@ -118,6 +118,11 @@ struct SleepTimerView: View {
       }
       .accessibilityIdentifier("sleep-timer-screen")
       .accessibilityValue(screenValue)
+      .e2eScrollReadiness(
+        id: "sleep-timer-scroll-readiness",
+        containerID: "sleep-timer-screen",
+        axis: .vertical
+      )
       .alert("Sleep Timer", isPresented: errorIsPresented) {
         Button("OK", role: .cancel) {}
       } message: {

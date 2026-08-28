@@ -53,14 +53,11 @@ final class SleepTimerUITests: XCTestCase {
         let picker = app.buttons["sleep-timer-custom-picker"]
         XCTAssertTrue(picker.waitForExistence(timeout: 2))
         picker.tap()
-        let option = app.buttons["sleep-timer-custom-25"]
-        if option.waitForExistence(timeout: 1) {
-          option.tap()
-        } else {
-          let fallback = app.buttons["25 minutes"]
-          XCTAssertTrue(fallback.waitForExistence(timeout: 2))
-          fallback.tap()
-        }
+        let options = app.buttons.matching(identifier: "sleep-timer-custom-25")
+        let option = options.element
+        XCTAssertTrue(option.waitForExistence(timeout: 2))
+        XCTAssertEqual(options.count, 1, "The custom-duration option identifier must be unique.")
+        option.tap()
       }
       try tapWhenHittable(app.buttons[selection.buttonID], in: app)
       let probe = try requireProbe(app, active: timer101)
@@ -73,7 +70,7 @@ final class SleepTimerUITests: XCTestCase {
       XCTAssertEqual(probe["rewinds"], "0")
       XCTAssertEqual(probe["position"], "70000")
       XCTAssertEqual(probe.journal, "1:pause@70000")
-      app.terminate()
+      XCTAssertTrue(terminateAndWait(app))
     }
   }
 
@@ -106,7 +103,7 @@ final class SleepTimerUITests: XCTestCase {
     let cancelled = try requireProbe(app, active: "none", historyCount: 2)
     XCTAssertEqual(cancelled["rewinds"], "0")
     XCTAssertEqual(cancelled["context"], "none")
-    app.terminate()
+    XCTAssertTrue(terminateAndWait(app))
 
     let restored = makeApplication(namespace: "replace-cancel", reset: false)
     restored.launch()
@@ -123,7 +120,7 @@ final class SleepTimerUITests: XCTestCase {
       "history=52000000-0000-0000-0000-000000000104:timer=52000000-0000-0000-0000-000000000102:selection=preset-15:status=cancelled:stop=70000:event=none:context-used=false",
       in: restored
     )
-    restored.terminate()
+    XCTAssertTrue(terminateAndWait(restored))
   }
 
   private func assertPersistentFadeCompletionAndSingleUseContextResume(
@@ -139,7 +136,7 @@ final class SleepTimerUITests: XCTestCase {
     XCTAssertEqual(started["remaining"], "20")
     XCTAssertEqual(started["target"], "90000")
     XCTAssertEqual(started["fade"], "true")
-    app.terminate()
+    XCTAssertTrue(terminateAndWait(app))
 
     let restored = makeApplication(namespace: "persistent", reset: false)
     restored.launch()
@@ -159,7 +156,25 @@ final class SleepTimerUITests: XCTestCase {
       restored.descendants(matching: .any)["active-sleep-timer"],
       "timer=\(timer101):selection=end-track:remaining=20:target=90000:fade=true:phase=active"
     )
-    XCTAssertTrue(restored.buttons["cancel-sleep-timer"].exists)
+    let cancelSleepTimer = restored.buttons["cancel-sleep-timer"]
+    let activeCaptureDeadline = EventDeadline()
+    let activeSurface = ScrollSurface(
+      container: activeScreen,
+      readiness: restored.descendants(matching: .any)["sleep-timer-scroll-readiness"],
+      containerID: "sleep-timer-screen",
+      axis: .vertical,
+      permitsGeometrySettledFallback: true
+    )
+    XCTAssertTrue(
+      waitForScrollReadiness(
+        activeSurface,
+        deadline: activeCaptureDeadline,
+        matching: { state in
+          state.isIdle && elementIsFullyVisible(cancelSleepTimer, within: activeScreen)
+        }
+      ),
+      "The persisted timer and Cancel action must settle fully inside the Sleep Timer viewport"
+    )
     try tester.step(
       "persisted-active-sleep-timer",
       description: "The active end-of-track timer remains clear after relaunch",
@@ -174,10 +189,9 @@ final class SleepTimerUITests: XCTestCase {
           "timer=\(timer101):selection=end-track:remaining=20:target=90000:fade=true:phase=active",
           "The listener sees twenty seconds remaining until the exact 90,000 ms track boundary"
         ),
-        .exists(
-          restored.buttons["cancel-sleep-timer"],
-          "The persisted timer remains cancellable"
-        ),
+        StepVerification(specification: "The persisted timer remains cancellable") {
+          elementIsFullyVisible(cancelSleepTimer, within: activeScreen)
+        },
       ]
     )
     let sleepTimerDone = restored.navigationBars["Sleep Timer"].buttons["Done"]
@@ -218,7 +232,7 @@ final class SleepTimerUITests: XCTestCase {
       probe.journal,
       "1:pause@70000,2:play@70000,3:seek@85000,4:seek@90000,5:sleepTimer@90000"
     )
-    restored.terminate()
+    XCTAssertTrue(terminateAndWait(restored))
 
     let expired = makeApplication(namespace: "persistent", reset: false)
     expired.launch()
@@ -232,7 +246,21 @@ final class SleepTimerUITests: XCTestCase {
       "history=52000000-0000-0000-0000-000000000106:book=\(bookID):stop=90000:until=1700020600"
     )
     let contextResume = expired.buttons["resume-sleep-context"]
-    XCTAssertTrue(contextResume.isHittable)
+    let nowPlayingViewport = expired.otherElements["now-playing-screen"]
+    XCTAssertTrue(
+      waitForLayoutCondition(
+        probe: expired.descendants(matching: .any)["now-playing-layout-readiness"],
+        containerID: "now-playing-screen",
+        deadline: EventDeadline()
+      ) {
+        elementIsFullyVisible(
+          contextBanner,
+          within: nowPlayingViewport,
+          requiresHittable: false
+        ) && elementIsFullyVisible(contextResume, within: nowPlayingViewport)
+      },
+      "The completed-stop context and Resume action must settle fully inside Now Playing"
+    )
     try tester.step(
       "sleep-stop-resume-context",
       description: "Now Playing shows the completed sleep stop and one contextual Resume",
@@ -247,10 +275,16 @@ final class SleepTimerUITests: XCTestCase {
           "history=52000000-0000-0000-0000-000000000106:book=\(bookID):stop=90000:until=1700020600",
           "The recent completed stop exposes its exact book, position, and ten-minute availability window"
         ),
-        .exists(
-          contextResume,
-          "A prominent contextual Resume action is available exactly once"
-        ),
+        StepVerification(specification: "The completed-stop context is fully visible before capture") {
+          elementIsFullyVisible(
+            contextBanner,
+            within: nowPlayingViewport,
+            requiresHittable: false
+          )
+        },
+        StepVerification(specification: "A prominent contextual Resume action is available exactly once") {
+          elementIsFullyVisible(contextResume, within: nowPlayingViewport)
+        },
       ]
     )
 
@@ -298,11 +332,24 @@ final class SleepTimerUITests: XCTestCase {
       element.tap()
       return
     }
+    let deadline = EventDeadline()
     let screen = app.descendants(matching: .any)["sleep-timer-screen"]
-    XCTAssertTrue(screen.waitForExistence(timeout: 2))
+    XCTAssertTrue(waitForExistence(screen, deadline: deadline))
+    let surface = ScrollSurface(
+      container: screen,
+      readiness: app.descendants(matching: .any)["sleep-timer-scroll-readiness"],
+      containerID: "sleep-timer-screen",
+      axis: .vertical,
+      permitsGeometrySettledFallback: true
+    )
     XCTAssertTrue(
-      scrollUntil({ element.isHittable }, tracking: element) {
-        screen.swipeUp(velocity: .slow)
+      scrollUntil(
+        { element.isHittable },
+        on: surface,
+        deadline: deadline,
+        terminalEndpoint: \.atBottom
+      ) {
+        screen.swipeUp(velocity: .fast)
       },
       "Expected \(element.identifier) to become hittable through progress-making Sleep Timer scrolling"
     )
@@ -362,11 +409,24 @@ final class SleepTimerUITests: XCTestCase {
     _ expected: String,
     in app: XCUIApplication
   ) throws {
+    let deadline = EventDeadline()
     let screen = app.descendants(matching: .any)["sleep-timer-screen"]
-    XCTAssertTrue(screen.waitForExistence(timeout: 2))
+    XCTAssertTrue(waitForExistence(screen, deadline: deadline))
+    let surface = ScrollSurface(
+      container: screen,
+      readiness: app.descendants(matching: .any)["sleep-timer-scroll-readiness"],
+      containerID: "sleep-timer-screen",
+      axis: .vertical,
+      permitsGeometrySettledFallback: true
+    )
     XCTAssertTrue(
-      scrollUntil({ element.exists && element.isHittable }, tracking: element) {
-        screen.swipeUp(velocity: .slow)
+      scrollUntil(
+        { element.exists && element.isHittable },
+        on: surface,
+        deadline: deadline,
+        terminalEndpoint: \.atBottom
+      ) {
+        screen.swipeUp(velocity: .fast)
       },
       "Expected \(element.identifier) to become visible through progress-making Sleep Timer scrolling"
     )
@@ -401,6 +461,24 @@ private struct SelectionCase {
 }
 
 private struct SleepProbe {
+  private static let baseKeys: Set<String> = [
+    "schema", "active", "selection", "fade", "phase", "remaining", "target", "history",
+    "latest", "rewinds", "context", "position", "playback", "journal",
+  ]
+  private static let historyKeys: Set<String> = [
+    "history-id", "history-timer", "history-selection", "stop", "event", "context-used",
+  ]
+  private static let contextKeys: Set<String> = [
+    "context-book", "context-stop", "context-until",
+  ]
+  private static let historyStatuses: Set<String> = ["completed", "cancelled", "replaced"]
+  private static let phases: Set<String> = ["active", "fading"]
+  private static let playbackStatuses: Set<String> = ["unloaded", "paused", "playing"]
+  private static let journalReasons: Set<String> = [
+    "play", "periodic", "pause", "seek", "background", "interruption", "routeChange",
+    "preResumeRewind", "resumeRewind", "undoResumeRewind", "sleepTimer",
+  ]
+
   private var fields: [String: String]
   let journal: String
 
@@ -409,14 +487,140 @@ private struct SleepProbe {
     guard tokens.first == "sleep-timer" else { return nil }
     var parsed: [String: String] = [:]
     for token in tokens.dropFirst() {
-      guard let separator = token.firstIndex(of: "=") else { continue }
-      parsed[String(token[..<separator])] = String(token[token.index(after: separator)...])
+      guard let separator = token.firstIndex(of: "=") else { return nil }
+      let key = String(token[..<separator])
+      let fieldValue = String(token[token.index(after: separator)...])
+      guard !key.isEmpty, (!fieldValue.isEmpty || key == "journal"), parsed[key] == nil else {
+        return nil
+      }
+      parsed[key] = fieldValue
     }
+    guard parsed["schema"] == "1",
+      let active = parsed["active"], active == "none" || Self.uuid(active),
+      let selection = parsed["selection"], Self.selection(selection, permitsNone: true),
+      let fade = parsed["fade"], fade == "none" || Self.bool(fade) != nil,
+      let phase = parsed["phase"], phase == "none" || Self.phases.contains(phase),
+      let remaining = parsed["remaining"], Self.optionalNonnegativeInt(remaining),
+      let target = parsed["target"], Self.optionalNonnegativeInt64(target),
+      let historyCount = Self.nonnegativeInt(parsed["history"]),
+      let latest = parsed["latest"],
+      let rewindCount = Self.nonnegativeInt(parsed["rewinds"]),
+      let context = parsed["context"], context == "none" || Self.uuid(context),
+      Self.nonnegativeInt64(parsed["position"]) != nil,
+      let playback = parsed["playback"], Self.playbackStatuses.contains(playback),
+      let journal = parsed["journal"], Self.validJournal(journal)
+    else { return nil }
+
+    if active == "none" {
+      guard selection == "none", fade == "none", phase == "none", remaining == "none",
+        target == "none"
+      else { return nil }
+    } else {
+      guard selection != "none", fade != "none", phase != "none",
+        remaining != "none" || target != "none"
+      else { return nil }
+    }
+
+    var expectedKeys = Self.baseKeys
+    if historyCount == 0 {
+      guard latest == "none" else { return nil }
+    } else {
+      guard Self.historyStatuses.contains(latest),
+        Self.uuid(parsed["history-id"]), Self.uuid(parsed["history-timer"]),
+        let historySelection = parsed["history-selection"],
+        Self.selection(historySelection, permitsNone: false),
+        Self.nonnegativeInt64(parsed["stop"]) != nil,
+        parsed["event"] == "none" || Self.uuid(parsed["event"]),
+        Self.bool(parsed["context-used"]) != nil
+      else { return nil }
+      expectedKeys.formUnion(Self.historyKeys)
+    }
+    if context == "none" {
+      guard parsed.keys.allSatisfy({ !Self.contextKeys.contains($0) }) else { return nil }
+    } else {
+      guard Self.uuid(parsed["context-book"]),
+        Self.nonnegativeInt64(parsed["context-stop"]) != nil,
+        Self.canonicalInt(parsed["context-until"]) != nil
+      else { return nil }
+      expectedKeys.formUnion(Self.contextKeys)
+    }
+    guard !journal.isEmpty || (active == "none" && historyCount == 0 && rewindCount == 0),
+      Set(parsed.keys) == expectedKeys
+    else { return nil }
     fields = parsed
-    journal = parsed["journal"] ?? ""
+    self.journal = journal
   }
 
   subscript(_ key: String) -> String? { fields[key] }
+
+  private static func bool(_ value: String?) -> Bool? {
+    switch value {
+    case "true": true
+    case "false": false
+    default: nil
+    }
+  }
+
+  private static func nonnegativeInt(_ value: String?) -> Int? {
+    guard let value, let parsed = Int(value), parsed >= 0, String(parsed) == value else { return nil }
+    return parsed
+  }
+
+  private static func nonnegativeInt64(_ value: String?) -> Int64? {
+    guard let value, let parsed = Int64(value), parsed >= 0, String(parsed) == value else {
+      return nil
+    }
+    return parsed
+  }
+
+  private static func canonicalInt(_ value: String?) -> Int? {
+    guard let value, let parsed = Int(value), String(parsed) == value else { return nil }
+    return parsed
+  }
+
+  private static func optionalNonnegativeInt(_ value: String) -> Bool {
+    value == "none" || nonnegativeInt(value) != nil
+  }
+
+  private static func optionalNonnegativeInt64(_ value: String) -> Bool {
+    value == "none" || nonnegativeInt64(value) != nil
+  }
+
+  private static func uuid(_ value: String?) -> Bool {
+    guard let value, let parsed = UUID(uuidString: value) else { return false }
+    return parsed.uuidString.lowercased() == value
+  }
+
+  private static func selection(_ value: String, permitsNone: Bool) -> Bool {
+    if permitsNone, value == "none" { return true }
+    if ["preset-10", "preset-15", "preset-30", "preset-45", "preset-60", "end-chapter", "end-track"]
+      .contains(value)
+    { return true }
+    guard value.hasPrefix("custom-"),
+      let seconds = nonnegativeInt(String(value.dropFirst("custom-".count)))
+    else { return false }
+    return seconds > 0
+  }
+
+  private static func validJournal(_ value: String) -> Bool {
+    if value.isEmpty { return true }
+    var previousSequence = 0
+    for event in value.split(separator: ",", omittingEmptySubsequences: false) {
+      let sequenceAndEvent = event.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
+      guard sequenceAndEvent.count == 2,
+        let sequence = nonnegativeInt(String(sequenceAndEvent[0])), sequence > previousSequence
+      else { return false }
+      let reasonAndPosition = sequenceAndEvent[1].split(
+        separator: "@", maxSplits: 1, omittingEmptySubsequences: false
+      )
+      guard reasonAndPosition.count == 2,
+        journalReasons.contains(String(reasonAndPosition[0])),
+        nonnegativeInt64(String(reasonAndPosition[1])) != nil
+      else { return false }
+      previousSequence = sequence
+    }
+    return true
+  }
 }
 
 private enum SleepTimerUITestError: Error {

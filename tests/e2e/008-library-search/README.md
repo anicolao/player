@@ -52,6 +52,8 @@
 
 - [x] The shelf presentation is visible
 - [x] The books and their wooden shelf share one horizontal scroll surface
+- [x] Recently Added exposes the wooden shelf's left endpoint
+- [x] Recently Added is idle at its measured left endpoint
 - [x] Continue Listening exposes the resumable square cover
 - [x] Recently Added exposes the newest square cover
 - [x] The complete A–Z shelf exposes its first sorted audiobook
@@ -64,6 +66,7 @@
 
 - [x] The oldest audiobook remains on the shared shelf
 - [x] The final audiobook is fully reachable at the shelf end
+- [x] The wooden shelf's right endpoint is fully visible
 
 ## The final Library control scrolls completely above the persistent player
 
@@ -73,7 +76,8 @@
 
 - [x] Trash remains visible and tappable above the mini-player
 - [x] The persistent player remains available below Library content
-- [x] Repeated bottom-edge gestures settle at one stable position
+- [x] Trash is fully clear of the persistent player
+- [x] Library publishes an idle, geometry-confirmed bottom endpoint
 
 ## Removing a book creates an exact recoverable Trash transaction
 

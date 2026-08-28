@@ -231,6 +231,11 @@ struct BackupSettingsView: View {
         }
         .playerMiniPlayerScrollRunway()
         .accessibilityIdentifier("backup-scroll")
+        .e2eScrollReadiness(
+          id: "backup-scroll-readiness",
+          containerID: "backup-scroll",
+          axis: .vertical
+        )
         .background(Color(uiColor: .systemGroupedBackground))
         #if E2E
           .overlay(alignment: .topLeading) {

@@ -1,5 +1,142 @@
 import XCTest
 
+enum E2EScrollAxis: String, Equatable {
+  case horizontal
+  case vertical
+}
+
+struct ScrollReadinessState {
+  let containerID: String
+  let axis: E2EScrollAxis
+  let interactionID: Int
+  let completionID: Int
+  let geometryID: Int
+  let completionGeometryID: Int
+  let geometryReady: Bool
+  let isIdle: Bool
+  let atLeft: Bool
+  let atRight: Bool
+  let atTop: Bool
+  let atBottom: Bool
+  let offset: Double
+  let minimum: Double
+  let maximum: Double
+  let contentLength: Double
+  let containerLength: Double
+
+  var hasScrollableRange: Bool { maximum - minimum > 1 }
+  var atEnd: Bool { axis == .horizontal ? atRight : atBottom }
+
+  init?(_ rawValue: Any?) {
+    guard let value = rawValue as? String else { return nil }
+    let tokens = value.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+    guard tokens.first == "scroll" else { return nil }
+    var fields: [String: String] = [:]
+    for token in tokens.dropFirst() {
+      guard let separator = token.firstIndex(of: "=") else { return nil }
+      let key = String(token[..<separator])
+      let value = String(token[token.index(after: separator)...])
+      guard !key.isEmpty, !value.isEmpty, fields[key] == nil else { return nil }
+      fields[key] = value
+    }
+    guard Set(fields.keys) == Self.expectedKeys,
+      fields["schema"] == "1",
+      let containerID = fields["container"], !containerID.isEmpty,
+      let axisValue = fields["axis"], let axis = E2EScrollAxis(rawValue: axisValue),
+      let interactionID = fields["interaction"].flatMap(Int.init), interactionID >= 0,
+      let completionID = fields["completion"].flatMap(Int.init), completionID >= 0,
+      let geometryID = fields["geometry"].flatMap(Int.init), geometryID > 0,
+      let completionGeometryID = fields["completion-geometry"].flatMap(Int.init),
+      completionGeometryID >= 0, completionGeometryID <= geometryID,
+      let geometryReady = Self.bool(fields["geometry-ready"]), geometryReady,
+      let isIdle = Self.phase(fields["phase"]),
+      let atLeft = Self.bool(fields["at-left"]),
+      let atRight = Self.bool(fields["at-right"]),
+      let atTop = Self.bool(fields["at-top"]),
+      let atBottom = Self.bool(fields["at-bottom"]),
+      let offset = fields["offset"].flatMap(Double.init), offset.isFinite,
+      let minimum = fields["minimum"].flatMap(Double.init), minimum.isFinite,
+      let maximum = fields["maximum"].flatMap(Double.init), maximum.isFinite,
+      let contentLength = fields["content"].flatMap(Double.init), contentLength.isFinite,
+      let containerLength = fields["container-length"].flatMap(Double.init),
+      containerLength.isFinite, containerLength > 0,
+      contentLength >= 0, maximum >= minimum
+    else { return nil }
+    self.containerID = containerID
+    self.axis = axis
+    self.interactionID = interactionID
+    self.completionID = completionID
+    self.geometryID = geometryID
+    self.completionGeometryID = completionGeometryID
+    self.geometryReady = geometryReady
+    self.isIdle = isIdle
+    self.atLeft = atLeft
+    self.atRight = atRight
+    self.atTop = atTop
+    self.atBottom = atBottom
+    self.offset = offset
+    self.minimum = minimum
+    self.maximum = maximum
+    self.contentLength = contentLength
+    self.containerLength = containerLength
+  }
+
+  private static let expectedKeys: Set<String> = [
+    "schema", "container", "axis", "interaction", "completion", "geometry",
+    "completion-geometry", "geometry-ready", "phase", "at-left", "at-right",
+    "at-top", "at-bottom", "offset", "minimum", "maximum", "content",
+    "container-length",
+  ]
+
+  private static func bool(_ value: String?) -> Bool? {
+    switch value {
+    case "true": true
+    case "false": false
+    default: nil
+    }
+  }
+
+  private static func phase(_ value: String?) -> Bool? {
+    switch value {
+    case "idle": true
+    case "scrolling": false
+    default: nil
+    }
+  }
+}
+
+struct LayoutReadinessState {
+  let containerID: String
+  let generation: Int
+
+  init?(_ rawValue: Any?) {
+    guard let value = rawValue as? String else { return nil }
+    let tokens = value.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+    guard tokens.first == "layout" else { return nil }
+    var fields: [String: String] = [:]
+    for token in tokens.dropFirst() {
+      guard let separator = token.firstIndex(of: "=") else { return nil }
+      let key = String(token[..<separator])
+      let value = String(token[token.index(after: separator)...])
+      guard !key.isEmpty, !value.isEmpty, fields[key] == nil else { return nil }
+      fields[key] = value
+    }
+    guard Set(fields.keys) == Self.expectedKeys,
+      fields["schema"] == "1", fields["ready"] == "true",
+      let containerID = fields["container"], !containerID.isEmpty,
+      let generation = fields["generation"].flatMap(Int.init), generation > 0,
+      let width = fields["width"].flatMap(Double.init), width.isFinite, width > 0,
+      let height = fields["height"].flatMap(Double.init), height.isFinite, height > 0
+    else { return nil }
+    self.containerID = containerID
+    self.generation = generation
+  }
+
+  private static let expectedKeys: Set<String> = [
+    "schema", "container", "generation", "width", "height", "ready",
+  ]
+}
+
 @MainActor
 func dismissAppleIntelligenceNotificationIfPresent(
   file: StaticString = #filePath,
@@ -51,83 +188,271 @@ extension XCUIElement {
   }
 }
 
-@MainActor
-func scrollUntil(
-  _ condition: @escaping () -> Bool,
-  tracking element: XCUIElement,
-  timeout: TimeInterval = TestStepHelper.conditionTimeout,
-  gesture: () -> Void
-) -> Bool {
-  if condition() { return true }
+struct EventDeadline {
+  private let expiresAt: TimeInterval
 
-  let deadline = Date().addingTimeInterval(timeout)
-  var previousGeometry = scrollGeometry(of: element)
-  while Date() < deadline {
-    gesture()
-    if condition() { return true }
-
-    let remaining = deadline.timeIntervalSinceNow
-    guard remaining > 0 else { break }
-    let geometryBeforeWait = previousGeometry
-    let progressed = XCTNSPredicateExpectation(
-      predicate: NSPredicate { _, _ in
-        condition() || scrollGeometry(of: element) != geometryBeforeWait
-      },
-      object: element
-    )
-    _ = XCTWaiter.wait(for: [progressed], timeout: remaining)
-    if condition() { return true }
-
-    let currentGeometry = scrollGeometry(of: element)
-    guard currentGeometry != previousGeometry else {
-      print(
-        "Scroll made no progress: identifier=\(element.identifier), "
-          + "geometry=\(currentGeometry)"
-      )
-      return false
-    }
-    previousGeometry = currentGeometry
+  init(timeout: TimeInterval = 2) {
+    expiresAt = ProcessInfo.processInfo.systemUptime + min(timeout, 2)
   }
-  return condition()
+
+  var remaining: TimeInterval {
+    max(0, expiresAt - ProcessInfo.processInfo.systemUptime)
+  }
+}
+
+enum ScrollProbeDirection: Equatable {
+  case towardStart
+  case towardEnd
 }
 
 @MainActor
-func scrollToSettledEnd(
-  tracking element: XCUIElement,
-  timeout: TimeInterval = TestStepHelper.conditionTimeout,
+struct ScrollSurface {
+  let container: XCUIElement
+  let readiness: XCUIElement
+  let containerID: String
+  let axis: E2EScrollAxis
+  var permitsGeometrySettledFallback = false
+
+  func state() -> ScrollReadinessState? {
+    guard let state = ScrollReadinessState(readiness.value),
+      state.containerID == containerID,
+      state.axis == axis,
+      container.identifier == containerID
+    else { return nil }
+    return state
+  }
+}
+
+@MainActor
+func scrollUntil(
+  _ condition: @escaping () -> Bool,
+  on surface: ScrollSurface,
+  deadline: EventDeadline = EventDeadline(),
+  direction: ScrollProbeDirection = .towardEnd,
+  requiresInteraction: Bool = false,
+  requiresScrollableRange: Bool = false,
+  terminalEndpoint: KeyPath<ScrollReadinessState, Bool>? = nil,
+  failureContext: () -> String = { "" },
   gesture: () -> Void
 ) -> Bool {
-  let deadline = Date().addingTimeInterval(timeout)
-  var previousGeometry = scrollGeometry(of: element)
-  while Date() < deadline {
-    gesture()
-    let currentGeometry = scrollGeometry(of: element)
-    if currentGeometry == previousGeometry { return true }
-    previousGeometry = currentGeometry
+  guard waitForScrollReadiness(
+    surface,
+    deadline: deadline,
+    matching: { $0.isIdle && $0.geometryReady }
+  ), let initial = surface.state()
+  else {
+    print("Scroll surface did not become ready: \(scrollReadinessDiagnostic(surface))")
+    return false
   }
+  if requiresScrollableRange && !initial.hasScrollableRange {
+    print("Scroll surface is not scrollable: \(scrollReadinessDiagnostic(surface))")
+    return false
+  }
+  if condition() && !requiresInteraction { return true }
+
+  var observedInteraction = false
+  var lastCorrelatedState: ScrollReadinessState?
+  while deadline.remaining > 0 {
+    guard let before = surface.state() else {
+      print("Scroll surface became invalid: \(scrollReadinessDiagnostic(surface))")
+      return false
+    }
+    if let terminalEndpoint, before[keyPath: terminalEndpoint] {
+      let context = failureContext()
+      print(
+        "Scroll condition is false at the terminal endpoint: "
+          + scrollReadinessDiagnostic(surface)
+          + (context.isEmpty ? "" : "; \(context)")
+      )
+      return false
+    }
+    guard deadline.remaining >= 0.2 else { break }
+    gesture()
+
+    let correlated = waitForScrollReadiness(
+      surface,
+      deadline: deadline,
+      matching: { after in
+        let madeOffsetProgress: Bool
+        switch direction {
+        case .towardStart: madeOffsetProgress = after.offset < before.offset - 0.5
+        case .towardEnd: madeOffsetProgress = after.offset > before.offset + 0.5
+        }
+        guard after.isIdle, after.geometryID > before.geometryID, madeOffsetProgress
+        else { return false }
+        let phaseCompletion = after.interactionID > before.interactionID
+          && after.completionID > before.completionID
+          && after.completionGeometryID == after.geometryID
+        let listGeometryFallback = surface.permitsGeometrySettledFallback
+          && after.geometryID > before.geometryID
+          && after.isIdle
+          && condition()
+        return phaseCompletion || listGeometryFallback
+      }
+    )
+    guard correlated else {
+      let context = failureContext()
+      print(
+        "Scroll gesture lacked settled, progress-making evidence: "
+          + scrollReadinessDiagnostic(surface)
+          + (context.isEmpty ? "" : "; \(context)")
+      )
+      return false
+    }
+    observedInteraction = true
+    lastCorrelatedState = surface.state()
+    if condition() && (!requiresInteraction || observedInteraction) { return true }
+  }
+
+  if observedInteraction,
+    let correlated = lastCorrelatedState,
+    let latest = surface.state(),
+    latest.isIdle,
+    latest.interactionID == correlated.interactionID,
+    latest.completionID == correlated.completionID,
+    latest.geometryID >= correlated.geometryID,
+    latest.completionGeometryID == latest.geometryID,
+    condition()
+  {
+    return true
+  }
+  let context = failureContext()
   print(
-    "Scroll did not reach a settled end: identifier=\(element.identifier), "
-      + "latestGeometry=\(previousGeometry)"
+    "Scroll deadline expired after settled progress: "
+      + scrollReadinessDiagnostic(surface)
+      + (context.isEmpty ? "" : "; \(context)")
   )
   return false
 }
 
 @MainActor
-private func scrollGeometry(of element: XCUIElement) -> String {
-  guard element.exists else { return "missing" }
-  let frame = element.frame
-  return [
-    "x=\(frame.minX)",
-    "y=\(frame.minY)",
-    "maxX=\(frame.maxX)",
-    "maxY=\(frame.maxY)",
-  ].joined(separator: ":")
+func challengeSettledEnd(
+  on surface: ScrollSurface,
+  tracking element: XCUIElement,
+  deadline: EventDeadline = EventDeadline(),
+  gesture: () -> Void
+) -> Bool {
+  guard let before = surface.state(), before.isIdle, before.atEnd else { return false }
+  let beforeFrame = element.frame
+  gesture()
+  guard waitForScrollReadiness(
+    surface,
+    deadline: deadline,
+    matching: { after in
+      after.isIdle && after.atEnd
+        && after.interactionID > before.interactionID
+        && after.completionID > before.completionID
+        && after.completionGeometryID == after.geometryID
+    }
+  ), let after = surface.state()
+  else { return false }
+  return abs(after.offset - before.offset) <= 1
+    && abs(element.frame.minX - beforeFrame.minX) <= 1
+    && abs(element.frame.minY - beforeFrame.minY) <= 1
+}
+
+@MainActor
+func waitForScrollReadiness(
+  _ surface: ScrollSurface,
+  deadline: EventDeadline = EventDeadline(),
+  matching condition: @escaping (ScrollReadinessState) -> Bool
+) -> Bool {
+  func matches() -> Bool {
+    guard let state = surface.state() else { return false }
+    return condition(state)
+  }
+  if matches() { return true }
+  guard deadline.remaining > 0 else { return false }
+  let expectation = XCTNSPredicateExpectation(
+    predicate: NSPredicate { _, _ in matches() },
+    object: surface.readiness
+  )
+  _ = XCTWaiter.wait(for: [expectation], timeout: deadline.remaining)
+  return matches()
+}
+
+@MainActor
+func waitForLayoutCondition(
+  probe: XCUIElement,
+  containerID: String,
+  deadline: EventDeadline = EventDeadline(),
+  condition: @escaping () -> Bool
+) -> Bool {
+  func matches() -> Bool {
+    guard let state = LayoutReadinessState(probe.value), state.containerID == containerID else {
+      return false
+    }
+    return condition()
+  }
+  if matches() { return true }
+  guard deadline.remaining > 0 else { return false }
+  let expectation = XCTNSPredicateExpectation(
+    predicate: NSPredicate { _, _ in matches() },
+    object: probe
+  )
+  _ = XCTWaiter.wait(for: [expectation], timeout: deadline.remaining)
+  return matches()
+}
+
+@MainActor
+func waitForExistence(_ element: XCUIElement, deadline: EventDeadline) -> Bool {
+  element.exists || element.waitForExistence(timeout: deadline.remaining)
+}
+
+@MainActor
+@discardableResult
+func terminateAndWait(
+  _ application: XCUIApplication,
+  deadline: EventDeadline = EventDeadline()
+) -> Bool {
+  if application.state == .notRunning { return true }
+  application.terminate()
+  if application.state == .notRunning { return true }
+  guard deadline.remaining > 0 else { return false }
+  let expectation = XCTNSPredicateExpectation(
+    predicate: NSPredicate { object, _ in
+      (object as? XCUIApplication)?.state == .notRunning
+    },
+    object: application
+  )
+  _ = XCTWaiter.wait(for: [expectation], timeout: deadline.remaining)
+  return application.state == .notRunning
+}
+
+@MainActor
+private func scrollReadinessDiagnostic(_ surface: ScrollSurface) -> String {
+  "container=\(surface.containerID), axis=\(surface.axis.rawValue), "
+    + "probe=\(surface.readiness.identifier), value=\(String(describing: surface.readiness.value))"
+}
+
+@MainActor
+func elementIsFullyVisible(
+  _ element: XCUIElement,
+  within container: XCUIElement,
+  obscuredBelow obstruction: XCUIElement? = nil,
+  tolerance: CGFloat = 1,
+  requiresHittable: Bool = true
+) -> Bool {
+  guard element.exists, container.exists, !element.frame.isEmpty else { return false }
+  let elementFrame = element.frame
+  var containerFrame = container.frame
+  if let obstruction, obstruction.exists {
+    containerFrame.size.height = max(
+      0,
+      min(containerFrame.maxY, obstruction.frame.minY - 4) - containerFrame.minY
+    )
+  }
+  return (!requiresHittable || element.isHittable)
+    && elementFrame.minX >= containerFrame.minX - tolerance
+    && elementFrame.maxX <= containerFrame.maxX + tolerance
+    && elementFrame.minY >= containerFrame.minY - tolerance
+    && elementFrame.maxY <= containerFrame.maxY + tolerance
 }
 
 @MainActor
 struct StepVerification {
   let specification: String
-  let check: () -> Bool
+  let check: @MainActor () -> Bool
 
   static func exists(
     _ element: XCUIElement,
@@ -200,6 +525,7 @@ struct StepVerification {
       return false
     }
   }
+
 }
 
 @MainActor
@@ -327,36 +653,4 @@ private struct Step {
   let description: String
   let filename: String
   let verifications: [String]
-}
-
-struct EventDeadline {
-  private let expiresAt: TimeInterval
-
-  init(timeout: TimeInterval = 2) {
-    expiresAt = ProcessInfo.processInfo.systemUptime + min(timeout, 2)
-  }
-
-  var remaining: TimeInterval {
-    max(0, expiresAt - ProcessInfo.processInfo.systemUptime)
-  }
-}
-
-@MainActor
-@discardableResult
-func terminateAndWait(
-  _ application: XCUIApplication,
-  deadline: EventDeadline = EventDeadline()
-) -> Bool {
-  if application.state == .notRunning { return true }
-  application.terminate()
-  if application.state == .notRunning { return true }
-  guard deadline.remaining > 0 else { return false }
-  let expectation = XCTNSPredicateExpectation(
-    predicate: NSPredicate { object, _ in
-      (object as? XCUIApplication)?.state == .notRunning
-    },
-    object: application
-  )
-  _ = XCTWaiter.wait(for: [expectation], timeout: deadline.remaining)
-  return application.state == .notRunning
 }

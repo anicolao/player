@@ -107,6 +107,7 @@ struct E2EBookmarkStateProbe: View {
     }.joined(separator: ",")
     return [
       "bookmarks",
+      "schema=1",
       "count=\(bookmarks.count)",
       "order=\(bookmarkOrder.isEmpty ? "none" : bookmarkOrder)",
       "items=\(bookmarkValues.isEmpty ? "none" : bookmarkValues)",

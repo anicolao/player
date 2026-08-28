@@ -34,6 +34,7 @@
 
 - [x] Playback remains paused at the engine-acknowledged 90,000 ms stop after relaunch
 - [x] The recent completed stop exposes its exact book, position, and ten-minute availability window
+- [x] The completed-stop context is fully visible before capture
 - [x] A prominent contextual Resume action is available exactly once
 
 ---

@@ -178,6 +178,20 @@ The stored value is now `shelf`; legacy snapshots containing `grid` decode as
 `all-books-bookshelf`; duplicate
 curated appearances use `bookshelf-continue-book-<book UUID>` and
 `bookshelf-recent-book-<book UUID>`, while A–Z retains the canonical row ID.
+Each shelf exposes E2E-only `<scroll identifier>-left-end`,
+`<scroll identifier>-right-end`, and `<scroll identifier>-readiness` elements.
+The versioned readiness value is bound to the shelf container and horizontal
+axis. It publishes monotonic interaction, completion, and geometry IDs; the
+geometry generation associated with a completed phase; the current idle state;
+and finite measured offset, range, content, container, and endpoint geometry.
+Malformed, duplicate, truncated, unknown-key, zero-generation, and unbound
+values fail closed. The journey captures the Recently Added shelf only after its left
+endpoint is idle and the left-end marker is fully contained by the shelf
+viewport. It then requires a non-empty scrollable range, a new interaction,
+directional offset progress, correlated settled geometry at the right endpoint,
+and full containment of the final cover and right-end marker. One deliberate
+right-end challenge must publish a correlated completion while preserving the
+settled offset and final-cover frame within tolerance before capture.
 Pinned title order is:
 
 ```text
@@ -213,11 +227,23 @@ trash:transactions=0:books=none:assets=0:bytes=0:restorable=false:managed-checks
 After restore, the organizer probe reports five books, b2 then b5 in Up Next,
 b3 and b4 finished, one collection, zero Trash transactions, and list mode.
 
-Before opening Trash, the journey scrolls the final Library control fully above
-the persistent mini-player, records its settled frame, and performs three more
-bottom-edge gestures. The final control must remain within one point of that
-frame after every gesture. This keeps the required mini-player runway while
-proving that repeated overscroll cannot restart an endless vertical bounce.
+Before opening Trash, the journey first establishes a known top endpoint through
+one progress-making fast downward swipe, then scrolls the final Library control
+fully above the persistent mini-player through a separate progress-making fast
+upward swipe. Each transition has its own event deadline capped at two seconds;
+neither deadline is reset or extended. `library-root-scroll-readiness` is bound
+to the Library vertical scroll container and must prove a non-empty range,
+directional offset progress in both transitions, idle top- then bottom-end
+geometry, and full containment in the actual viewport region above the player.
+A plain SwiftUI scroll phase supplies a
+completion tied to its final geometry generation; a List/Form fallback is
+accepted only after a new geometry generation is idle and the final semantic
+containment condition is true. One deliberate bottom-end challenge must publish
+a correlated completion while preserving the settled offset and Trash frame
+within tolerance before capture. This proves the required mini-player runway
+and settled boundary without a fixed gesture count or timing delay. Settings
+rows are likewise revealed through bound, progress-making scroll evidence
+before navigation taps.
 
 ## Stable visual evidence
 
@@ -226,11 +252,14 @@ Only after the associated programmatic assertions pass, TestStepHelper attaches:
 ```text
 000-populated-library.png
 001-curated-collection.png
-002-recoverable-trash.png
-003-restored-library-list.png
-004-metadata-search.png
-005-filtered-search.png
-006-no-search-matches.png
+002-square-cover-bookshelves.png
+003-square-cover-bookshelf-right-end.png
+004-trash-clear-of-player.png
+005-recoverable-trash.png
+006-restored-library-list.png
+007-metadata-search.png
+008-filtered-search.png
+009-no-search-matches.png
 README.md
 ```
 

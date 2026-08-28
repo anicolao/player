@@ -1498,6 +1498,12 @@ struct BookDetailView: View {
             .padding(.bottom, 72)
           }
           .playerMiniPlayerScrollRunway()
+          .accessibilityIdentifier("book-detail-scroll")
+          .e2eScrollReadiness(
+            id: "book-detail-scroll-readiness",
+            containerID: "book-detail-scroll",
+            axis: .vertical
+          )
           #if E2E
             .overlay(alignment: .topLeading) {
               VStack(spacing: 0) {
@@ -1860,6 +1866,10 @@ private struct NowPlayingView: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("now-playing-screen")
         .accessibilityValue(playerValue)
+        .e2eLayoutReadiness(
+          id: "now-playing-layout-readiness",
+          containerID: "now-playing-screen"
+        )
         .animation(.easeOut(duration: 0.3), value: model.pendingResumeRewind?.id)
         #if E2E
           .overlay { smartRewindStateProbe }

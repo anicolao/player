@@ -41,6 +41,7 @@ struct LibrarySearchView: View {
         .textInputAutocapitalization(.never)
         .autocorrectionDisabled()
         .submitLabel(.search)
+        .onSubmit { isSearchFocused = false }
         .accessibilityIdentifier("library-search-input")
       if !query.isEmpty {
         Button {

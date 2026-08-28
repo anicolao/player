@@ -165,7 +165,7 @@ final class BookmarkUITests: XCTestCase {
       app.buttons["undo-delete-bookmark"],
       "transaction=\(deletionID):bookmark=\(boundaryBookmarkID)"
     )
-    app.terminate()
+    XCTAssertTrue(terminateAndWait(app))
 
     let restored = makeApplication(reset: false)
     restored.launch()
@@ -245,19 +245,19 @@ final class BookmarkUITests: XCTestCase {
 
   private func assertEverySort(_ app: XCUIApplication) throws {
     try selectSort(
-      app, optionID: "bookmark-sort-position-descending", fallback: "Position, last to first",
+      app, optionID: "bookmark-sort-position-descending",
       expected: "bookmarks:query=:sort=positionDescending:count=2:order=\(boundaryBookmarkID),\(secondBookmarkID)"
     )
     try selectSort(
-      app, optionID: "bookmark-sort-date-newest", fallback: "Newest first",
+      app, optionID: "bookmark-sort-date-newest",
       expected: "bookmarks:query=:sort=dateNewest:count=2:order=\(secondBookmarkID),\(boundaryBookmarkID)"
     )
     try selectSort(
-      app, optionID: "bookmark-sort-date-oldest", fallback: "Oldest first",
+      app, optionID: "bookmark-sort-date-oldest",
       expected: "bookmarks:query=:sort=dateOldest:count=2:order=\(boundaryBookmarkID),\(secondBookmarkID)"
     )
     try selectSort(
-      app, optionID: "bookmark-sort-label", fallback: "Label",
+      app, optionID: "bookmark-sort-label",
       expected: "bookmarks:query=:sort=label:count=2:order=\(secondBookmarkID),\(boundaryBookmarkID)"
     )
   }
@@ -265,24 +265,18 @@ final class BookmarkUITests: XCTestCase {
   private func selectSort(
     _ app: XCUIApplication,
     optionID: String,
-    fallback: String,
     expected: String
   ) throws {
     let menu = app.buttons["bookmark-sort"]
     try tapWhenHittable(menu, in: app)
-    let option = app.buttons[optionID]
-    let selectedOption: XCUIElement
-    if option.waitForExistence(timeout: 1) {
-      selectedOption = option
-    } else {
-      let fallbackOption = app.buttons[fallback]
-      XCTAssertTrue(fallbackOption.waitForExistence(timeout: 2))
-      selectedOption = fallbackOption
-    }
+    let options = app.buttons.matching(identifier: optionID)
+    let selectedOption = options.element
+    XCTAssertTrue(selectedOption.waitForExistence(timeout: 2))
+    XCTAssertEqual(options.count, 1, "The bookmark sort option identifier must be unique.")
     selectedOption.tap()
     XCTAssertTrue(
       waitForPredicate(NSPredicate(format: "exists == false"), on: selectedOption),
-      "The bookmark sort menu must dismiss after selecting \(fallback)"
+      "The bookmark sort menu must dismiss after selecting \(optionID)"
     )
     try requireBookmarksScreen(app, expected)
   }
@@ -329,33 +323,55 @@ final class BookmarkUITests: XCTestCase {
   ) throws {
     let miniPlayer = app.otherElements["mini-player"]
     XCTAssertTrue(miniPlayer.exists)
+    let deadline = EventDeadline()
+    let scroll = app.descendants(matching: .any)["book-detail-scroll"]
+    let surface = ScrollSurface(
+      container: scroll,
+      readiness: app.descendants(matching: .any)["book-detail-scroll-readiness"],
+      containerID: "book-detail-scroll",
+      axis: .vertical
+    )
+    XCTAssertTrue(waitForExistence(scroll, deadline: deadline))
 
     let align = app.buttons["e2e-align-bookmarks-walkthrough"]
-    XCTAssertTrue(align.waitForExistence(timeout: 2))
+    XCTAssertTrue(waitForExistence(align, deadline: deadline))
     align.tap()
-
-    let visible = NSPredicate(format: "hittable == true")
-    for element in rows + jumpActions {
-      let expectation = XCTNSPredicateExpectation(predicate: visible, object: element)
-      XCTAssertEqual(
-        XCTWaiter.wait(for: [expectation], timeout: 2),
-        .completed,
-        "Expected both bookmark cards and their primary actions to be visible and unobscured before capture"
-      )
-    }
     XCTAssertTrue(
-      bookmarkFrameIsUnobscured(rows, actions: jumpActions, above: miniPlayer),
-      "Both complete bookmark cards must sit above the mini-player before capture"
+      waitForScrollReadiness(
+        surface,
+        deadline: deadline,
+        matching: { state in
+          state.isIdle
+            && self.bookmarkFrameIsUnobscured(
+              rows,
+              actions: jumpActions,
+              above: miniPlayer
+            )
+            && segment.isHittable
+        }
+      ),
+      "Both complete bookmark cards must settle above the mini-player before capture"
     )
-    XCTAssertTrue(segment.isHittable, "The selected Chapters/Bookmarks control must remain visible")
   }
 
   private func revealBookmarkRow(_ row: XCUIElement, in app: XCUIApplication) throws {
-    let screen = app.descendants(matching: .any)["book-detail-screen"]
-    XCTAssertTrue(screen.waitForExistence(timeout: 2))
+    let deadline = EventDeadline()
+    let scroll = app.descendants(matching: .any)["book-detail-scroll"]
+    XCTAssertTrue(waitForExistence(scroll, deadline: deadline))
+    let surface = ScrollSurface(
+      container: scroll,
+      readiness: app.descendants(matching: .any)["book-detail-scroll-readiness"],
+      containerID: "book-detail-scroll",
+      axis: .vertical
+    )
     XCTAssertTrue(
-      scrollUntil({ row.exists && row.isHittable }, tracking: row) {
-        screen.swipeUp(velocity: .slow)
+      scrollUntil(
+        { row.exists && row.isHittable },
+        on: surface,
+        deadline: deadline,
+        terminalEndpoint: \.atBottom
+      ) {
+        scroll.swipeUp(velocity: .fast)
       },
       "Expected the bookmark row to become hittable through progress-making Book Detail scrolling"
     )
@@ -377,13 +393,28 @@ final class BookmarkUITests: XCTestCase {
       element.tap()
       return
     }
-    let bookDetail = app.descendants(matching: .any)["book-detail-screen"]
+    let bookDetail = app.descendants(matching: .any)["book-detail-scroll"]
     let libraryScroll = app.descendants(matching: .any)["library-root-scroll"]
     let scrollContainer = bookDetail.exists ? bookDetail : libraryScroll
-    XCTAssertTrue(scrollContainer.waitForExistence(timeout: 2))
+    let containerID = bookDetail.exists ? "book-detail-scroll" : "library-root-scroll"
+    let readinessID = bookDetail.exists
+      ? "book-detail-scroll-readiness" : "library-root-scroll-readiness"
+    let deadline = EventDeadline()
+    XCTAssertTrue(waitForExistence(scrollContainer, deadline: deadline))
+    let surface = ScrollSurface(
+      container: scrollContainer,
+      readiness: app.descendants(matching: .any)[readinessID],
+      containerID: containerID,
+      axis: .vertical
+    )
     XCTAssertTrue(
-      scrollUntil({ element.isHittable }, tracking: element) {
-        scrollContainer.swipeUp(velocity: .slow)
+      scrollUntil(
+        { element.isHittable },
+        on: surface,
+        deadline: deadline,
+        terminalEndpoint: \.atBottom
+      ) {
+        scrollContainer.swipeUp(velocity: .fast)
       },
       "Expected \(element.identifier) to become hittable through progress-making screen scrolling"
     )
@@ -493,6 +524,15 @@ final class BookmarkUITests: XCTestCase {
 }
 
 private struct BookmarkProbe {
+  private static let keys: Set<String> = [
+    "schema", "count", "order", "items", "transactions", "deletions", "position", "journal",
+  ]
+  private static let deletionStatuses: Set<String> = ["deleted", "undone"]
+  private static let journalReasons: Set<String> = [
+    "play", "periodic", "pause", "seek", "background", "interruption", "routeChange",
+    "preResumeRewind", "resumeRewind", "undoResumeRewind", "sleepTimer",
+  ]
+
   private var fields: [String: String]
   let journal: String
 
@@ -501,14 +541,122 @@ private struct BookmarkProbe {
     guard tokens.first == "bookmarks" else { return nil }
     var parsed: [String: String] = [:]
     for token in tokens.dropFirst() {
-      guard let separator = token.firstIndex(of: "=") else { continue }
-      parsed[String(token[..<separator])] = String(token[token.index(after: separator)...])
+      guard let separator = token.firstIndex(of: "=") else { return nil }
+      let key = String(token[..<separator])
+      let fieldValue = String(token[token.index(after: separator)...])
+      guard !key.isEmpty, (!fieldValue.isEmpty || key == "journal"), parsed[key] == nil else {
+        return nil
+      }
+      parsed[key] = fieldValue
+    }
+    guard Set(parsed.keys) == Self.keys, parsed["schema"] == "1",
+      let count = Self.nonnegativeInt(parsed["count"]),
+      let order = parsed["order"], let items = parsed["items"],
+      let transactionCount = Self.nonnegativeInt(parsed["transactions"]),
+      let deletions = parsed["deletions"],
+      Self.nonnegativeInt64(parsed["position"]) != nil,
+      let journal = parsed["journal"], Self.validJournal(journal)
+    else { return nil }
+
+    let orderedIDs: [String]
+    if count == 0 {
+      guard order == "none", items == "none" else { return nil }
+      orderedIDs = []
+    } else {
+      orderedIDs = order.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
+      guard orderedIDs.count == count, Set(orderedIDs).count == count,
+        orderedIDs.allSatisfy(Self.uuid),
+        Self.validItems(items, count: count, orderedIDs: orderedIDs)
+      else { return nil }
+    }
+
+    if transactionCount == 0 {
+      guard deletions == "none" else { return nil }
+    } else {
+      guard Self.validDeletions(deletions, count: transactionCount) else { return nil }
     }
     fields = parsed
-    journal = parsed["journal"] ?? ""
+    self.journal = journal
   }
 
   subscript(_ key: String) -> String? { fields[key] }
+
+  private static func validItems(_ value: String, count: Int, orderedIDs: [String]) -> Bool {
+    guard value != "none" else { return false }
+    let records = value.split(separator: ";", omittingEmptySubsequences: false)
+    guard records.count == count else { return false }
+    var itemIDs: [String] = []
+    for record in records {
+      let values = record.split(separator: "~", omittingEmptySubsequences: false).map(String.init)
+      guard values.count == 9, uuid(values[0]), nonnegativeInt64(values[1]) != nil,
+        uuid(values[2]), nonnegativeInt64(values[3]) != nil,
+        !values[4].isEmpty, !values[5].isEmpty,
+        values[6] == "none" || !values[6].isEmpty,
+        canonicalInt(values[7]) != nil, canonicalInt(values[8]) != nil
+      else { return false }
+      itemIDs.append(values[0])
+    }
+    return itemIDs == orderedIDs
+  }
+
+  private static func validDeletions(_ value: String, count: Int) -> Bool {
+    guard value != "none" else { return false }
+    let records = value.split(separator: ";", omittingEmptySubsequences: false)
+    guard records.count == count else { return false }
+    var transactionIDs: Set<String> = []
+    for record in records {
+      let values = record.split(separator: "~", omittingEmptySubsequences: false).map(String.init)
+      guard values.count == 5, uuid(values[0]), transactionIDs.insert(values[0]).inserted,
+        uuid(values[1]), nonnegativeInt(values[2]) != nil,
+        deletionStatuses.contains(values[3]),
+        (values[3] == "deleted" && values[4] == "none")
+          || (values[3] == "undone" && values[4] == "set")
+      else { return false }
+    }
+    return true
+  }
+
+  private static func nonnegativeInt(_ value: String?) -> Int? {
+    guard let value, let parsed = Int(value), parsed >= 0, String(parsed) == value else { return nil }
+    return parsed
+  }
+
+  private static func nonnegativeInt64(_ value: String?) -> Int64? {
+    guard let value, let parsed = Int64(value), parsed >= 0, String(parsed) == value else {
+      return nil
+    }
+    return parsed
+  }
+
+  private static func canonicalInt(_ value: String?) -> Int? {
+    guard let value, let parsed = Int(value), String(parsed) == value else { return nil }
+    return parsed
+  }
+
+  private static func uuid(_ value: String?) -> Bool {
+    guard let value, let parsed = UUID(uuidString: value) else { return false }
+    return parsed.uuidString.lowercased() == value
+  }
+
+  private static func validJournal(_ value: String) -> Bool {
+    if value.isEmpty { return true }
+    var previousSequence = 0
+    for event in value.split(separator: ",", omittingEmptySubsequences: false) {
+      let sequenceAndEvent = event.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
+      guard sequenceAndEvent.count == 2,
+        let sequence = nonnegativeInt(String(sequenceAndEvent[0])), sequence > previousSequence
+      else { return false }
+      let reasonAndPosition = sequenceAndEvent[1].split(
+        separator: "@", maxSplits: 1, omittingEmptySubsequences: false
+      )
+      guard reasonAndPosition.count == 2,
+        journalReasons.contains(String(reasonAndPosition[0])),
+        nonnegativeInt64(String(reasonAndPosition[1])) != nil
+      else { return false }
+      previousSequence = sequence
+    }
+    return true
+  }
 }
 
 private enum BookmarkUITestError: Error { case probeUnavailable }

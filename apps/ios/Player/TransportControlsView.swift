@@ -84,6 +84,11 @@ struct TransportPreferencesEditor: View {
     }
     .accessibilityIdentifier("transport-preferences-screen")
     .accessibilityValue(preferencesValue)
+    .e2eScrollReadiness(
+      id: "transport-preferences-scroll-readiness",
+      containerID: "transport-preferences-screen",
+      axis: .vertical
+    )
   }
 
   private var preferencesValue: String {

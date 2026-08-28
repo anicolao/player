@@ -27,6 +27,11 @@ struct LibraryOrganizationHome: View {
         }
         .playerMiniPlayerScrollRunway()
         .accessibilityIdentifier("library-root-scroll")
+        .e2eScrollReadiness(
+          id: "library-root-scroll-readiness",
+          containerID: "library-root-scroll",
+          axis: .vertical
+        )
         #if E2E
           .overlay(alignment: .topLeading) {
             if ProcessInfo.processInfo.environment["PLAYER_E2E_DYNAMIC_TYPE"] == "accessibility5" {
@@ -584,6 +589,12 @@ private struct BookshelfSection<Content: View>: View {
         .padding(.top, metrics.topInset)
         .frame(minWidth: availableWidth, alignment: .leading)
         #if E2E
+          .overlay(alignment: .leading) {
+            Color.white.opacity(0.001)
+              .frame(width: 1, height: 1)
+              .accessibilityElement()
+              .accessibilityIdentifier("\(scrollIdentifier)-left-end")
+          }
           .overlay(alignment: .trailing) {
             Color.white.opacity(0.001)
               .frame(width: 1, height: 1)
@@ -609,6 +620,11 @@ private struct BookshelfSection<Content: View>: View {
       .scrollIndicators(.hidden)
       .accessibilityIdentifier(scrollIdentifier)
       .frame(width: availableWidth, height: metrics.rowHeight)
+      .e2eScrollReadiness(
+        id: "\(scrollIdentifier)-readiness",
+        containerID: scrollIdentifier,
+        axis: .horizontal
+      )
     }
   }
 }
@@ -1150,6 +1166,12 @@ struct LibraryOrganizationSettingsView: View {
         }
         }
         .playerMiniPlayerScrollRunway()
+        .accessibilityIdentifier("settings-scroll")
+        .e2eScrollReadiness(
+          id: "settings-scroll-readiness",
+          containerID: "settings-scroll",
+          axis: .vertical
+        )
         .scrollContentBackground(.hidden)
         .background(PlayerColor.background)
         .navigationTitle("Settings")

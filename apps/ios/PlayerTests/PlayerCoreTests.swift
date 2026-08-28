@@ -6,6 +6,180 @@ import XCTest
 
 @MainActor
 final class PlayerCoreTests: XCTestCase {
+  #if E2E
+    func testScrollReadinessProtocolParsesBoundFiniteEndpointGeometry() {
+      let horizontal = ScrollReadinessState(
+        scrollReadinessValue(
+          container: "recent-shelf",
+          axis: "horizontal",
+          offset: 518,
+          minimum: -20,
+          maximum: 518,
+          content: 900,
+          containerLength: 402,
+          atRight: true
+        )
+      )
+      XCTAssertEqual(horizontal?.containerID, "recent-shelf")
+      XCTAssertEqual(horizontal?.axis, .horizontal)
+      XCTAssertTrue(horizontal?.geometryReady == true)
+      XCTAssertTrue(horizontal?.hasScrollableRange == true)
+      XCTAssertTrue(horizontal?.atEnd == true)
+
+      let vertical = ScrollReadinessState(
+        scrollReadinessValue(
+          container: "library-root-scroll",
+          axis: "vertical",
+          offset: 240,
+          minimum: -116,
+          maximum: 240,
+          content: 998,
+          containerLength: 874,
+          atBottom: true
+        )
+      )
+      XCTAssertEqual(vertical?.axis, .vertical)
+      XCTAssertTrue(vertical?.atEnd == true)
+    }
+
+    func testScrollReadinessProtocolFailsClosedOnMalformedGeometry() {
+      let valid = scrollReadinessValue(
+        container: "library-root-scroll",
+        axis: "vertical",
+        offset: 0,
+        minimum: 0,
+        maximum: 0,
+        content: 600,
+        containerLength: 874,
+        atBottom: true
+      )
+      XCTAssertFalse(ScrollReadinessState(valid)?.hasScrollableRange ?? true)
+      XCTAssertNil(ScrollReadinessState(valid.replacingOccurrences(of: "|at-bottom=true", with: "")))
+      XCTAssertNil(ScrollReadinessState(valid + "|axis=vertical"))
+      XCTAssertNil(ScrollReadinessState(valid + "|future-field=true"))
+      XCTAssertNil(ScrollReadinessState(valid.replacingOccurrences(of: "geometry=4", with: "geometry=0")))
+      XCTAssertNil(
+        ScrollReadinessState(
+          valid.replacingOccurrences(of: "container-length=874.0", with: "container-length=0")
+        )
+      )
+      XCTAssertNil(
+        ScrollReadinessState(
+          valid.replacingOccurrences(of: "offset=0.0", with: "offset=nan")
+        )
+      )
+    }
+
+    func testLayoutReadinessProtocolFailsClosedOnMalformedOrUnknownFields() {
+      let valid = [
+        "layout", "schema=1", "container=now-playing-screen", "generation=2",
+        "width=402.0", "height=874.0", "ready=true",
+      ].joined(separator: "|")
+      XCTAssertEqual(LayoutReadinessState(valid)?.containerID, "now-playing-screen")
+      XCTAssertEqual(LayoutReadinessState(valid)?.generation, 2)
+      XCTAssertNil(LayoutReadinessState(valid + "|future-field=true"))
+      XCTAssertNil(LayoutReadinessState(valid + "|width=402.0"))
+      XCTAssertNil(
+        LayoutReadinessState(valid.replacingOccurrences(of: "|height=874.0", with: ""))
+      )
+      XCTAssertNil(
+        LayoutReadinessState(
+          valid.replacingOccurrences(of: "generation=2", with: "generation=0")
+        )
+      )
+      XCTAssertNil(
+        LayoutReadinessState(
+          valid.replacingOccurrences(of: "width=402.0", with: "width=nan")
+        )
+      )
+    }
+
+    func testScrollEndpointRangeUsesLibraryVisibleContentSnapshot() {
+      let libraryBottom = E2EScrollEndpointRange(
+        visibleRect: CGRect(x: 0, y: 376.3333333333333, width: 402, height: 571),
+        contentSize: CGSize(width: 402, height: 947.3333333333333),
+        axis: .vertical
+      )
+      XCTAssertEqual(libraryBottom.minimum, 0, accuracy: 0.001)
+      XCTAssertEqual(libraryBottom.offset, 376.3333333333333, accuracy: 0.001)
+      XCTAssertEqual(libraryBottom.maximum, 376.3333333333333, accuracy: 0.001)
+      XCTAssertFalse(libraryBottom.atStart)
+      XCTAssertTrue(libraryBottom.atEnd)
+    }
+
+    func testScrollEndpointRangeUsesSettingsVisibleContentSnapshots() {
+      let settingsTop = E2EScrollEndpointRange(
+        visibleRect: CGRect(x: 0, y: 0, width: 402, height: 706),
+        contentSize: CGSize(width: 402, height: 857),
+        axis: .vertical
+      )
+      XCTAssertTrue(settingsTop.atStart)
+      XCTAssertFalse(settingsTop.atEnd)
+      XCTAssertEqual(settingsTop.maximum, 151, accuracy: 0.001)
+
+      let settingsBottom = E2EScrollEndpointRange(
+        visibleRect: CGRect(x: 0, y: 151, width: 402, height: 706),
+        contentSize: CGSize(width: 402, height: 857),
+        axis: .vertical
+      )
+      XCTAssertFalse(settingsBottom.atStart)
+      XCTAssertTrue(settingsBottom.atEnd)
+      XCTAssertEqual(settingsBottom.offset, settingsBottom.maximum, accuracy: 0.001)
+    }
+
+    func testScrollEndpointRangeUsesHorizontalVisibleContentSnapshots() {
+      let left = E2EScrollEndpointRange(
+        visibleRect: CGRect(x: 0, y: 0, width: 402, height: 200),
+        contentSize: CGSize(width: 900, height: 200),
+        axis: .horizontal
+      )
+      XCTAssertTrue(left.atStart)
+      XCTAssertFalse(left.atEnd)
+      XCTAssertEqual(left.maximum, 498, accuracy: 0.001)
+
+      let right = E2EScrollEndpointRange(
+        visibleRect: CGRect(x: 498, y: 0, width: 402, height: 200),
+        contentSize: CGSize(width: 900, height: 200),
+        axis: .horizontal
+      )
+      XCTAssertFalse(right.atStart)
+      XCTAssertTrue(right.atEnd)
+    }
+
+    func testScrollEndpointRangeClampsNonScrollableContentToStart() {
+      let range = E2EScrollEndpointRange(
+        visibleRect: CGRect(x: 0, y: 0, width: 402, height: 500),
+        contentSize: CGSize(width: 402, height: 400),
+        axis: .vertical
+      )
+      XCTAssertEqual(range.minimum, 0, accuracy: 0.001)
+      XCTAssertEqual(range.maximum, 0, accuracy: 0.001)
+      XCTAssertTrue(range.atStart)
+      XCTAssertTrue(range.atEnd)
+    }
+
+    private func scrollReadinessValue(
+      container: String,
+      axis: String,
+      offset: Double,
+      minimum: Double,
+      maximum: Double,
+      content: Double,
+      containerLength: Double,
+      atRight: Bool = false,
+      atBottom: Bool = false
+    ) -> String {
+      [
+        "scroll", "schema=1", "container=\(container)", "axis=\(axis)",
+        "interaction=2", "completion=2", "geometry=4", "completion-geometry=4",
+        "geometry-ready=true", "phase=idle", "at-left=false", "at-right=\(atRight)",
+        "at-top=false", "at-bottom=\(atBottom)", "offset=\(offset)",
+        "minimum=\(minimum)", "maximum=\(maximum)", "content=\(content)",
+        "container-length=\(containerLength)",
+      ].joined(separator: "|")
+    }
+  #endif
+
   func testCompactPlaybackTimeShowsElapsedAndTotalFriendlyUnits() {
     XCTAssertEqual(compactPlaybackTime(0), "0m00s")
     XCTAssertEqual(compactPlaybackTime(62), "1m02s")
