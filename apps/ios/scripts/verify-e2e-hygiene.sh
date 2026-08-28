@@ -13,6 +13,146 @@ fail() {
   exit 1
 }
 
+verify_capture_readiness() {
+  local source_root="$1"
+  python3 - "${source_root}" <<'PY'
+import pathlib
+import re
+import sys
+
+
+def sanitized_swift(source: str) -> str:
+    output = list(source)
+    index = 0
+    block_comment_depth = 0
+    while index < len(source):
+        if block_comment_depth:
+            if source.startswith("/*", index):
+                output[index:index + 2] = "  "
+                block_comment_depth += 1
+                index += 2
+            elif source.startswith("*/", index):
+                output[index:index + 2] = "  "
+                block_comment_depth -= 1
+                index += 2
+            else:
+                if source[index] != "\n":
+                    output[index] = " "
+                index += 1
+            continue
+
+        if source.startswith("//", index):
+            end = source.find("\n", index)
+            if end == -1:
+                end = len(source)
+            for position in range(index, end):
+                output[position] = " "
+            index = end
+            continue
+        if source.startswith("/*", index):
+            output[index:index + 2] = "  "
+            block_comment_depth = 1
+            index += 2
+            continue
+        if source.startswith('"""', index):
+            end = source.find('"""', index + 3)
+            end = len(source) if end == -1 else end + 3
+            for position in range(index, end):
+                if source[position] != "\n":
+                    output[position] = " "
+            index = end
+            continue
+        if source[index] == '"':
+            position = index
+            escaped = False
+            while position < len(source):
+                character = source[position]
+                if character != "\n":
+                    output[position] = " "
+                position += 1
+                if escaped:
+                    escaped = False
+                elif character == "\\":
+                    escaped = True
+                elif character == '"' and position > index + 1:
+                    break
+            index = position
+            continue
+        index += 1
+    return "".join(output)
+
+
+def matching_parenthesis(source, opening):
+    depth = 0
+    for index in range(opening, len(source)):
+        if source[index] == "(":
+            depth += 1
+        elif source[index] == ")":
+            depth -= 1
+            if depth == 0:
+                return index
+    return None
+
+
+def has_top_level_capture_label(arguments: str) -> bool:
+    parentheses = brackets = braces = 0
+    index = 0
+    label = re.compile(r"captureReadiness\s*:")
+    while index < len(arguments):
+        character = arguments[index]
+        if character == "(":
+            parentheses += 1
+        elif character == ")":
+            parentheses -= 1
+        elif character == "[":
+            brackets += 1
+        elif character == "]":
+            brackets -= 1
+        elif character == "{":
+            braces += 1
+        elif character == "}":
+            braces -= 1
+        elif parentheses == brackets == braces == 0:
+            match = label.match(arguments, index)
+            if match:
+                return True
+        index += 1
+    return False
+
+
+root = pathlib.Path(sys.argv[1])
+failures = []
+capture_count = 0
+call_pattern = re.compile(r"\btester\s*\.\s*step\s*\(")
+for path in sorted(root.glob("*UITests.swift")):
+    original = path.read_text(encoding="utf-8")
+    source = sanitized_swift(original)
+    for match in call_pattern.finditer(source):
+        opening = source.find("(", match.start(), match.end())
+        closing = matching_parenthesis(source, opening)
+        line = original.count("\n", 0, match.start()) + 1
+        if closing is None:
+            failures.append(f"{path}:{line}: tester.step call has unbalanced parentheses")
+            continue
+        capture_count += 1
+        if not has_top_level_capture_label(source[opening + 1:closing]):
+            failures.append(
+                f"{path}:{line}: tester.step screenshot is missing top-level captureReadiness:"
+            )
+
+if failures:
+    print("\n".join(failures), file=sys.stderr)
+    sys.exit(1)
+print(f"Capture readiness hygiene passed for {capture_count} tester.step calls.")
+PY
+}
+
+if [[ "${1:-}" == "--check-capture-readiness-root" ]]; then
+  [[ "$#" -eq 2 ]] || fail "--check-capture-readiness-root requires one source directory"
+  verify_capture_readiness "$2" || fail "every tester.step screenshot must supply captureReadiness"
+  exit 0
+fi
+
 jq -e '
   type == "array" and length > 0
   and all(.[]; (.story | test("^[0-9]{3}-[a-z0-9][a-z0-9-]*$")))
@@ -26,6 +166,9 @@ trap 'rm -rf "${temporary_root}"' EXIT
 
 "${script_dir}/tests/test-e2e-run-support.sh"
 "${script_dir}/tests/test-simulator-lease.sh"
+"${script_dir}/tests/test-capture-readiness-hygiene.sh"
+verify_capture_readiness "${ui_test_root}" \
+  || fail "every tester.step screenshot must supply captureReadiness"
 
 jq -r '.[].story' "${manifest}" | sort > "${temporary_root}/manifest-stories"
 find "${repository_root}/tests/e2e" -mindepth 1 -maxdepth 1 -type d \
