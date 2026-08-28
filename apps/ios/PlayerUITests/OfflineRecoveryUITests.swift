@@ -56,10 +56,6 @@ final class OfflineRecoveryUITests: XCTestCase {
     )
 
     app.buttons["startup-recovery-restore"].tap()
-    let settingsDiagnostics = app.buttons["settings-diagnostics"]
-    if settingsDiagnostics.waitForExistence(timeout: 2) {
-      settingsDiagnostics.tap()
-    }
     let diagnosticsProbe = anyElement(app, "diagnostics-probe")
     XCTAssertTrue(
       diagnosticsProbe.waitForStringValue(
