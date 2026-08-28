@@ -363,6 +363,120 @@
     }
   }
 
+  final class E2EImportIngressArgumentsTests: XCTestCase {
+    private let handoffID = UUID(uuidString: "70000000-0000-0000-0000-000000000101")!
+
+    func testCanonicalDocumentChannelsAndPausesParseExactly() throws {
+      let unpaused = try E2EImportIngressArguments.parse(arguments: documentArguments())
+      XCTAssertEqual(unpaused.channel, .documentOpen)
+      XCTAssertNil(unpaused.pause)
+      XCTAssertNil(unpaused.shareHandoffID)
+
+      for pause in E2EImportIngressArguments.Pause.allCases {
+        let parsed = try E2EImportIngressArguments.parse(arguments: documentArguments(
+          suffix: ["-e2e-import-pause", pause.rawValue]
+        ))
+        XCTAssertEqual(parsed.channel, .documentOpen)
+        XCTAssertEqual(parsed.pause, pause)
+        XCTAssertNil(parsed.shareHandoffID)
+      }
+    }
+
+    func testCanonicalShareChannelRequiresAndParsesOneHandoff() throws {
+      let parsed = try E2EImportIngressArguments.parse(arguments: shareArguments())
+      XCTAssertEqual(parsed.channel, .shareExtension)
+      XCTAssertNil(parsed.pause)
+      XCTAssertEqual(parsed.shareHandoffID, handoffID)
+    }
+
+    func testChannelIsRequiredExactlyOnceAndClosedDomain() {
+      let invalidArguments = [
+        ["Player"],
+        ["Player", "-e2e-import-channel"],
+        ["Player", "-e2e-import-channel", "-e2e-reset"],
+        ["Player", "-e2e-import-channel", ""],
+        ["Player", "-e2e-import-channel", "unknown"],
+        [
+          "Player", "-e2e-import-channel", "document-open",
+          "-e2e-import-channel", "share-extension",
+        ],
+      ]
+
+      assertAllReject(invalidArguments)
+    }
+
+    func testOptionalPauseRejectsMissingOptionLookingDuplicateAndUnknownValues() {
+      let invalidSuffixes = [
+        ["-e2e-import-pause"],
+        ["-e2e-import-pause", "-e2e-reset"],
+        ["-e2e-import-pause", ""],
+        ["-e2e-import-pause", "unknown"],
+        ["-e2e-import-pause", "acquire", "-e2e-import-pause", "inspect"],
+      ]
+
+      assertAllReject(invalidSuffixes.map { documentArguments(suffix: $0) })
+    }
+
+    func testShareHandoffRejectsMissingOptionLookingDuplicateMalformedAndIncompatibleValues() {
+      let invalidShareSuffixes = [
+        [],
+        ["-e2e-stage-share-handoff"],
+        ["-e2e-stage-share-handoff", "-e2e-reset"],
+        ["-e2e-stage-share-handoff", ""],
+        ["-e2e-stage-share-handoff", "not-a-uuid"],
+        [
+          "-e2e-stage-share-handoff", handoffID.uuidString,
+          "-e2e-stage-share-handoff", handoffID.uuidString,
+        ],
+      ]
+      assertAllReject(invalidShareSuffixes.map { shareArguments(suffix: $0, includeHandoff: false) })
+
+      assertAllReject([
+        documentArguments(suffix: ["-e2e-stage-share-handoff", handoffID.uuidString]),
+        shareArguments(suffix: ["-e2e-import-pause", "acquire"]),
+        shareArguments(suffix: ["-e2e-import-pause", "inspect"]),
+      ])
+    }
+
+    private func documentArguments(suffix: [String] = []) -> [String] {
+      canonicalArguments(channel: .documentOpen) + suffix
+    }
+
+    private func shareArguments(
+      suffix: [String] = [],
+      includeHandoff: Bool = true
+    ) -> [String] {
+      var arguments = canonicalArguments(channel: .shareExtension)
+      if includeHandoff {
+        arguments += ["-e2e-stage-share-handoff", handoffID.uuidString]
+      }
+      return arguments + suffix
+    }
+
+    private func canonicalArguments(channel: E2EImportIngressArguments.Channel) -> [String] {
+      [
+        "Player", "-e2e", "-e2e-fixture", "synthetic-import-channels",
+        "-e2e-import-channel", channel.rawValue,
+        "-AppleLanguages", "(en)",
+      ]
+    }
+
+    private func assertAllReject(
+      _ invalidArguments: [[String]],
+      file: StaticString = #filePath,
+      line: UInt = #line
+    ) {
+      for arguments in invalidArguments {
+        XCTAssertThrowsError(
+          try E2EImportIngressArguments.parse(arguments: arguments),
+          "Expected invalid Import Ingress arguments to be rejected: \(arguments)",
+          file: file,
+          line: line
+        )
+      }
+    }
+  }
+
   final class E2EMetadataRichBookNamespaceTests: XCTestCase {
     func testDefaultNamespacePreservesTheCanonicalRoot() throws {
       let support = URL(fileURLWithPath: "/fixture-support", isDirectory: true)

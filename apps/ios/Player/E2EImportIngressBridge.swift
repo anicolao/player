@@ -1,6 +1,107 @@
 #if E2E
   import Foundation
 
+  struct E2EImportIngressArguments: Equatable {
+    enum Channel: String, CaseIterable {
+      case documentOpen = "document-open"
+      case shareExtension = "share-extension"
+    }
+
+    enum Pause: String, CaseIterable {
+      case acquire
+      case inspect
+    }
+
+    static let channelArgument = "-e2e-import-channel"
+    static let pauseArgument = "-e2e-import-pause"
+    static let shareHandoffArgument = "-e2e-stage-share-handoff"
+
+    let channel: Channel
+    let pause: Pause?
+    let shareHandoffID: UUID?
+
+    static func parse(arguments: [String]) throws -> E2EImportIngressArguments {
+      let channelValue = try requiredValue(after: channelArgument, in: arguments)
+      guard let channel = Channel(rawValue: channelValue) else {
+        throw PlayerCoreError.fileOperation("Invalid Import Ingress E2E channel: \(channelValue)")
+      }
+
+      let pauseValue = try optionalValue(after: pauseArgument, in: arguments)
+      let pause: Pause?
+      if let pauseValue {
+        guard let parsed = Pause(rawValue: pauseValue) else {
+          throw PlayerCoreError.fileOperation("Invalid Import Ingress E2E pause: \(pauseValue)")
+        }
+        pause = parsed
+      } else {
+        pause = nil
+      }
+
+      let handoffValue = try optionalValue(after: shareHandoffArgument, in: arguments)
+      let handoffID: UUID?
+      if let handoffValue {
+        guard let parsed = UUID(uuidString: handoffValue) else {
+          throw PlayerCoreError.fileOperation(
+            "Invalid Import Ingress E2E share handoff: \(handoffValue)"
+          )
+        }
+        handoffID = parsed
+      } else {
+        handoffID = nil
+      }
+
+      switch channel {
+      case .documentOpen:
+        guard handoffID == nil else {
+          throw PlayerCoreError.fileOperation(
+            "A document-open Import Ingress E2E fixture cannot stage a share handoff."
+          )
+        }
+      case .shareExtension:
+        guard pause == nil, handoffID != nil else {
+          throw PlayerCoreError.fileOperation(
+            "A share-extension Import Ingress E2E fixture requires one handoff and no pause."
+          )
+        }
+      }
+
+      return E2EImportIngressArguments(
+        channel: channel,
+        pause: pause,
+        shareHandoffID: handoffID
+      )
+    }
+
+    private static func requiredValue(after marker: String, in arguments: [String]) throws -> String {
+      let markers = arguments.indices.filter { arguments[$0] == marker }
+      guard markers.count == 1 else {
+        let reason = markers.isEmpty ? "Missing" : "Duplicate"
+        throw PlayerCoreError.fileOperation("\(reason) Import Ingress E2E option: \(marker)")
+      }
+      return try value(after: marker, at: markers[0], in: arguments)
+    }
+
+    private static func optionalValue(after marker: String, in arguments: [String]) throws -> String? {
+      let markers = arguments.indices.filter { arguments[$0] == marker }
+      guard markers.count <= 1 else {
+        throw PlayerCoreError.fileOperation("Duplicate Import Ingress E2E option: \(marker)")
+      }
+      guard let index = markers.first else { return nil }
+      return try value(after: marker, at: index, in: arguments)
+    }
+
+    private static func value(after marker: String, at index: Int, in arguments: [String]) throws -> String {
+      guard arguments.indices.contains(index + 1) else {
+        throw PlayerCoreError.fileOperation("Missing Import Ingress E2E value for: \(marker)")
+      }
+      let value = arguments[index + 1]
+      guard !value.isEmpty, !value.hasPrefix("-") else {
+        throw PlayerCoreError.fileOperation("Invalid Import Ingress E2E value for: \(marker)")
+      }
+      return value
+    }
+  }
+
   @MainActor
   final class E2EImportIngressBridge {
     static let shared = E2EImportIngressBridge()
@@ -79,6 +180,7 @@
   extension PlayerEnvironment {
     static func importIngressEnvironment(reset: Bool) throws -> PlayerEnvironment {
       let arguments = ProcessInfo.processInfo.arguments
+      let options = try E2EImportIngressArguments.parse(arguments: arguments)
       let support = try FileManager.default.url(
         for: .applicationSupportDirectory,
         in: .userDomainMask,
@@ -92,13 +194,20 @@
       if reset { try resetE2EFixtureRoot(root) }
       try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
 
-      let channel = argumentValue(after: "-e2e-import-channel", in: arguments)
-        ?? "document-open"
-      let pause = argumentValue(after: "-e2e-import-pause", in: arguments)
       let jobID: UUID
-      if channel == "share-extension" {
+      if options.channel == .shareExtension {
+        guard let expectedHandoffID = options.shareHandoffID else {
+          throw PlayerCoreError.fileOperation(
+            "The share-extension Import Ingress E2E fixture has no handoff."
+          )
+        }
         jobID = UUID(uuidString: "70000000-0000-0000-0000-000000000102")!
-        try configureShareFixture(root: root, jobID: jobID, reset: reset)
+        try configureShareFixture(
+          root: root,
+          jobID: jobID,
+          reset: reset,
+          expectedHandoffID: expectedHandoffID
+        )
       } else {
         jobID = UUID(uuidString: "70000000-0000-0000-0000-000000000001")!
         E2EImportIngressBridge.shared.configureDocument(jobID: jobID, rootURL: root)
@@ -112,21 +221,26 @@
         artworkData: nil,
         container: "M4A"
       )
-      let idPrefix = channel == "share-extension" ? 102 : 1
+      let idPrefix = options.channel == .shareExtension ? 102 : 1
       let ids = (idPrefix..<(idPrefix + 16)).compactMap {
         UUID(uuidString: String(format: "70000000-0000-0000-0000-%012d", $0))
       }
       return PlayerEnvironment(
         persistence: CodableLibraryStore(fileURL: root.appending(path: "Library.json")),
-        media: E2EImportPauseMediaManager(base: media, pauseAtAcquire: pause == "acquire"),
-        inspector: E2EImportPauseInspector(result: inspected, pauseAtInspect: pause == "inspect"),
+        media: E2EImportPauseMediaManager(base: media, pauseAtAcquire: options.pause == .acquire),
+        inspector: E2EImportPauseInspector(result: inspected, pauseAtInspect: options.pause == .inspect),
         playback: DeterministicPlaybackController(),
         clock: FixedPlayerClock(value: Date(timeIntervalSince1970: 1_700_000_000)),
         ids: DeterministicPlayerIDGenerator(values: ids)
       )
     }
 
-    private static func configureShareFixture(root: URL, jobID: UUID, reset: Bool) throws {
+    private static func configureShareFixture(
+      root: URL,
+      jobID: UUID,
+      reset: Bool,
+      expectedHandoffID: UUID
+    ) throws {
       let environment = ProcessInfo.processInfo.environment
       guard
         let payloadBase64 = environment["PLAYER_E2E_SHARE_PAYLOAD_BASE64"],
@@ -139,9 +253,7 @@
       decoder.dateDecodingStrategy = .iso8601
       let handoff = try decoder.decode(ShareImportHandoff.self, from: envelope)
       guard
-        let expectedID = argumentValue(after: "-e2e-stage-share-handoff", in: ProcessInfo.processInfo.arguments)
-          .flatMap(UUID.init(uuidString:)),
-        handoff.id == expectedID,
+        handoff.id == expectedHandoffID,
         handoff.items.count == 1
       else { throw PlayerCoreError.fileOperation("The synthetic share envelope is invalid.") }
 
@@ -181,12 +293,6 @@
       )
     }
 
-    private static func argumentValue(after marker: String, in arguments: [String]) -> String? {
-      guard let index = arguments.firstIndex(of: marker), arguments.indices.contains(index + 1) else {
-        return nil
-      }
-      return arguments[index + 1]
-    }
   }
 
   private actor E2EImportPauseMediaManager: MediaManaging {
