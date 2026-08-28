@@ -6,10 +6,13 @@
   "screenshots": [
     "000-populated-library.png",
     "001-curated-collection.png",
-    "002-recoverable-trash.png",
-    "003-restored-library-list.png",
-    "004-metadata-search.png",
-    "005-filtered-search.png",
-    "006-no-search-matches.png"
+    "002-square-cover-bookshelves.png",
+    "003-square-cover-bookshelf-right-end.png",
+    "004-trash-clear-of-player.png",
+    "005-recoverable-trash.png",
+    "006-restored-library-list.png",
+    "007-metadata-search.png",
+    "008-filtered-search.png",
+    "009-no-search-matches.png"
   ]
 }

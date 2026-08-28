@@ -126,7 +126,7 @@
         path: "PlayerE2EImportRecoveryStorage",
         directoryHint: .isDirectory
       )
-      if reset { try? FileManager.default.removeItem(at: root) }
+      if reset { try resetE2EFixtureRoot(root) }
       let dataRoot = root.appending(path: "PlayerData", directoryHint: .isDirectory)
       let inputs = root.appending(path: "Synthetic Sources", directoryHint: .isDirectory)
       try FileManager.default.createDirectory(at: inputs, withIntermediateDirectories: true)

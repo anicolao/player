@@ -5,13 +5,14 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ios_dir="$(cd "${script_dir}/.." && pwd)"
 repository_root="$(cd "${ios_dir}/../.." && pwd)"
 story_id="001-ios-launch"
-default_test_selector="PlayerUITests/LaunchUITests/testLaunchesIntoEmptyLibrary"
+canonical_manifest="${repository_root}/tests/e2e/manifest.json"
 test_selectors=()
-record_story="${PLAYER_RECORD_STORY:-}"
+record_story=""
 story_was_set=0
 device_type="com.apple.CoreSimulator.SimDeviceType.iPhone-17"
 runtime="com.apple.CoreSimulator.SimRuntime.iOS-26-5"
 simulator_id=""
+recording_stage=""
 parallel_workers="${PLAYER_E2E_PARALLEL_WORKERS:-2}"
 skip_project_generation="${PLAYER_SKIP_PROJECT_GENERATION:-0}"
 
@@ -22,9 +23,9 @@ usage() {
 usage: run-e2e.sh [<story-id> [<test-selector> ...]]
        run-e2e.sh [--story <story-id>] [--test <test-selector>]... [--record <story-id>]
 
-With no arguments, runs Story 001 and its launch UI test. Test selectors use
-Xcode's Bundle[/Class[/Method]] form. Recording requires the story's exact ID
-and is rejected in CI.
+With no arguments, runs every canonical Story 001 selector. Test selectors use
+Xcode's Bundle[/Class[/Method]] form. Recording requires the story's exact ID,
+the complete canonical selector set, and is rejected in CI.
 EOF
 }
 
@@ -82,11 +83,18 @@ if [[ "${skip_project_generation}" != "0" && "${skip_project_generation}" != "1"
   exit 2
 fi
 
+if [[ -n "${PLAYER_RECORD_STORY:-}" ]]; then
+  echo "PLAYER_RECORD_STORY is no longer accepted; use --record <story-id>." >&2
+  exit 2
+fi
+
 if [[ ${#test_selectors[@]} -eq 0 ]]; then
-  if [[ "${story_id}" == "001-ios-launch" ]]; then
-    test_selectors+=("${default_test_selector}")
-  else
-    echo "At least one test selector is required for ${story_id}." >&2
+  while IFS= read -r selector; do
+    test_selectors+=("${selector}")
+  done < <(jq -r --arg story "${story_id}" '.[] | select(.story == $story) | .tests[]' \
+    "${canonical_manifest}")
+  if [[ ${#test_selectors[@]} -eq 0 ]]; then
+    echo "The canonical manifest has no selectors for ${story_id}." >&2
     exit 2
   fi
 fi
@@ -96,9 +104,19 @@ if [[ -n "${record_story}" && "${record_story}" != "${story_id}" ]]; then
   exit 2
 fi
 
-if [[ -n "${record_story}" && ( "${CI:-}" == "true" || "${GITHUB_ACTIONS:-}" == "true" ) ]]; then
+if [[ -n "${record_story}" && ( -n "${CI:-}" || -n "${GITHUB_ACTIONS:-}" ) ]]; then
   echo "E2E baselines may never be recorded in CI." >&2
   exit 1
+fi
+
+if [[ -n "${record_story}" ]]; then
+  if ! cmp \
+    <(printf '%s\n' "${test_selectors[@]}" | sort) \
+    <(jq -r --arg story "${story_id}" '.[] | select(.story == $story) | .tests[]' \
+      "${canonical_manifest}" | sort); then
+    echo "Recording requires the complete canonical selector set for ${story_id}." >&2
+    exit 2
+  fi
 fi
 
 if [[ "${PLAYER_RECORD_SCREENSHOTS:-0}" == "1" ]]; then
@@ -126,6 +144,9 @@ cleanup() {
   if [[ -n "${simulator_id}" ]]; then
     xcrun simctl shutdown "${simulator_id}" >/dev/null 2>&1 || true
     xcrun simctl delete "${simulator_id}" >/dev/null 2>&1 || true
+  fi
+  if [[ -n "${recording_stage}" && -d "${recording_stage}" ]]; then
+    rm -rf "${recording_stage}"
   fi
 }
 trap cleanup EXIT
@@ -236,10 +257,29 @@ if [[ ${export_status} -ne 0 || ${materialize_status} -ne 0 ]]; then
 fi
 
 if [[ -n "${record_story}" ]]; then
-  rm -rf "${baseline_story}/screenshots/ios"
-  mkdir -p "${baseline_story}/screenshots/ios"
-  cp "${actual_story}/screenshots/ios/"*.png "${baseline_story}/screenshots/ios/"
-  cp "${actual_story}/README.md" "${baseline_story}/README.md"
+  if [[ -n "$(git -C "${repository_root}" status --porcelain -- "${baseline_story}")" ]]; then
+    echo "Refusing to replace a baseline that already has uncommitted changes: ${story_id}" >&2
+    exit 1
+  fi
+  baseline_parent="$(dirname "${baseline_story}")"
+  recording_stage="$(mktemp -d "${baseline_parent}/.${story_id}.recording.XXXXXX")"
+  mkdir -p "${recording_stage}/screenshots/ios"
+  cp "${actual_story}/screenshots/ios/"*.png "${recording_stage}/screenshots/ios/"
+  cp "${actual_story}/README.md" "${recording_stage}/README.md"
+  cp "${baseline_story}/story.json" "${recording_stage}/story.json"
+  swift "${script_dir}/compare-walkthrough.swift" \
+    "${recording_stage}/screenshots/ios" \
+    "${actual_story}/screenshots/ios"
+
+  previous_baseline="${baseline_parent}/.${story_id}.previous.$$"
+  mv "${baseline_story}" "${previous_baseline}"
+  if ! mv "${recording_stage}" "${baseline_story}"; then
+    mv "${previous_baseline}" "${baseline_story}"
+    echo "Could not atomically replace the reviewed baseline for ${story_id}." >&2
+    exit 1
+  fi
+  recording_stage=""
+  rm -rf "${previous_baseline}"
   echo "Recorded reviewed baseline in ${baseline_story}"
 else
   swift "${script_dir}/compare-walkthrough.swift" \

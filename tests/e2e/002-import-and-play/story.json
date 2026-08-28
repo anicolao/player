@@ -7,6 +7,10 @@
     "PlayerUITests/ImportIngressResilienceUITests/testDocumentOpenResumesOneImportAcrossAcquireAndInspectRestarts",
     "PlayerUITests/ImportIngressResilienceUITests/testConsumesAndDeduplicatesShareExtensionAppGroupHandoff"
   ],
+  "nonvisualTests": [
+    "PlayerUITests/ImportPlaybackUITests/testAbandonsReadyImportAndClearsInbox",
+    "PlayerUITests/ImportPlaybackUITests/testNowPlayingRendersWhenImportedDurationIsUnavailable"
+  ],
   "fixture": "single-audiobook-ready",
   "additionalFixtures": [
     "metadata-rich-book",

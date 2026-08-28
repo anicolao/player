@@ -2,6 +2,18 @@ import CryptoKit
 import Foundation
 import UIKit
 
+#if E2E
+  func resetE2EFixtureRoot(_ root: URL) throws {
+    let fileManager = FileManager.default
+    if fileManager.fileExists(atPath: root.path) {
+      try fileManager.removeItem(at: root)
+    }
+    guard !fileManager.fileExists(atPath: root.path) else {
+      throw PlayerCoreError.fileOperation("Could not reset E2E fixture root: \(root.lastPathComponent)")
+    }
+  }
+#endif
+
 @MainActor
 extension PlayerEnvironment {
   static func launchEnvironment() throws -> PlayerEnvironment {
@@ -9,6 +21,8 @@ extension PlayerEnvironment {
       let arguments = ProcessInfo.processInfo.arguments
       if let marker = arguments.firstIndex(of: "-e2e-fixture"), arguments.indices.contains(marker + 1) {
         switch arguments[marker + 1] {
+        case "empty-library":
+          return try emptyLibraryEnvironment(reset: arguments.contains("-e2e-reset"))
         case "single-audiobook-ready":
           return try singleAudiobookReadyEnvironment()
         case "committed-current-book":
@@ -19,7 +33,7 @@ extension PlayerEnvironment {
         case "monetization-exhausted":
           return try monetizationExhaustedEnvironment()
         case "zero-duration-current-book":
-          return zeroDurationCurrentBookEnvironment()
+          return try zeroDurationCurrentBookEnvironment()
         case "metadata-rich-book":
           return try metadataRichBookEnvironment(reset: arguments.contains("-e2e-reset"))
         case "messy-multifile-unicode":
@@ -54,20 +68,46 @@ extension PlayerEnvironment {
         case "offline-recovery":
           return try offlineRecoveryEnvironment(reset: arguments.contains("-e2e-reset"))
         default:
-          break
+          throw PlayerCoreError.fileOperation(
+            "Unknown deterministic E2E fixture: \(arguments[marker + 1])"
+          )
         }
+      }
+      if arguments.contains("-e2e") {
+        throw PlayerCoreError.fileOperation("An E2E launch requires an explicit fixture.")
       }
     #endif
     return try production()
   }
 
   #if E2E
+    private static func emptyLibraryEnvironment(reset: Bool) throws -> PlayerEnvironment {
+      let root = FileManager.default.temporaryDirectory.appending(
+        path: "PlayerE2EEmptyLibrary",
+        directoryHint: .isDirectory
+      )
+      if reset { try resetE2EFixtureRoot(root) }
+      try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+      return PlayerEnvironment(
+        persistence: InMemoryLibraryStore(snapshot: .empty),
+        media: FileSystemMediaManager(rootURL: root),
+        inspector: DeterministicAudioInspector(result: .failure(.unreadableAudio("unused"))),
+        playback: DeterministicPlaybackController(),
+        clock: FixedPlayerClock(value: Date(timeIntervalSince1970: 1_700_000_000)),
+        ids: DeterministicPlayerIDGenerator(
+          values: (1...32).map {
+            UUID(uuidString: String(format: "01000000-0000-0000-0000-%012d", $0))!
+          }
+        )
+      )
+    }
+
     private static func singleAudiobookReadyEnvironment() throws -> PlayerEnvironment {
       let root = FileManager.default.temporaryDirectory.appending(
         path: "PlayerE2ESingleAudiobook",
         directoryHint: .isDirectory
       )
-      try? FileManager.default.removeItem(at: root)
+      try resetE2EFixtureRoot(root)
 
       let jobID = UUID(uuidString: "10000000-0000-0000-0000-000000000001")!
       let assetID = UUID(uuidString: "10000000-0000-0000-0000-000000000002")!
@@ -154,7 +194,7 @@ extension PlayerEnvironment {
         path: "PlayerE2EPositionRestore",
         directoryHint: .isDirectory
       )
-      if reset { try? FileManager.default.removeItem(at: root) }
+      if reset { try resetE2EFixtureRoot(root) }
 
       let bookID = UUID(uuidString: "20000000-0000-0000-0000-000000000001")!
       let assetID = UUID(uuidString: "20000000-0000-0000-0000-000000000002")!
@@ -245,7 +285,12 @@ extension PlayerEnvironment {
       )
     }
 
-    private static func zeroDurationCurrentBookEnvironment() -> PlayerEnvironment {
+    private static func zeroDurationCurrentBookEnvironment() throws -> PlayerEnvironment {
+      let root = FileManager.default.temporaryDirectory.appending(
+        path: "PlayerE2EZeroDuration",
+        directoryHint: .isDirectory
+      )
+      try resetE2EFixtureRoot(root)
       let bookID = UUID(uuidString: "22000000-0000-0000-0000-000000000001")!
       let assetID = UUID(uuidString: "22000000-0000-0000-0000-000000000002")!
       let asset = AudioAsset(
@@ -266,11 +311,17 @@ extension PlayerEnvironment {
         assets: [asset],
         dateAdded: Date(timeIntervalSince1970: 1_700_000_000)
       )
+      let managedURL = root.appending(path: asset.managedRelativePath)
+      try FileManager.default.createDirectory(
+        at: managedURL.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+      )
+      try Data([0]).write(to: managedURL)
       return PlayerEnvironment(
         persistence: InMemoryLibraryStore(
           snapshot: LibrarySnapshot(books: [book], importJobs: [], currentBookID: bookID)
         ),
-        media: FileSystemMediaManager(rootURL: FileManager.default.temporaryDirectory),
+        media: FileSystemMediaManager(rootURL: root),
         inspector: DeterministicAudioInspector(result: .failure(.unreadableAudio("unused"))),
         playback: DeterministicPlaybackController(),
         clock: FixedPlayerClock(value: Date(timeIntervalSince1970: 1_700_000_000)),
@@ -311,7 +362,7 @@ extension PlayerEnvironment {
         path: "PlayerE2ESleepTimer-\(namespace)",
         directoryHint: .isDirectory
       )
-      if reset { try? FileManager.default.removeItem(at: root) }
+      if reset { try resetE2EFixtureRoot(root) }
 
       let bookID = UUID(uuidString: "52000000-0000-0000-0000-000000000001")!
       let firstAssetID = UUID(uuidString: "52000000-0000-0000-0000-000000000002")!
@@ -452,7 +503,7 @@ extension PlayerEnvironment {
         path: "PlayerE2EBookmarks",
         directoryHint: .isDirectory
       )
-      if reset { try? FileManager.default.removeItem(at: root) }
+      if reset { try resetE2EFixtureRoot(root) }
 
       let bookID = UUID(uuidString: "53000000-0000-0000-0000-000000000001")!
       let firstAssetID = UUID(uuidString: "53000000-0000-0000-0000-000000000002")!
@@ -647,7 +698,7 @@ extension PlayerEnvironment {
         path: "PlayerE2ESmartRewind-\(scenario)",
         directoryHint: .isDirectory
       )
-      if reset { try? FileManager.default.removeItem(at: root) }
+      if reset { try resetE2EFixtureRoot(root) }
 
       let bookID = UUID(uuidString: "51000000-0000-0000-0000-000000000001")!
       let assetID = UUID(uuidString: "51000000-0000-0000-0000-000000000002")!
@@ -786,7 +837,7 @@ extension PlayerEnvironment {
         path: "PlayerE2EMetadataRichBook",
         directoryHint: .isDirectory
       )
-      if reset { try? FileManager.default.removeItem(at: root) }
+      if reset { try resetE2EFixtureRoot(root) }
 
       let bookID = UUID(uuidString: "30000000-0000-0000-0000-000000000001")!
       let assetID = UUID(uuidString: "30000000-0000-0000-0000-000000000002")!
@@ -881,7 +932,7 @@ extension PlayerEnvironment {
         path: "PlayerE2EMetadataRepair",
         directoryHint: .isDirectory
       )
-      try? FileManager.default.removeItem(at: root)
+      try resetE2EFixtureRoot(root)
       let jobID = UUID(uuidString: "80000000-0000-0000-0000-000000000001")!
       let proposalID = UUID(uuidString: "80000000-0000-0000-0000-000000000002")!
       let assetID = UUID(uuidString: "80000000-0000-0000-0000-000000000003")!
@@ -997,7 +1048,7 @@ extension PlayerEnvironment {
         create: true
       )
       let root = support.appending(path: "PlayerE2EPopulatedLibrary", directoryHint: .isDirectory)
-      if reset { try? FileManager.default.removeItem(at: root) }
+      if reset { try resetE2EFixtureRoot(root) }
       try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
 
       let clock = ISO8601DateFormatter().date(from: descriptor.clock)
@@ -1153,7 +1204,7 @@ extension PlayerEnvironment {
         path: "PlayerE2EOfflineRecovery",
         directoryHint: .isDirectory
       )
-      if reset { try? FileManager.default.removeItem(at: root) }
+      if reset { try resetE2EFixtureRoot(root) }
       try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
       let date = Date(timeIntervalSince1970: 1_750_000_000)
       let bookID = UUID(uuidString: "d1000000-0000-0000-0000-000000000001")!
@@ -1264,7 +1315,7 @@ extension PlayerEnvironment {
         path: "PlayerE2EPortableBackup",
         directoryHint: .isDirectory
       )
-      try? FileManager.default.removeItem(at: root)
+      try resetE2EFixtureRoot(root)
       let bookID = UUID(uuidString: "a1000000-0000-0000-0000-000000000001")!
       let assetID = UUID(uuidString: "a1000000-0000-0000-0000-000000000002")!
       let eventID = UUID(uuidString: "a1000000-0000-0000-0000-000000000003")!
@@ -1372,7 +1423,7 @@ extension PlayerEnvironment {
         path: "PlayerE2EMessyMultifile",
         directoryHint: .isDirectory
       )
-      if reset { try? FileManager.default.removeItem(at: root) }
+      if reset { try resetE2EFixtureRoot(root) }
       let inputRoot = root.appending(path: "Input", directoryHint: .isDirectory)
       let folder = inputRoot.appending(
         path: "Signal Δ — Folder",
@@ -1452,7 +1503,7 @@ extension PlayerEnvironment {
         path: "PlayerE2ESafeZIP",
         directoryHint: .isDirectory
       )
-      if reset { try? FileManager.default.removeItem(at: root) }
+      if reset { try resetE2EFixtureRoot(root) }
       try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
 
       let zipCase = argumentValue(after: "-e2e-zip-case", in: arguments) ?? "valid"
@@ -1749,7 +1800,10 @@ extension PlayerEnvironment {
 
     func clear(using model: PlayerModel) async throws {
       guard let rootURL else { return }
-      try? FileManager.default.removeItem(at: rootURL.appending(path: "Media"))
+      let mediaRoot = rootURL.appending(path: "Media")
+      if FileManager.default.fileExists(atPath: mediaRoot.path) {
+        try FileManager.default.removeItem(at: mediaRoot)
+      }
       try await model.replaceLibraryForBackupE2E(with: .empty)
     }
 

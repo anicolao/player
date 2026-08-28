@@ -1,0 +1,10 @@
+{
+  "id": "012-monetization",
+  "platform": "ios",
+  "test": "PlayerUITests/MonetizationUITests/testExplainsExhaustionAndCompletesAOneTimeUnlock",
+  "fixture": "monetization-exhausted",
+  "screenshots": [
+    "000-included-playback-exhausted.png",
+    "001-full-unlock-purchased.png"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "009-accessible-core-journeys",
+  "platform": "ios",
+  "test": "PlayerUITests/AccessibilityUITests/testCoreJourneysRemainCompleteAtLargestAccessibilityText",
+  "nonvisualTests": [
+    "PlayerUITests/AccessibilityUITests/testAccessibilityPreferenceTogglesUpdateAndPersist"
+  ],
+  "fixture": "accessibility-core-journeys",
+  "screenshots": [
+    "000-large-text-import-review.png",
+    "001-large-text-metadata-repair.png",
+    "002-large-text-book-detail.png",
+    "003-large-text-now-playing.png",
+    "004-large-text-non-drag-ordering.png",
+    "005-accessibility-preferences.png",
+    "006-large-text-computer-receiver.png"
+  ]
+}

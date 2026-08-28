@@ -87,6 +87,9 @@ jobs:
       - name: Verify pinned environment
         run: apps/ios/scripts/verify-e2e-environment.sh
 
+      - name: Enforce deterministic E2E hygiene
+        run: apps/ios/scripts/verify-e2e-hygiene.sh
+
       - name: Generate Xcode project
         run: apps/ios/scripts/generate-project.sh
 
@@ -124,9 +127,11 @@ jobs:
           - story: 001-ios-launch
             tests: >-
               PlayerUITests/LaunchUITests/testLaunchesIntoEmptyLibrary
+              PlayerUITests/LaunchUITests/testRejectsUnknownFixtureWithoutFallingBackToProduction
           - story: 002-import-and-play
             tests: >-
               PlayerUITests/ImportPlaybackUITests/testAbandonsReadyImportAndClearsInbox
+              PlayerUITests/ImportPlaybackUITests/testNowPlayingRendersWhenImportedDurationIsUnavailable
               PlayerUITests/ImportPlaybackUITests/testReviewsCommitsAndPlaysOneAudiobook
               PlayerUITests/MetadataChapterUITests/testShowsEmbeddedMetadataAndStartsAChapter
               PlayerUITests/ImportIngressResilienceUITests/testDocumentOpenResumesOneImportAcrossAcquireAndInspectRestarts
@@ -157,6 +162,7 @@ jobs:
               PlayerUITests/LibraryOrganizationUITests/testOrganizesDailyLibraryAndRestoresATrashedBook
           - story: 009-accessible-core-journeys
             tests: >-
+              PlayerUITests/AccessibilityUITests/testAccessibilityPreferenceTogglesUpdateAndPersist
               PlayerUITests/AccessibilityUITests/testCoreJourneysRemainCompleteAtLargestAccessibilityText
           - story: 010-library-backup
             tests: >-

@@ -12,7 +12,7 @@ apps/ios/scripts/run-complete-suite.sh
 ```
 
 It verifies the pinned environment, reproducible project and legal fixtures,
-runs every unit/integration test, and then executes exact-pixel Stories 001–011.
+runs every unit/integration test, and then executes exact-pixel Stories 001–013.
 GitHub Actions runs the same core and story gates in parallel and requires their
 aggregate result for each release SHA.
 

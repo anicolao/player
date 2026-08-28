@@ -7,7 +7,8 @@
     "PlayerUITests/SmartRewindUITests/testSmartRewindAdaptsClampsPersistsAndUndoesExactly"
   ],
   "nonvisualTests": [
-    "PlayerUITests/RemoteInterruptionUITests/testRemoteInterruptionAndBackgroundEventsJournalAcknowledgedPositions"
+    "PlayerUITests/RemoteInterruptionUITests/testRemoteInterruptionAndBackgroundEventsJournalAcknowledgedPositions",
+    "PlayerUITests/SmartRewindUITests/testSmartRewindNoticeDismissesAfterFiveSecondsOfPlaybackProgress"
   ],
   "fixture": "committed-current-book",
   "screenshots": [

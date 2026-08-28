@@ -4,11 +4,13 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ios_dir="$(cd "${script_dir}/.." && pwd)"
 repository_root="$(cd "${ios_dir}/../.." && pwd)"
+story_manifest="${repository_root}/tests/e2e/manifest.json"
 destination="${PLAYER_COMPLETE_SUITE_DESTINATION:-platform=iOS Simulator,name=iPhone 17,OS=26.5}"
 core_build_data="${ios_dir}/DerivedData/CompleteSuiteCore"
 
 cd "${repository_root}"
 "${script_dir}/verify-e2e-environment.sh"
+"${script_dir}/verify-e2e-hygiene.sh"
 project_snapshot="$(mktemp /tmp/player-project.XXXXXX)"
 trap 'rm -f "${project_snapshot}"' EXIT
 cp "${ios_dir}/Player.xcodeproj/project.pbxproj" "${project_snapshot}"
@@ -45,41 +47,14 @@ run_story() {
   rm -rf "${ios_dir}/DerivedData/E2E/${story}/Results"
 }
 
-run_story 001-ios-launch \
-  PlayerUITests/LaunchUITests/testLaunchesIntoEmptyLibrary
-run_story 002-import-and-play \
-  PlayerUITests/ImportPlaybackUITests/testAbandonsReadyImportAndClearsInbox \
-  PlayerUITests/ImportPlaybackUITests/testReviewsCommitsAndPlaysOneAudiobook \
-  PlayerUITests/MetadataChapterUITests/testShowsEmbeddedMetadataAndStartsAChapter \
-  PlayerUITests/ImportIngressResilienceUITests/testDocumentOpenResumesOneImportAcrossAcquireAndInspectRestarts \
-  PlayerUITests/ImportIngressResilienceUITests/testConsumesAndDeduplicatesShareExtensionAppGroupHandoff
-run_story 003-multifile-grouping \
-  PlayerUITests/MultifileGroupingUITests/testRepairsMessyMultifileGroupingAndCommitsOneBookAtomically
-run_story 004-metadata-repair \
-  PlayerUITests/MetadataRepairUITests/testRepairsLocksCommitsAndUndoesMetadataWithoutChangingAudio
-run_story 005-play-and-restore \
-  PlayerUITests/PositionRestoreUITests/testRestoresAnAcknowledgedPausedPositionAfterTermination \
-  PlayerUITests/RemoteInterruptionUITests/testRemoteInterruptionAndBackgroundEventsJournalAcknowledgedPositions \
-  PlayerUITests/TransportControlsUITests/testCustomizesAndRestoresListeningControls \
-  PlayerUITests/SmartRewindUITests/testSmartRewindAdaptsClampsPersistsAndUndoesExactly \
-  PlayerUITests/SmartRewindUITests/testSmartRewindNoticeDismissesAfterFiveSecondsOfPlaybackProgress
-run_story 006-safe-zip-import \
-  PlayerUITests/SafeZIPImportUITests/testRejectsHostileZIPsThenCancelsAndRetriesAValidArchive \
-  PlayerUITests/ImportRecoveryStorageUITests/testRecoversMixedImportsAndExplainsStorageWithoutTouchingSources
-run_story 007-sleep-timer \
-  PlayerUITests/SleepTimerUITests/testSleepTimerPersistsFadesStopsAndResumesWithContextExactly \
-  PlayerUITests/BookmarkUITests/testBookmarksCaptureOrganizeSearchJumpDeleteAndUndoExactly
-run_story 008-library-search \
-  PlayerUITests/LibraryOrganizationUITests/testOrganizesDailyLibraryAndRestoresATrashedBook
-run_story 009-accessible-core-journeys \
-  PlayerUITests/AccessibilityUITests/testCoreJourneysRemainCompleteAtLargestAccessibilityText
-run_story 010-library-backup \
-  PlayerUITests/BackupUITests/testExportsClearsAndRestoresAVerifiedPortableLibrary
-run_story 011-offline-recovery \
-  PlayerUITests/OfflineRecoveryUITests/testRecoversStartupAndExportsOnlySanitizedOfflineDiagnostics
-run_story 012-monetization \
-  PlayerUITests/MonetizationUITests/testExplainsExhaustionAndCompletesAOneTimeUnlock
-run_story 013-app-store-listing \
-  PlayerUITests/AppStoreListingUITests/testCapturesCanonicalMarketingSurfaces
+story_count="$(jq 'length' "${story_manifest}")"
+for ((story_index = 0; story_index < story_count; story_index += 1)); do
+  story="$(jq -r ".[${story_index}].story" "${story_manifest}")"
+  selectors=()
+  while IFS= read -r selector; do
+    selectors+=("${selector}")
+  done < <(jq -r ".[${story_index}].tests[]" "${story_manifest}")
+  run_story "${story}" "${selectors[@]}"
+done
 
 echo "Complete Player suite passed: unit/integration tests and Stories 001-013."

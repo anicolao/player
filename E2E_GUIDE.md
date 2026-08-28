@@ -54,9 +54,7 @@ apps/ios/scripts/run-e2e.sh \
 To intentionally record the initial or a changed baseline, pass the exact story identifier; recording is rejected in CI:
 
 ```bash
-apps/ios/scripts/run-e2e.sh --story 002-import-and-play \
-  --test PlayerUITests/ImportPlaybackUITests/testReviewsCommitsAndPlaysOneAudiobook \
-  --record 002-import-and-play
+apps/ios/scripts/run-e2e.sh --story 002-import-and-play --record 002-import-and-play
 ```
 
 The test result, raw attachments, and materialized actual walkthrough remain under `apps/ios/DerivedData/E2E/<story>/` for diagnosis. The exact comparator is [compare-walkthrough.swift](apps/ios/scripts/compare-walkthrough.swift).
@@ -90,6 +88,11 @@ screenshots/
 └── ios/
     └── 000-step-name.png
 ```
+
+[`tests/e2e/manifest.json`](tests/e2e/manifest.json) is the canonical mapping
+from stories to UI-test selectors. The hygiene check requires every UI test to
+appear exactly once and requires CI to select the same set. Each story's
+`story.json` records its fixture and expected screenshot inventory.
 
 The Swift `TestStepHelper` combines state assertions, screenshot capture, deterministic naming, and walkthrough generation in one operation. Screenshot counters and Markdown references are not maintained manually.
 

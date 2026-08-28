@@ -47,9 +47,7 @@ The runner owns a story-specific temporary simulator, verifies the pinned toolch
 To intentionally record a reviewed baseline on the pinned environment:
 
 ```bash
-apps/ios/scripts/run-e2e.sh --story 002-import-and-play \
-  --test PlayerUITests/ImportPlaybackUITests/testReviewsCommitsAndPlaysOneAudiobook \
-  --record 002-import-and-play
+apps/ios/scripts/run-e2e.sh --story 002-import-and-play --record 002-import-and-play
 ```
 
 See [E2E_GUIDE.md](../../E2E_GUIDE.md) for the complete contract.
@@ -69,8 +67,9 @@ See [E2E_GUIDE.md](../../E2E_GUIDE.md) for the complete contract.
   commands, speed, skip preferences, Smart Rewind, sleep timer, and bookmarks
 - Light-mode E2E configuration with animations disabled
 - Accessibility identifiers and exact semantic values for stable story states
-- Stories 001–008 covering launch/import, grouping, metadata, ZIP, Library,
-  position restoration, sleep timer, and bookmarks
+- Stories 001–013 covering launch/import, grouping, metadata, ZIP, Library,
+  position restoration, sleep timer, bookmarks, accessibility, backup,
+  recovery, monetization, and App Store surfaces
 - Native sRGB RGBA screenshot comparator that rejects any channel delta above 8/255
 - Server-confirmed byte-offset resume and explicit repeat-import controls for
   the local computer receiver (Build 14 candidate)
@@ -83,6 +82,6 @@ See [E2E_GUIDE.md](../../E2E_GUIDE.md) for the complete contract.
   18 candidate)
 
 Run `apps/ios/scripts/run-complete-suite.sh` for all unit/integration checks and
-Stories 001–011. The remaining final mockup comparison is tracked in the serial
+Stories 001–013. The remaining final mockup comparison is tracked in the serial
 [MVP completion release train](../../MVP_COMPLETION_PLAN.md), with executable
 coverage mapped in [MVP_ACCEPTANCE_MATRIX.md](../../MVP_ACCEPTANCE_MATRIX.md).

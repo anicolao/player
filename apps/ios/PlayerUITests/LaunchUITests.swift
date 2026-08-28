@@ -2,6 +2,21 @@ import XCTest
 
 @MainActor
 final class LaunchUITests: XCTestCase {
+  func testRejectsUnknownFixtureWithoutFallingBackToProduction() {
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    app.launchArguments = [
+      "-e2e", "-e2e-reset", "-e2e-fixture", "misspelled-fixture",
+      "-AppleLanguages", "(en)", "-AppleLocale", "en_CA",
+      "-NSTreatUnknownArgumentsAsOpen", "NO",
+    ]
+    app.launchEnvironment["TZ"] = "America/Toronto"
+    app.launch()
+
+    XCTAssertTrue(app.staticTexts["Local Storage Unavailable"].waitForExistence(timeout: 2))
+    XCTAssertFalse(app.descendants(matching: .any)["library-screen"].exists)
+  }
+
   func testLaunchesIntoEmptyLibrary() throws {
     continueAfterFailure = false
     XCUIDevice.shared.orientation = .portrait

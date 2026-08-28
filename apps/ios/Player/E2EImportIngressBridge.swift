@@ -89,7 +89,7 @@
         path: "PlayerE2EImportChannels",
         directoryHint: .isDirectory
       )
-      if reset { try? FileManager.default.removeItem(at: root) }
+      if reset { try resetE2EFixtureRoot(root) }
       try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
 
       let channel = argumentValue(after: "-e2e-import-channel", in: arguments)

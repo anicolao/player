@@ -80,7 +80,7 @@ final class AppStoreListingUITests: XCTestCase {
     ).base64EncodedString()
     playback.launch()
     let playbackDefaults = playback.buttons["playback-defaults"]
-    XCTAssertTrue(playbackDefaults.waitForExistence(timeout: 5))
+    XCTAssertTrue(playbackDefaults.waitForExistence(timeout: 2))
     playbackDefaults.tap()
     let preferences = anyElement(playback, "transport-preferences-screen")
     XCTAssertTrue(preferences.waitForExistence(timeout: 2))
