@@ -24,6 +24,7 @@ final class PlayerModel {
   @ObservationIgnored private var importTasks: [UUID: Task<Void, Never>] = [:]
   @ObservationIgnored private var cancellingImportIDs: Set<UUID> = []
   @ObservationIgnored private var mutatingTrashTransactionIDs: Set<UUID> = []
+  @ObservationIgnored private var mutatingMetadataTargets: Set<MetadataTarget> = []
   @ObservationIgnored private var sleepTimerMonitorTask: Task<Void, Never>?
   @ObservationIgnored private var playbackProgressMonitorTask: Task<Void, Never>?
   @ObservationIgnored private var monetizationSnapshotTask: Task<Void, Never>?
@@ -477,6 +478,11 @@ final class PlayerModel {
     mutations: [MetadataMutation]
   ) async -> UUID? {
     guard !mutations.isEmpty else { return nil }
+    guard mutatingMetadataTargets.insert(target).inserted else {
+      present(MetadataRepairError.transactionInProgress, in: .metadata)
+      return nil
+    }
+    defer { mutatingMetadataTargets.remove(target) }
     let transactionID = await environment.ids.next()
     let previousLibrary = library
     do {
@@ -487,6 +493,7 @@ final class PlayerModel {
       for mutation in mutations {
         try repaired.apply(mutation, transactionID: transactionID)
       }
+      try repaired.validateForCommit()
       try replaceMetadata(
         repaired,
         for: target,
@@ -541,6 +548,11 @@ final class PlayerModel {
       return false
     }
     let transaction = library.metadataTransactions[transactionIndex]
+    guard mutatingMetadataTargets.insert(transaction.target).inserted else {
+      present(MetadataRepairError.transactionInProgress, in: .metadata, owner: .root)
+      return false
+    }
+    defer { mutatingMetadataTargets.remove(transaction.target) }
     guard transaction.status == .applied,
       !library.metadataTransactions[(transactionIndex + 1)...].contains(where: {
         $0.target == transaction.target && $0.status == .applied

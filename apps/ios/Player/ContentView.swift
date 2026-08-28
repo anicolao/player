@@ -1641,6 +1641,12 @@ struct BookDetailView: View {
         metadataProbe(id: "book-state-probe", value: bookStateValue(book))
         #if E2E
           metadataProbe(id: "book-cover-render-state", value: coverRenderState(book))
+          if E2ECommittedMetadataBridge.shared.isConfigured {
+            metadataProbe(
+              id: "committed-metadata-integrity-probe",
+              value: E2ECommittedMetadataBridge.shared.evidenceValue
+            )
+          }
         #endif
       } else {
         ProgressView("Loading book…")

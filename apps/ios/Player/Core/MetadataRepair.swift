@@ -323,6 +323,322 @@ struct MetadataMutation: Codable, Equatable, Sendable {
   }
 }
 
+/// A UI-independent snapshot of every editable metadata value. Keeping this
+/// draft and its validation in Core makes Save a single, deterministic plan
+/// rather than a collection of view callbacks.
+struct MetadataEditDraft: Equatable, Sendable {
+  var title: String
+  var sortTitle: String
+  var subtitle: String
+  var authors: String
+  var narrators: String
+  var seriesName: String
+  var seriesPosition: String
+  var description: String
+  var genres: String
+  var tags: String
+  var language: String
+  var publicationYear: String
+  var publisher: String
+  var edition: String
+  var abridgement: String
+  var cover: CoverArtwork?
+
+  static let empty = MetadataEditDraft(metadata: AudiobookMetadata(title: ""))
+
+  init(metadata: AudiobookMetadata) {
+    title = metadata.title
+    sortTitle = metadata.sortTitle ?? ""
+    subtitle = metadata.subtitle ?? ""
+    authors = MetadataDelimitedText.serialize(metadata.authors.map(\.displayName))
+    narrators = MetadataDelimitedText.serialize(metadata.narrators.map(\.displayName))
+    seriesName = metadata.seriesMemberships.first?.name ?? ""
+    seriesPosition = metadata.seriesMemberships.first?.position ?? ""
+    description = metadata.description ?? ""
+    genres = MetadataDelimitedText.serialize(metadata.genres)
+    tags = MetadataDelimitedText.serialize(metadata.tags)
+    language = metadata.language ?? ""
+    publicationYear = metadata.publicationYear.map(String.init) ?? ""
+    publisher = metadata.publisher ?? ""
+    edition = metadata.edition ?? ""
+    abridgement = metadata.abridgement?.rawValue ?? ""
+    cover = metadata.cover
+  }
+
+  func displayValue(for field: MetadataField) -> String {
+    switch field {
+    case .cover: cover == nil ? "" : "cover"
+    case .title: title
+    case .sortTitle: sortTitle
+    case .subtitle: subtitle
+    case .authors: authors
+    case .narrators: narrators
+    case .seriesName: seriesName
+    case .seriesPosition: seriesPosition
+    case .description: description
+    case .genres: genres
+    case .tags: tags
+    case .language: language
+    case .publicationYear: publicationYear
+    case .publisher: publisher
+    case .edition: edition
+    case .abridgement: abridgement
+    }
+  }
+}
+
+private enum MetadataDelimitedText {
+  static func serialize(_ values: [String]) -> String {
+    values.map { value in
+      let requiresQuotes = value.contains(where: { character in
+        character == "," || character == ";" || character == "\n" || character == "\""
+      }) || value != value.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard requiresQuotes else { return value }
+      return "\"\(value.replacingOccurrences(of: "\"", with: "\"\""))\""
+    }.joined(separator: ", ")
+  }
+}
+
+struct MetadataEditPlan: Equatable, Sendable {
+  var mutations: [MetadataMutation]
+  var explicitlyClearedFields: Set<MetadataField>
+}
+
+enum MetadataEditPlanner {
+  static func plan(
+    initial: AudiobookMetadata,
+    draft: MetadataEditDraft,
+    explicitClears: Set<MetadataField> = [],
+    lockOverrides: [MetadataField: Bool] = [:]
+  ) throws -> MetadataEditPlan {
+    let original = MetadataEditDraft(metadata: initial)
+    let title = normalized(draft.title)
+    guard !title.isEmpty else { throw MetadataRepairError.titleRequired }
+
+    var mutations: [MetadataMutation] = []
+    var plannedClears = Set(MetadataField.allCases.filter {
+      initial.state(for: $0)?.isExplicitlyCleared == true
+    })
+    plannedClears.formUnion(explicitClears)
+    func locked(_ field: MetadataField) -> Bool {
+      lockOverrides[field] ?? initial.state(for: field)?.isLocked ?? false
+    }
+    func appendText(_ field: MetadataField, _ before: String, _ after: String) {
+      guard before != after || explicitClears.contains(field) else { return }
+      let value = normalized(after)
+      if value.isEmpty {
+        plannedClears.insert(field)
+        mutations.append(.clear(field, lock: locked(field)))
+      } else {
+        plannedClears.remove(field)
+        mutations.append(.set(field, value: .text(value), lock: locked(field)))
+      }
+    }
+    func appendList(_ field: MetadataField, _ before: String, _ after: String) throws {
+      guard before != after || explicitClears.contains(field) else { return }
+      let values = try parsedDelimitedValues(after, field: field)
+      if values.isEmpty {
+        plannedClears.insert(field)
+        mutations.append(.clear(field, lock: locked(field)))
+      } else {
+        plannedClears.remove(field)
+        mutations.append(.set(field, value: .textList(values), lock: locked(field)))
+      }
+    }
+    func appendContributors(
+      _ field: MetadataField,
+      _ before: String,
+      _ after: String,
+      existing: [Contributor]
+    ) throws {
+      guard before != after || explicitClears.contains(field) else { return }
+      let contributors = try parsedContributors(after, field: field, preserving: existing)
+      if contributors.isEmpty {
+        plannedClears.insert(field)
+        mutations.append(.clear(field, lock: locked(field)))
+      } else {
+        plannedClears.remove(field)
+        mutations.append(.set(field, value: .contributors(contributors), lock: locked(field)))
+      }
+    }
+
+    appendText(.title, original.title, draft.title)
+    appendText(.sortTitle, original.sortTitle, draft.sortTitle)
+    appendText(.subtitle, original.subtitle, draft.subtitle)
+    try appendContributors(.authors, original.authors, draft.authors, existing: initial.authors)
+    try appendContributors(.narrators, original.narrators, draft.narrators, existing: initial.narrators)
+
+    let seriesName = normalized(draft.seriesName)
+    let seriesPosition = normalized(draft.seriesPosition)
+    if seriesName.isEmpty {
+      guard seriesPosition.isEmpty else { throw MetadataRepairError.seriesRequired }
+      if !normalized(original.seriesPosition).isEmpty || explicitClears.contains(.seriesPosition) {
+        plannedClears.insert(.seriesPosition)
+        mutations.append(.clear(.seriesPosition, lock: locked(.seriesPosition)))
+      }
+      if !normalized(original.seriesName).isEmpty || explicitClears.contains(.seriesName) {
+        plannedClears.insert(.seriesName)
+        mutations.append(.clear(.seriesName, lock: locked(.seriesName)))
+      }
+    } else {
+      appendText(.seriesName, original.seriesName, draft.seriesName)
+      appendText(.seriesPosition, original.seriesPosition, draft.seriesPosition)
+    }
+
+    appendText(.description, original.description, draft.description)
+    try appendList(.genres, original.genres, draft.genres)
+    try appendList(.tags, original.tags, draft.tags)
+    appendText(.language, original.language, draft.language)
+    if original.publicationYear != draft.publicationYear || explicitClears.contains(.publicationYear) {
+      let yearText = normalized(draft.publicationYear)
+      if yearText.isEmpty {
+        plannedClears.insert(.publicationYear)
+        mutations.append(.clear(.publicationYear, lock: locked(.publicationYear)))
+      } else {
+        guard let year = Int(yearText), (1...9999).contains(year) else {
+          throw MetadataRepairError.invalidPublicationYearText(yearText)
+        }
+        plannedClears.remove(.publicationYear)
+        mutations.append(.set(
+          .publicationYear,
+          value: .publicationYear(year),
+          lock: locked(.publicationYear)
+        ))
+      }
+    }
+    appendText(.publisher, original.publisher, draft.publisher)
+    appendText(.edition, original.edition, draft.edition)
+    if original.abridgement != draft.abridgement || explicitClears.contains(.abridgement) {
+      if normalized(draft.abridgement).isEmpty {
+        plannedClears.insert(.abridgement)
+        mutations.append(.clear(.abridgement, lock: locked(.abridgement)))
+      } else if let value = AbridgementStatus(rawValue: draft.abridgement) {
+        plannedClears.remove(.abridgement)
+        mutations.append(.set(.abridgement, value: .abridgement(value), lock: locked(.abridgement)))
+      } else {
+        throw MetadataRepairError.typeMismatch(.abridgement)
+      }
+    }
+    if original.cover != draft.cover || explicitClears.contains(.cover) {
+      if let cover = draft.cover {
+        plannedClears.remove(.cover)
+        mutations.append(.set(.cover, value: .cover(cover), lock: locked(.cover)))
+      } else {
+        plannedClears.insert(.cover)
+        mutations.append(.clear(.cover, lock: locked(.cover)))
+      }
+    }
+
+    for field in MetadataField.allCases where lockOverrides[field] != nil
+      && !mutations.contains(where: { $0.field == field })
+    {
+      mutations.append(.setLocked(field, locked: locked(field)))
+    }
+    return MetadataEditPlan(mutations: mutations, explicitlyClearedFields: plannedClears)
+  }
+
+  static func validationError(
+    initial: AudiobookMetadata,
+    draft: MetadataEditDraft,
+    explicitClears: Set<MetadataField> = [],
+    lockOverrides: [MetadataField: Bool] = [:]
+  ) -> MetadataRepairError? {
+    do {
+      _ = try plan(
+        initial: initial,
+        draft: draft,
+        explicitClears: explicitClears,
+        lockOverrides: lockOverrides
+      )
+      return nil
+    } catch let error as MetadataRepairError {
+      return error
+    } catch {
+      return .typeMismatch(.title)
+    }
+  }
+
+  /// CSV-style parsing: comma, semicolon, and newline delimit unquoted values;
+  /// quotes retain delimiters and doubled quotes represent a literal quote.
+  /// Rejecting malformed quotes prevents a contributor name from being
+  /// silently split into a different person.
+  private static func parsedDelimitedValues(
+    _ value: String,
+    field: MetadataField
+  ) throws -> [String] {
+    let characters = Array(value)
+    var values: [String] = []
+    var current = ""
+    var inQuotes = false
+    var closedQuote = false
+    var index = 0
+
+    func appendCurrent() {
+      let candidate = normalized(current)
+      if !candidate.isEmpty { values.append(candidate) }
+      current = ""
+      closedQuote = false
+    }
+
+    while index < characters.count {
+      let character = characters[index]
+      if inQuotes {
+        if character == "\"" {
+          if index + 1 < characters.count, characters[index + 1] == "\"" {
+            current.append("\"")
+            index += 1
+          } else {
+            inQuotes = false
+            closedQuote = true
+          }
+        } else {
+          current.append(character)
+        }
+      } else if character == "," || character == ";" || character == "\n" {
+        appendCurrent()
+      } else if character == "\"" {
+        guard normalized(current).isEmpty, !closedQuote else {
+          throw MetadataRepairError.malformedDelimitedValue(field)
+        }
+        current = ""
+        inQuotes = true
+      } else {
+        if closedQuote, !character.isWhitespace {
+          throw MetadataRepairError.malformedDelimitedValue(field)
+        }
+        current.append(character)
+      }
+      index += 1
+    }
+    guard !inQuotes else { throw MetadataRepairError.malformedDelimitedValue(field) }
+    appendCurrent()
+    return values
+  }
+
+  private static func parsedContributors(
+    _ value: String,
+    field: MetadataField,
+    preserving existing: [Contributor]
+  ) throws -> [Contributor] {
+    let byName = Dictionary(existing.map { (normalizedKey($0.displayName), $0) },
+      uniquingKeysWith: { first, _ in first })
+    return try parsedDelimitedValues(value, field: field).map { name in
+      byName[normalizedKey(name)] ?? Contributor(displayName: name)
+    }
+  }
+
+  private static func normalized(_ value: String) -> String {
+    value.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  private static func normalizedKey(_ value: String) -> String {
+    normalized(value).folding(
+      options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
+      locale: Locale(identifier: "en_US_POSIX")
+    ).lowercased().split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+  }
+}
+
 struct AudiobookMetadata: Codable, Equatable, Sendable {
   var title: String
   var sortTitle: String?
@@ -463,6 +779,15 @@ struct AudiobookMetadata: Codable, Equatable, Sendable {
     }
   }
 
+  func validateForCommit() throws {
+    guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      throw MetadataRepairError.titleRequired
+    }
+    if let publicationYear, !(1...9999).contains(publicationYear) {
+      throw MetadataRepairError.invalidPublicationYear(publicationYear)
+    }
+  }
+
   mutating func apply(_ mutation: MetadataMutation, transactionID: UUID) throws {
     switch mutation.operation {
     case .set:
@@ -481,7 +806,7 @@ struct AudiobookMetadata: Codable, Equatable, Sendable {
         lastTransactionID: transactionID
       )
     case .clear:
-      clear(mutation.field)
+      try clear(mutation.field)
       fieldStates[mutation.field] = MetadataFieldState(
         provenance: .user,
         confidence: .high,
@@ -489,6 +814,15 @@ struct AudiobookMetadata: Codable, Equatable, Sendable {
         isExplicitlyCleared: true,
         lastTransactionID: transactionID
       )
+      if mutation.field == .seriesName {
+        fieldStates[.seriesPosition] = MetadataFieldState(
+          provenance: .user,
+          confidence: .high,
+          isLocked: fieldStates[.seriesPosition]?.isLocked ?? mutation.locked,
+          isExplicitlyCleared: true,
+          lastTransactionID: transactionID
+        )
+      }
     case .setLocked:
       var state = fieldStates[mutation.field] ?? MetadataFieldState(
         provenance: .legacyLibrary,
@@ -505,7 +839,10 @@ struct AudiobookMetadata: Codable, Equatable, Sendable {
 
   private mutating func set(_ field: MetadataField, to value: MetadataFieldValue) throws {
     switch (field, value) {
-    case (.title, .text(let value)): title = normalized(value)
+    case (.title, .text(let value)):
+      let title = normalized(value)
+      guard !title.isEmpty else { throw MetadataRepairError.titleRequired }
+      self.title = title
     case (.sortTitle, .text(let value)): sortTitle = normalized(value).nonEmpty
     case (.subtitle, .text(let value)): subtitle = normalized(value).nonEmpty
     case (.description, .text(let value)): description = normalized(value).nonEmpty
@@ -526,7 +863,7 @@ struct AudiobookMetadata: Codable, Equatable, Sendable {
     case (.seriesName, .seriesMemberships(let values)):
       seriesMemberships = values.filter { !$0.name.isEmpty }
     case (.publicationYear, .publicationYear(let year)):
-      guard (0...9999).contains(year) else { throw MetadataRepairError.invalidPublicationYear(year) }
+      guard (1...9999).contains(year) else { throw MetadataRepairError.invalidPublicationYear(year) }
       publicationYear = year
     case (.abridgement, .abridgement(let value)): abridgement = value
     case (.cover, .cover(let value)):
@@ -536,10 +873,10 @@ struct AudiobookMetadata: Codable, Equatable, Sendable {
     }
   }
 
-  private mutating func clear(_ field: MetadataField) {
+  private mutating func clear(_ field: MetadataField) throws {
     switch field {
     case .cover: cover = nil
-    case .title: title = ""
+    case .title: throw MetadataRepairError.titleRequired
     case .sortTitle: sortTitle = nil
     case .subtitle: subtitle = nil
     case .authors: replaceContributors([], role: .author)
@@ -606,10 +943,23 @@ struct MetadataTransaction: Codable, Equatable, Identifiable, Sendable {
   var undoneAt: Date?
 }
 
+extension LibrarySnapshot {
+  func metadataRevision(for target: MetadataTarget) -> String {
+    let revisions = metadataTransactions.filter { $0.target == target }.map {
+      "\($0.id.uuidString.lowercased()):\($0.status.rawValue)"
+    }
+    return revisions.isEmpty ? "0" : revisions.joined(separator: ",")
+  }
+}
+
 enum MetadataRepairError: LocalizedError, Equatable, Sendable {
   case valueRequired(MetadataField)
   case typeMismatch(MetadataField)
   case invalidPublicationYear(Int)
+  case invalidPublicationYearText(String)
+  case titleRequired
+  case transactionInProgress
+  case malformedDelimitedValue(MetadataField)
   case seriesRequired
   case emptyCover
   case fieldLocked(MetadataField)
@@ -620,6 +970,12 @@ enum MetadataRepairError: LocalizedError, Equatable, Sendable {
     case .valueRequired(let field): "A value is required for \(field.rawValue)."
     case .typeMismatch(let field): "The value does not match \(field.rawValue)."
     case .invalidPublicationYear(let year): "\(year) is not a valid publication year."
+    case .invalidPublicationYearText(let value):
+      "\(value.isEmpty ? "The publication year" : value) is not a valid publication year."
+    case .titleRequired: "An audiobook title is required."
+    case .transactionInProgress: "These audiobook details are already being saved."
+    case .malformedDelimitedValue(let field):
+      "Check the quotes in \(field.rawValue). Use doubled quotes inside a quoted value."
     case .seriesRequired: "Add a series before setting its position."
     case .emptyCover: "The selected cover contains no image data."
     case .fieldLocked(let field): "Unlock \(field.rawValue) before refreshing it."

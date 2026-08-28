@@ -147,8 +147,8 @@ final class AccessibilityUITests: XCTestCase {
       minimumHeight: 44
     )
     let titleField = revealWithUserScroll(
-      { app.textFields["metadata-title-input"] },
-      targetID: "metadata-title-input",
+      { app.textFields["metadata-field-title"] },
+      targetID: "metadata-field-title",
       in: app,
       containerID: "metadata-editor-scroll",
       gesture: .metadataIdentity,
@@ -168,7 +168,7 @@ final class AccessibilityUITests: XCTestCase {
           "The metadata editor has a stable semantic screen identity"),
         .exists(titleField, "The full Title field remains reachable"),
         .exists(app.buttons["metadata-apply-title"], "The explicit Apply action remains available"),
-        .exists(app.buttons["save-metadata-repair"], "Save remains in the navigation bar"),
+        .exists(app.buttons["metadata-save"], "Save remains in the navigation bar"),
       ],
       captureReadiness: accessibilityCaptureReadiness(
         app: app,
@@ -177,7 +177,7 @@ final class AccessibilityUITests: XCTestCase {
       ) {
         self.hasExactValue(
           metadataScreen,
-          "metadata:proposal:revision=0:dirty=false"
+          "metadata:proposal:revision=0:dirty=false:saving=false:validation=valid"
         )
           && self.hasSettledScroll(
             metadataScrollReadiness,

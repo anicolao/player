@@ -51,6 +51,7 @@ enum E2EFixture: String, CaseIterable {
   case importRecoveryStorage = "import-recovery-storage"
   case syntheticImportChannels = "synthetic-import-channels"
   case syntheticMetadataRepair = "synthetic-metadata-repair"
+  case syntheticCommittedMetadata = "synthetic-committed-metadata"
   case syntheticPopulatedLibrary = "synthetic-populated-library"
   case syntheticPermanentTrash = "synthetic-permanent-trash"
   case smartRewind = "smart-rewind"
@@ -156,6 +157,7 @@ struct E2ELaunchConfiguration: Equatable {
   private static let valueArguments: Set<String> = [
     fixtureArgument,
     "-e2e-metadata-rich-namespace",
+    "-e2e-committed-metadata-namespace",
     "-e2e-sleep-timer-namespace",
     "-e2e-smart-rewind-scenario",
     "-e2e-recovery-scenario",
@@ -294,6 +296,43 @@ private final class E2EFixtureResetLease: @unchecked Sendable {
     static func root(in support: URL, namespace: String) -> URL {
       return support.appending(
         path: "PlayerE2EMetadataRichBook-\(namespace)",
+        directoryHint: .isDirectory
+      )
+    }
+  }
+
+  enum E2ECommittedMetadataNamespace {
+    static let argument = "-e2e-committed-metadata-namespace"
+
+    static func parse(arguments: [String]) throws -> String {
+      let markers = arguments.indices.filter { arguments[$0] == argument }
+      guard markers.count == 1 else {
+        let reason = markers.isEmpty ? "Missing" : "Duplicate"
+        throw PlayerCoreError.fileOperation("\(reason) Committed Metadata E2E namespace.")
+      }
+      let marker = markers[0]
+      guard arguments.indices.contains(marker + 1) else {
+        throw PlayerCoreError.fileOperation("Missing Committed Metadata E2E namespace value.")
+      }
+      let namespace = arguments[marker + 1]
+      let bytes = Array(namespace.utf8)
+      let isLowercaseLetterOrDigit: (UInt8) -> Bool = {
+        (UInt8(ascii: "a")...UInt8(ascii: "z")).contains($0)
+          || (UInt8(ascii: "0")...UInt8(ascii: "9")).contains($0)
+      }
+      guard (1...64).contains(bytes.count),
+        bytes.first.map(isLowercaseLetterOrDigit) == true,
+        bytes.last.map(isLowercaseLetterOrDigit) == true,
+        bytes.allSatisfy({ isLowercaseLetterOrDigit($0) || $0 == UInt8(ascii: "-") })
+      else {
+        throw PlayerCoreError.fileOperation("Invalid Committed Metadata E2E namespace.")
+      }
+      return namespace
+    }
+
+    static func root(in support: URL, namespace: String) -> URL {
+      support.appending(
+        path: "PlayerE2ECommittedMetadata-\(namespace)",
         directoryHint: .isDirectory
       )
     }
@@ -942,6 +981,11 @@ extension PlayerEnvironment {
           return try importIngressEnvironment(reset: reset)
         case .syntheticMetadataRepair:
           return try metadataRepairEnvironment(reset: reset)
+        case .syntheticCommittedMetadata:
+          return try committedMetadataEnvironment(
+            reset: reset,
+            namespace: E2ECommittedMetadataNamespace.parse(arguments: arguments)
+          )
         case .syntheticPopulatedLibrary:
           return try populatedLibraryEnvironment(reset: reset)
         case .syntheticPermanentTrash:
@@ -1930,6 +1974,221 @@ extension PlayerEnvironment {
         clock: FixedPlayerClock(value: Date(timeIntervalSince1970: 1_700_000_000)),
         ids: DeterministicPlayerIDGenerator(values: ids)
       )
+    }
+
+    private static func committedMetadataEnvironment(
+      reset: Bool,
+      namespace: String
+    ) throws -> PlayerEnvironment {
+      let support = try FileManager.default.url(
+        for: .applicationSupportDirectory,
+        in: .userDomainMask,
+        appropriateFor: nil,
+        create: true
+      )
+      let root = E2ECommittedMetadataNamespace.root(in: support, namespace: namespace)
+      if reset { try resetE2EFixtureRoot(root) }
+      try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+
+      let libraryURL = root.appending(path: "Library.json")
+      let targetBookID = UUID(uuidString: "a7000000-0000-0000-0000-000000000001")!
+      let atlasBookID = UUID(uuidString: "a7000000-0000-0000-0000-000000000002")!
+      let cedarBookID = UUID(uuidString: "a7000000-0000-0000-0000-000000000003")!
+      let targetAssetID = UUID(uuidString: "a7000000-0000-0000-0000-000000000101")!
+      let atlasAssetID = UUID(uuidString: "a7000000-0000-0000-0000-000000000102")!
+      let cedarAssetID = UUID(uuidString: "a7000000-0000-0000-0000-000000000103")!
+      let transactionID = UUID(uuidString: "a7100000-0000-0000-0000-000000000001")!
+      let date = Date(timeIntervalSince1970: 1_730_000_000)
+      let cover = metadataRichArtwork(override: nil)
+
+      let targetBytes = Data([
+        0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70,
+        0x4d, 0x34, 0x42, 0x20, 0x00, 0x00, 0x00, 0x00,
+        0x4d, 0x34, 0x42, 0x20, 0x69, 0x73, 0x6f, 0x6d,
+        0x63, 0x6f, 0x6d, 0x6d, 0x69, 0x74, 0x74, 0x65,
+        0x64, 0x2d, 0x6d, 0x65, 0x74, 0x61, 0x64, 0x61,
+      ])
+      var atlasBytes = targetBytes
+      atlasBytes[atlasBytes.index(before: atlasBytes.endIndex)] = 0x73
+      var cedarBytes = targetBytes
+      cedarBytes[cedarBytes.index(before: cedarBytes.endIndex)] = 0x72
+
+      let sourceURL = root.appending(path: "Input/zulu-harbor-source.m4b")
+      let targetPath = "Media/\(targetBookID.uuidString.lowercased())/\(targetAssetID.uuidString.lowercased()).m4b"
+      let atlasPath = "Media/\(atlasBookID.uuidString.lowercased())/\(atlasAssetID.uuidString.lowercased()).m4b"
+      let cedarPath = "Media/\(cedarBookID.uuidString.lowercased())/\(cedarAssetID.uuidString.lowercased()).m4b"
+      let artifacts: [(URL, Data)] = [
+        (sourceURL, targetBytes),
+        (root.appending(path: targetPath), targetBytes),
+        (root.appending(path: atlasPath), atlasBytes),
+        (root.appending(path: cedarPath), cedarBytes),
+      ]
+      if FileManager.default.fileExists(atPath: libraryURL.path) {
+        guard artifacts.allSatisfy({ (try? Data(contentsOf: $0.0)) == $0.1 }) else {
+          throw PlayerCoreError.fileOperation(
+            "The committed metadata E2E audio fixture does not match its persisted library."
+          )
+        }
+      } else {
+        for (url, data) in artifacts {
+          try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+          )
+          try data.write(to: url, options: .atomic)
+        }
+      }
+
+      let importedState = MetadataFieldState.imported(
+        provenance: .embeddedTag,
+        confidence: .high
+      )
+      let targetMetadata = AudiobookMetadata(
+        title: "Zulu Harbor",
+        sortTitle: "Zulu Harbor",
+        subtitle: "A Quiet Beginning",
+        authors: [Contributor(displayName: "Ari North")],
+        narrators: [Contributor(displayName: "Milo Grey")],
+        seriesMemberships: [],
+        description: "An original harbor journal.",
+        genres: ["Memoir"],
+        tags: ["calm"],
+        language: "en",
+        publicationYear: 2012,
+        publisher: "Old Quay Press",
+        edition: "First edition",
+        abridgement: .unknown,
+        cover: CoverArtwork(originalData: cover, mediaType: "image/png", source: .embedded),
+        fieldStates: Dictionary(
+          uniqueKeysWithValues: MetadataField.allCases.map { ($0, importedState) }
+        )
+      )
+      let targetAsset = AudioAsset(
+        id: targetAssetID,
+        originalFilename: "zulu-harbor.m4b",
+        managedRelativePath: targetPath,
+        checksumSHA256: committedMetadataChecksum(targetBytes),
+        byteCount: Int64(targetBytes.count),
+        durationSeconds: 120,
+        container: "M4B"
+      )
+      let targetBook = Book(
+        id: targetBookID,
+        title: targetMetadata.title,
+        authors: targetMetadata.authors.map(\.displayName),
+        durationSeconds: targetAsset.durationSeconds,
+        artworkData: cover,
+        assets: [targetAsset],
+        dateAdded: date.addingTimeInterval(2),
+        narrators: targetMetadata.narrators.map(\.displayName),
+        artworkMediaType: "image/png",
+        metadata: targetMetadata
+      )
+      let atlasBook = committedMetadataCompanionBook(
+        id: atlasBookID,
+        assetID: atlasAssetID,
+        title: "Atlas Before Dawn",
+        author: "Bea Moss",
+        narrator: "Ada Coil",
+        series: "Atlas Cycle",
+        seriesPosition: "2",
+        relativePath: atlasPath,
+        bytes: atlasBytes,
+        date: date,
+        cover: cover
+      )
+      let cedarBook = committedMetadataCompanionBook(
+        id: cedarBookID,
+        assetID: cedarAssetID,
+        title: "Cedar Signals",
+        author: "Nico Vale",
+        narrator: "Soren Bell",
+        series: "Cedar Arc",
+        seriesPosition: "1",
+        relativePath: cedarPath,
+        bytes: cedarBytes,
+        date: date.addingTimeInterval(1),
+        cover: cover
+      )
+      let seed = LibrarySnapshot(
+        books: [targetBook, atlasBook, cedarBook],
+        importJobs: [],
+        currentBookID: nil,
+        allBooksViewStyle: .shelf
+      )
+      E2ECommittedMetadataBridge.shared.configure(
+        libraryURL: libraryURL,
+        targetBookID: targetBookID,
+        expectedTransactionID: transactionID,
+        originalMetadata: targetMetadata,
+        sourceURL: sourceURL,
+        expectedArtifacts: artifacts
+      )
+      let ids = (1...40).compactMap {
+        UUID(uuidString: String(format: "a7100000-0000-0000-0000-%012d", $0))
+      }
+      return PlayerEnvironment(
+        persistence: E2ESeededLibraryStore(
+          base: CodableLibraryStore(fileURL: libraryURL),
+          seed: seed
+        ),
+        media: FileSystemMediaManager(rootURL: root),
+        inspector: DeterministicAudioInspector(result: .failure(.unreadableAudio("unused"))),
+        playback: DeterministicPlaybackController(),
+        clock: FixedPlayerClock(value: date),
+        ids: DeterministicPlayerIDGenerator(values: ids)
+      )
+    }
+
+    private static func committedMetadataCompanionBook(
+      id: UUID,
+      assetID: UUID,
+      title: String,
+      author: String,
+      narrator: String,
+      series: String,
+      seriesPosition: String,
+      relativePath: String,
+      bytes: Data,
+      date: Date,
+      cover: Data
+    ) -> Book {
+      let metadata = AudiobookMetadata.imported(
+        title: title,
+        authors: [author],
+        narrators: [narrator],
+        seriesName: series,
+        seriesPosition: seriesPosition,
+        artworkData: cover,
+        artworkMediaType: "image/png"
+      )
+      let asset = AudioAsset(
+        id: assetID,
+        originalFilename: "\(title.lowercased().replacingOccurrences(of: " ", with: "-")).m4b",
+        managedRelativePath: relativePath,
+        checksumSHA256: committedMetadataChecksum(bytes),
+        byteCount: Int64(bytes.count),
+        durationSeconds: 120,
+        container: "M4B"
+      )
+      return Book(
+        id: id,
+        title: title,
+        authors: [author],
+        durationSeconds: asset.durationSeconds,
+        artworkData: cover,
+        assets: [asset],
+        dateAdded: date,
+        narrators: [narrator],
+        seriesName: series,
+        seriesPosition: seriesPosition,
+        artworkMediaType: "image/png",
+        metadata: metadata
+      )
+    }
+
+    private static func committedMetadataChecksum(_ data: Data) -> String {
+      SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
     private static func metadataRepairEnvironment(reset: Bool) throws -> PlayerEnvironment {
@@ -3155,6 +3414,186 @@ extension PlayerEnvironment {
         return "persistence=books:\(persisted.snapshot.books.count):titles:\(titles)"
       } catch {
         return "persistence=invalid"
+      }
+    }
+  }
+
+  @MainActor
+  final class E2ECommittedMetadataBridge {
+    static let shared = E2ECommittedMetadataBridge()
+
+    private var libraryURL: URL?
+    private var targetBookID: UUID?
+    private var expectedTransactionID: UUID?
+    private var originalMetadata: AudiobookMetadata?
+    private var sourceURL: URL?
+    private var expectedArtifacts: [(url: URL, data: Data)] = []
+
+    var isConfigured: Bool {
+      libraryURL != nil
+        && targetBookID != nil
+        && expectedTransactionID != nil
+        && originalMetadata != nil
+        && sourceURL != nil
+        && expectedArtifacts.count == 4
+    }
+
+    func configure(
+      libraryURL: URL,
+      targetBookID: UUID,
+      expectedTransactionID: UUID,
+      originalMetadata: AudiobookMetadata,
+      sourceURL: URL,
+      expectedArtifacts: [(URL, Data)]
+    ) {
+      self.libraryURL = libraryURL
+      self.targetBookID = targetBookID
+      self.expectedTransactionID = expectedTransactionID
+      self.originalMetadata = originalMetadata
+      self.sourceURL = sourceURL
+      self.expectedArtifacts = expectedArtifacts.map { (url: $0.0, data: $0.1) }
+    }
+
+    var evidenceValue: String {
+      guard isConfigured, let libraryURL, let targetBookID, let expectedTransactionID,
+        let originalMetadata, let sourceURL
+      else { return "schema=1:state=unconfigured" }
+      guard let persisted = try? E2EPersistedLibrary.load(from: libraryURL) else {
+        return "schema=1:state=missing"
+      }
+
+      let snapshot = persisted.snapshot
+      let book = snapshot.books.first { $0.id == targetBookID }
+      let transactions = snapshot.metadataTransactions.filter {
+        $0.target == .book(targetBookID)
+      }
+      let applied = transactions.filter { $0.status == .applied }.count
+      let undone = transactions.filter { $0.status == .undone }.count
+      let transaction = transactions.first
+      let transactionExact: Bool
+      if transactions.isEmpty {
+        transactionExact = book?.metadata == originalMetadata
+      } else if transactions.count == 1, let transaction {
+        transactionExact = transaction.id == expectedTransactionID
+          && transaction.before == originalMetadata
+          && committedMetadataMatchesEdited(
+            transaction.after,
+            transactionID: expectedTransactionID
+          )
+          && Set(transaction.mutations.map(\.field)) == committedMetadataEditedFields
+          && transaction.mutations.count == 15
+      } else {
+        transactionExact = false
+      }
+
+      let state: String
+      let metadataExact: Bool
+      switch (transaction?.status, book?.metadata) {
+      case (nil, .some(let metadata)):
+        metadataExact = metadata == originalMetadata
+        state = metadataExact && transactionExact ? "original" : "unexpected"
+      case (.applied, .some(let metadata)):
+        metadataExact = committedMetadataMatchesEdited(
+          metadata,
+          transactionID: expectedTransactionID
+        )
+        state = metadataExact && transactionExact ? "edited" : "unexpected"
+      case (.undone, .some(let metadata)):
+        metadataExact = metadata == originalMetadata
+        state = metadataExact && transactionExact ? "restored" : "unexpected"
+      default:
+        metadataExact = false
+        state = "unexpected"
+      }
+
+      let sourceExact = expectedArtifacts.first(where: { $0.url == sourceURL }).map {
+        (try? Data(contentsOf: $0.url)) == $0.data
+      } ?? false
+      let managedArtifacts = expectedArtifacts.filter { $0.url != sourceURL }
+      let managedExact = managedArtifacts.allSatisfy {
+        (try? Data(contentsOf: $0.url)) == $0.data
+      }
+      let managedRoot = libraryURL.deletingLastPathComponent().appending(
+        path: "Media",
+        directoryHint: .isDirectory
+      )
+      let managedFiles = regularFiles(in: managedRoot).filter {
+        $0.pathExtension.lowercased() == "m4b"
+      }
+      let audioUnchanged = sourceExact && managedExact
+        && managedFiles.count == managedArtifacts.count
+
+      return [
+        "schema=1",
+        "state=\(state)",
+        "books=\(snapshot.books.count)",
+        "target=\(book == nil ? "missing" : "present")",
+        "transactions=\(transactions.count)",
+        "applied=\(applied)",
+        "undone=\(undone)",
+        "transaction-exact=\(transactionExact)",
+        "metadata-exact=\(metadataExact)",
+        "source=\(sourceExact ? "exact" : "changed")",
+        "managed-files=\(managedFiles.count)",
+        "managed=\(managedExact ? "exact" : "changed")",
+        "audio-unchanged=\(audioUnchanged)",
+      ].joined(separator: ":")
+    }
+
+    private var committedMetadataEditedFields: Set<MetadataField> {
+      Set(MetadataField.allCases.filter { $0 != .cover })
+    }
+
+    private func committedMetadataMatchesEdited(
+      _ metadata: AudiobookMetadata,
+      transactionID: UUID
+    ) -> Bool {
+      guard metadata.title == "The Amber Archive",
+        metadata.sortTitle == "Amber Archive, The",
+        metadata.subtitle == nil,
+        metadata.authors.map(\.displayName) == ["Leona Quill", "Marek Stone"],
+        metadata.narrators.isEmpty,
+        metadata.seriesMemberships == [
+          SeriesMembership(name: "Copper Meridian", position: "3.5")
+        ],
+        metadata.description == "A revised archival journey.",
+        metadata.genres == ["Adventure", "History"],
+        metadata.tags == ["restored", "night"],
+        metadata.language == "fr-CA",
+        metadata.publicationYear == 2024,
+        metadata.publisher == "Burnt Oak Audio",
+        metadata.edition == "Second edition",
+        metadata.abridgement == .unabridged,
+        metadata.state(for: .cover)?.provenance == .embeddedTag,
+        metadata.state(for: .cover)?.lastTransactionID == nil
+      else { return false }
+
+      for field in committedMetadataEditedFields {
+        guard let state = metadata.state(for: field),
+          state.provenance == .user,
+          state.confidence == .high,
+          state.lastTransactionID == transactionID
+        else { return false }
+      }
+      guard metadata.state(for: .subtitle)?.isExplicitlyCleared == true,
+        metadata.state(for: .narrators)?.isExplicitlyCleared == true,
+        metadata.state(for: .title)?.isLocked == true,
+        metadata.state(for: .seriesName)?.isLocked == true,
+        metadata.state(for: .genres)?.isLocked == true
+      else { return false }
+      return committedMetadataEditedFields.subtracting([.subtitle, .narrators]).allSatisfy {
+        metadata.state(for: $0)?.isExplicitlyCleared == false
+      }
+    }
+
+    private func regularFiles(in root: URL) -> [URL] {
+      guard let enumerator = FileManager.default.enumerator(
+        at: root,
+        includingPropertiesForKeys: [.isRegularFileKey],
+        options: [.skipsHiddenFiles]
+      ) else { return [] }
+      return enumerator.compactMap { $0 as? URL }.filter { url in
+        (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
       }
     }
   }

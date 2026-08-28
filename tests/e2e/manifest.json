@@ -15,7 +15,10 @@
     "PlayerUITests/ImportIngressResilienceUITests/testConsumesAndDeduplicatesShareExtensionAppGroupHandoff"
   ]},
   {"story":"003-multifile-grouping","tests":["PlayerUITests/MultifileGroupingUITests/testRepairsMessyMultifileGroupingAndCommitsOneBookAtomically"]},
-  {"story":"004-metadata-repair","tests":["PlayerUITests/MetadataRepairUITests/testRepairsLocksCommitsAndUndoesMetadataWithoutChangingAudio"]},
+  {"story":"004-metadata-repair","tests":[
+    "PlayerUITests/MetadataRepairUITests/testRepairsLocksCommitsAndUndoesMetadataWithoutChangingAudio",
+    "PlayerUITests/CommittedMetadataEditingUITests/testEditsPersistsIndexesAndUndoesACommittedBookAtomically"
+  ]},
   {"story":"005-play-and-restore","tests":[
     "PlayerUITests/PositionRestoreUITests/testRestoresAnAcknowledgedPausedPositionAfterTermination",
     "PlayerUITests/RemoteInterruptionUITests/testRemoteInterruptionAndBackgroundEventsJournalAcknowledgedPositions",

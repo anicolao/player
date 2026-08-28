@@ -29,17 +29,20 @@ final class MetadataRepairUITests: XCTestCase {
     app.buttons["edit-metadata"].tap()
 
     let editor = anyElement(app, "metadata-editor-screen")
-    let title = anyElement(app, "metadata-field-title")
-    let authors = anyElement(app, "metadata-field-authors")
-    let narrators = anyElement(app, "metadata-field-narrators")
-    let series = anyElement(app, "metadata-field-series")
+    let title = anyElement(app, "metadata-provenance-title")
+    let authors = anyElement(app, "metadata-provenance-authors")
+    let narrators = anyElement(app, "metadata-provenance-narrators")
+    let series = anyElement(app, "metadata-provenance-seriesName")
     let cover = anyElement(app, "metadata-cover-state")
     let integrity = anyElement(app, "metadata-integrity-probe")
     let editorScroll = anyElement(app, "metadata-editor-scroll")
     let editorReadiness = anyElement(app, "metadata-editor-scroll-readiness")
     let editorArtwork = editor.descendants(matching: .any)["embedded-cover-artwork"]
-    let titleInput = app.textFields["metadata-title-input"]
-    try requireValue(editor, "metadata:proposal:revision=0:dirty=false")
+    let titleInput = app.textFields["metadata-field-title"]
+    try requireValue(
+      editor,
+      "metadata:proposal:revision=0:dirty=false:saving=false:validation=valid"
+    )
 
     try tester.step(
       "metadata-provenance",
@@ -86,7 +89,10 @@ final class MetadataRepairUITests: XCTestCase {
           && state.axis == .vertical
           && state.isIdle
           && state.atTop
-          && self.hasExactValue(editor, "metadata:proposal:revision=0:dirty=false")
+          && self.hasExactValue(
+            editor,
+            "metadata:proposal:revision=0:dirty=false:saving=false:validation=valid"
+          )
           && self.hasExactValue(
             title,
             "value=The Brass Lantern|source=embedded-tag|confidence=high|locked=false|cleared=false"
@@ -191,15 +197,18 @@ final class MetadataRepairUITests: XCTestCase {
     app.buttons["metadata-apply-crop"].tap()
     let cropState = anyElement(app, "metadata-crop-state")
     try requireValue(cropState, "crop=\(expectedCrop)")
-    try requireValue(editor, "metadata:proposal:revision=0:dirty=true")
+    try requireValue(
+      editor,
+      "metadata:proposal:revision=0:dirty=true:saving=false:validation=valid"
+    )
     try requireValue(
       integrity,
       "audio:source=\(audioChecksum):managed=none:source-unchanged=true"
     )
 
-    app.buttons["save-metadata-repair"].tap()
+    app.buttons["metadata-save"].tap()
     let review = anyElement(app, "review-import-screen")
-    try requireValue(review, "proposal:ready:1-book:1-tracks:0-warnings:revision-5")
+    try requireValue(review, "proposal:ready:1-book:1-tracks:0-warnings:revision-4")
     app.buttons["add-import-to-library"].tap()
     // The repaired title already exists on the review screen. Wait for the
     // asynchronous commit to leave that screen before resolving the matching

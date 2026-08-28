@@ -722,6 +722,11 @@ final class TestStepHelper {
     verifications: [StepVerification],
     captureReadiness: CaptureReadiness? = nil
   ) throws {
+    dismissAppleIntelligenceNotificationIfPresent()
+    guard systemOverlayResolved else {
+      throw TestStepError.systemOverlayNotDismissed
+    }
+
     for verification in verifications {
       XCTAssertTrue(
         verification.check(),
@@ -729,11 +734,6 @@ final class TestStepHelper {
         file: #filePath,
         line: #line
       )
-    }
-
-    dismissAppleIntelligenceNotificationIfPresent()
-    guard systemOverlayResolved else {
-      throw TestStepError.systemOverlayNotDismissed
     }
 
     let filename = String(format: "%03d-%@.png", nextScreenshotIndex, identifier)

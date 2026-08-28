@@ -128,7 +128,8 @@ changes do not advance the persisted proposal revision. Tapping
 `save-metadata-repair` submits all five field operations as one atomic metadata
 transaction. The proposal review revision advances once per mutation within
 that transaction, and Review Import reports
-`proposal:ready:1-book:1-tracks:0-warnings:revision-5`.
+`proposal:ready:1-book:1-tracks:0-warnings:revision-4`. The atomic final-draft planner
+emits only the retained replacement cover set, not a phantom intermediate clear.
 
 Locks are metadata-policy state: later scans may refresh unlocked inspected
 values, but cannot overwrite a locked user value, explicit clear, cover, or

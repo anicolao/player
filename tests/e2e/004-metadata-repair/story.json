@@ -2,6 +2,9 @@
   "id": "004-metadata-repair",
   "platform": "ios",
   "test": "PlayerUITests/MetadataRepairUITests/testRepairsLocksCommitsAndUndoesMetadataWithoutChangingAudio",
+  "nonvisualTests": [
+    "PlayerUITests/CommittedMetadataEditingUITests/testEditsPersistsIndexesAndUndoesACommittedBookAtomically"
+  ],
   "fixture": "synthetic-metadata-repair",
   "screenshots": [
     "000-metadata-provenance.png",

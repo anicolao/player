@@ -30,10 +30,15 @@ struct LibrarySearchView: View {
       #endif
     }
     .navigationTitle("Search")
-    .task(id: indexRevision) {
+    .task(id: searchRevision) {
       isIndexed = false
       let snapshot = model.library
-      index = await LibrarySearchIndexBuilder.shared.build(library: snapshot)
+      let requestedRevision = LibrarySearchRevision(library: snapshot)
+      guard let build = await LibrarySearchIndexBuilder.shared.buildLatest(
+        library: snapshot,
+        revision: requestedRevision
+      ), !Task.isCancelled, build.revision == searchRevision else { return }
+      index = build.index
       isIndexed = true
     }
   }
@@ -207,12 +212,8 @@ struct LibrarySearchView: View {
     index.search(query: query, preferences: preferences)
   }
 
-  private var indexRevision: String {
-    let bookIDs = model.library.books.map { $0.id.uuidString }.joined(separator: ",")
-    let collectionState = model.library.collections.map {
-      "\($0.id.uuidString):\($0.name):\($0.updatedAt.timeIntervalSinceReferenceDate)"
-    }.joined(separator: ",")
-    return "\(bookIDs)|\(collectionState)|\(model.library.metadataTransactions.count)|\(model.library.trashTransactions.count)"
+  private var searchRevision: LibrarySearchRevision {
+    LibrarySearchRevision(library: model.library)
   }
 
   private var summary: String {
@@ -238,7 +239,7 @@ struct LibrarySearchView: View {
     if !result.books.isEmpty { empty = "none" }
     else if result.normalizedQuery.isEmpty { empty = "filters" }
     else { empty = "query" }
-    return "search:query=\(result.normalizedQuery):count=\(result.books.count):sort=\(preferences.sort.rawValue):direction=\(preferences.direction.rawValue):status=\(status):formats=\(formats.isEmpty ? "any" : formats):missing=\(preferences.missingMetadataOnly):empty=\(empty):order=\(order.isEmpty ? "none" : order)"
+    return "search:revision=\(searchRevision.value):indexed=\(isIndexed):query=\(result.normalizedQuery):count=\(result.books.count):sort=\(preferences.sort.rawValue):direction=\(preferences.direction.rawValue):status=\(status):formats=\(formats.isEmpty ? "any" : formats):missing=\(preferences.missingMetadataOnly):empty=\(empty):order=\(order.isEmpty ? "none" : order)"
   }
 
   private func searchSortButton(_ title: String, value: LibrarySearchSort, id: String) -> some View {

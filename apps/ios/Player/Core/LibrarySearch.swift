@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 enum LibrarySearchSort: String, Codable, CaseIterable, Equatable, Sendable {
@@ -44,12 +45,158 @@ struct LibrarySearchResult: Equatable, Sendable {
   }
 }
 
+/// A deterministic digest of everything that can affect search text, filters,
+/// or ordering. It deliberately excludes transaction counts: applying and
+/// undoing a transaction can leave those counts unchanged while changing the
+/// visible library.
+struct LibrarySearchRevision: Equatable, Hashable, Sendable {
+  let value: String
+
+  init(library: LibrarySnapshot) {
+    let payload = LibrarySearchRevisionPayload(library: library)
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.sortedKeys]
+    let data = (try? encoder.encode(payload)) ?? Data()
+    value = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+  }
+}
+
+private struct LibrarySearchRevisionPayload: Encodable {
+  struct ContributorValue: Encodable {
+    var id: String
+    var displayName: String
+    var sortName: String?
+    var role: ContributorRole
+    var order: Int
+  }
+
+  struct SeriesValue: Encodable {
+    var id: String
+    var name: String
+    var position: String?
+  }
+
+  struct AssetValue: Encodable {
+    var id: UUID
+    var originalFilename: String
+    var container: String
+  }
+
+  struct BookValue: Encodable {
+    var id: UUID
+    var title: String
+    var sortTitle: String?
+    var subtitle: String?
+    var contributors: [ContributorValue]
+    var series: [SeriesValue]
+    var description: String?
+    var genres: [String]
+    var tags: [String]
+    var language: String?
+    var publicationYear: Int?
+    var publisher: String?
+    var edition: String?
+    var abridgement: AbridgementStatus?
+    var assets: [AssetValue]
+    var chapterTitles: [String]
+    var dateAdded: Date
+    var durationSeconds: Double
+    var listeningState: BookListeningState
+  }
+
+  struct CollectionValue: Encodable {
+    var id: UUID
+    var name: String
+    var orderedBookIDs: [UUID]
+  }
+
+  struct BookmarkValue: Encodable {
+    var id: UUID
+    var bookID: UUID
+    var label: String?
+    var note: String?
+    var chapterTitle: String?
+  }
+
+  var books: [BookValue]
+  var collections: [CollectionValue]
+  var bookmarks: [BookmarkValue]
+
+  init(library: LibrarySnapshot) {
+    books = library.books.sorted { $0.id.uuidString < $1.id.uuidString }.map { book in
+      BookValue(
+        id: book.id,
+        title: book.title,
+        sortTitle: book.metadata.sortTitle,
+        subtitle: book.metadata.subtitle,
+        contributors: book.metadata.contributors.map {
+          ContributorValue(
+            id: $0.contributor.id,
+            displayName: $0.contributor.displayName,
+            sortName: $0.contributor.sortName,
+            role: $0.role,
+            order: $0.order
+          )
+        },
+        series: book.metadata.seriesMemberships.map {
+          SeriesValue(id: $0.seriesID, name: $0.name, position: $0.position)
+        },
+        description: book.metadata.description,
+        genres: book.metadata.genres,
+        tags: book.metadata.tags,
+        language: book.metadata.language,
+        publicationYear: book.metadata.publicationYear,
+        publisher: book.metadata.publisher,
+        edition: book.metadata.edition,
+        abridgement: book.metadata.abridgement,
+        assets: book.assets.map {
+          AssetValue(id: $0.id, originalFilename: $0.originalFilename, container: $0.container)
+        },
+        chapterTitles: book.chapters.map(\.title),
+        dateAdded: book.dateAdded,
+        durationSeconds: book.durationSeconds,
+        listeningState: book.listeningState
+      )
+    }
+    collections = library.collections.sorted { $0.id.uuidString < $1.id.uuidString }.map {
+      CollectionValue(id: $0.id, name: $0.name, orderedBookIDs: $0.orderedBookIDs)
+    }
+    bookmarks = library.bookmarks.sorted { $0.id.uuidString < $1.id.uuidString }.map {
+      BookmarkValue(
+        id: $0.id,
+        bookID: $0.bookID,
+        label: $0.label,
+        note: $0.note,
+        chapterTitle: $0.chapterTitleSnapshot
+      )
+    }
+  }
+}
+
+struct LibrarySearchBuild: Sendable {
+  var revision: LibrarySearchRevision
+  var index: LibrarySearchIndex
+}
+
 /// Serializes expensive index rebuilds on an executor that is distinct from
 /// the UI's MainActor. Views await only the completed immutable index.
 actor LibrarySearchIndexBuilder {
   static let shared = LibrarySearchIndexBuilder()
 
+  typealias BuildOperation = @Sendable (
+    LibrarySnapshot,
+    [UUID: [String]]
+  ) async -> LibrarySearchIndex
+
   private(set) var completedBuildCount = 0
+  private var latestGeneration = 0
+  private let buildOperation: BuildOperation
+
+  init(buildOperation: @escaping BuildOperation = { library, bookmarkNotes in
+    LibrarySearchIndex(library: library, bookmarkNotesByBookID: bookmarkNotes)
+  }) {
+    self.buildOperation = buildOperation
+  }
 
   func build(
     library: LibrarySnapshot,
@@ -61,6 +208,26 @@ actor LibrarySearchIndexBuilder {
     )
     completedBuildCount += 1
     return index
+  }
+
+  /// Builds off-actor and publishes only the newest request. Actor reentrancy
+  /// at the detached-task await lets a later revision invalidate an expensive
+  /// earlier build rather than allowing stale results to reach the view.
+  func buildLatest(
+    library: LibrarySnapshot,
+    revision: LibrarySearchRevision,
+    bookmarkNotesByBookID: [UUID: [String]] = [:]
+  ) async -> LibrarySearchBuild? {
+    latestGeneration += 1
+    let generation = latestGeneration
+    let buildOperation = self.buildOperation
+    let task = Task.detached(priority: .userInitiated) {
+      await buildOperation(library, bookmarkNotesByBookID)
+    }
+    let index = await task.value
+    guard !Task.isCancelled, generation == latestGeneration else { return nil }
+    completedBuildCount += 1
+    return LibrarySearchBuild(revision: revision, index: index)
   }
 }
 

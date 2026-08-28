@@ -9,8 +9,9 @@ struct MetadataEditorView: View {
   @Bindable var model: PlayerModel
   let target: MetadataTarget
 
-  @State private var initial = MetadataEditorDraft.empty
-  @State private var draft = MetadataEditorDraft.empty
+  @State private var initialMetadata = AudiobookMetadata(title: "")
+  @State private var initial = MetadataEditDraft.empty
+  @State private var draft = MetadataEditDraft.empty
   @State private var loaded = false
   @State private var touchedFields: Set<MetadataField> = []
   @State private var explicitlyCleared: Set<MetadataField> = []
@@ -25,7 +26,7 @@ struct MetadataEditorView: View {
   @State private var cropX = 0.5
   @State private var cropY = 0.5
   @State private var localError: PlayerPresentationError?
-  @FocusState private var isTitleFocused: Bool
+  @State private var isSaving = false
 
   var body: some View {
     ZStack {
@@ -54,10 +55,6 @@ struct MetadataEditorView: View {
       }
       #if E2E
         StateProbe(
-          id: "metadata-title-focus-state",
-          value: isTitleFocused ? "focused" : "unfocused"
-        )
-        StateProbe(
           id: "metadata-title-value-state",
           value: draft.title.isEmpty ? "empty" : "value=\(draft.title)"
         )
@@ -65,15 +62,39 @@ struct MetadataEditorView: View {
           id: "metadata-crop-state",
           value: draft.cover?.crop.map { cropValue($0) } ?? "crop=none"
         )
+        StateProbe(
+          id: "metadata-validation-state",
+          value: validationError.map { "invalid=\($0.localizedDescription)" } ?? "valid"
+        )
+        StateProbe(id: "metadata-committed-state", value: committedMetadataProbeValue)
       #endif
     }
     .navigationTitle("Edit Details")
     .navigationBarTitleDisplayMode(.inline)
+    .navigationBarBackButtonHidden(true)
+    .interactiveDismissDisabled(isSaving)
     .toolbar {
+      ToolbarItem(placement: .cancellationAction) {
+        Button("Cancel") { cancel() }
+          .disabled(isSaving)
+          .accessibilityIdentifier("metadata-cancel")
+      }
       ToolbarItem(placement: .confirmationAction) {
         Button("Save") { save() }
-          .disabled(!isDirty || draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-          .accessibilityIdentifier("save-metadata-repair")
+          .disabled(!isDirty || validationError != nil || isSaving)
+          .accessibilityIdentifier("metadata-save")
+      }
+      ToolbarItemGroup(placement: .keyboard) {
+        Spacer()
+        Button("Done") {
+          UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil,
+            from: nil,
+            for: nil
+          )
+        }
+          .accessibilityIdentifier("metadata-keyboard-done")
       }
     }
     .alert(localError?.title ?? "Couldn’t Save Details", isPresented: Binding(
@@ -150,12 +171,32 @@ struct MetadataEditorView: View {
             Button("Remove Cover", role: .destructive) { removeCover() }
               .accessibilityIdentifier("metadata-remove-cover")
           }
+          Button {
+            lockOverrides[.cover] = !isLocked(.cover)
+          } label: {
+            Label(
+              isLocked(.cover) ? "Locked" : "Unlocked",
+              systemImage: isLocked(.cover) ? "lock.fill" : "lock.open"
+            )
+          }
+          .font(.caption2.weight(.semibold))
+          .buttonStyle(.plain)
+          .foregroundStyle(PlayerColor.secondary)
+          .accessibilityIdentifier("metadata-lock-cover")
         }
         Spacer(minLength: 0)
       }
       metadataStateProbe(
         id: "metadata-cover-state",
         value: "cover=\(coverToken)|source=\(sourceToken(.cover))|locked=\(isLocked(.cover))"
+      )
+      metadataStateProbe(
+        id: "metadata-provenance-cover",
+        value: fieldProbeValue(.cover)
+      )
+      metadataStateProbe(
+        id: "metadata-field-cover",
+        value: coverToken
       )
     }
     .padding(16)
@@ -173,8 +214,7 @@ struct MetadataEditorView: View {
           )
             .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
             .textInputAutocapitalization(.words)
-            .focused($isTitleFocused)
-            .accessibilityIdentifier("metadata-title-input")
+            .accessibilityIdentifier("metadata-field-title")
           Button("Apply") {
             touchedFields.insert(.title)
             lockOverrides[.title] = true
@@ -185,9 +225,11 @@ struct MetadataEditorView: View {
       }
       editorRow("Sort title", field: .sortTitle) {
         TextField("Sort title", text: $draft.sortTitle)
+          .accessibilityIdentifier("metadata-field-sortTitle")
       }
       editorRow("Subtitle", field: .subtitle) {
         TextField("Subtitle", text: $draft.subtitle)
+          .accessibilityIdentifier("metadata-field-subtitle")
       }
     }
   }
@@ -195,13 +237,13 @@ struct MetadataEditorView: View {
   private var contributorFields: some View {
     metadataSection("Contributors") {
       editorRow("Authors", field: .authors) {
-        TextField("Comma-separated authors", text: $draft.authors)
-          .accessibilityIdentifier("metadata-authors-input")
+        TextField("Authors; quote names containing commas", text: $draft.authors)
+          .accessibilityIdentifier("metadata-field-authors")
       }
       editorRow("Narrators", field: .narrators) {
         VStack(alignment: .trailing, spacing: 6) {
-          TextField("Comma-separated narrators", text: $draft.narrators)
-            .accessibilityIdentifier("metadata-narrators-input")
+          TextField("Narrators; quote names containing commas", text: $draft.narrators)
+            .accessibilityIdentifier("metadata-field-narrators")
           Button("Clear narrators", role: .destructive) {
             draft.narrators = ""
             explicitlyCleared.insert(.narrators)
@@ -218,12 +260,12 @@ struct MetadataEditorView: View {
     metadataSection("Series") {
       editorRow("Series", field: .seriesName) {
         TextField("Series name", text: $draft.seriesName)
-          .accessibilityIdentifier("metadata-series-input")
+          .accessibilityIdentifier("metadata-field-seriesName")
       }
       editorRow("Position", field: .seriesPosition) {
         TextField("Book number", text: $draft.seriesPosition)
           .disabled(draft.seriesName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-          .accessibilityIdentifier("metadata-series-position-input")
+          .accessibilityIdentifier("metadata-field-seriesPosition")
       }
       Button {
         let locked = !isLocked(.seriesName)
@@ -246,15 +288,19 @@ struct MetadataEditorView: View {
       editorRow("Description", field: .description) {
         TextField("Description", text: $draft.description, axis: .vertical)
           .lineLimit(3...7)
+          .accessibilityIdentifier("metadata-field-description")
       }
       editorRow("Genres", field: .genres) {
-        TextField("Comma-separated genres", text: $draft.genres)
+        TextField("Genres; quote values containing commas", text: $draft.genres)
+          .accessibilityIdentifier("metadata-field-genres")
       }
       editorRow("Tags", field: .tags) {
-        TextField("Comma-separated tags", text: $draft.tags)
+        TextField("Tags; quote values containing commas", text: $draft.tags)
+          .accessibilityIdentifier("metadata-field-tags")
       }
       editorRow("Language", field: .language) {
         TextField("Language", text: $draft.language)
+          .accessibilityIdentifier("metadata-field-language")
       }
     }
   }
@@ -264,12 +310,15 @@ struct MetadataEditorView: View {
       editorRow("Year", field: .publicationYear) {
         TextField("Year", text: $draft.publicationYear)
           .keyboardType(.numberPad)
+          .accessibilityIdentifier("metadata-field-publicationYear")
       }
       editorRow("Publisher", field: .publisher) {
         TextField("Publisher", text: $draft.publisher)
+          .accessibilityIdentifier("metadata-field-publisher")
       }
       editorRow("Edition", field: .edition) {
         TextField("Edition", text: $draft.edition)
+          .accessibilityIdentifier("metadata-field-edition")
       }
       editorRow("Abridgement", field: .abridgement) {
         Picker("Abridgement", selection: $draft.abridgement) {
@@ -279,6 +328,7 @@ struct MetadataEditorView: View {
           Text("Unknown").tag(AbridgementStatus.unknown.rawValue)
         }
         .labelsHidden()
+        .accessibilityIdentifier("metadata-field-abridgement")
       }
     }
   }
@@ -384,11 +434,15 @@ struct MetadataEditorView: View {
           .font(.caption2.weight(.semibold))
           .buttonStyle(.plain)
           .foregroundStyle(PlayerColor.secondary)
+          .accessibilityIdentifier("metadata-lock-\(field.rawValue)")
         }
       }
       .padding(.horizontal, 16)
       .padding(.bottom, 12)
-      metadataStateProbe(id: "metadata-field-\(fieldProbeName(field))", value: fieldProbeValue(field))
+      metadataStateProbe(
+        id: "metadata-provenance-\(fieldProbeName(field))",
+        value: fieldProbeValue(field)
+      )
     }
   }
 
@@ -420,16 +474,31 @@ struct MetadataEditorView: View {
 
   private func loadIfNeeded() {
     guard !loaded, let metadata = currentMetadata else { return }
-    initial = MetadataEditorDraft(metadata: metadata)
+    initialMetadata = metadata
+    initial = MetadataEditDraft(metadata: metadata)
     draft = initial
     loaded = true
   }
 
   private func save() {
-    let mutations = makeMutations()
-    guard !mutations.isEmpty else { dismiss(); return }
+    guard !isSaving else { return }
+    let plan: MetadataEditPlan
+    do {
+      plan = try MetadataEditPlanner.plan(
+        initial: initialMetadata,
+        draft: draft,
+        explicitClears: explicitlyCleared,
+        lockOverrides: lockOverrides
+      )
+    } catch {
+      presentLocalError(error.localizedDescription)
+      return
+    }
+    guard !plan.mutations.isEmpty else { dismiss(); return }
+    isSaving = true
     Task {
-      guard await model.repairMetadata(target: target, mutations: mutations) != nil else {
+      guard await model.repairMetadata(target: target, mutations: plan.mutations) != nil else {
+        isSaving = false
         localError = model.presentationError(in: .metadata)
           ?? PlayerPresentationError.presenting(
             "The metadata transaction could not be saved. Try again.",
@@ -442,104 +511,9 @@ struct MetadataEditorView: View {
     }
   }
 
-  private func makeMutations() -> [MetadataMutation] {
-    var mutations: [MetadataMutation] = []
-    appendTextMutation(.title, initial: initial.title, current: draft.title, to: &mutations)
-    appendTextMutation(.sortTitle, initial: initial.sortTitle, current: draft.sortTitle, to: &mutations)
-    appendTextMutation(.subtitle, initial: initial.subtitle, current: draft.subtitle, to: &mutations)
-    appendContributorsMutation(.authors, initial: initial.authors, current: draft.authors, to: &mutations)
-    appendContributorsMutation(.narrators, initial: initial.narrators, current: draft.narrators, to: &mutations)
-
-    if initial.seriesName != draft.seriesName || initial.seriesPosition != draft.seriesPosition {
-      let name = normalized(draft.seriesName)
-      if name.isEmpty {
-        mutations.append(.clear(.seriesName, lock: isLocked(.seriesName)))
-      } else {
-        mutations.append(.set(
-          .seriesName,
-          value: .seriesMemberships([
-            SeriesMembership(name: name, position: normalized(draft.seriesPosition).nonEmpty)
-          ]),
-          lock: isLocked(.seriesName)
-        ))
-        mutations.append(.setLocked(.seriesPosition, locked: isLocked(.seriesPosition)))
-      }
-    }
-
-    appendTextMutation(.description, initial: initial.description, current: draft.description, to: &mutations)
-    appendListMutation(.genres, initial: initial.genres, current: draft.genres, to: &mutations)
-    appendListMutation(.tags, initial: initial.tags, current: draft.tags, to: &mutations)
-    appendTextMutation(.language, initial: initial.language, current: draft.language, to: &mutations)
-    if initial.publicationYear != draft.publicationYear {
-      if let year = Int(normalized(draft.publicationYear)) {
-        mutations.append(.set(.publicationYear, value: .publicationYear(year), lock: isLocked(.publicationYear)))
-      } else {
-        mutations.append(.clear(.publicationYear, lock: isLocked(.publicationYear)))
-      }
-    }
-    appendTextMutation(.publisher, initial: initial.publisher, current: draft.publisher, to: &mutations)
-    appendTextMutation(.edition, initial: initial.edition, current: draft.edition, to: &mutations)
-    if initial.abridgement != draft.abridgement {
-      if let value = AbridgementStatus(rawValue: draft.abridgement) {
-        mutations.append(.set(.abridgement, value: .abridgement(value), lock: isLocked(.abridgement)))
-      } else {
-        mutations.append(.clear(.abridgement, lock: isLocked(.abridgement)))
-      }
-    }
-    if coverWasRemoved {
-      mutations.append(.clear(.cover, lock: true))
-    }
-    if initial.cover != draft.cover {
-      if let cover = draft.cover {
-        mutations.append(.set(.cover, value: .cover(cover), lock: isLocked(.cover)))
-      } else {
-        mutations.append(.clear(.cover, lock: isLocked(.cover)))
-      }
-    }
-
-    for (field, locked) in lockOverrides where !mutations.contains(where: { $0.field == field }) {
-      mutations.append(.setLocked(field, locked: locked))
-    }
-    return mutations
-  }
-
-  private func appendTextMutation(
-    _ field: MetadataField,
-    initial: String,
-    current: String,
-    to mutations: inout [MetadataMutation]
-  ) {
-    guard initial != current || explicitlyCleared.contains(field) else { return }
-    let value = normalized(current)
-    mutations.append(value.isEmpty
-      ? .clear(field, lock: isLocked(field))
-      : .set(field, value: .text(value), lock: isLocked(field)))
-  }
-
-  private func appendContributorsMutation(
-    _ field: MetadataField,
-    initial: String,
-    current: String,
-    to mutations: inout [MetadataMutation]
-  ) {
-    guard initial != current || explicitlyCleared.contains(field) else { return }
-    let contributors = list(current).map { Contributor(displayName: $0) }
-    mutations.append(contributors.isEmpty
-      ? .clear(field, lock: isLocked(field))
-      : .set(field, value: .contributors(contributors), lock: isLocked(field)))
-  }
-
-  private func appendListMutation(
-    _ field: MetadataField,
-    initial: String,
-    current: String,
-    to mutations: inout [MetadataMutation]
-  ) {
-    guard initial != current else { return }
-    let values = list(current)
-    mutations.append(values.isEmpty
-      ? .clear(field, lock: isLocked(field))
-      : .set(field, value: .textList(values), lock: isLocked(field)))
+  private func cancel() {
+    guard !isSaving else { return }
+    dismiss()
   }
 
   private func replaceCover(from url: URL) {
@@ -648,18 +622,49 @@ struct MetadataEditorView: View {
     )
   }
 
+  private var validationError: MetadataRepairError? {
+    guard loaded else { return nil }
+    return MetadataEditPlanner.validationError(
+      initial: initialMetadata,
+      draft: draft,
+      explicitClears: explicitlyCleared,
+      lockOverrides: lockOverrides
+    )
+  }
+
   private var screenAccessibilityValue: String {
     let kind: String
-    let revision: Int
+    let revision: String
     switch target {
     case .book:
       kind = "book"
-      revision = 0
+      revision = model.library.metadataRevision(for: target)
     case .proposal(let jobID, _):
       kind = "proposal"
-      revision = model.library.importJobs.first(where: { $0.id == jobID })?.reviewRevision ?? 0
+      revision = String(
+        model.library.importJobs.first(where: { $0.id == jobID })?.reviewRevision ?? 0
+      )
     }
-    return "metadata:\(kind):revision=\(revision):dirty=\(isDirty)"
+    return "metadata:\(kind):revision=\(revision):dirty=\(isDirty):saving=\(isSaving):validation=\(validationError == nil ? "valid" : "invalid")"
+  }
+
+  private var committedMetadataProbeValue: String {
+    guard let metadata = currentMetadata else { return "missing" }
+    let fields = MetadataField.allCases.map { field in
+      let state = metadata.state(for: field)
+      return "\(field.rawValue){value=\(metadata.displayText(for: field) ?? "empty"),source=\(state?.provenance.rawValue ?? "none"),locked=\(state?.isLocked ?? false),cleared=\(state?.isExplicitlyCleared ?? false),transaction=\(state?.lastTransactionID?.uuidString.lowercased() ?? "none")}"
+    }.joined(separator: "|")
+    let transactionRevision = model.library.metadataTransactions.filter { $0.target == target }
+      .map { "\($0.id.uuidString.lowercased()):\($0.status.rawValue)" }.joined(separator: ",")
+    return "target=\(targetProbeValue)|transactions=\(transactionRevision.isEmpty ? "none" : transactionRevision)|\(fields)"
+  }
+
+  private var targetProbeValue: String {
+    switch target {
+    case .book(let id): return "book:\(id.uuidString.lowercased())"
+    case .proposal(let jobID, let proposalID):
+      return "proposal:\(jobID.uuidString.lowercased()):\(proposalID.uuidString.lowercased())"
+    }
   }
 
   private func cropValue(_ crop: CoverCrop, prefix: String = "crop") -> String {
@@ -686,16 +691,12 @@ struct MetadataEditorView: View {
       value = position.isEmpty ? name : "\(name) #\(position)"
     default: value = draft.displayValue(for: field)
     }
-    let cleared = value.isEmpty && explicitlyCleared.contains(field)
-      || (currentMetadata?.state(for: field)?.isExplicitlyCleared == true && !isDirty)
+    let cleared = plannedExplicitClears.contains(field)
     return "value=\(value.isEmpty ? "empty" : value)|source=\(cleared ? "user-clear" : sourceToken(field))|confidence=\(confidenceToken(field))|locked=\(isLocked(field))|cleared=\(cleared)"
   }
 
   private func fieldProbeName(_ field: MetadataField) -> String {
-    switch field {
-    case .seriesName: "series"
-    default: field.rawValue.replacingOccurrences(of: "Name", with: "").lowercased()
-    }
+    field.rawValue
   }
 
   private func fieldSource(_ field: MetadataField) -> String {
@@ -711,7 +712,7 @@ struct MetadataEditorView: View {
   }
 
   private func sourceToken(_ field: MetadataField) -> String {
-    if explicitlyCleared.contains(field) { return "user-clear" }
+    if plannedExplicitClears.contains(field) { return "user-clear" }
     if touchedFields.contains(field) || fieldChanged(field) { return "user" }
     guard let state = currentMetadata?.state(for: field) else { return "legacy-library" }
     if state.isExplicitlyCleared { return "user-clear" }
@@ -732,6 +733,35 @@ struct MetadataEditorView: View {
 
   private func isLocked(_ field: MetadataField) -> Bool {
     lockOverrides[field] ?? currentMetadata?.state(for: field)?.isLocked ?? false
+  }
+
+  private var plannedExplicitClears: Set<MetadataField> {
+    if let plan = try? MetadataEditPlanner.plan(
+      initial: initialMetadata,
+      draft: draft,
+      explicitClears: explicitlyCleared,
+      lockOverrides: lockOverrides
+    ) {
+      return plan.explicitlyClearedFields
+    }
+    var fields = Set(MetadataField.allCases.filter {
+      initialMetadata.state(for: $0)?.isExplicitlyCleared == true
+    })
+    fields.formUnion(explicitlyCleared)
+    for field in MetadataField.allCases {
+      let before = normalized(initial.displayValue(for: field))
+      let current = normalized(draft.displayValue(for: field))
+      if !current.isEmpty {
+        fields.remove(field)
+      } else if before != current {
+        fields.insert(field)
+      }
+    }
+    if normalized(draft.seriesName).isEmpty, normalized(initial.seriesName) != "" {
+      fields.insert(.seriesName)
+      fields.insert(.seriesPosition)
+    }
+    return fields
   }
 
   private func fieldChanged(_ field: MetadataField) -> Bool {
@@ -755,67 +785,6 @@ struct MetadataEditorView: View {
     if data.starts(with: [0x89, 0x50, 0x4E, 0x47]) { return "image/png" }
     if data.starts(with: [0xFF, 0xD8, 0xFF]) { return "image/jpeg" }
     return "application/octet-stream"
-  }
-}
-
-private struct MetadataEditorDraft: Equatable {
-  var title: String
-  var sortTitle: String
-  var subtitle: String
-  var authors: String
-  var narrators: String
-  var seriesName: String
-  var seriesPosition: String
-  var description: String
-  var genres: String
-  var tags: String
-  var language: String
-  var publicationYear: String
-  var publisher: String
-  var edition: String
-  var abridgement: String
-  var cover: CoverArtwork?
-
-  static let empty = MetadataEditorDraft(metadata: AudiobookMetadata(title: ""))
-
-  init(metadata: AudiobookMetadata) {
-    title = metadata.title
-    sortTitle = metadata.sortTitle ?? ""
-    subtitle = metadata.subtitle ?? ""
-    authors = metadata.authors.map(\.displayName).joined(separator: ", ")
-    narrators = metadata.narrators.map(\.displayName).joined(separator: ", ")
-    seriesName = metadata.seriesMemberships.first?.name ?? ""
-    seriesPosition = metadata.seriesMemberships.first?.position ?? ""
-    description = metadata.description ?? ""
-    genres = metadata.genres.joined(separator: ", ")
-    tags = metadata.tags.joined(separator: ", ")
-    language = metadata.language ?? ""
-    publicationYear = metadata.publicationYear.map(String.init) ?? ""
-    publisher = metadata.publisher ?? ""
-    edition = metadata.edition ?? ""
-    abridgement = metadata.abridgement?.rawValue ?? ""
-    cover = metadata.cover
-  }
-
-  func displayValue(for field: MetadataField) -> String {
-    switch field {
-    case .cover: cover == nil ? "" : "cover"
-    case .title: title
-    case .sortTitle: sortTitle
-    case .subtitle: subtitle
-    case .authors: authors
-    case .narrators: narrators
-    case .seriesName: seriesPosition.isEmpty ? seriesName : "\(seriesName) #\(seriesPosition)"
-    case .seriesPosition: seriesPosition
-    case .description: description
-    case .genres: genres
-    case .tags: tags
-    case .language: language
-    case .publicationYear: publicationYear
-    case .publisher: publisher
-    case .edition: edition
-    case .abridgement: abridgement
-    }
   }
 }
 
