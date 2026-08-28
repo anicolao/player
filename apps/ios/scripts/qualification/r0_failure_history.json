@@ -696,6 +696,72 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "The formal exact-SHA qualification dispatch was cancelled during preflight after this preceding PR failure was confirmed, before any qualification story lane began, so no consecutive qualification count existed to reset."
+    },
+    {
+      "signature": "screenshot:008-library-search:initial-capture-unbounded-card-enumeration-exhausted-deadline",
+      "story": "008-library-search",
+      "evidence": {
+        "artifact": "/tmp/player-r3-story008.u850pC/run",
+        "url": "local-artifact:/tmp/player-r3-story008.u850pC/run",
+        "commit": "cf2210526a74d4b702209f72682d89bf9e298859",
+        "observation": "The populated-library capture reached its exact semantic state, then enumerated every recent-book accessibility result even though the contract required only the first three visible cards. Querying the additional off-screen card exhausted the two-second EventDeadline before the named capture predicate could complete."
+      },
+      "rootCause": "The capture predicate implemented a minimum-three visible-card requirement with an unbounded prefix query, coupling deadline cost to every matching on-screen and off-screen accessibility node instead of the three deterministic fixture IDs named by the contract.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Address the exact first three fixture card identifiers and verify the Add action directly, preserving the same coverage without enumerating unrelated matches.",
+        "commits": [
+          "a753c0054644bc5cd7a5b6082de7673e6c2157fd"
+        ],
+        "validation": "Exact local Story 008 artifact `/tmp/player-r0-story008-double-prime.kNeXFr/run` passed UI 1/1, matched all 10 canonical screenshots pixel-exact, matched the reviewed README exactly, and produced a valid EvidenceManifest."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "The predecessor exact-SHA gate was cancelled as obsolete before producing an authoritative qualification report, so no accepted consecutive count existed to reset."
+    },
+    {
+      "signature": "screenshot:008-library-search:initial-stranded-scroll-geometry-exhausted-deadline",
+      "story": "008-library-search",
+      "evidence": {
+        "artifact": "/tmp/player-r0-story008-shortcircuit.KjZXN8/run",
+        "url": "local-artifact:/tmp/player-r0-story008-shortcircuit.KjZXN8/run",
+        "commit": "cf2210526a74d4b702209f72682d89bf9e298859",
+        "observation": "After replacing the unbounded card query, the initial capture still failed with library-root-scroll-readiness at interaction=1, completion=0. Its permitted stable-geometry fallback needed one observation to establish a candidate and another to confirm it, but both were attempted inside the already-running two-second deadline after the remaining semantic queries."
+      },
+      "rootCause": "The event-driven stranded-scroll fallback was correct but its first geometry observation was not primed before the bounded capture-readiness deadline, leaving insufficient time for the required correlated second observation.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Prime the exact top-of-library stranded geometry before starting the capture deadline, then require the same semantic and geometric predicate inside the bounded gate.",
+        "commits": [
+          "a753c0054644bc5cd7a5b6082de7673e6c2157fd"
+        ],
+        "validation": "Exact local Story 008 artifact `/tmp/player-r0-story008-double-prime.kNeXFr/run` accepted the stranded geometry by consecutive identical observation, passed UI 1/1, and matched all 10 screenshots and the README exactly."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "The predecessor exact-SHA gate was cancelled as obsolete before producing an authoritative qualification report, so no accepted consecutive count existed to reset."
+    },
+    {
+      "signature": "screenshot:008-library-search:search-compositor-kick-exhausted-deadline",
+      "story": "008-library-search",
+      "evidence": {
+        "artifact": "/tmp/player-r0-story008-prime-search.Q28W9V/run",
+        "url": "local-artifact:/tmp/player-r0-story008-prime-search.Q28W9V/run",
+        "commit": "cf2210526a74d4b702209f72682d89bf9e298859",
+        "observation": "At metadata-search, the exact query, artwork, focus, layout, row visibility, and scroll readiness predicates all passed. A focused diagnostic retained three immediate full-screen observations: the first differed, while the second and third PNGs had the identical SHA-256 f916eec9bd7310ea7a4aa290d32b336ddedf0a05c292c6b007d9a83f433b83c3. XCTest's one-second predicate cadence left no deadline for that third stable observation."
+      },
+      "rootCause": "The first screen acquisition can itself advance the simulator compositor. Priming only one frame before the deadline left the bounded predicate responsible for both absorbing that compositor kick and obtaining a later identical frame, which XCTest's polling cadence could not complete within two seconds.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "After all search semantics and geometry are ready, acquire two immediate priming observations before the deadline and retain the later one as the comparison candidate; the bounded gate then needs only one matching observation.",
+        "commits": [
+          "a753c0054644bc5cd7a5b6082de7673e6c2157fd"
+        ],
+        "validation": "Exact local Story 008 artifact `/tmp/player-r0-story008-double-prime.kNeXFr/run` reported two identical priming observations, captured metadata-search inside the deadline, passed UI 1/1, matched all 10 canonical screenshots pixel-exact, matched the reviewed README exactly, and produced a valid EvidenceManifest."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "The predecessor exact-SHA gate was cancelled as obsolete before producing an authoritative qualification report, so no accepted consecutive count existed to reset."
     }
   ]
 }
