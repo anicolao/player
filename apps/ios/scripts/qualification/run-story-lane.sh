@@ -2,6 +2,7 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "${script_dir}/qualification-support.sh"
 ios_dir="$(cd "${script_dir}/../.." && pwd)"
 repository_root="$(cd "${ios_dir}/../.." && pwd)"
 manifest="${repository_root}/tests/e2e/manifest.json"
@@ -64,35 +65,6 @@ capture_build_manifest() {
   ) > "${destination}"
 }
 
-failure_signature() {
-  local retained="$1"
-  local exit_code="$2"
-  if [[ -f "${retained}/Diagnostics/ScreenshotComparison/summary.json" ]] \
-    && [[ "$(jq -r '.failureCount // 0' \
-      "${retained}/Diagnostics/ScreenshotComparison/summary.json")" -gt 0 ]]; then
-    echo screenshot-comparison
-  elif [[ -f "${retained}/Logs/test.log" ]]; then
-    local signature
-    signature="$(rg -m 1 -o '[A-Za-z0-9_]+UITests\.test[A-Za-z0-9_]+' \
-      "${retained}/Logs/test.log" || true)"
-    echo "${signature:-test-exit-${exit_code}}"
-  else
-    echo "infrastructure-exit-${exit_code}"
-  fi
-}
-
-phase_was_recorded() {
-  local timings="$1" requested_phase="$2"
-  [[ -f "${timings}" ]] || return 1
-  awk -F '\t' -v requested="${requested_phase}" '
-    $1 == requested {
-      count += 1
-      if (NF != 4 || $2 !~ /^[0-9]+$/ || $3 !~ /^[0-9]+$/ || $3 < $2 || $4 == "") invalid = 1
-    }
-    END { exit !(count == 1 && invalid == 0) }
-  ' "${timings}"
-}
-
 requested="$(printf '%s\n' "${stories[@]}" | sort)"
 [[ "$(printf '%s\n' "${stories[@]}" | sort -u)" == "${requested}" ]] \
   || { echo "A story may appear only once in a lane." >&2; exit 2; }
@@ -142,7 +114,7 @@ for story in "${stories[@]}"; do
     fi
     duration=$((SECONDS - attempt_start))
     test_phase_entered=false
-    if phase_was_recorded "${retained}/PhaseTimings.tsv" test; then
+    if qualification_phase_was_recorded "${retained}/PhaseTimings.tsv" test; then
       test_phase_entered=true
     fi
     if ! jq -e --arg sha "${expected_sha}" \
@@ -168,7 +140,7 @@ for story in "${stories[@]}"; do
     signature=none
     if [[ "${attempt_status}" -ne 0 ]]; then
       result=failed
-      signature="$(failure_signature "${retained}" "${attempt_status}")"
+      signature="$(qualification_failure_signature "${retained}" "${attempt_status}")"
       overall_status=1
       if [[ "${test_phase_entered}" == false ]]; then infrastructure_invalid=1; fi
     fi

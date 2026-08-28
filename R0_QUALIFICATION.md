@@ -47,4 +47,10 @@ matrix that does not contain all 13 canonical stories exactly once. It also
 fails if renderer evidence is absent, median logical complete-matrix wall time
 regresses more than 10%, or any median story time regresses more than 20%.
 The report includes minimum, median, p95, and maximum logical wall time plus
-before/after per-story and per-phase measurements.
+before/after per-story and per-phase measurements. It incorporates the
+evidence-backed `r0_failure_history.json` ledger and lists each precise failure
+signature, supported root cause, fixing commits, and qualification-count reset.
+A recurring historical signature is not automatically assigned its former
+cause: the new artifacts must independently confirm it, or it remains
+unexplained and cannot qualify. A supported hypothesis or fix still awaiting
+focused repetition also keeps root-cause accounting open and blocks the gate.

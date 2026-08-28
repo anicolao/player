@@ -98,7 +98,7 @@ def validate_attempt_evidence(lane_root, record, story, sha, label, errors):
 
 
 def validate_story(root, expected_stories, sha, requested_attempts):
-    errors, durations, signatures = [], [], {}
+    errors, durations, signatures, failures = [], [], {}, []
     pairs = [(path, load_json(path)) for path in discover(root, "StoryLaneSummary.json")]
     lanes = [item.get("lane") for _, item in pairs]
     if len(pairs) != 5 or len(set(lanes)) != 5:
@@ -128,7 +128,11 @@ def validate_story(root, expected_stories, sha, requested_attempts):
             for attempt in attempts:
                 durations.append(attempt.get("durationSeconds", 0))
                 signature = attempt.get("signature", "none")
-                if signature != "none": signatures[signature] = signatures.get(signature, 0) + 1
+                if signature != "none":
+                    signatures[signature] = signatures.get(signature, 0) + 1
+                    failures.append({"stage": "story", "lane": lane.get("lane"),
+                                     "story": story_id, "attempt": attempt.get("attempt"),
+                                     "signature": signature})
                 label = f"{story_id} attempt {attempt.get('attempt')}"
                 if attempt.get("result") != "passed" or not attempt.get("testPhaseEntered"):
                     errors.append(f"{label} is not a measured pass")
@@ -136,7 +140,7 @@ def validate_story(root, expected_stories, sha, requested_attempts):
     if sorted(seen) != sorted(expected_stories) or len(seen) != len(set(seen)):
         errors.append("story lane coverage does not equal the canonical manifest exactly once")
     return {"lanes": len(pairs), "stories": len(seen), "durations": distribution(durations),
-            "signatures": signatures, "errors": errors}
+            "signatures": signatures, "failures": failures, "errors": errors}
 
 
 def validate_renderer(lane_root, matrix, index, expected_asset_count, errors):
@@ -173,7 +177,7 @@ def validate_core(lane_root, gate, index, errors):
 
 
 def validate_matrices(root, expected_stories, sha, requested_matrices, baseline):
-    errors, durations, signatures = [], [], {}
+    errors, durations, signatures, failures = [], [], {}, []
     story_values, phase_matrix_values, wall_values = defaultdict(list), defaultdict(list), []
     pairs = [(path, load_json(path)) for path in discover(root, "MatrixLaneSummary.json")]
     lanes = [item.get("lane") for _, item in pairs]
@@ -201,7 +205,11 @@ def validate_matrices(root, expected_stories, sha, requested_matrices, baseline)
                 durations.append(story.get("durationSeconds", 0))
                 story_values[story_id].append(story.get("durationSeconds", 0))
                 signature = story.get("signature", "none")
-                if signature != "none": signatures[signature] = signatures.get(signature, 0) + 1
+                if signature != "none":
+                    signatures[signature] = signatures.get(signature, 0) + 1
+                    failures.append({"stage": "matrix", "lane": lane.get("lane"),
+                                     "story": story_id, "matrixAttempt": index,
+                                     "signature": signature})
                 label = f"matrix {index} story {story_id}"
                 if story.get("commit") != sha or story.get("status") != "passed" or not story.get("testPhaseEntered"):
                     errors.append(f"{label} is not a measured pass")
@@ -270,7 +278,7 @@ def validate_matrices(root, expected_stories, sha, requested_matrices, baseline)
     return {"lanes": len(pairs), "matrices": requested_matrices, "durations": distribution(durations),
             "logicalWallClock": {"baselineSeconds": suite_baseline, "current": wall_distribution, "delta": suite_delta},
             "storyTimings": story_timings, "phaseTimings": phase_timings,
-            "signatures": signatures, "errors": errors}
+            "signatures": signatures, "failures": failures, "errors": errors}
 
 
 def validate_baseline(path, expected_stories):
@@ -289,10 +297,77 @@ def validate_baseline(path, expected_stories):
     return baseline
 
 
-def render_report(output: Path, sha: str, story, matrices=None):
+def validate_failure_history(path, expected_stories):
+    history = load_json(path)
+    entries = history.get("entries")
+    if history.get("schemaVersion") != 1 or not isinstance(entries, list):
+        raise ValueError("failure history must use schema version 1")
+    signatures = set()
+    for entry in entries:
+        required_text = (entry.get("signature"), entry.get("story"), entry.get("rootCause"),
+                         entry.get("resetEvidence"), entry.get("fix", {}).get("summary"),
+                         entry.get("fix", {}).get("validation"), entry.get("evidence", {}).get("url"),
+                         entry.get("evidence", {}).get("observation"))
+        commits = entry.get("fix", {}).get("commits")
+        reset_count = entry.get("qualificationResetCount")
+        if any(not isinstance(value, str) or not value for value in required_text):
+            raise ValueError("failure history entries require signature, evidence, cause, fix, and reset evidence")
+        if entry["story"] not in expected_stories or entry["signature"] in signatures:
+            raise ValueError("failure history stories and signatures must be canonical and unique")
+        if not isinstance(commits, list) or not commits or any(
+                not isinstance(commit, str) or len(commit) != 40 for commit in commits):
+            raise ValueError("failure history fixes require full commit SHAs")
+        if not isinstance(reset_count, int) or reset_count < 0:
+            raise ValueError("failure history reset counts must be nonnegative")
+        if entry.get("diagnosisStatus") not in ("confirmed", "supported-hypothesis"):
+            raise ValueError("failure history diagnosis status must be explicit")
+        if entry.get("fix", {}).get("status") not in ("verified", "pending-focused-validation"):
+            raise ValueError("failure history fix validation status must be explicit")
+        signatures.add(entry["signature"])
+    return history
+
+
+def build_failure_accounting(history, story, matrices):
+    historical = history["entries"]
+    pending_history = [entry for entry in historical
+                       if entry["diagnosisStatus"] != "confirmed"
+                       or entry["fix"]["status"] != "verified"]
+    known = {entry["signature"]: entry for entry in historical}
+    failures = list(story["failures"])
+    if matrices is not None: failures += matrices["failures"]
+    grouped = defaultdict(list)
+    for failure in failures: grouped[failure["signature"]].append(failure)
+    observed, unexplained = [], 0
+    for signature, occurrences in sorted(grouped.items()):
+        prior = known.get(signature)
+        if prior is None:
+            classification = "unexplained"
+            root_cause = None
+            fix = None
+        else:
+            classification = "historical-signature-recurrence-unconfirmed"
+            root_cause = prior["rootCause"]
+            fix = prior["fix"]
+        # A matching string is evidence of the same symptom, not proof that the
+        # historical cause recurred. Every qualification failure remains
+        # unexplained until its retained artifacts independently support a cause.
+        unexplained += len(occurrences)
+        observed.append({"signature": signature, "classification": classification,
+                         "occurrenceCount": len(occurrences), "occurrences": occurrences,
+                         "historicalRootCause": root_cause, "historicalFix": fix,
+                         "qualificationResetCount": len(occurrences),
+                         "resetEvidence": "Each listed failed measurement invalidates the affected consecutive-pass count."})
+    return {"historical": historical, "pendingHistorical": pending_history,
+            "observed": observed,
+            "unexplainedFailureCount": unexplained,
+            "rootCauseAccountingComplete": unexplained == 0 and not pending_history}
+
+
+def render_report(output: Path, sha: str, story, matrices, failure_accounting):
     all_errors = story["errors"] + ([] if matrices is None else matrices["errors"])
     payload = {"commit": sha, "status": "passed" if not all_errors else "failed",
-               "storyQualification": story, "matrixQualification": matrices, "errors": all_errors}
+               "storyQualification": story, "matrixQualification": matrices,
+               "failureAccounting": failure_accounting, "errors": all_errors}
     output.mkdir(parents=True, exist_ok=True)
     (output / "QualificationSummary.json").write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     lines = ["# R0 E2E stability report", "", f"- Commit: `{sha}`", f"- Result: **{payload['status'].upper()}**",
@@ -315,6 +390,25 @@ def render_report(output: Path, sha: str, story, matrices=None):
     if matrices:
         for key, value in matrices["signatures"].items(): signatures[key] = signatures.get(key, 0) + value
     lines += [f"- `{key}`: {value}" for key, value in sorted(signatures.items())] or ["- None"]
+    lines += ["", "## Root-cause and qualification-reset accounting", "",
+              "### Historical failures", "",
+              "| Signature | Diagnosis | Root cause | Fix | Qualification resets | Reset evidence |",
+              "|---|---|---|---|---:|---|"]
+    for entry in failure_accounting["historical"]:
+        commits = ", ".join(f"`{commit[:7]}`" for commit in entry["fix"]["commits"])
+        lines.append(f"| `{entry['signature']}` | {entry['diagnosisStatus']} | {entry['rootCause']} | {entry['fix']['summary']} ({commits}; {entry['fix']['status']}) | {entry['qualificationResetCount']} | {entry['resetEvidence']} |")
+    lines += ["", "### Failures observed in this qualification", ""]
+    if failure_accounting["observed"]:
+        lines += ["| Signature | Occurrences | Classification | Count resets |",
+                  "|---|---:|---|---:|"]
+        for entry in failure_accounting["observed"]:
+            lines.append(f"| `{entry['signature']}` | {entry['occurrenceCount']} | {entry['classification']} | {entry['qualificationResetCount']} |")
+    else:
+        lines.append("- None; no qualifying count was reset.")
+    if failure_accounting["pendingHistorical"]:
+        lines += ["", "### Pending historical validation", ""]
+        lines += [f"- `{entry['signature']}`: {entry['fix']['validation']}"
+                  for entry in failure_accounting["pendingHistorical"]]
     lines += ["", "## Validation errors", ""]
     lines += [f"- {error}" for error in all_errors] or ["- None"]
     (output / "STABILITY_REPORT.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -328,6 +422,8 @@ def main(argv=None):
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--runtime-baseline", type=Path,
                         default=Path(__file__).with_name("r0_runtime_baseline.json"))
+    parser.add_argument("--failure-history", type=Path,
+                        default=Path(__file__).with_name("r0_failure_history.json"))
     parser.add_argument("--sha", required=True)
     parser.add_argument("--story-attempts", type=int, default=10)
     parser.add_argument("--matrix-attempts", type=int, default=5)
@@ -336,14 +432,19 @@ def main(argv=None):
     stories = canonical_stories(args.manifest)
     try:
         baseline = validate_baseline(args.runtime_baseline, stories)
+        failure_history = validate_failure_history(args.failure_history, stories)
     except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError) as error:
-        print(f"Invalid runtime baseline: {error}", file=sys.stderr)
+        print(f"Invalid qualification contract: {error}", file=sys.stderr)
         return 2
     story_result = validate_story(args.story_input, stories, args.sha, args.story_attempts)
     matrix_result = None
     if args.matrix_input is not None:
         matrix_result = validate_matrices(args.matrix_input, stories, args.sha, args.matrix_attempts, baseline)
-    return render_report(args.output, args.sha, story_result, matrix_result)
+    failure_accounting = build_failure_accounting(failure_history, story_result, matrix_result)
+    if not failure_accounting["rootCauseAccountingComplete"]:
+        story_result["errors"].append(
+            "root-cause accounting is incomplete; resolve current failures and pending historical validation")
+    return render_report(args.output, args.sha, story_result, matrix_result, failure_accounting)
 
 
 if __name__ == "__main__":

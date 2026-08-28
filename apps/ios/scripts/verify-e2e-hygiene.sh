@@ -305,8 +305,8 @@ app_store_capture_gates="$(rg -c '^[[:space:]]*captureReadiness: marketingCaptur
 [[ "${app_store_steps}" -eq 7 && "${app_store_capture_gates}" -eq "${app_store_steps}" ]] \
   || fail "every App Store listing screenshot must have one atomic marketing capture-readiness gate"
 for required_marketing_guard in \
-  '!app.keyboards.firstMatch.exists' \
-  '!app.alerts.firstMatch.exists' \
+  'app.keyboards.count == 0' \
+  'app.alerts.count == 0' \
   '!self.hasUnintendedSheet'; do
   rg -Fq "${required_marketing_guard}" "${app_store_listing}" \
     || fail "App Store listing capture readiness is missing ${required_marketing_guard}"
@@ -352,6 +352,8 @@ cmp "${temporary_root}/qualification-expected-stories" \
   || fail "R0 matrix qualification must request exactly five matrices"
 rg -q 'r0_runtime_baseline.json' "${qualification_workflow}" \
   || fail "R0 qualification must enforce its versioned runtime baseline"
+rg -q 'r0_failure_history.json' "${qualification_workflow}" \
+  || fail "R0 qualification must include historical root-cause accounting"
 rg -q 'render-app-store-listing.swift' "${script_dir}/qualification/run-matrix-lane.sh" \
   || fail "R0 matrix qualification must run the production App Store renderer"
 if rg -n 'continue-on-error:|nick-fields/retry|retry-action' "${qualification_workflow}"; then

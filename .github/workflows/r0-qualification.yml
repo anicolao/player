@@ -113,6 +113,7 @@ jobs:
           --story-input downloaded/stories
           --manifest tests/e2e/manifest.json
           --runtime-baseline apps/ios/scripts/qualification/r0_runtime_baseline.json
+          --failure-history apps/ios/scripts/qualification/r0_failure_history.json
           --sha '${{ inputs.expected_sha }}'
           --story-attempts 10
           --output build/r0-story-report
@@ -218,6 +219,7 @@ jobs:
           --matrix-input downloaded/matrices
           --manifest tests/e2e/manifest.json
           --runtime-baseline apps/ios/scripts/qualification/r0_runtime_baseline.json
+          --failure-history apps/ios/scripts/qualification/r0_failure_history.json
           --sha '${{ inputs.expected_sha }}'
           --story-attempts 10
           --matrix-attempts 5

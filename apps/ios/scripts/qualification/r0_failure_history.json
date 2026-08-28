@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "signature": "screenshot:pixel-difference:003-smart-rewind-applied.png",
+      "story": "005-play-and-restore",
+      "evidence": {
+        "workflowRun": 33028228196,
+        "workflowAttempt": 5,
+        "url": "https://github.com/anicolao/player/actions/runs/33028228196/attempts/5",
+        "commit": "ab7598d9570a3aafc2219e1ce3d21406ae5cdb24",
+        "observation": "All five UI tests passed, then exact comparison found 14,586 changed pixels confined to 003-smart-rewind-applied.png."
+      },
+      "rootCause": "The Smart Rewind capture was not gated on the acknowledged rewind state, so the transient notice could be captured before its semantic presentation was settled.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Replace polling and capture-time pixel sampling with an event-driven Smart Rewind state probe, then capture only after the semantic predicate succeeds.",
+        "commits": [
+          "fb3b45cfccfb2d0f0c725ccafc802516226d7a52",
+          "ad47db38b517a66ac247b491d8d69f520615e08d"
+        ],
+        "validation": "Story 005 passed in production CI run 33139873579."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This failure preceded the formal exact-SHA R0 qualification sequence, so no qualification count existed to reset."
+    },
+    {
+      "signature": "ui-test:AccessibilityUITests.testCoreJourneysRemainCompleteAtLargestAccessibilityText:exit-65",
+      "story": "009-accessible-core-journeys",
+      "evidence": {
+        "workflowRun": 33028228196,
+        "workflowAttempt": 6,
+        "url": "https://github.com/anicolao/player/actions/runs/33028228196/attempts/6",
+        "commit": "ab7598d9570a3aafc2219e1ce3d21406ae5cdb24",
+        "observation": "The largest-text journey repeatedly swiped the application but never made settings-accessibility exist, then failed at AccessibilityUITests.swift:288."
+      },
+      "rootCause": "The test used fixed-count whole-application swipes without observing scroll progress or the target container, so the Settings destination was not reliably revealed at the largest Dynamic Type size.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Use event-driven target revelation tied to the production scroll container and stop on target visibility or settled geometry.",
+        "commits": [
+          "41fb869ff7f481c312be7977f142c613531d14a6"
+        ],
+        "validation": "Story 009 passed in production CI run 33139873579."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This failure preceded the formal exact-SHA R0 qualification sequence, so no qualification count existed to reset."
+    },
+    {
+      "signature": "ui-test:LibraryOrganizationUITests.testOrganizesDailyLibraryAndRestoresATrashedBook:exit-65",
+      "story": "008-library-search",
+      "evidence": {
+        "artifact": "/tmp/player-r0-story008-reliability/20260828T085521Z-0939406eca22-008-library-search/attempt-01",
+        "url": "local-artifact:/tmp/player-r0-story008-reliability/20260828T085521Z-0939406eca22-008-library-search/attempt-01",
+        "commit": "0939406eca22ffa1b6b363ed3011d6a6d2502ef7",
+        "observation": "The metadata-search capture gate reported a compositor change but could not observe an identical follow-up frame; the failed gate did not retain the two internal frame samples."
+      },
+      "rootCause": "Supported implementation-defect hypothesis: ConsecutiveScreenObservation compared PNG-encoded Data, whose representation can differ even when the decoded pixel buffers are identical.",
+      "diagnosisStatus": "supported-hypothesis",
+      "fix": {
+        "status": "pending-focused-validation",
+        "summary": "Compare CGImage pixel-buffer metadata and bytes rather than PNG representations.",
+        "commits": [
+          "fe608daec98237267d04a119ff0b6084d68d7f4c"
+        ],
+        "validation": "Pending focused repeated Story 008 passes at fe608da; reclassify from retained artifacts if the gate recurs."
+      },
+      "qualificationResetCount": 1,
+      "resetEvidence": "Reliability attempt 1 failed at exact SHA 0939406eca22ffa1b6b363ed3011d6a6d2502ef7, resetting Story 008's consecutive qualification count to zero."
+    }
+  ]
+}

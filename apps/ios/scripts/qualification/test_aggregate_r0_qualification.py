@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -45,6 +46,18 @@ class QualificationAggregatorTests(unittest.TestCase):
                                   "stories": {story: 10 for story in STORIES},
                                   "phases": {"test": 65, "core-fixtures": 2,
                                              "core-tests": 3, "app-store-renderer": 1}})
+        self.history = self.root / "history.json"
+        write_json(self.history, {"schemaVersion": 1, "entries": [{
+            "signature": "screenshot:pixel-difference:003-smart-rewind-applied.png",
+            "story": "005-play-and-restore",
+            "evidence": {"url": "https://example.test/run/1", "observation": "Exact mismatch."},
+            "rootCause": "Capture preceded semantic readiness.",
+            "diagnosisStatus": "confirmed",
+            "fix": {"status": "verified", "summary": "Gate capture on semantic readiness.", "commits": ["b" * 40],
+                    "validation": "Focused story passed."},
+            "qualificationResetCount": 0,
+            "resetEvidence": "Failure preceded formal qualification."
+        }]})
         self.story_root = self.root / "stories"
         self.matrix_root = self.root / "matrices"
         for lane_index, lane_stories in enumerate(STORY_LANES, 1):
@@ -116,6 +129,7 @@ class QualificationAggregatorTests(unittest.TestCase):
         return aggregate.main(["--story-input", str(self.story_root),
                                "--matrix-input", str(self.matrix_root),
                                "--manifest", str(self.manifest), "--runtime-baseline", str(self.baseline),
+                               "--failure-history", str(self.history),
                                "--sha", SHA, "--output", str(self.root / "report")])
 
     def story_summary(self, lane=1):
@@ -131,6 +145,8 @@ class QualificationAggregatorTests(unittest.TestCase):
         self.assertEqual(summary["storyQualification"]["durations"]["count"], 130)
         self.assertEqual(summary["matrixQualification"]["logicalWallClock"]["current"]["count"], 5)
         self.assertEqual(summary["matrixQualification"]["phaseTimings"]["test"]["current"]["median"], 65)
+        self.assertTrue(summary["failureAccounting"]["rootCauseAccountingComplete"])
+        self.assertEqual(len(summary["failureAccounting"]["historical"]), 1)
 
     def test_rejects_missing_attempt_directory(self):
         payload = json.loads(self.story_summary().read_text())
@@ -200,6 +216,63 @@ class QualificationAggregatorTests(unittest.TestCase):
         payload["status"] = "failed"
         write_json(path, payload)
         self.assertEqual(self.run_aggregate(), 1)
+        accounting = json.loads((self.root / "report/QualificationSummary.json").read_text())["failureAccounting"]
+        self.assertEqual(accounting["unexplainedFailureCount"], 1)
+        self.assertEqual(accounting["observed"][0]["qualificationResetCount"], 1)
+
+    def test_historical_signature_recurrence_requires_new_root_cause_evidence(self):
+        path = self.story_summary(2)
+        payload = json.loads(path.read_text())
+        attempt = payload["stories"][1]["attempts"][0]
+        attempt["result"] = "failed"
+        attempt["signature"] = "screenshot:pixel-difference:003-smart-rewind-applied.png"
+        payload["stories"][1]["passCount"] = 9
+        payload["stories"][1]["failureCount"] = 1
+        payload["status"] = "failed"
+        write_json(path, payload)
+        self.assertEqual(self.run_aggregate(), 1)
+        observed = json.loads((self.root / "report/QualificationSummary.json").read_text())["failureAccounting"]["observed"]
+        self.assertEqual(observed[0]["classification"], "historical-signature-recurrence-unconfirmed")
+        self.assertEqual(observed[0]["qualificationResetCount"], 1)
+
+    def test_pending_historical_fix_validation_blocks_qualification(self):
+        history = json.loads(self.history.read_text())
+        history["entries"][0]["diagnosisStatus"] = "supported-hypothesis"
+        history["entries"][0]["fix"]["status"] = "pending-focused-validation"
+        history["entries"][0]["fix"]["validation"] = "Pending focused repetitions."
+        write_json(self.history, history)
+        self.assertEqual(self.run_aggregate(), 1)
+        accounting = json.loads((self.root / "report/QualificationSummary.json").read_text())["failureAccounting"]
+        self.assertFalse(accounting["rootCauseAccountingComplete"])
+        self.assertEqual(len(accounting["pendingHistorical"]), 1)
+
+    def test_failure_signature_identifies_exact_ui_test(self):
+        retained = self.root / "failed-ui-test"
+        write_json(retained / "Diagnostics/FailureEvidence.json", {"testExitCode": 65})
+        (retained / "Logs").mkdir(parents=True)
+        (retained / "Logs/test.log").write_text(
+            "AccessibilityUITests.testCoreJourneysRemainCompleteAtLargestAccessibilityText()\n",
+            encoding="utf-8")
+        self.assertEqual(
+            self.failure_signature(retained, 65),
+            "ui-test:AccessibilityUITests.testCoreJourneysRemainCompleteAtLargestAccessibilityText:exit-65")
+
+    def test_failure_signature_identifies_exact_screenshot_and_difference(self):
+        retained = self.root / "failed-screenshot"
+        write_json(retained / "Diagnostics/ScreenshotComparison/summary.json", {
+            "failureCount": 1,
+            "images": [{"name": "003-smart-rewind-applied.png", "result": "pixel-difference"}]
+        })
+        self.assertEqual(self.failure_signature(retained, 1),
+                         "screenshot:pixel-difference:003-smart-rewind-applied.png")
+
+    def failure_signature(self, retained, exit_code):
+        support = Path(__file__).with_name("qualification-support.sh")
+        result = subprocess.run(
+            ["bash", "-c", '. "$1"; qualification_failure_signature "$2" "$3"',
+             "qualification-signature-test", str(support), str(retained), str(exit_code)],
+            check=True, capture_output=True, text=True)
+        return result.stdout.strip()
 
     def test_rejects_missing_story_or_matrix_lane(self):
         self.story_summary(3).unlink()

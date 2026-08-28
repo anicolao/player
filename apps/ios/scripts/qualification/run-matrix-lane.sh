@@ -2,6 +2,7 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "${script_dir}/qualification-support.sh"
 base_ios_dir="$(cd "${script_dir}/../.." && pwd)"
 repository_root="$(cd "${base_ios_dir}/../.." && pwd)"
 manifest="${repository_root}/tests/e2e/manifest.json"
@@ -52,31 +53,6 @@ has_build() {
 
 capture_build_manifest() {
   (cd "$1" && find Build/Products -type f -print0 | LC_ALL=C sort -z | xargs -0 shasum -a 256) > "$2"
-}
-
-failure_signature() {
-  local retained="$1" exit_code="$2" signature=""
-  if [[ -f "${retained}/Diagnostics/ScreenshotComparison/summary.json" ]] \
-    && [[ "$(jq -r '.failureCount // 0' "${retained}/Diagnostics/ScreenshotComparison/summary.json")" -gt 0 ]]; then
-    echo screenshot-comparison
-  elif [[ -f "${retained}/Logs/test.log" ]]; then
-    signature="$(rg -m 1 -o '[A-Za-z0-9_]+UITests\.test[A-Za-z0-9_]+' "${retained}/Logs/test.log" || true)"
-    echo "${signature:-test-exit-${exit_code}}"
-  else
-    echo "infrastructure-exit-${exit_code}"
-  fi
-}
-
-phase_was_recorded() {
-  local timings="$1" requested_phase="$2"
-  [[ -f "${timings}" ]] || return 1
-  awk -F '\t' -v requested="${requested_phase}" '
-    $1 == requested {
-      count += 1
-      if (NF != 4 || $2 !~ /^[0-9]+$/ || $3 !~ /^[0-9]+$/ || $3 < $2 || $4 == "") invalid = 1
-    }
-    END { exit !(count == 1 && invalid == 0) }
-  ' "${timings}"
 }
 
 cleanup() {
@@ -201,7 +177,7 @@ for ((matrix_index = 1; matrix_index <= matrix_count; matrix_index += 1)); do
       "${worktree_ios}/scripts/run-e2e.sh" --story "${story}" || story_status=$?
     if [[ ! -d "${retained}" ]]; then mkdir -p "${retained}"; fi
     test_phase_entered=false
-    if phase_was_recorded "${retained}/PhaseTimings.tsv" test; then test_phase_entered=true; fi
+    if qualification_phase_was_recorded "${retained}/PhaseTimings.tsv" test; then test_phase_entered=true; fi
     if ! jq -e --arg sha "${expected_sha}" \
       '.commit == $sha and (.status == "passed" or .status == "failed")' \
       "${retained}/Run.json" >/dev/null 2>&1; then
@@ -222,7 +198,7 @@ for ((matrix_index = 1; matrix_index <= matrix_count; matrix_index += 1)); do
     result=passed signature=none
     if [[ "${story_status}" -ne 0 ]]; then
       result=failed
-      signature="$(failure_signature "${retained}" "${story_status}")"
+      signature="$(qualification_failure_signature "${retained}" "${story_status}")"
       overall_status=1
       if [[ "${test_phase_entered}" == false ]]; then infrastructure_invalid=1; fi
     fi
