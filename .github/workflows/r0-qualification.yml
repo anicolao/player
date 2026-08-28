@@ -1,0 +1,230 @@
+name: R0 E2E qualification
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Full commit SHA to qualify; must equal the selected workflow ref
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    name: Exact-SHA qualification preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.expected_sha }}
+      - name: Require the dispatched revision exactly
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          DISPATCH_SHA: ${{ github.sha }}
+        run: |
+          [[ "${EXPECTED_SHA}" =~ ^[0-9a-f]{40}$ ]]
+          test "${DISPATCH_SHA}" = "${EXPECTED_SHA}"
+          test "$(git rev-parse HEAD)" = "${EXPECTED_SHA}"
+          git diff --quiet
+          git diff --cached --quiet
+          jq -e 'length == 13' tests/e2e/manifest.json >/dev/null
+      - name: Test fail-closed qualification aggregation
+        run: python3 apps/ios/scripts/qualification/test_aggregate_r0_qualification.py
+
+  story-qualification:
+    name: Story qualification ${{ matrix.lane }}
+    needs: preflight
+    runs-on: macos-26
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - lane: lane-1
+            stories: '["007-sleep-timer","012-monetization"]'
+          - lane: lane-2
+            stories: '["005-play-and-restore","011-offline-recovery"]'
+          - lane: lane-3
+            stories: '["008-library-search","001-ios-launch","004-metadata-repair"]'
+          - lane: lane-4
+            stories: '["013-app-store-listing","006-safe-zip-import","010-library-backup"]'
+          - lane: lane-5
+            stories: '["002-import-and-play","009-accessible-core-journeys","003-multifile-grouping"]'
+    defaults:
+      run:
+        shell: nix develop --command bash --noprofile --norc -e -o pipefail {0}
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      PLAYER_SKIP_SIMULATOR_LAUNCH: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.expected_sha }}
+      - uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+      - name: Verify and generate once
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ inputs.expected_sha }}"
+          apps/ios/scripts/verify-e2e-environment.sh
+          if [[ "${{ matrix.lane }}" == lane-1 ]]; then apps/ios/scripts/verify-e2e-hygiene.sh; fi
+          apps/ios/scripts/generate-project.sh
+          git diff --exit-code -- apps/ios/Player.xcodeproj
+      - name: Measure ten isolated attempts per story
+        env:
+          LANE: ${{ matrix.lane }}
+          STORIES: ${{ matrix.stories }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          arguments=(--lane "${LANE}" --sha "${EXPECTED_SHA}" --attempts 10)
+          while IFS= read -r story; do arguments+=(--story "${story}"); done \
+            < <(jq -r '.[]' <<< "${STORIES}")
+          apps/ios/scripts/qualification/run-story-lane.sh "${arguments[@]}"
+      - name: Upload complete story-lane evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: r0-story-${{ matrix.lane }}-${{ inputs.expected_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            apps/ios/DerivedData/R0Qualification/Stories/${{ matrix.lane }}/
+            !apps/ios/DerivedData/R0Qualification/Stories/${{ matrix.lane }}/Build/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+  story-gate:
+    name: Require 10/10 for every story
+    if: always()
+    needs: story-qualification
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.expected_sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: r0-story-*-${{ inputs.expected_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: downloaded/stories
+      - name: Validate story evidence without waivers
+        run: >-
+          python3 apps/ios/scripts/qualification/aggregate_r0_qualification.py
+          --story-input downloaded/stories
+          --manifest tests/e2e/manifest.json
+          --sha '${{ inputs.expected_sha }}'
+          --story-attempts 10
+          --output build/r0-story-report
+      - name: Upload story gate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: r0-story-report-${{ inputs.expected_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/r0-story-report/
+          if-no-files-found: error
+          retention-days: 90
+
+  matrix-qualification:
+    name: Matrix qualification ${{ matrix.lane }}
+    needs: story-gate
+    runs-on: macos-26
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - lane: lane-1
+            stories: '["007-sleep-timer","006-safe-zip-import"]'
+            core: false
+          - lane: lane-2
+            stories: '["005-play-and-restore","009-accessible-core-journeys"]'
+            core: false
+          - lane: lane-3
+            stories: '["008-library-search","002-import-and-play","012-monetization"]'
+            core: false
+          - lane: lane-4
+            stories: '["013-app-store-listing","001-ios-launch","003-multifile-grouping"]'
+            core: false
+          - lane: lane-5
+            stories: '["010-library-backup","011-offline-recovery","004-metadata-repair"]'
+            core: true
+    defaults:
+      run:
+        shell: nix develop --command bash --noprofile --norc -e -o pipefail {0}
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      PLAYER_SKIP_SIMULATOR_LAUNCH: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.expected_sha }}
+      - uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+      - name: Verify and generate once
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ inputs.expected_sha }}"
+          apps/ios/scripts/verify-e2e-environment.sh
+          apps/ios/scripts/generate-project.sh
+          git diff --exit-code -- apps/ios/Player.xcodeproj
+      - name: Run five logical complete matrices
+        env:
+          LANE: ${{ matrix.lane }}
+          STORIES: ${{ matrix.stories }}
+          RUN_CORE: ${{ matrix.core }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          arguments=(--lane "${LANE}" --sha "${EXPECTED_SHA}" --matrices 5)
+          if [[ "${RUN_CORE}" == true ]]; then arguments+=(--core); fi
+          while IFS= read -r story; do arguments+=(--story "${story}"); done \
+            < <(jq -r '.[]' <<< "${STORIES}")
+          apps/ios/scripts/qualification/run-matrix-lane.sh "${arguments[@]}"
+      - name: Upload complete matrix-lane evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: r0-matrix-${{ matrix.lane }}-${{ inputs.expected_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            apps/ios/DerivedData/R0Qualification/Matrices/${{ matrix.lane }}/
+            !apps/ios/DerivedData/R0Qualification/Matrices/${{ matrix.lane }}/Build/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+  qualification-report:
+    name: Exact-SHA R0 qualification report
+    if: always()
+    needs: [story-gate, matrix-qualification]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.expected_sha }}
+      - name: Download story evidence
+        uses: actions/download-artifact@v4
+        with:
+          pattern: r0-story-lane-*-${{ inputs.expected_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: downloaded/stories
+      - name: Download matrix evidence when present
+        if: needs.matrix-qualification.result != 'skipped'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: r0-matrix-*-${{ inputs.expected_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: downloaded/matrices
+      - name: Validate all five logical matrices and render stability report
+        run: >-
+          python3 apps/ios/scripts/qualification/aggregate_r0_qualification.py
+          --story-input downloaded/stories
+          --matrix-input downloaded/matrices
+          --manifest tests/e2e/manifest.json
+          --sha '${{ inputs.expected_sha }}'
+          --story-attempts 10
+          --matrix-attempts 5
+          --output build/r0-qualification-report
+      - name: Upload final stability report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: r0-qualification-report-${{ inputs.expected_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/r0-qualification-report/
+          if-no-files-found: error
+          retention-days: 90

@@ -6,6 +6,7 @@ repository_root="$(cd "${script_dir}/../../.." && pwd)"
 ui_test_root="${repository_root}/apps/ios/PlayerUITests"
 manifest="${repository_root}/tests/e2e/manifest.json"
 workflow="${repository_root}/.github/workflows/ios.yml"
+qualification_workflow="${repository_root}/.github/workflows/r0-qualification.yml"
 
 fail() {
   echo "E2E hygiene check failed: $*" >&2
@@ -114,6 +115,24 @@ fi
 
 if rg -n 'continue-on-error:|nick-fields/retry|retry-action' "${workflow}"; then
   fail "CI may not hide an E2E failure behind a retry"
+fi
+
+[[ -f "${qualification_workflow}" ]] || fail "the manual R0 qualification workflow is missing"
+{
+  cat "${temporary_root}/manifest-stories"
+  cat "${temporary_root}/manifest-stories"
+} | sort > "${temporary_root}/qualification-expected-stories"
+rg -o '[0-9]{3}-[a-z0-9][a-z0-9-]*' "${qualification_workflow}" \
+  | sort > "${temporary_root}/qualification-workflow-stories"
+cmp "${temporary_root}/qualification-expected-stories" \
+  "${temporary_root}/qualification-workflow-stories" \
+  || fail "R0 qualification must assign every canonical story once in each phase"
+[[ "$(rg -c 'arguments=.*--attempts 10' "${qualification_workflow}")" -eq 1 ]] \
+  || fail "R0 story qualification must request exactly ten attempts"
+[[ "$(rg -c 'matrices 5' "${qualification_workflow}")" -eq 1 ]] \
+  || fail "R0 matrix qualification must request exactly five matrices"
+if rg -n 'continue-on-error:|nick-fields/retry|retry-action' "${qualification_workflow}"; then
+  fail "R0 qualification may not retry or waive a failed measurement"
 fi
 
 if CI=true "${script_dir}/run-e2e.sh" --story 001-ios-launch \
