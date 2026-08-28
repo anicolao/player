@@ -25,6 +25,7 @@
 - [x] The Library screen is visible
 - [x] Listening progress is immediately useful
 - [x] Recent cover artwork is visible
+- [x] The recent shelf section has distinct semantics
 - [x] The current book stays within reach
 
 ## The private receiver accepts books through a browser on any computer
@@ -34,7 +35,9 @@
 **Verifications:**
 
 - [x] The receiver is ready
+- [x] The ready state is backed by the production HTTP server
 - [x] The pairing code is visible
+- [x] Supported locales show iPhone Mirroring guidance
 - [x] Files remains available
 
 ## iPhone Mirroring makes Finder drag-and-drop the fastest Mac path
@@ -46,6 +49,7 @@
 - [x] The mirrored drop is being prepared
 - [x] Import progress is visible
 - [x] The incoming audiobook is named
+- [x] The visible state is backed by the production drop progress callback
 
 ## Playback defaults make speed, skips, and seeking personal
 

@@ -25,11 +25,27 @@ final class AppStoreListingUITests: XCTestCase {
     let libraryScreen = library.otherElements["library-screen"]
     let libraryScrollReadiness = anyElement(library, "library-root-scroll-readiness")
     let recentShelf = library.scrollViews["library-home-recent-shelf-scroll"]
+    let recentShelfSection = anyElement(library, "library-home-recently-added-shelf")
     let recentShelfReadiness = anyElement(
       library,
       "library-home-recent-shelf-scroll-readiness"
     )
     let artworkReadiness = anyElement(library, "library-artwork-probe")
+    XCTAssertTrue(
+      recentShelf.waitForExistence(timeout: TestStepHelper.conditionTimeout),
+      "The recent shelf must expose its dedicated ScrollView identifier"
+    )
+    XCTAssertEqual(
+      library.scrollViews.matching(identifier: "library-home-recent-shelf-scroll").count,
+      1,
+      "The recent shelf must expose exactly one ScrollView"
+    )
+    XCTAssertEqual(
+      library.descendants(matching: .any)
+        .matching(identifier: "library-home-recently-added-shelf").count,
+      1,
+      "The section semantics must remain distinct from its ScrollView"
+    )
     try tester.step(
       "library",
       description: "The library gives owned audiobooks a warm, useful home",
@@ -37,6 +53,7 @@ final class AppStoreListingUITests: XCTestCase {
         .exists(libraryScreen, "The Library screen is visible"),
         .exists(library.staticTexts["Continue Listening"], "Listening progress is immediately useful"),
         .exists(library.staticTexts["Recently Added"], "Recent cover artwork is visible"),
+        .exists(recentShelfSection, "The recent shelf section has distinct semantics"),
         .exists(library.otherElements["mini-player"], "The current book stays within reach"),
       ],
       captureReadiness: marketingCaptureReadiness(
@@ -70,6 +87,11 @@ final class AppStoreListingUITests: XCTestCase {
             axis: .horizontal
           )
           && recentShelf.exists
+          && recentShelfSection.exists
+          && library.scrollViews
+            .matching(identifier: "library-home-recent-shelf-scroll").count == 1
+          && library.descendants(matching: .any)
+            .matching(identifier: "library-home-recently-added-shelf").count == 1
           && recentCards.count == 4
       }
     )
@@ -86,6 +108,7 @@ final class AppStoreListingUITests: XCTestCase {
     let pairingCode = receiver.staticTexts["computer-receiver-pairing-code"]
     let chooseFromFiles = receiver.buttons["choose-from-files-computer-receiver"]
     let receiverEvidence = anyElement(receiver, "computer-receiver-production-evidence")
+    let mirroringGuidance = receiver.staticTexts["Using a Mac?"]
     try tester.step(
       "receiver-ready",
       description: "The private receiver accepts books through a browser on any computer",
@@ -97,6 +120,7 @@ final class AppStoreListingUITests: XCTestCase {
           "The ready state is backed by the production HTTP server"
         ),
         .exists(pairingCode, "The pairing code is visible"),
+        .exists(mirroringGuidance, "Supported locales show iPhone Mirroring guidance"),
         .exists(chooseFromFiles, "Files remains available"),
       ],
       captureReadiness: marketingCaptureReadiness(
@@ -113,7 +137,7 @@ final class AppStoreListingUITests: XCTestCase {
           )
           && elementIsFullyVisible(pairingCode, within: receiverScreen, requiresHittable: false)
           && elementIsFullyVisible(
-            receiver.otherElements["mirroring-import-tip"],
+            mirroringGuidance,
             within: receiverScreen,
             requiresHittable: false
           )

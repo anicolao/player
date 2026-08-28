@@ -162,7 +162,8 @@ struct LibraryOrganizationHome: View {
         books: books,
         scale: .feature,
         availableWidth: availableWidth,
-        scrollIdentifier: "library-home-recent-shelf-scroll"
+        scrollIdentifier: "library-home-recent-shelf-scroll",
+        sectionIdentifier: "library-home-recently-added-shelf"
       ) { book, metrics in
         NavigationLink(value: book.id) {
           BookshelfCoverCard(book: book, metrics: metrics)
@@ -173,7 +174,6 @@ struct LibraryOrganizationHome: View {
         .accessibilityHint("Opens audiobook details")
         .accessibilityIdentifier("recent-book-\(book.id.uuidString.lowercased())")
       }
-      .accessibilityIdentifier("library-home-recently-added-shelf")
     }
   }
 
@@ -551,6 +551,7 @@ private struct BookshelfSection<Content: View>: View {
   let scale: BookshelfScale
   let availableWidth: CGFloat
   let scrollIdentifier: String
+  let sectionIdentifier: String?
   private let content: (Book, BookshelfMetrics) -> Content
 
   init(
@@ -559,6 +560,7 @@ private struct BookshelfSection<Content: View>: View {
     scale: BookshelfScale,
     availableWidth: CGFloat,
     scrollIdentifier: String,
+    sectionIdentifier: String? = nil,
     @ViewBuilder content: @escaping (Book, BookshelfMetrics) -> Content
   ) {
     self.title = title
@@ -566,6 +568,7 @@ private struct BookshelfSection<Content: View>: View {
     self.scale = scale
     self.availableWidth = availableWidth
     self.scrollIdentifier = scrollIdentifier
+    self.sectionIdentifier = sectionIdentifier
     self.content = content
   }
 
@@ -576,6 +579,7 @@ private struct BookshelfSection<Content: View>: View {
         .font(.title3.bold())
         .foregroundStyle(PlayerColor.ink)
         .padding(.horizontal, 20)
+        .accessibilityIdentifier(sectionIdentifier ?? "\(scrollIdentifier)-title")
 
       ScrollView(.horizontal) {
         LazyHStack(alignment: .top, spacing: metrics.spacing) {
