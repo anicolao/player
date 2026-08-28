@@ -2941,9 +2941,6 @@ extension PlayerEnvironment {
       var files: [String: String] = [:]
       let prefix = root.standardizedFileURL.path + "/"
       for case let url as URL in enumerator {
-        guard try url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else {
-          continue
-        }
         let path = url.standardizedFileURL.path
         guard path.hasPrefix(prefix) else {
           throw PlayerCoreError.fileOperation("The Safe ZIP E2E inventory escaped its root.")
@@ -2952,7 +2949,26 @@ extension PlayerEnvironment {
         guard !relativePath.isEmpty, files[relativePath] == nil else {
           throw PlayerCoreError.fileOperation("The Safe ZIP E2E inventory is ambiguous.")
         }
-        let digest = SHA256.hash(data: try Data(contentsOf: url))
+        let values: URLResourceValues
+        do {
+          values = try url.resourceValues(forKeys: [.isRegularFileKey])
+        } catch {
+          // Retry cleanup removes the old extraction tree while this evidence view
+          // can be walking it. A child that vanished after enumeration is absent
+          // from the resulting snapshot; it does not make the whole root unreadable.
+          guard FileManager.default.fileExists(atPath: path) else { continue }
+          values = try url.resourceValues(forKeys: [.isRegularFileKey])
+        }
+        guard values.isRegularFile == true else { continue }
+
+        let data: Data
+        do {
+          data = try Data(contentsOf: url)
+        } catch {
+          guard FileManager.default.fileExists(atPath: path) else { continue }
+          data = try Data(contentsOf: url)
+        }
+        let digest = SHA256.hash(data: data)
           .map { String(format: "%02x", $0) }
           .joined()
         files[relativePath] = digest
