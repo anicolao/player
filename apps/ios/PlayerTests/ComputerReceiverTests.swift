@@ -4,6 +4,53 @@ import Network
 
 @MainActor
 final class ComputerReceiverTests: XCTestCase {
+  func testInjectedBindingServesRawHTTPGetThroughProductionServerPath() async throws {
+    let root = temporaryRoot()
+    let binding = E2EDeterministicComputerReceiverBinding()
+    let exchangeHandled = expectation(description: "Production receiver served the raw HTTP request")
+    var observedEvents: [ComputerReceiverEvent] = []
+    let server = ComputerReceiverServer(
+      rootURL: root,
+      bundle: .main,
+      portPreference: try isolatedPortPreference(),
+      binding: binding,
+      credentials: ComputerReceiverCredentials(
+        pairingCode: "482731",
+        bearerToken: "focused-receiver-token"
+      )
+    )
+    registerCleanup(for: server, root: root)
+
+    let ready = try await server.start(
+      importHandler: successfulReceiverImport,
+      eventHandler: { event in
+        observedEvents.append(event)
+        if case .httpExchange = event { exchangeHandled.fulfill() }
+      }
+    )
+    XCTAssertEqual(
+      ready,
+      ComputerReceiverReady(address: "http://192.168.1.42:49152", pairingCode: "482731")
+    )
+
+    await fulfillment(of: [exchangeHandled], timeout: 2)
+    XCTAssertEqual(observedEvents.first, .ready(
+      address: "http://192.168.1.42:49152",
+      pairingCode: "482731"
+    ))
+    XCTAssertEqual(
+      observedEvents.last,
+      .httpExchange(ComputerReceiverHTTPExchange(method: "GET", path: "/", status: 200))
+    )
+
+    let capturedResponse = await binding.responseData()
+    let response = try XCTUnwrap(capturedResponse)
+    let rawResponse = String(decoding: response, as: UTF8.self)
+    XCTAssertTrue(rawResponse.hasPrefix("HTTP/1.1 200 OK\r\n"))
+    XCTAssertTrue(rawResponse.contains("Content-Type: text/html; charset=utf-8\r\n"))
+    XCTAssertTrue(rawResponse.contains("Send audiobooks to Player"))
+  }
+
   func testFolderTransferPreservesBookNameAndRemovesIncomingCopyAfterImport() async throws {
     let root = temporaryRoot()
     defer { try? FileManager.default.removeItem(at: root) }

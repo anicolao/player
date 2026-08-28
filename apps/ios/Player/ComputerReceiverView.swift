@@ -26,6 +26,7 @@ final class ComputerReceiverController {
   private(set) var address = ""
   private(set) var pairingCode = ""
   private(set) var receiverIsRunning = false
+  private(set) var httpExchange: ComputerReceiverHTTPExchange?
   @ObservationIgnored private let server: ComputerReceiverServer
   @ObservationIgnored private let mirroringDropAdapter: MirroringDropAdapter
   @ObservationIgnored private let usesSimulatedReadyState: Bool
@@ -67,31 +68,31 @@ final class ComputerReceiverController {
       try? fileManager.removeItem(at: root)
       try? fileManager.createDirectory(at: root, withIntermediateDirectories: true)
     }
-    server = ComputerReceiverServer(rootURL: root, bundle: bundle)
+    #if E2E
+      let binding: (any ComputerReceiverBinding)? = usesSimulatedReadyState
+        ? E2EDeterministicComputerReceiverBinding()
+        : nil
+      let credentials: ComputerReceiverCredentials? = usesSimulatedReadyState
+        ? ComputerReceiverCredentials(
+          pairingCode: "482731",
+          bearerToken: "e2e-deterministic-receiver-token"
+        )
+        : nil
+    #else
+      let binding: (any ComputerReceiverBinding)? = nil
+      let credentials: ComputerReceiverCredentials? = nil
+    #endif
+    server = ComputerReceiverServer(
+      rootURL: root,
+      bundle: bundle,
+      binding: binding,
+      credentials: credentials
+    )
     mirroringDropAdapter = MirroringDropAdapter(rootURL: root, fileManager: fileManager)
   }
 
   func start(model: PlayerModel) {
     guard startTask == nil else { return }
-    if usesSimulatedReadyState {
-      address = "http://192.168.1.42:49152"
-      pairingCode = "482731"
-      receiverIsRunning = true
-      if usesSimulatedCompletion {
-        phase = .completed(message: "Project Hail Mary added", addedBookCount: 1)
-      } else if usesSimulatedPause {
-        phase = .paused(
-          name: "Project Hail Mary",
-          completedBytes: 734_003_200,
-          totalBytes: 1_468_006_400
-        )
-      } else if usesSimulatedDropProgress {
-        phase = .preparingDrop(name: "Project Hail Mary", completedItems: 1, totalItems: 3)
-      } else {
-        phase = .ready
-      }
-      return
-    }
     phase = .starting
     startTask = Task { [weak self] in
       guard let self else { return }
@@ -117,7 +118,7 @@ final class ComputerReceiverController {
     dropOperation = nil
     activeDropSession = nil
     receiverIsRunning = false
-    if !usesSimulatedReadyState { Task { await server.stop() } }
+    Task { await server.stop() }
     phase = .idle
   }
 
@@ -213,6 +214,20 @@ final class ComputerReceiverController {
       self.address = address
       self.pairingCode = pairingCode
       phase = .ready
+    case .httpExchange(let exchange):
+      httpExchange = exchange
+      guard usesSimulatedReadyState else { return }
+      if usesSimulatedCompletion {
+        phase = .completed(message: "Project Hail Mary added", addedBookCount: 1)
+      } else if usesSimulatedPause {
+        phase = .paused(
+          name: "Project Hail Mary",
+          completedBytes: 734_003_200,
+          totalBytes: 1_468_006_400
+        )
+      } else if usesSimulatedDropProgress {
+        phase = .preparingDrop(name: "Project Hail Mary", completedItems: 1, totalItems: 3)
+      }
     case .connected(let clientName):
       phase = .connected(clientName)
     case .receiving(let name, let completedBytes, let totalBytes):
@@ -298,6 +313,16 @@ struct ComputerReceiverView: View {
       }
       .accessibilityIdentifier("computer-receiver-screen")
       .accessibilityValue(accessibilityState)
+      #if E2E
+        .overlay(alignment: .topLeading) {
+          Color.clear
+            .frame(width: 1, height: 1)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Computer receiver HTTP exchange")
+            .accessibilityIdentifier("computer-receiver-http-probe")
+            .accessibilityValue(httpExchangeValue)
+        }
+      #endif
     }
   }
 
@@ -572,6 +597,13 @@ struct ComputerReceiverView: View {
     case .failed: "receiver:failed"
     }
   }
+
+  #if E2E
+    private var httpExchangeValue: String {
+      guard let exchange = controller.httpExchange else { return "http:none" }
+      return "http:\(exchange.method):\(exchange.path):status=\(exchange.status)"
+    }
+  #endif
 
   private func requestStop() {
     if controller.phase.isActivelyReceiving { showStopConfirmation = true }

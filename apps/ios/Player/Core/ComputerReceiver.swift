@@ -17,6 +17,7 @@ struct DirectImportOutcome: Sendable, Equatable {
 
 enum ComputerReceiverEvent: Sendable, Equatable {
   case ready(address: String, pairingCode: String)
+  case httpExchange(ComputerReceiverHTTPExchange)
   case connected(clientName: String)
   case receiving(name: String, completedBytes: Int64, totalBytes: Int64)
   case paused(name: String, completedBytes: Int64, totalBytes: Int64)
@@ -30,6 +31,38 @@ enum ComputerReceiverEvent: Sendable, Equatable {
 struct ComputerReceiverReady: Sendable, Equatable {
   var address: String
   var pairingCode: String
+}
+
+struct ComputerReceiverHTTPExchange: Sendable, Equatable {
+  var method: String
+  var path: String
+  var status: Int
+}
+
+struct ComputerReceiverBoundEndpoint: Sendable, Equatable {
+  var host: String
+  var port: UInt16
+}
+
+struct ComputerReceiverCredentials: Sendable, Equatable {
+  var pairingCode: String
+  var bearerToken: String
+}
+
+protocol ComputerReceiverConnection: AnyObject, Sendable {
+  func start(on queue: DispatchQueue)
+  func receiveData(maximumLength: Int) async throws -> Data?
+  func sendData(_ data: Data) async throws
+  func cancel()
+}
+
+protocol ComputerReceiverBinding: Sendable {
+  typealias ConnectionHandler = @Sendable (any ComputerReceiverConnection) async -> Void
+
+  func start(connectionHandler: @escaping ConnectionHandler) async throws
+    -> ComputerReceiverBoundEndpoint
+  func activate() async
+  func stop() async
 }
 
 final class ComputerReceiverPortPreference: @unchecked Sendable {
@@ -445,14 +478,17 @@ actor ComputerReceiverServer {
   private let store: ComputerImportStore
   private let bundle: Bundle
   private let portPreference: ComputerReceiverPortPreference
+  private let injectedBinding: (any ComputerReceiverBinding)?
+  private let injectedCredentials: ComputerReceiverCredentials?
   private var listener: NWListener?
+  private var isRunning = false
   private var pairingCode = ""
   private var bearerToken = ""
   private var importHandler: ImportHandler?
   private var eventHandler: EventHandler?
   private var startContinuation: CheckedContinuation<UInt16, any Error>?
   private var stopContinuation: CheckedContinuation<Void, Never>?
-  private var connections: [ObjectIdentifier: NWConnection] = [:]
+  private var connections: [UUID: any ComputerReceiverConnection] = [:]
   private var activeImports: [UUID: Task<Void, Never>] = [:]
   private var failedPairingAttempts = 0
   private var pairedClientName = "Computer"
@@ -460,51 +496,77 @@ actor ComputerReceiverServer {
   init(
     rootURL: URL,
     bundle: Bundle = .main,
-    portPreference: ComputerReceiverPortPreference = .shared
+    portPreference: ComputerReceiverPortPreference = .shared,
+    binding: (any ComputerReceiverBinding)? = nil,
+    credentials: ComputerReceiverCredentials? = nil
   ) {
     store = ComputerImportStore(rootURL: rootURL)
     self.bundle = bundle
     self.portPreference = portPreference
+    injectedBinding = binding
+    injectedCredentials = credentials
   }
 
   func start(importHandler: @escaping ImportHandler, eventHandler: @escaping EventHandler) async throws -> ComputerReceiverReady {
-    if listener != nil { throw ComputerReceiverError.alreadyRunning }
+    if isRunning { throw ComputerReceiverError.alreadyRunning }
+    isRunning = true
     self.importHandler = importHandler
     self.eventHandler = eventHandler
-    pairingCode = String(format: "%06d", Int.random(in: 0...999_999))
-    bearerToken = Self.randomToken()
+    pairingCode = injectedCredentials?.pairingCode
+      ?? String(format: "%06d", Int.random(in: 0...999_999))
+    bearerToken = injectedCredentials?.bearerToken ?? Self.randomToken()
     failedPairingAttempts = 0
 
-    let port: UInt16
-    if let preferredPort = portPreference.preferredPort() {
-      do {
-        port = try await startListener(on: NWEndpoint.Port(rawValue: preferredPort) ?? .any)
-      } catch {
-        logger.notice(
-          "Preferred receiver port \(preferredPort, privacy: .public) was unavailable; selecting another port"
+    do {
+      let endpoint: ComputerReceiverBoundEndpoint
+      if let injectedBinding {
+        endpoint = try await injectedBinding.start { [weak self] connection in
+          await self?.accept(connection)
+        }
+      } else {
+        let port: UInt16
+        if let preferredPort = portPreference.preferredPort() {
+          do {
+            port = try await startListener(on: NWEndpoint.Port(rawValue: preferredPort) ?? .any)
+          } catch {
+            logger.notice(
+              "Preferred receiver port \(preferredPort, privacy: .public) was unavailable; selecting another port"
+            )
+            listener?.cancel()
+            listener = nil
+            startContinuation = nil
+            isRunning = true
+            port = try await startListener(on: .any)
+          }
+        } else {
+          port = try await startListener(on: .any)
+        }
+        portPreference.recordBoundPort(port)
+        endpoint = ComputerReceiverBoundEndpoint(
+          host: Self.localAddress() ?? ProcessInfo.processInfo.hostName,
+          port: port
         )
-        listener?.cancel()
-        listener = nil
-        startContinuation = nil
-        port = try await startListener(on: .any)
       }
-    } else {
-      port = try await startListener(on: .any)
+      let formattedHost = endpoint.host.contains(":") ? "[\(endpoint.host)]" : endpoint.host
+      let address = "http://\(formattedHost):\(endpoint.port)"
+      let ready = ComputerReceiverReady(address: address, pairingCode: pairingCode)
+      await eventHandler(.ready(address: address, pairingCode: pairingCode))
+      await injectedBinding?.activate()
+      return ready
+    } catch {
+      isRunning = false
+      self.importHandler = nil
+      self.eventHandler = nil
+      throw error
     }
-    portPreference.recordBoundPort(port)
-    let host = Self.localAddress() ?? ProcessInfo.processInfo.hostName
-    let formattedHost = host.contains(":") ? "[\(host)]" : host
-    let address = "http://\(formattedHost):\(port)"
-    let ready = ComputerReceiverReady(address: address, pairingCode: pairingCode)
-    await eventHandler(.ready(address: address, pairingCode: pairingCode))
-    return ready
   }
 
   private func startListener(on port: NWEndpoint.Port) async throws -> UInt16 {
     let listener = try NWListener(using: .tcp, on: port)
     listener.service = NWListener.Service(name: "Player", type: "_player-import._tcp")
     listener.newConnectionHandler = { [weak self] connection in
-      Task { await self?.accept(connection) }
+      let wrapped = NWComputerReceiverConnection(connection: connection)
+      Task { await self?.accept(wrapped) }
     }
     listener.stateUpdateHandler = { [weak self, weak listener] state in
       switch state {
@@ -539,13 +601,16 @@ actor ComputerReceiverServer {
   func stop() async {
     for connection in connections.values { connection.cancel() }
     connections.removeAll()
-    if let listener {
+    if let injectedBinding {
+      await injectedBinding.stop()
+    } else if let listener {
       await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
         stopContinuation = continuation
         listener.cancel()
       }
     }
     listener = nil
+    isRunning = false
     await store.cleanupReceivingSessions()
     importHandler = nil
     startContinuation = nil
@@ -562,6 +627,7 @@ actor ComputerReceiverServer {
   private func listenerFailed(listener: NWListener, message: String) {
     guard self.listener === listener else { return }
     self.listener = nil
+    isRunning = false
     startContinuation?.resume(throwing: ComputerReceiverError.listenerFailed(message))
     startContinuation = nil
     stopContinuation?.resume()
@@ -571,27 +637,33 @@ actor ComputerReceiverServer {
   private func listenerCancelled(listener: NWListener) {
     guard self.listener === listener else { return }
     self.listener = nil
+    isRunning = false
     stopContinuation?.resume()
     stopContinuation = nil
   }
 
-  private func accept(_ connection: NWConnection) async {
+  private func accept(_ connection: any ComputerReceiverConnection) async {
     guard connections.count < 8 else {
       connection.cancel()
       return
     }
-    let id = ObjectIdentifier(connection)
+    let id = UUID()
     connections[id] = connection
-    connection.start(queue: queue)
+    connection.start(on: queue)
     await handle(connection)
     connections[id] = nil
   }
 
-  private func handle(_ connection: NWConnection) async {
+  private func handle(_ connection: any ComputerReceiverConnection) async {
     do {
       let request = try await HTTPRequest.read(from: connection)
       let response = try await route(request, connection: connection)
       try await response.send(to: connection)
+      await eventHandler?(.httpExchange(ComputerReceiverHTTPExchange(
+        method: request.method,
+        path: request.path,
+        status: response.status
+      )))
     } catch {
       let response = HTTPResponse.json(
         status: error.httpStatus,
@@ -602,7 +674,10 @@ actor ComputerReceiverServer {
     connection.cancel()
   }
 
-  private func route(_ request: HTTPRequest, connection: NWConnection) async throws -> HTTPResponse {
+  private func route(
+    _ request: HTTPRequest,
+    connection: any ComputerReceiverConnection
+  ) async throws -> HTTPResponse {
     if request.method == "GET", !request.path.hasPrefix("/api/") {
       return try staticResponse(path: request.path)
     }
@@ -840,7 +915,7 @@ private struct HTTPRequest {
   var contentLength: Int64
   var initialBody: Data
 
-  static func read(from connection: NWConnection) async throws -> HTTPRequest {
+  static func read(from connection: any ComputerReceiverConnection) async throws -> HTTPRequest {
     var accumulated = Data()
     let separator = Data("\r\n\r\n".utf8)
     while accumulated.range(of: separator) == nil {
@@ -875,7 +950,10 @@ private struct HTTPRequest {
     )
   }
 
-  func bodyData(from connection: NWConnection, maximumBytes: Int) async throws -> Data {
+  func bodyData(
+    from connection: any ComputerReceiverConnection,
+    maximumBytes: Int
+  ) async throws -> Data {
     guard contentLength <= Int64(maximumBytes) else { throw ComputerReceiverError.bodyTooLarge }
     var body = initialBody.prefix(Int(contentLength))
     while body.count < contentLength {
@@ -888,7 +966,7 @@ private struct HTTPRequest {
   }
 
   func streamBody(
-    from connection: NWConnection,
+    from connection: any ComputerReceiverConnection,
     to url: URL,
     startingOffset: Int64 = 0,
     progress: @escaping @Sendable (Int64) async -> Void
@@ -936,7 +1014,7 @@ private struct HTTPResponse {
     return HTTPResponse(status: status, contentType: "application/json; charset=utf-8", body: body)
   }
 
-  func send(to connection: NWConnection) async throws {
+  func send(to connection: any ComputerReceiverConnection) async throws {
     let reason: String = switch status {
     case 200: "OK"
     case 201: "Created"
@@ -965,10 +1043,20 @@ private struct HTTPResponse {
   }
 }
 
-private extension NWConnection {
+private final class NWComputerReceiverConnection: ComputerReceiverConnection, @unchecked Sendable {
+  private let connection: NWConnection
+
+  init(connection: NWConnection) {
+    self.connection = connection
+  }
+
+  func start(on queue: DispatchQueue) {
+    connection.start(queue: queue)
+  }
+
   func receiveData(maximumLength: Int) async throws -> Data? {
     try await withCheckedThrowingContinuation { continuation in
-      receive(minimumIncompleteLength: 1, maximumLength: maximumLength) {
+      connection.receive(minimumIncompleteLength: 1, maximumLength: maximumLength) {
         data, _, isComplete, error in
         if let error { continuation.resume(throwing: error) }
         else if let data, !data.isEmpty { continuation.resume(returning: data) }
@@ -980,13 +1068,106 @@ private extension NWConnection {
 
   func sendData(_ data: Data) async throws {
     try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-      send(content: data, completion: .contentProcessed { error in
+      connection.send(content: data, completion: .contentProcessed { error in
         if let error { continuation.resume(throwing: error) }
         else { continuation.resume() }
       })
     }
   }
+
+  func cancel() {
+    connection.cancel()
+  }
 }
+
+#if E2E
+  actor E2EDeterministicComputerReceiverBinding: ComputerReceiverBinding {
+    private var connection: E2ERawHTTPConnection?
+    private var connectionHandler: ConnectionHandler?
+
+    func start(connectionHandler: @escaping ConnectionHandler) async throws
+      -> ComputerReceiverBoundEndpoint
+    {
+      guard connection == nil else { throw ComputerReceiverError.alreadyRunning }
+      let connection = E2ERawHTTPConnection(request: Data(
+        "GET / HTTP/1.1\r\nHost: 192.168.1.42:49152\r\nConnection: close\r\n\r\n".utf8
+      ))
+      self.connection = connection
+      self.connectionHandler = connectionHandler
+      return ComputerReceiverBoundEndpoint(host: "192.168.1.42", port: 49_152)
+    }
+
+    func activate() {
+      guard let connection, let connectionHandler else { return }
+      self.connectionHandler = nil
+      Task { await connectionHandler(connection) }
+    }
+
+    func stop() async {
+      connection?.cancel()
+      connection = nil
+      connectionHandler = nil
+    }
+
+    func responseData() async -> Data? {
+      await connection?.responseData
+    }
+  }
+
+  private final class E2ERawHTTPConnection: ComputerReceiverConnection, @unchecked Sendable {
+    private actor State {
+      var request: Data?
+      var response = Data()
+      var isCancelled = false
+
+      init(request: Data) {
+        self.request = request
+      }
+
+      func receive(maximumLength: Int) -> Data? {
+        guard !isCancelled, let request else { return nil }
+        let count = min(maximumLength, request.count)
+        let result = Data(request.prefix(count))
+        let remainder = Data(request.dropFirst(count))
+        self.request = remainder.isEmpty ? nil : remainder
+        return result
+      }
+
+      func send(_ data: Data) {
+        guard !isCancelled else { return }
+        response.append(data)
+      }
+
+      func cancel() {
+        isCancelled = true
+      }
+    }
+
+    private let state: State
+
+    init(request: Data) {
+      state = State(request: request)
+    }
+
+    func start(on queue: DispatchQueue) {}
+
+    func receiveData(maximumLength: Int) async throws -> Data? {
+      await state.receive(maximumLength: maximumLength)
+    }
+
+    func sendData(_ data: Data) async throws {
+      await state.send(data)
+    }
+
+    func cancel() {
+      Task { await state.cancel() }
+    }
+
+    var responseData: Data {
+      get async { await state.response }
+    }
+  }
+#endif
 
 enum ComputerReceiverError: LocalizedError {
   case alreadyRunning

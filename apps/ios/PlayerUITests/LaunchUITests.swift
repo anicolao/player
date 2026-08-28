@@ -71,6 +71,11 @@ final class LaunchUITests: XCTestCase {
           "receiver:ready",
           "The receiver is ready before the listener visits the computer"
         ),
+        .valueEquals(
+          anyElement(app, "computer-receiver-http-probe"),
+          "http:GET:/:status=200",
+          "The production receiver parsed and served a deterministic raw browser request"
+        ),
         StepVerification(specification: "A copyable local-network address is shown") {
           let address = app.staticTexts["computer-receiver-address"]
           return address.waitForExistence(timeout: TestStepHelper.conditionTimeout)
