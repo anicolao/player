@@ -266,6 +266,88 @@ final class ComputerReceiverTests: XCTestCase {
     XCTAssertTrue(rawResponse.contains("Send audiobooks to Player"))
   }
 
+  func testDeterministicPausedBindingDrivesProductionInterruptedUploadEvents() async throws {
+    let root = temporaryRoot()
+    let scenarioFinished = expectation(
+      description: "The deterministic transport finished its production HTTP scenario"
+    )
+    let binding = E2EDeterministicComputerReceiverBinding(
+      scenario: .paused,
+      scenarioFinished: { scenarioFinished.fulfill() }
+    )
+    var observedEvents: [ComputerReceiverEvent] = []
+    let server = ComputerReceiverServer(
+      rootURL: root,
+      bundle: .main,
+      portPreference: try isolatedPortPreference(),
+      binding: binding,
+      credentials: ComputerReceiverCredentials(
+        pairingCode: "482731",
+        bearerToken: "e2e-deterministic-receiver-token"
+      )
+    )
+    registerCleanup(for: server, root: root)
+
+    _ = try await server.start(
+      importHandler: successfulReceiverImport,
+      eventHandler: { observedEvents.append($0) }
+    )
+    await fulfillment(of: [scenarioFinished], timeout: 2)
+
+    XCTAssertTrue(observedEvents.contains(.connected(clientName: "Bookshelf E2E Computer")))
+    XCTAssertTrue(observedEvents.contains(.receiving(
+      name: "Project Hail Mary",
+      completedBytes: 734_003,
+      totalBytes: 1_468_006
+    )))
+    XCTAssertEqual(observedEvents.last, .paused(
+      name: "Project Hail Mary",
+      completedBytes: 734_003,
+      totalBytes: 1_468_006
+    ))
+    XCTAssertFalse(observedEvents.contains(where: {
+      if case .completed = $0 { return true }
+      return false
+    }))
+  }
+
+  func testCompletedScenarioIntentWithoutProductionCompletionEventRemainsReady() async throws {
+    let root = temporaryRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let scenarioFinished = expectation(
+      description: "The ready-only production exchange completed"
+    )
+    let readyOnlyBinding = E2EDeterministicComputerReceiverBinding(
+      scenario: .ready,
+      scenarioFinished: { scenarioFinished.fulfill() }
+    )
+    let model = makeReceiverModel(root: root.appending(path: "Model"))
+    await model.restore()
+    let completedIntent = try receiverConfiguration(
+      arguments: ["-e2e-computer-receiver-completed"],
+      launchIdentifier: "completed-intent-without-event"
+    )
+    let controller = ComputerReceiverController(
+      launchConfiguration: completedIntent,
+      applicationSupportURL: root.appending(path: "ApplicationSupport"),
+      temporaryDirectory: root.appending(path: "Temporary"),
+      bindingOverride: readyOnlyBinding,
+      credentialsOverride: ComputerReceiverCredentials(
+        pairingCode: "482731",
+        bearerToken: "e2e-deterministic-receiver-token"
+      )
+    )
+
+    controller.start(model: model)
+    await fulfillment(of: [scenarioFinished], timeout: 2)
+
+    XCTAssertEqual(controller.phase, .ready)
+    XCTAssertEqual(controller.productionEvidence, "event=http:GET:/:status=200")
+    XCTAssertTrue(model.library.books.isEmpty)
+    XCTAssertTrue(model.library.importJobs.isEmpty)
+    controller.stop()
+  }
+
   private func receiverConfiguration(
     arguments: [String],
     launchIdentifier: String = "receiver-test"
@@ -282,6 +364,21 @@ final class ComputerReceiverTests: XCTestCase {
 
   private func e2eLaunch(fixture: E2EFixture) -> E2ELaunchConfiguration {
     E2ELaunchConfiguration(fixture: fixture, resetPolicy: .reset)
+  }
+
+  private func makeReceiverModel(root: URL) -> PlayerModel {
+    PlayerModel(environment: PlayerEnvironment(
+      persistence: InMemoryLibraryStore(snapshot: .empty),
+      media: FileSystemMediaManager(rootURL: root),
+      inspector: DeterministicAudioInspector(
+        result: .failure(.unreadableAudio("No import should occur."))
+      ),
+      playback: DeterministicPlaybackController(),
+      clock: FixedPlayerClock(value: Date(timeIntervalSince1970: 1_700_000_000)),
+      ids: DeterministicPlayerIDGenerator(values: (1...8).map {
+        UUID(uuidString: String(format: "71000000-0000-0000-0000-%012d", $0))!
+      })
+    ))
   }
 
   func testFolderTransferPreservesBookNameAndRemovesIncomingCopyAfterImport() async throws {

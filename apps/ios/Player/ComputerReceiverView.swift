@@ -168,12 +168,15 @@ final class ComputerReceiverController {
   private(set) var pairingCode = ""
   private(set) var receiverIsRunning = false
   private(set) var httpExchange: ComputerReceiverHTTPExchange?
+  private(set) var productionEvidence = "event=none"
   @ObservationIgnored private let server: ComputerReceiverServer
   @ObservationIgnored private let mirroringDropAdapter: MirroringDropAdapter
   let transportRootURL: URL
   #if E2E
-    @ObservationIgnored private let simulatedScenario: E2EComputerReceiverLaunchConfiguration.Scenario?
+    @ObservationIgnored private let scenarioBinding: E2EDeterministicComputerReceiverBinding?
   #endif
+  @ObservationIgnored private var baselineBookIDs: Set<UUID> = []
+  @ObservationIgnored private var baselineJobIDs: Set<UUID> = []
   @ObservationIgnored private var startTask: Task<Void, Never>?
   @ObservationIgnored private var dropTask: Task<Void, Never>?
   @ObservationIgnored private var dropOperation: MirroringDropMaterializationOperation?
@@ -184,11 +187,10 @@ final class ComputerReceiverController {
     bundle: Bundle = .main,
     launchConfiguration: E2EComputerReceiverLaunchConfiguration = .production,
     applicationSupportURL: URL? = nil,
-    temporaryDirectory: URL? = nil
+    temporaryDirectory: URL? = nil,
+    bindingOverride: (any ComputerReceiverBinding)? = nil,
+    credentialsOverride: ComputerReceiverCredentials? = nil
   ) {
-    #if E2E
-      simulatedScenario = launchConfiguration.scenario
-    #endif
     let support = applicationSupportURL ?? (try? fileManager.url(
       for: .applicationSupportDirectory,
       in: .userDomainMask,
@@ -215,19 +217,23 @@ final class ComputerReceiverController {
       // Reopening the sheet in that process must retain accepted imports.
       try? fileManager.createDirectory(at: root, withIntermediateDirectories: true)
     }
+    mirroringDropAdapter = MirroringDropAdapter(rootURL: root, fileManager: fileManager)
     #if E2E
-      let binding: (any ComputerReceiverBinding)? = simulatedScenario != nil
-        ? E2EDeterministicComputerReceiverBinding()
-        : nil
-      let credentials: ComputerReceiverCredentials? = simulatedScenario != nil
+      let defaultBinding = launchConfiguration.scenario.map {
+        E2EDeterministicComputerReceiverBinding(scenario: $0)
+      }
+      let binding: (any ComputerReceiverBinding)? = bindingOverride ?? defaultBinding
+      scenarioBinding = binding as? E2EDeterministicComputerReceiverBinding
+      let credentials: ComputerReceiverCredentials? = credentialsOverride
+        ?? (launchConfiguration.scenario != nil
         ? ComputerReceiverCredentials(
           pairingCode: "482731",
           bearerToken: "e2e-deterministic-receiver-token"
         )
-        : nil
+        : nil)
     #else
-      let binding: (any ComputerReceiverBinding)? = nil
-      let credentials: ComputerReceiverCredentials? = nil
+      let binding = bindingOverride
+      let credentials = credentialsOverride
     #endif
     server = ComputerReceiverServer(
       rootURL: root,
@@ -235,20 +241,27 @@ final class ComputerReceiverController {
       binding: binding,
       credentials: credentials
     )
-    mirroringDropAdapter = MirroringDropAdapter(rootURL: root, fileManager: fileManager)
   }
 
   func start(model: PlayerModel) {
     guard startTask == nil else { return }
+    baselineBookIDs = Set(model.library.books.map(\.id))
+    baselineJobIDs = Set(model.library.importJobs.map(\.id))
+    productionEvidence = "event=none"
     phase = .starting
     startTask = Task { [weak self] in
       guard let self else { return }
       do {
         _ = try await server.start(
           importHandler: { urls in await model.importFromComputer(urls) },
-          eventHandler: { [weak self] event in self?.apply(event) }
+          eventHandler: { [weak self] event in self?.apply(event, model: model) }
         )
         receiverIsRunning = true
+        #if E2E
+          await scenarioBinding?.driveDropIfConfigured { [weak self] in
+            self?.startDeterministicDrop(model: model)
+          }
+        #endif
       } catch {
         receiverIsRunning = false
         phase = .failed(error.localizedDescription)
@@ -285,7 +298,7 @@ final class ComputerReceiverController {
       do {
         _ = try await server.start(
           importHandler: { urls in await model.importFromComputer(urls) },
-          eventHandler: { [weak self] event in self?.apply(event) }
+          eventHandler: { [weak self] event in self?.apply(event, model: model) }
         )
         receiverIsRunning = true
       } catch {
@@ -298,6 +311,7 @@ final class ComputerReceiverController {
   func receiveAnother() {
     guard receiverIsRunning else { return }
     phase = .ready
+    productionEvidence = "event=ready-after-completion"
   }
 
   @discardableResult
@@ -308,6 +322,15 @@ final class ComputerReceiverController {
     // UIDropSession. Retaining only its item providers lets UIKit tear that
     // monitor down while a large Finder file is still being materialized.
     activeDropSession = session
+    guard startDrop(providers.map(MirroringItemProvider.init), model: model) else {
+      activeDropSession = nil
+      return false
+    }
+    return true
+  }
+
+  private func startDrop(_ providers: [MirroringItemProvider], model: PlayerModel) -> Bool {
+    guard !providers.isEmpty, dropTask == nil else { return false }
     let operation: MirroringDropMaterializationOperation
     do {
       // This call must remain synchronous with UIDropInteraction.performDrop.
@@ -318,28 +341,32 @@ final class ComputerReceiverController {
       phase = .failed(error.localizedDescription)
       return false
     }
-    phase = .preparingDrop(name: "Dropped items", completedItems: 0, totalItems: providers.count)
+    applyDropProgress(MirroringDropProgress(
+      currentName: "Dropped items",
+      completedItems: 0,
+      totalItems: providers.count
+    ))
     dropTask = Task { [weak self] in
       guard let self else { return }
       do {
         let materialization = try await operation.value {
           [weak self] progress in
-          self?.phase = .preparingDrop(
-            name: progress.currentName,
-            completedItems: progress.completedItems,
-            totalItems: progress.totalItems
-          )
+          self?.applyDropProgress(progress)
         }
         defer { mirroringDropAdapter.cleanup(materialization) }
         phase = .importing(materialization.displayName)
+        productionEvidence = "event=drop-importing:name=\(materialization.displayName)"
         let outcome = await model.importFromComputer(materialization.selectionURLs)
         switch outcome.state {
         case .completed:
-          phase = .completed(message: outcome.message, addedBookCount: outcome.addedBookCount)
+          apply(.completed(
+            message: outcome.message,
+            addedBookCount: outcome.addedBookCount
+          ), model: model)
         case .needsReview:
-          phase = .needsReview(outcome.message)
+          apply(.needsReview(message: outcome.message), model: model)
         case .failed:
-          phase = .failed(outcome.message)
+          apply(.failed(message: outcome.message), model: model)
         }
       } catch is CancellationError {
         if phase != .idle {
@@ -355,46 +382,122 @@ final class ComputerReceiverController {
     return true
   }
 
-  private func apply(_ event: ComputerReceiverEvent) {
+  #if E2E
+    private func startDeterministicDrop(model: PlayerModel) {
+      let sourceRoot = transportRootURL.appending(
+        path: "DeterministicDropSource",
+        directoryHint: .isDirectory
+      )
+      let source = sourceRoot.appending(path: "Opening.m4a")
+      do {
+        try FileManager.default.createDirectory(
+          at: sourceRoot,
+          withIntermediateDirectories: true
+        )
+        try Data("deterministic mirrored-drop bytes".utf8).write(
+          to: source,
+          options: .atomic
+        )
+      } catch {
+        phase = .failed(error.localizedDescription)
+        productionEvidence = "event=drop-fixture-failed"
+        return
+      }
+
+      let typeIdentifier = UTType(filenameExtension: "m4a")?.identifier
+        ?? "public.mpeg-4-audio"
+      let completed = MirroringItemProvider(
+        registeredTypeIdentifiers: [typeIdentifier],
+        suggestedName: source.lastPathComponent,
+        canLoadURLObject: false,
+        loadURLObject: { completion in
+          completion(nil, NSError(domain: NSItemProvider.errorDomain, code: -1))
+          return Progress(totalUnitCount: 1)
+        },
+        loadInPlace: { _, completion in
+          completion(nil, false, NSError(domain: NSItemProvider.errorDomain, code: -1))
+          return Progress(totalUnitCount: 1)
+        },
+        loadFile: { _, completion in
+          completion(source, nil)
+          return Progress(totalUnitCount: 1)
+        }
+      )
+      let pending = ["Project Hail Mary", "Closing credits"].map { name in
+        MirroringItemProvider(
+          registeredTypeIdentifiers: [typeIdentifier],
+          suggestedName: name,
+          canLoadURLObject: false,
+          loadURLObject: { _ in Progress(totalUnitCount: 1) },
+          loadInPlace: { _, _ in Progress(totalUnitCount: 1) },
+          loadFile: { _, _ in Progress(totalUnitCount: 1) }
+        )
+      }
+      if !startDrop([completed] + pending, model: model) {
+        phase = .failed("The deterministic mirrored drop did not start.")
+        productionEvidence = "event=drop-start-failed"
+      }
+    }
+  #endif
+
+  private func applyDropProgress(_ progress: MirroringDropProgress) {
+    phase = .preparingDrop(
+      name: progress.currentName,
+      completedItems: progress.completedItems,
+      totalItems: progress.totalItems
+    )
+    productionEvidence = "event=drop-progress:name=\(progress.currentName):"
+      + "\(progress.completedItems)-of-\(progress.totalItems)"
+  }
+
+  private func apply(_ event: ComputerReceiverEvent, model: PlayerModel) {
     switch event {
     case .ready(let address, let pairingCode):
       self.address = address
       self.pairingCode = pairingCode
       phase = .ready
+      productionEvidence = "event=ready"
     case .httpExchange(let exchange):
       httpExchange = exchange
-      #if E2E
-        switch simulatedScenario {
-        case .completed:
-          phase = .completed(message: "Project Hail Mary added", addedBookCount: 1)
-        case .paused:
-          phase = .paused(
-            name: "Project Hail Mary",
-            completedBytes: 734_003_200,
-            totalBytes: 1_468_006_400
-          )
-        case .dropProgress:
-          phase = .preparingDrop(name: "Project Hail Mary", completedItems: 1, totalItems: 3)
-        case .ready, nil:
-          break
-        }
-      #endif
+      productionEvidence = "event=http:\(exchange.method):\(exchange.path):status=\(exchange.status)"
     case .connected(let clientName):
       phase = .connected(clientName)
+      productionEvidence = "event=connected:name=\(clientName)"
     case .receiving(let name, let completedBytes, let totalBytes):
       phase = .receiving(name: name, completedBytes: completedBytes, totalBytes: totalBytes)
+      productionEvidence = "event=http-receiving:name=\(name):\(completedBytes)-of-\(totalBytes)"
     case .paused(let name, let completedBytes, let totalBytes):
       phase = .paused(name: name, completedBytes: completedBytes, totalBytes: totalBytes)
+      productionEvidence = "event=http-paused:name=\(name):\(completedBytes)-of-\(totalBytes)"
     case .importing(let name):
       phase = .importing(name)
+      productionEvidence = "event=http-importing:name=\(name)"
     case .completed(let message, let addedBookCount):
-      phase = .completed(message: message, addedBookCount: addedBookCount)
+      let newBooks = model.library.books.filter { !baselineBookIDs.contains($0.id) }
+      let newBookIDs = Set(newBooks.map(\.id))
+      let committedJobs = model.library.importJobs.filter {
+        !baselineJobIDs.contains($0.id)
+          && $0.phase == .committed
+          && $0.committedBookID.map(newBookIDs.contains) == true
+      }
+      let corroborated = addedBookCount > 0
+        && newBooks.count == addedBookCount
+        && committedJobs.count == addedBookCount
+      productionEvidence = "event=http-completed:reported-books=\(addedBookCount):"
+        + "model-books=\(newBooks.count):committed-jobs=\(committedJobs.count):"
+        + "corroborated=\(corroborated)"
+      phase = corroborated
+        ? .completed(message: message, addedBookCount: addedBookCount)
+        : .failed("The receiver completion could not be confirmed in the Library.")
     case .needsReview(let message):
       phase = .needsReview(message)
+      productionEvidence = "event=http-needs-review"
     case .failed(let message):
       phase = .failed(message)
+      productionEvidence = "event=failed"
     case .stopped:
       if phase != .idle { phase = .idle }
+      productionEvidence = "event=stopped"
     }
   }
 }
@@ -437,7 +540,8 @@ struct ComputerReceiverView: View {
           .padding(.horizontal, 24)
           .padding(.vertical, 28)
         }
-        .accessibilityIdentifier("computer-receiver-scroll")
+        .accessibilityIdentifier("computer-receiver-screen")
+        .accessibilityValue(accessibilityState)
         .e2eScrollReadiness(
           id: "computer-receiver-scroll-readiness",
           containerID: "computer-receiver-scroll",
@@ -482,16 +586,22 @@ struct ComputerReceiverView: View {
       } message: {
         Text("The current transfer will stop. Files already added to your Library are not affected.")
       }
-      .accessibilityIdentifier("computer-receiver-screen")
-      .accessibilityValue(accessibilityState)
       #if E2E
         .overlay(alignment: .topLeading) {
-          Color.clear
-            .frame(width: 1, height: 1)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Computer receiver HTTP exchange")
-            .accessibilityIdentifier("computer-receiver-http-probe")
-            .accessibilityValue(httpExchangeValue)
+          VStack(spacing: 0) {
+            Color.clear
+              .frame(width: 1, height: 1)
+              .accessibilityElement(children: .ignore)
+              .accessibilityLabel("Computer receiver HTTP exchange")
+              .accessibilityIdentifier("computer-receiver-http-probe")
+              .accessibilityValue(httpExchangeValue)
+            Color.clear
+              .frame(width: 1, height: 1)
+              .accessibilityElement(children: .ignore)
+              .accessibilityLabel("Computer receiver production evidence")
+              .accessibilityIdentifier("computer-receiver-production-evidence")
+              .accessibilityValue(controller.productionEvidence)
+          }
         }
       #endif
     }

@@ -131,6 +131,11 @@ final class LaunchUITests: XCTestCase {
           "http:GET:/:status=200",
           "The production receiver parsed and served a deterministic raw browser request"
         ),
+        .valueEquals(
+          anyElement(app, "computer-receiver-production-evidence"),
+          "event=http:GET:/:status=200",
+          "Ready state is backed by the production server exchange"
+        ),
         StepVerification(specification: "A copyable local-network address is shown") {
           let address = app.staticTexts["computer-receiver-address"]
           return address.waitForExistence(timeout: TestStepHelper.conditionTimeout)
@@ -141,7 +146,7 @@ final class LaunchUITests: XCTestCase {
           "A six-digit pairing code is shown"
         ),
         .exists(
-          anyElement(app, "mirroring-import-tip"),
+          app.staticTexts["Using a Mac?"],
           "Supported locales also see the optional iPhone Mirroring path"
         ),
       ],
@@ -154,6 +159,10 @@ final class LaunchUITests: XCTestCase {
           self.anyElement(app, "computer-receiver-http-probe"),
           "http:GET:/:status=200"
         )
+          && self.hasExactValue(
+            self.anyElement(app, "computer-receiver-production-evidence"),
+            "event=http:GET:/:status=200"
+          )
           && app.staticTexts["computer-receiver-address"].label
             == "http://192.168.1.42:49152"
           && elementIsFullyVisible(
@@ -162,7 +171,7 @@ final class LaunchUITests: XCTestCase {
             requiresHittable: false
           )
           && elementIsFullyVisible(
-            self.anyElement(app, "mirroring-import-tip"),
+            app.staticTexts["Using a Mac?"],
             within: app.scrollViews["computer-receiver-screen"],
             requiresHittable: false
           )
@@ -190,6 +199,11 @@ final class LaunchUITests: XCTestCase {
           receivingApp.staticTexts["Project Hail Mary"],
           "The progress view identifies the book currently being received"
         ),
+        .valueEquals(
+          anyElement(receivingApp, "computer-receiver-production-evidence"),
+          "event=drop-progress:name=Project Hail Mary:1-of-3",
+          "The state comes from the production drop materializer's progress callback"
+        ),
       ],
       captureReadiness: receiverCaptureReadiness(
         app: receivingApp,
@@ -201,6 +215,10 @@ final class LaunchUITests: XCTestCase {
           within: receivingApp.scrollViews["computer-receiver-screen"],
           requiresHittable: false
         )
+          && self.hasExactValue(
+            self.anyElement(receivingApp, "computer-receiver-production-evidence"),
+            "event=drop-progress:name=Project Hail Mary:1-of-3"
+          )
           && elementIsFullyVisible(
             receivingApp.staticTexts["Project Hail Mary"],
             within: receivingApp.scrollViews["computer-receiver-screen"],
@@ -224,8 +242,13 @@ final class LaunchUITests: XCTestCase {
         ),
         .valueEquals(
           pausedApp.descendants(matching: .any)["computer-receiver-transfer"],
-          "receiving:734003200-of-1468006400",
+          "receiving:734003-of-1468006",
           "The iPhone reports the exact confirmed byte count"
+        ),
+        .valueEquals(
+          anyElement(pausedApp, "computer-receiver-production-evidence"),
+          "event=http-paused:name=Project Hail Mary:734003-of-1468006",
+          "The paused state is backed by the server's interrupted-upload event"
         ),
         .exists(
           pausedApp.staticTexts[
@@ -241,8 +264,12 @@ final class LaunchUITests: XCTestCase {
       ) {
         self.hasExactValue(
           pausedApp.descendants(matching: .any)["computer-receiver-transfer"],
-          "receiving:734003200-of-1468006400"
+          "receiving:734003-of-1468006"
         )
+          && self.hasExactValue(
+            self.anyElement(pausedApp, "computer-receiver-production-evidence"),
+            "event=http-paused:name=Project Hail Mary:734003-of-1468006"
+          )
           && elementIsFullyVisible(
             pausedApp.staticTexts[
               "The computer can retry from the confirmed progress shown here."
@@ -254,9 +281,15 @@ final class LaunchUITests: XCTestCase {
     )
 
     XCTAssertTrue(terminateAndWait(pausedApp))
-    let completedApp = makeApplication(additionalArguments: ["-e2e-computer-receiver-completed"])
+    let completedApp = makeApplication(
+      fixture: "single-audiobook-ready",
+      additionalArguments: ["-e2e-computer-receiver-completed"]
+    )
     completedApp.launch()
-    completedApp.buttons["receive-from-computer-empty-library"].tap()
+    completedApp.tabBars.buttons["Add"].tap()
+    XCTAssertTrue(
+      completedApp.scrollViews["computer-receiver-screen"].waitForExistence(timeout: 2)
+    )
     try tester.step(
       "computer-receiver-completed",
       description: "A completed transfer remains actionable for repeated imports",
@@ -274,6 +307,11 @@ final class LaunchUITests: XCTestCase {
           completedApp.buttons["finish-computer-receiver"],
           "The listener explicitly decides when receiving is finished"
         ),
+        .valueEquals(
+          anyElement(completedApp, "computer-receiver-production-evidence"),
+          "event=http-completed:reported-books=1:model-books=1:committed-jobs=1:corroborated=true",
+          "The receiver completion is corroborated by one new Book and committed import job"
+        ),
       ],
       captureReadiness: receiverCaptureReadiness(
         app: completedApp,
@@ -284,6 +322,10 @@ final class LaunchUITests: XCTestCase {
           completedApp.buttons["receive-another-audiobook"],
           within: completedApp.scrollViews["computer-receiver-screen"]
         )
+          && self.hasExactValue(
+            self.anyElement(completedApp, "computer-receiver-production-evidence"),
+            "event=http-completed:reported-books=1:model-books=1:committed-jobs=1:corroborated=true"
+          )
           && elementIsFullyVisible(
             completedApp.buttons["finish-computer-receiver"],
             within: completedApp.scrollViews["computer-receiver-screen"]
@@ -327,13 +369,16 @@ final class LaunchUITests: XCTestCase {
     tester.generateDocs()
   }
 
-  private func makeApplication(additionalArguments: [String] = []) -> XCUIApplication {
+  private func makeApplication(
+    fixture: String = "empty-library",
+    additionalArguments: [String] = []
+  ) -> XCUIApplication {
     let app = XCUIApplication()
     app.launchArguments += [
       "-e2e",
       "-e2e-reset",
       "-e2e-fixture",
-      "empty-library",
+      fixture,
       "-e2e-computer-receiver-ready",
       "-e2e-show-mirroring-tip",
       "-AppleLanguages", "(en)",

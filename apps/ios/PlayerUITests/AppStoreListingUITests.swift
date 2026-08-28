@@ -85,11 +85,17 @@ final class AppStoreListingUITests: XCTestCase {
     let receiverScrollReadiness = anyElement(receiver, "computer-receiver-scroll-readiness")
     let pairingCode = receiver.staticTexts["computer-receiver-pairing-code"]
     let chooseFromFiles = receiver.buttons["choose-from-files-computer-receiver"]
+    let receiverEvidence = anyElement(receiver, "computer-receiver-production-evidence")
     try tester.step(
       "receiver-ready",
       description: "The private receiver accepts books through a browser on any computer",
       verifications: [
         .valueEquals(receiverScreen, "receiver:ready", "The receiver is ready"),
+        .valueEquals(
+          receiverEvidence,
+          "event=http:GET:/:status=200",
+          "The ready state is backed by the production HTTP server"
+        ),
         .exists(pairingCode, "The pairing code is visible"),
         .exists(chooseFromFiles, "Files remains available"),
       ],
@@ -100,6 +106,7 @@ final class AppStoreListingUITests: XCTestCase {
         intendedSheetContentID: "computer-receiver-screen"
       ) {
         self.hasExactValue(receiverScreen, "receiver:ready")
+          && self.hasExactValue(receiverEvidence, "event=http:GET:/:status=200")
           && self.isSettledAtTop(
             receiverScrollReadiness,
             containerID: "computer-receiver-scroll"
@@ -132,6 +139,7 @@ final class AppStoreListingUITests: XCTestCase {
     let progressScrollReadiness = anyElement(progress, "computer-receiver-scroll-readiness")
     let dropProgress = progress.progressIndicators["mirroring-drop-progress"]
     let incomingTitle = progress.staticTexts["Project Hail Mary"]
+    let progressEvidence = anyElement(progress, "computer-receiver-production-evidence")
     try tester.step(
       "mirroring-drop-progress",
       description: "iPhone Mirroring makes Finder drag-and-drop the fastest Mac path",
@@ -139,6 +147,11 @@ final class AppStoreListingUITests: XCTestCase {
         .valueEquals(progressScreen, "receiver:preparing-mirrored-drop", "The mirrored drop is being prepared"),
         .exists(dropProgress, "Import progress is visible"),
         .exists(incomingTitle, "The incoming audiobook is named"),
+        .valueEquals(
+          progressEvidence,
+          "event=drop-progress:name=Project Hail Mary:1-of-3",
+          "The visible state is backed by the production drop progress callback"
+        ),
       ],
       captureReadiness: marketingCaptureReadiness(
         app: progress,
@@ -147,6 +160,10 @@ final class AppStoreListingUITests: XCTestCase {
         intendedSheetContentID: "computer-receiver-screen"
       ) {
         self.hasExactValue(progressScreen, "receiver:preparing-mirrored-drop")
+          && self.hasExactValue(
+            progressEvidence,
+            "event=drop-progress:name=Project Hail Mary:1-of-3"
+          )
           && self.isSettledAtTop(
             progressScrollReadiness,
             containerID: "computer-receiver-scroll"

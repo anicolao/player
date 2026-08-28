@@ -1082,35 +1082,156 @@ private final class NWComputerReceiverConnection: ComputerReceiverConnection, @u
 
 #if E2E
   actor E2EDeterministicComputerReceiverBinding: ComputerReceiverBinding {
-    private var connection: E2ERawHTTPConnection?
+    typealias Scenario = E2EComputerReceiverLaunchConfiguration.Scenario
+
+    private let scenario: Scenario
+    private let scenarioFinished: (@Sendable () -> Void)?
+    private var connections: [E2ERawHTTPConnection] = []
     private var connectionHandler: ConnectionHandler?
+    private var isActive = false
+
+    init(
+      scenario: Scenario = .ready,
+      scenarioFinished: (@Sendable () -> Void)? = nil
+    ) {
+      self.scenario = scenario
+      self.scenarioFinished = scenarioFinished
+    }
 
     func start(connectionHandler: @escaping ConnectionHandler) async throws
       -> ComputerReceiverBoundEndpoint
     {
-      guard connection == nil else { throw ComputerReceiverError.alreadyRunning }
-      let connection = E2ERawHTTPConnection(request: Data(
-        "GET / HTTP/1.1\r\nHost: 192.168.1.42:49152\r\nConnection: close\r\n\r\n".utf8
-      ))
-      self.connection = connection
+      guard !isActive else { throw ComputerReceiverError.alreadyRunning }
+      isActive = true
       self.connectionHandler = connectionHandler
       return ComputerReceiverBoundEndpoint(host: "192.168.1.42", port: 49_152)
     }
 
     func activate() {
-      guard let connection, let connectionHandler else { return }
-      self.connectionHandler = nil
-      Task { await connectionHandler(connection) }
+      guard isActive, connectionHandler != nil else { return }
+      Task { await runScenario() }
     }
 
     func stop() async {
-      connection?.cancel()
-      connection = nil
+      isActive = false
+      connections.forEach { $0.cancel() }
+      connections.removeAll()
       connectionHandler = nil
     }
 
     func responseData() async -> Data? {
-      await connection?.responseData
+      await connections.first?.responseData
+    }
+
+    func driveDropIfConfigured(
+      _ startDrop: @escaping @MainActor @Sendable () -> Void
+    ) async {
+      guard isActive, scenario == .dropProgress else { return }
+      await startDrop()
+    }
+
+    private func runScenario() async {
+      defer { scenarioFinished?() }
+      _ = await perform(Self.request(method: "GET", path: "/"))
+      guard isActive else { return }
+      switch scenario {
+      case .ready, .dropProgress:
+        return
+      case .paused:
+        await runUpload(completes: false)
+      case .completed:
+        await runUpload(completes: true)
+      }
+    }
+
+    private func runUpload(completes: Bool) async {
+      let pairBody = Data(#"{"code":"482731"}"#.utf8)
+      _ = await perform(Self.request(
+        method: "POST",
+        path: "/api/pair",
+        headers: ["X-Player-Client-Name": "Bookshelf E2E Computer"],
+        body: pairBody
+      ))
+      guard isActive else { return }
+
+      let totalBytes = completes ? 32 : 1_468_006
+      let createBody = Data(
+        "{\"entries\":[{\"path\":\"Project Hail Mary.m4a\",\"byteCount\":\(totalBytes)}],"
+          .utf8
+      ) + Data(#""selectionKind":"files","selectionName":"Project Hail Mary"}"#.utf8)
+      guard let response = await perform(Self.request(
+        method: "POST",
+        path: "/api/imports",
+        headers: Self.authorizationHeaders,
+        body: createBody
+      )), let sessionID = Self.sessionID(from: response), isActive else { return }
+
+      let body = Data(
+        repeating: 0x50,
+        count: completes ? totalBytes : totalBytes / 2
+      )
+      _ = await perform(Self.request(
+        method: "PUT",
+        path: "/api/imports/\(sessionID)/files/0",
+        headers: Self.authorizationHeaders.merging([
+          "Content-Type": "application/octet-stream",
+          "X-Player-Upload-Offset": "0",
+        ]) { _, new in new },
+        body: body,
+        advertisedContentLength: totalBytes
+      ))
+      guard completes, isActive else { return }
+      _ = await perform(Self.request(
+        method: "POST",
+        path: "/api/imports/\(sessionID)/complete",
+        headers: Self.authorizationHeaders
+      ))
+    }
+
+    private func perform(_ request: Data) async -> Data? {
+      guard isActive, let connectionHandler else { return nil }
+      let connection = E2ERawHTTPConnection(request: request)
+      connections.append(connection)
+      await connectionHandler(connection)
+      return await connection.responseData
+    }
+
+    private static let authorizationHeaders = [
+      "Authorization": "Bearer e2e-deterministic-receiver-token"
+    ]
+
+    private static func request(
+      method: String,
+      path: String,
+      headers: [String: String] = [:],
+      body: Data = Data(),
+      advertisedContentLength: Int? = nil
+    ) -> Data {
+      var lines = [
+        "\(method) \(path) HTTP/1.1",
+        "Host: 192.168.1.42:49152",
+        "Connection: close",
+      ]
+      for (name, value) in headers.sorted(by: { $0.key < $1.key }) {
+        lines.append("\(name): \(value)")
+      }
+      if !body.isEmpty || advertisedContentLength != nil {
+        lines.append("Content-Length: \(advertisedContentLength ?? body.count)")
+      }
+      var data = Data((lines.joined(separator: "\r\n") + "\r\n\r\n").utf8)
+      data.append(body)
+      return data
+    }
+
+    private static func sessionID(from response: Data) -> String? {
+      let separator = Data("\r\n\r\n".utf8)
+      guard let range = response.range(of: separator) else { return nil }
+      let body = response[range.upperBound...]
+      guard let object = try? JSONSerialization.jsonObject(with: Data(body)) as? [String: Any],
+        let id = object["id"] as? String,
+        UUID(uuidString: id) != nil
+      else { return nil }
+      return id.lowercased()
     }
   }
 
