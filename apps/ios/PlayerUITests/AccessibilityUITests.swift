@@ -561,7 +561,7 @@ final class AccessibilityUITests: XCTestCase {
       element.swipeUp(velocity: 1_600)
     case .libraryLongForm:
       // This velocity targets the measured 778...985-point Up Next clearance window.
-      element.swipeUp(velocity: 1_800)
+      element.swipeUp(velocity: 1_750)
     }
   }
 
