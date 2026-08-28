@@ -307,6 +307,246 @@
   }
 
   @MainActor
+  final class E2ELaunchRetryIsolationTests: XCTestCase {
+    func testResetLeaseIsSharedByImmutableConfigurationCopies() throws {
+      let configuration = try XCTUnwrap(E2ELaunchConfiguration.parse(arguments: [
+        "Player", "-e2e", "-e2e-reset", "-e2e-fixture", "empty-library",
+      ]))
+      let copiedConfiguration = configuration
+
+      XCTAssertTrue(configuration.consumeReset())
+      XCTAssertFalse(copiedConfiguration.consumeReset())
+      XCTAssertFalse(configuration.consumeReset())
+      XCTAssertEqual(configuration.resetPolicy, .reset)
+    }
+
+    func testLaunchRetryDoesNotReapplyFixtureReset() throws {
+      let root = FileManager.default.temporaryDirectory.appending(
+        path: "PlayerE2EEmptyLibrary",
+        directoryHint: .isDirectory
+      )
+      try? FileManager.default.removeItem(at: root)
+      defer { try? FileManager.default.removeItem(at: root) }
+      let configuration = E2ELaunchConfiguration(
+        fixture: .emptyLibrary,
+        resetPolicy: .reset
+      )
+
+      _ = try PlayerEnvironment.launchEnvironment(
+        e2eLaunchConfiguration: configuration,
+        playbackControls: .disabled
+      )
+      let sentinel = root.appending(path: "retry-sentinel.txt")
+      let sentinelData = Data("retry-must-preserve-first-attempt-state".utf8)
+      try sentinelData.write(to: sentinel, options: .atomic)
+
+      _ = try PlayerEnvironment.launchEnvironment(
+        e2eLaunchConfiguration: configuration,
+        playbackControls: .disabled
+      )
+      XCTAssertEqual(try Data(contentsOf: sentinel), sentinelData)
+    }
+
+    func testRetryDoesNotReapplyLegacyAlwaysResetFixture() throws {
+      let root = FileManager.default.temporaryDirectory.appending(
+        path: "PlayerE2ESingleAudiobook",
+        directoryHint: .isDirectory
+      )
+      try? FileManager.default.removeItem(at: root)
+      defer { try? FileManager.default.removeItem(at: root) }
+      let configuration = E2ELaunchConfiguration(
+        fixture: .singleAudiobookReady,
+        resetPolicy: .reset
+      )
+
+      _ = try PlayerEnvironment.launchEnvironment(
+        e2eLaunchConfiguration: configuration,
+        playbackControls: .disabled
+      )
+      let sentinel = root.appending(path: "retry-sentinel.txt")
+      let sentinelData = Data("single-book-retry-state".utf8)
+      try sentinelData.write(to: sentinel, options: .atomic)
+
+      _ = try PlayerEnvironment.launchEnvironment(
+        e2eLaunchConfiguration: configuration,
+        playbackControls: .disabled
+      )
+      XCTAssertEqual(try Data(contentsOf: sentinel), sentinelData)
+    }
+
+    func testMonetizationFixtureCannotResetCommittedCurrentBookState() throws {
+      let support = try FileManager.default.url(
+        for: .applicationSupportDirectory,
+        in: .userDomainMask,
+        appropriateFor: nil,
+        create: true
+      )
+      let committedRoot = support.appending(
+        path: "PlayerE2EPositionRestore",
+        directoryHint: .isDirectory
+      )
+      let monetizationRoot = support.appending(
+        path: "PlayerE2EMonetizationExhausted",
+        directoryHint: .isDirectory
+      )
+      try? FileManager.default.removeItem(at: committedRoot)
+      try? FileManager.default.removeItem(at: monetizationRoot)
+      try FileManager.default.createDirectory(at: committedRoot, withIntermediateDirectories: true)
+      defer {
+        try? FileManager.default.removeItem(at: committedRoot)
+        try? FileManager.default.removeItem(at: monetizationRoot)
+      }
+      let sentinel = committedRoot.appending(path: "position-restore-sentinel.txt")
+      let sentinelData = Data("position-restore-state".utf8)
+      try sentinelData.write(to: sentinel, options: .atomic)
+
+      _ = try PlayerEnvironment.launchEnvironment(
+        e2eLaunchConfiguration: E2ELaunchConfiguration(
+          fixture: .monetizationExhausted,
+          resetPolicy: .reset
+        ),
+        playbackControls: .disabled
+      )
+
+      XCTAssertEqual(try Data(contentsOf: sentinel), sentinelData)
+      XCTAssertTrue(FileManager.default.fileExists(atPath: monetizationRoot.path))
+    }
+  }
+
+  @MainActor
+  final class E2EPersistedFixtureIDTests: XCTestCase {
+    func testCommittedCurrentBookIDsAndClockResumeDeterministically() async throws {
+      let root = temporaryDirectory("committed-current-book")
+      defer { try? FileManager.default.removeItem(at: root) }
+      let initial = try PlayerEnvironment.committedCurrentBookEnvironment(
+        reset: true,
+        playbackControls: .disabled,
+        root: root
+      )
+      var snapshot = try await initial.persistence.load()
+      let persistedID = try XCTUnwrap(
+        UUID(uuidString: "21000000-0000-0000-0000-000000000012")
+      )
+      snapshot.books[0].title = "The Persisted Midnight Current"
+      snapshot.positionJournal.append(.acknowledged(
+        id: persistedID,
+        bookID: try XCTUnwrap(snapshot.books.first?.id),
+        positionMilliseconds: 13_000,
+        sequence: 2,
+        reason: .seek,
+        acknowledgedAt: initial.clock.now(),
+        previousEventID: snapshot.positionJournal.last?.id
+      ))
+      try await initial.persistence.save(snapshot)
+
+      let restored = try PlayerEnvironment.committedCurrentBookEnvironment(
+        reset: false,
+        playbackControls: .disabled,
+        root: root
+      )
+      let restoredSnapshot = try await restored.persistence.load()
+      let nextID = await restored.ids.next()
+      XCTAssertEqual(
+        nextID,
+        UUID(uuidString: "21000000-0000-0000-0000-000000000013")
+      )
+      XCTAssertEqual(restoredSnapshot.books.first?.title, "The Persisted Midnight Current")
+      XCTAssertEqual(restoredSnapshot.positionJournal.last?.id, persistedID)
+      XCTAssertEqual(restoredSnapshot.currentBookID, snapshot.currentBookID)
+      XCTAssertEqual(restored.clock.now(), Date(timeIntervalSince1970: 1_700_000_000))
+    }
+
+    func testMetadataRichBookIDsAndClockResumeDeterministically() async throws {
+      let root = temporaryDirectory("metadata-rich-book")
+      defer { try? FileManager.default.removeItem(at: root) }
+      let initial = try PlayerEnvironment.metadataRichBookEnvironment(
+        reset: true,
+        namespace: "focused-id-test",
+        root: root
+      )
+      var snapshot = try await initial.persistence.load()
+      let persistedID = try XCTUnwrap(
+        UUID(uuidString: "31000000-0000-0000-0000-000000000007")
+      )
+      snapshot.books[0].title = "Harbor at Dusk"
+      snapshot.books[0].narrators = ["Imani Chen", "Theo North"]
+      snapshot.positionJournal.append(.acknowledged(
+        id: persistedID,
+        bookID: try XCTUnwrap(snapshot.books.first?.id),
+        positionMilliseconds: 1_000,
+        sequence: 1,
+        reason: .seek,
+        acknowledgedAt: initial.clock.now(),
+        previousEventID: nil
+      ))
+      try await initial.persistence.save(snapshot)
+
+      let restored = try PlayerEnvironment.metadataRichBookEnvironment(
+        reset: false,
+        namespace: "focused-id-test",
+        root: root
+      )
+      let restoredSnapshot = try await restored.persistence.load()
+      let nextID = await restored.ids.next()
+      XCTAssertEqual(
+        nextID,
+        UUID(uuidString: "31000000-0000-0000-0000-000000000008")
+      )
+      XCTAssertEqual(restoredSnapshot.books.first?.title, "Harbor at Dusk")
+      XCTAssertEqual(restoredSnapshot.books.first?.narrators, ["Imani Chen", "Theo North"])
+      XCTAssertEqual(restoredSnapshot.positionJournal.last?.id, persistedID)
+      XCTAssertEqual(restored.clock.now(), Date(timeIntervalSince1970: 1_700_000_000))
+    }
+
+    func testCorruptPersistedStoreFailsBeforeFixtureMediaMutation() throws {
+      let root = temporaryDirectory("corrupt-current-book")
+      defer { try? FileManager.default.removeItem(at: root) }
+      try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+      let libraryURL = root.appending(path: "Library.json")
+      let corruptData = Data("corrupt durable fixture".utf8)
+      try corruptData.write(to: libraryURL, options: .atomic)
+
+      XCTAssertThrowsError(
+        try PlayerEnvironment.committedCurrentBookEnvironment(
+          reset: false,
+          playbackControls: .disabled,
+          root: root
+        )
+      )
+      let mediaRoot = root.appending(path: "Media", directoryHint: .isDirectory)
+      XCTAssertFalse(FileManager.default.fileExists(atPath: mediaRoot.path))
+      XCTAssertEqual(try Data(contentsOf: libraryURL), corruptData)
+    }
+
+    func testCorruptMetadataRichStoreFailsBeforeFixtureMediaMutation() throws {
+      let root = temporaryDirectory("corrupt-metadata-rich-book")
+      defer { try? FileManager.default.removeItem(at: root) }
+      try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+      let libraryURL = root.appending(path: "Library.json")
+      let corruptData = Data("corrupt durable metadata fixture".utf8)
+      try corruptData.write(to: libraryURL, options: .atomic)
+
+      XCTAssertThrowsError(
+        try PlayerEnvironment.metadataRichBookEnvironment(
+          reset: false,
+          namespace: "focused-corrupt-test",
+          root: root
+        )
+      )
+      let mediaRoot = root.appending(path: "Media", directoryHint: .isDirectory)
+      XCTAssertFalse(FileManager.default.fileExists(atPath: mediaRoot.path))
+      XCTAssertEqual(try Data(contentsOf: libraryURL), corruptData)
+    }
+
+    private func temporaryDirectory(_ name: String) -> URL {
+      FileManager.default.temporaryDirectory.appending(
+        path: "E2EPersistedFixtureIDTests-\(name)-\(UUID().uuidString)",
+        directoryHint: .isDirectory
+      )
+    }
+  }
+
+  @MainActor
   final class E2EPopulatedLibraryDescriptorTests: XCTestCase {
     func testMalformedClockCannotResetFixtureRoot() throws {
       try assertInvalidDescriptorPreservesSentinel("malformed-clock") {

@@ -46,6 +46,21 @@ struct E2ELaunchConfiguration: Equatable {
 
   let fixture: E2EFixture
   let resetPolicy: ResetPolicy
+  private let resetLease: E2EFixtureResetLease
+
+  init(fixture: E2EFixture, resetPolicy: ResetPolicy) {
+    self.fixture = fixture
+    self.resetPolicy = resetPolicy
+    resetLease = E2EFixtureResetLease(shouldReset: resetPolicy.shouldReset)
+  }
+
+  static func == (lhs: E2ELaunchConfiguration, rhs: E2ELaunchConfiguration) -> Bool {
+    lhs.fixture == rhs.fixture && lhs.resetPolicy == rhs.resetPolicy
+  }
+
+  func consumeReset() -> Bool {
+    resetLease.consume()
+  }
 
   static func parse(arguments: [String]) throws -> E2ELaunchConfiguration? {
     let e2eArguments = arguments.filter { $0.hasPrefix("-e2e") }
@@ -129,7 +144,83 @@ struct E2ELaunchConfiguration: Equatable {
   private static let recognizedArguments = flagArguments.union(valueArguments)
 }
 
+private final class E2EFixtureResetLease: @unchecked Sendable {
+  private let lock = NSLock()
+  private var shouldReset: Bool
+
+  init(shouldReset: Bool) {
+    self.shouldReset = shouldReset
+  }
+
+  func consume() -> Bool {
+    lock.withLock {
+      defer { shouldReset = false }
+      return shouldReset
+    }
+  }
+}
+
 #if E2E
+  enum E2EPersistedIDSequence {
+    private struct Envelope: Decodable {
+      let schemaVersion: Int
+      let library: LibrarySnapshot
+    }
+
+    static func nextSuffix(
+      in libraryURL: URL,
+      prefix: String,
+      initialSuffix: Int,
+      requiredCount: Int
+    ) throws -> Int {
+      guard initialSuffix > 0, requiredCount > 0,
+        initialSuffix <= 999_999_999_999 - (requiredCount - 1),
+        prefix.utf8.count == 8,
+        prefix.utf8.allSatisfy({
+          (UInt8(ascii: "0")...UInt8(ascii: "9")).contains($0)
+            || (UInt8(ascii: "a")...UInt8(ascii: "f")).contains($0)
+            || (UInt8(ascii: "A")...UInt8(ascii: "F")).contains($0)
+        })
+      else {
+        throw PlayerCoreError.fileOperation("Invalid deterministic E2E ID sequence.")
+      }
+      guard FileManager.default.fileExists(atPath: libraryURL.path) else {
+        return initialSuffix
+      }
+
+      let data = try Data(contentsOf: libraryURL)
+      let envelope: Envelope
+      do {
+        envelope = try JSONDecoder.playerDecoder.decode(Envelope.self, from: data)
+      } catch {
+        throw PlayerCoreError.invalidStore
+      }
+      guard envelope.schemaVersion == CodableLibraryStore.currentSchemaVersion else {
+        throw PlayerCoreError.invalidStore
+      }
+      _ = envelope.library
+
+      guard let encoded = String(data: data, encoding: .utf8),
+        let expression = try? NSRegularExpression(
+          pattern: "\(prefix)-0000-0000-0000-([0-9]{12})",
+          options: [.caseInsensitive]
+        )
+      else {
+        throw PlayerCoreError.invalidStore
+      }
+      let range = NSRange(encoded.startIndex..<encoded.endIndex, in: encoded)
+      let suffixes = expression.matches(in: encoded, range: range).compactMap { match -> Int? in
+        guard let suffixRange = Range(match.range(at: 1), in: encoded) else { return nil }
+        return Int(encoded[suffixRange])
+      }
+      let next = max(initialSuffix, (suffixes.max() ?? (initialSuffix - 1)) + 1)
+      guard next <= 999_999_999_999 - (requiredCount - 1) else {
+        throw PlayerCoreError.fileOperation("Deterministic E2E ID sequence is exhausted.")
+      }
+      return next
+    }
+  }
+
   func resetE2EFixtureRoot(_ root: URL) throws {
     let fileManager = FileManager.default
     if fileManager.fileExists(atPath: root.path) {
@@ -571,21 +662,21 @@ extension PlayerEnvironment {
       let arguments = ProcessInfo.processInfo.arguments
       if let launch = e2eLaunchConfiguration {
         let fixture = launch.fixture
-        let reset = launch.resetPolicy.shouldReset
+        let reset = launch.consumeReset()
         switch fixture {
         case .emptyLibrary:
           return try emptyLibraryEnvironment(reset: reset)
         case .singleAudiobookReady:
-          return try singleAudiobookReadyEnvironment()
+          return try singleAudiobookReadyEnvironment(reset: reset)
         case .committedCurrentBook:
           return try committedCurrentBookEnvironment(
             reset: reset,
             playbackControls: playbackControls
           )
         case .monetizationExhausted:
-          return try monetizationExhaustedEnvironment()
+          return try monetizationExhaustedEnvironment(reset: reset)
         case .zeroDurationCurrentBook:
-          return try zeroDurationCurrentBookEnvironment()
+          return try zeroDurationCurrentBookEnvironment(reset: reset)
         case .metadataRichBook:
           return try metadataRichBookEnvironment(
             reset: reset,
@@ -603,7 +694,7 @@ extension PlayerEnvironment {
         case .syntheticImportChannels:
           return try importIngressEnvironment(reset: reset)
         case .syntheticMetadataRepair:
-          return try metadataRepairEnvironment()
+          return try metadataRepairEnvironment(reset: reset)
         case .syntheticPopulatedLibrary:
           return try populatedLibraryEnvironment(reset: reset)
         case .smartRewind:
@@ -619,7 +710,7 @@ extension PlayerEnvironment {
         case .bookmarks:
           return try bookmarksEnvironment(reset: reset)
         case .portableBackup:
-          return try portableBackupEnvironment()
+          return try portableBackupEnvironment(reset: reset)
         case .offlineRecovery:
           return try offlineRecoveryEnvironment(reset: reset)
         }
@@ -650,12 +741,12 @@ extension PlayerEnvironment {
       )
     }
 
-    private static func singleAudiobookReadyEnvironment() throws -> PlayerEnvironment {
+    private static func singleAudiobookReadyEnvironment(reset: Bool) throws -> PlayerEnvironment {
       let root = FileManager.default.temporaryDirectory.appending(
         path: "PlayerE2ESingleAudiobook",
         directoryHint: .isDirectory
       )
-      try resetE2EFixtureRoot(root)
+      if reset { try resetE2EFixtureRoot(root) }
 
       let jobID = UUID(uuidString: "10000000-0000-0000-0000-000000000001")!
       let assetID = UUID(uuidString: "10000000-0000-0000-0000-000000000002")!
@@ -727,22 +818,35 @@ extension PlayerEnvironment {
       )
     }
 
-    private static func committedCurrentBookEnvironment(
+    static func committedCurrentBookEnvironment(
       reset: Bool,
       playbackControls: E2EPlaybackControlConfiguration,
-      monetization: (any MonetizationManaging)? = nil
+      monetization: (any MonetizationManaging)? = nil,
+      root overrideRoot: URL? = nil
     ) throws -> PlayerEnvironment {
-      let support = try FileManager.default.url(
-        for: .applicationSupportDirectory,
-        in: .userDomainMask,
-        appropriateFor: nil,
-        create: true
-      )
-      let root = support.appending(
-        path: "PlayerE2EPositionRestore",
-        directoryHint: .isDirectory
-      )
+      let root: URL
+      if let overrideRoot {
+        root = overrideRoot
+      } else {
+        let support = try FileManager.default.url(
+          for: .applicationSupportDirectory,
+          in: .userDomainMask,
+          appropriateFor: nil,
+          create: true
+        )
+        root = support.appending(
+          path: "PlayerE2EPositionRestore",
+          directoryHint: .isDirectory
+        )
+      }
       if reset { try resetE2EFixtureRoot(root) }
+      let libraryURL = root.appending(path: "Library.json")
+      let firstAvailableSuffix = try E2EPersistedIDSequence.nextSuffix(
+        in: libraryURL,
+        prefix: "21000000",
+        initialSuffix: 1,
+        requiredCount: 12
+      )
 
       let bookID = UUID(uuidString: "20000000-0000-0000-0000-000000000001")!
       let assetID = UUID(uuidString: "20000000-0000-0000-0000-000000000002")!
@@ -798,8 +902,8 @@ extension PlayerEnvironment {
         ),
         positionJournal: [seedEvent]
       )
-      let persisted = CodableLibraryStore(fileURL: root.appending(path: "Library.json"))
-      let ids = (1...12).map {
+      let persisted = CodableLibraryStore(fileURL: libraryURL)
+      let ids = (firstAvailableSuffix...(firstAvailableSuffix + 11)).map {
         UUID(uuidString: String(format: "21000000-0000-0000-0000-%012d", $0))!
       }
       let playbackEventBridge = E2EPlaybackEventBridge.shared
@@ -824,23 +928,33 @@ extension PlayerEnvironment {
       )
     }
 
-    private static func monetizationExhaustedEnvironment() throws -> PlayerEnvironment {
+    private static func monetizationExhaustedEnvironment(reset: Bool) throws -> PlayerEnvironment {
       var snapshot = MonetizationSnapshot.included
       snapshot.consumedPlaybackSeconds = MonetizationSnapshot.includedPlaybackSeconds
       snapshot.displayPrice = "$9.99"
+      let support = try FileManager.default.url(
+        for: .applicationSupportDirectory,
+        in: .userDomainMask,
+        appropriateFor: nil,
+        create: true
+      )
       return try committedCurrentBookEnvironment(
-        reset: true,
+        reset: reset,
         playbackControls: .disabled,
-        monetization: DeterministicMonetizationManager(snapshot: snapshot)
+        monetization: DeterministicMonetizationManager(snapshot: snapshot),
+        root: support.appending(
+          path: "PlayerE2EMonetizationExhausted",
+          directoryHint: .isDirectory
+        )
       )
     }
 
-    private static func zeroDurationCurrentBookEnvironment() throws -> PlayerEnvironment {
+    private static func zeroDurationCurrentBookEnvironment(reset: Bool) throws -> PlayerEnvironment {
       let root = FileManager.default.temporaryDirectory.appending(
         path: "PlayerE2EZeroDuration",
         directoryHint: .isDirectory
       )
-      try resetE2EFixtureRoot(root)
+      if reset { try resetE2EFixtureRoot(root) }
       let bookID = UUID(uuidString: "22000000-0000-0000-0000-000000000001")!
       let assetID = UUID(uuidString: "22000000-0000-0000-0000-000000000002")!
       let asset = AudioAsset(
@@ -1363,21 +1477,34 @@ extension PlayerEnvironment {
       )
     }
 
-    private static func metadataRichBookEnvironment(
+    static func metadataRichBookEnvironment(
       reset: Bool,
-      namespace: String
+      namespace: String,
+      root overrideRoot: URL? = nil
     ) throws -> PlayerEnvironment {
       let artworkOverride = try E2EMetadataRichCoverPayload.parseOverride(
         environment: ProcessInfo.processInfo.environment
       )
-      let support = try FileManager.default.url(
-        for: .applicationSupportDirectory,
-        in: .userDomainMask,
-        appropriateFor: nil,
-        create: true
-      )
-      let root = E2EMetadataRichBookNamespace.root(in: support, namespace: namespace)
+      let root: URL
+      if let overrideRoot {
+        root = overrideRoot
+      } else {
+        let support = try FileManager.default.url(
+          for: .applicationSupportDirectory,
+          in: .userDomainMask,
+          appropriateFor: nil,
+          create: true
+        )
+        root = E2EMetadataRichBookNamespace.root(in: support, namespace: namespace)
+      }
       if reset { try resetE2EFixtureRoot(root) }
+      let libraryURL = root.appending(path: "Library.json")
+      let firstAvailableSuffix = try E2EPersistedIDSequence.nextSuffix(
+        in: libraryURL,
+        prefix: "31000000",
+        initialSuffix: 1,
+        requiredCount: 40
+      )
 
       let bookID = UUID(uuidString: "30000000-0000-0000-0000-000000000001")!
       let assetID = UUID(uuidString: "30000000-0000-0000-0000-000000000002")!
@@ -1440,13 +1567,13 @@ extension PlayerEnvironment {
         artworkMediaType: "image/png",
         chapters: chapters
       )
-      let ids = (1...40).map {
+      let ids = (firstAvailableSuffix...(firstAvailableSuffix + 39)).map {
         UUID(uuidString: String(format: "31000000-0000-0000-0000-%012d", $0))!
       }
       let seed = LibrarySnapshot(books: [book], importJobs: [], currentBookID: nil)
       return PlayerEnvironment(
         persistence: E2ESeededLibraryStore(
-          base: CodableLibraryStore(fileURL: root.appending(path: "Library.json")),
+          base: CodableLibraryStore(fileURL: libraryURL),
           seed: seed
         ),
         media: FileSystemMediaManager(rootURL: root),
@@ -1457,7 +1584,7 @@ extension PlayerEnvironment {
       )
     }
 
-    private static func metadataRepairEnvironment() throws -> PlayerEnvironment {
+    private static func metadataRepairEnvironment(reset: Bool) throws -> PlayerEnvironment {
       let environment = ProcessInfo.processInfo.environment
       guard
         let audioEncoded = environment["PLAYER_E2E_METADATA_AUDIO_BASE64"],
@@ -1475,7 +1602,7 @@ extension PlayerEnvironment {
         path: "PlayerE2EMetadataRepair",
         directoryHint: .isDirectory
       )
-      try resetE2EFixtureRoot(root)
+      if reset { try resetE2EFixtureRoot(root) }
       let jobID = UUID(uuidString: "80000000-0000-0000-0000-000000000001")!
       let proposalID = UUID(uuidString: "80000000-0000-0000-0000-000000000002")!
       let assetID = UUID(uuidString: "80000000-0000-0000-0000-000000000003")!
@@ -1877,12 +2004,12 @@ extension PlayerEnvironment {
       )
     }
 
-    private static func portableBackupEnvironment() throws -> PlayerEnvironment {
+    private static func portableBackupEnvironment(reset: Bool) throws -> PlayerEnvironment {
       let root = FileManager.default.temporaryDirectory.appending(
         path: "PlayerE2EPortableBackup",
         directoryHint: .isDirectory
       )
-      try resetE2EFixtureRoot(root)
+      if reset { try resetE2EFixtureRoot(root) }
       let bookID = UUID(uuidString: "a1000000-0000-0000-0000-000000000001")!
       let assetID = UUID(uuidString: "a1000000-0000-0000-0000-000000000002")!
       let eventID = UUID(uuidString: "a1000000-0000-0000-0000-000000000003")!
