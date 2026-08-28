@@ -74,7 +74,15 @@ final class LibraryOrganizationUITests: XCTestCase {
       captureReadiness: organizationCaptureReadiness(
         app: app,
         specification: "At capture, the exact five-book organization and paused player are settled at the Library and Recently Added starts with visible cover-bearing cards",
-        anchor: homeRecentReadiness
+        anchor: homeRecentReadiness,
+        prime: {
+          self.primeStableGeometry(
+            libraryRootReadiness,
+            containerID: "library-root-scroll",
+            axis: .vertical,
+            endpoint: \.atTop
+          )
+        }
       ) {
         self.hasExactValue(organizer, initialOrganizer)
           && self.hasExactValue(initialArtwork, self.artworkValue(self.books))
@@ -95,16 +103,15 @@ final class LibraryOrganizationUITests: XCTestCase {
             axis: .horizontal,
             endpoint: \.atLeft
           )
-          && self.visibleElements(
-            in: app,
-            identifierPrefix: "recent-book-",
-            within: app
-          ).count >= 3
-          && elementIsFullyVisible(
-            addAudiobook,
-            within: app.tabBars.element,
-            requiresHittable: false
-          )
+          && [4, 3, 2].allSatisfy { index in
+            elementIsFullyVisible(
+              self.anyElement(app, "recent-book-\(self.books[index])"),
+              within: app,
+              requiresHittable: false
+            )
+          }
+          && addAudiobook.exists
+          && addAudiobook.isHittable
       }
     )
 
@@ -786,7 +793,28 @@ final class LibraryOrganizationUITests: XCTestCase {
       captureReadiness: organizationCaptureReadiness(
         app: restoredApp,
         specification: "At capture, the exact two-book contributor result order and cover-bearing rows are settled on idle search geometry with submitted focus dismissed",
-        anchor: searchResultsReadiness
+        anchor: searchResultsReadiness,
+        prime: {
+          self.hasExactValue(searchProbe, expectedMetadataSearch)
+            && self.hasExactValue(searchArtwork, self.artworkValue(self.books))
+            && self.hasExactValue(searchFocus, "unfocused")
+            && self.hasSettledLayout(
+              searchLayoutReadiness,
+              containerID: "library-search-layout"
+            )
+            && self.primeStableGeometry(
+              searchResultsReadiness,
+              containerID: "library-search-results-scroll",
+              axis: .vertical,
+              endpoint: \.atTop
+            )
+            && self.searchResultsAreFullyVisible(
+              [self.bookTitles[4], self.bookTitles[2]],
+              app: restoredApp,
+              within: searchResultsScroll
+            )
+            && metadataSearchScreen.prime()
+        }
       ) {
         self.hasExactValue(searchProbe, expectedMetadataSearch)
           && self.hasExactValue(searchArtwork, self.artworkValue(self.books))
@@ -1128,13 +1156,29 @@ final class LibraryOrganizationUITests: XCTestCase {
     app: XCUIApplication,
     specification: String,
     anchor: XCUIElement,
+    prime: (@MainActor () -> Bool)? = nil,
     checkNow: @escaping @MainActor () -> Bool
   ) -> CaptureReadiness {
-    CaptureReadiness(specification: specification, anchor: anchor) {
-      checkNow()
-        && app.keyboards.count == 0
+    let preparedPrime: (@MainActor () -> Bool)?
+    if let prime {
+      preparedPrime = {
+        app.keyboards.count == 0
+          && app.alerts.count == 0
+          && app.sheets.count == 0
+          && prime()
+      }
+    } else {
+      preparedPrime = nil
+    }
+    return CaptureReadiness(
+      specification: specification,
+      anchor: anchor,
+      prime: preparedPrime
+    ) {
+      app.keyboards.count == 0
         && app.alerts.count == 0
         && app.sheets.count == 0
+        && checkNow()
     }
   }
 
@@ -1178,6 +1222,28 @@ final class LibraryOrganizationUITests: XCTestCase {
       return false
     }
     print("Capture readiness accepted consecutive identical stranded-phase geometry: \(observation)")
+    return true
+  }
+
+  private func primeStableGeometry(
+    _ readiness: XCUIElement,
+    containerID: String,
+    axis: E2EScrollAxis,
+    endpoint: KeyPath<ScrollReadinessState, Bool>
+  ) -> Bool {
+    guard let state = ScrollReadinessState(readiness.value),
+      state.containerID == containerID,
+      state.axis == axis,
+      state.geometryReady,
+      state[keyPath: endpoint]
+    else { return false }
+    _ = isSettled(
+      readiness,
+      containerID: containerID,
+      axis: axis,
+      endpoint: endpoint,
+      permitsStableGeometryFallback: true
+    )
     return true
   }
 
@@ -1322,6 +1388,22 @@ private struct CaptureGeometryObservation: Equatable, CustomStringConvertible {
 @MainActor
 private final class ConsecutiveScreenObservation {
   private var previousObservation: ScreenPixelObservation?
+
+  func prime() -> Bool {
+    guard let firstObservation = ScreenPixelObservation(XCUIScreen.main.screenshot()),
+      let secondObservation = ScreenPixelObservation(XCUIScreen.main.screenshot())
+    else {
+      print("Capture readiness could not decode its priming composited screen pixels")
+      return false
+    }
+    previousObservation = secondObservation
+    print(
+      firstObservation == secondObservation
+        ? "Capture readiness primed two identical composited screen observations"
+        : "Capture readiness absorbed a compositor change while priming"
+    )
+    return true
+  }
 
   func isStable() -> Bool {
     guard let observation = ScreenPixelObservation(XCUIScreen.main.screenshot()) else {
