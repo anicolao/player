@@ -1059,21 +1059,25 @@ struct LibraryOrganizationSettingsView: View {
   @Bindable var model: PlayerModel
   @State private var path: [LibrarySettingsDestination] = []
 
-  init(model: PlayerModel) {
+  init(
+    model: PlayerModel,
+    initialRoute: E2ELaunchNavigationConfiguration.SettingsRoute? = nil
+  ) {
     self.model = model
-    #if E2E
-      let arguments = ProcessInfo.processInfo.arguments
-      if let option = arguments.firstIndex(of: "-e2e-start-settings-route"),
-        arguments.indices.contains(option + 1)
-      {
-        switch arguments[option + 1] {
-        case "full-unlock": _path = State(initialValue: [.fullUnlock])
-        case "backup": _path = State(initialValue: [.backup])
-        case "diagnostics": _path = State(initialValue: [.diagnostics])
-        default: break
-        }
+    if let initialRoute {
+      let destination: LibrarySettingsDestination
+      switch initialRoute {
+      case .fullUnlock: destination = .fullUnlock
+      case .trash: destination = .trash
+      case .storage: destination = .storage
+      case .backup: destination = .backup
+      case .playbackDefaults: destination = .playbackDefaults
+      case .smartRewind: destination = .smartRewind
+      case .accessibility: destination = .accessibility
+      case .diagnostics: destination = .diagnostics
       }
-    #endif
+      _path = State(initialValue: [destination])
+    }
   }
 
   var body: some View {

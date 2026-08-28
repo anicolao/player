@@ -2,6 +2,82 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
+struct E2ELaunchNavigationConfiguration: Equatable {
+  enum Section: String, CaseIterable {
+    case library
+    case inbox
+    case settings
+  }
+
+  enum SettingsRoute: String, CaseIterable {
+    case fullUnlock = "full-unlock"
+    case trash
+    case storage
+    case backup
+    case playbackDefaults = "playback-defaults"
+    case smartRewind = "smart-rewind"
+    case accessibility
+    case diagnostics
+  }
+
+  static let sectionArgument = "-e2e-start-section"
+  static let settingsRouteArgument = "-e2e-start-settings-route"
+  static let library = E2ELaunchNavigationConfiguration(section: .library, settingsRoute: nil)
+
+  let section: Section
+  let settingsRoute: SettingsRoute?
+
+  static func parse(arguments: [String]) throws -> E2ELaunchNavigationConfiguration {
+    let sectionValue = try optionalValue(after: sectionArgument, in: arguments)
+    let section: Section
+    if let sectionValue {
+      guard let parsed = Section(rawValue: sectionValue) else {
+        throw PlayerCoreError.fileOperation("Invalid E2E start section: \(sectionValue)")
+      }
+      section = parsed
+    } else {
+      section = .library
+    }
+
+    let routeValue = try optionalValue(after: settingsRouteArgument, in: arguments)
+    let settingsRoute: SettingsRoute?
+    if let routeValue {
+      guard let parsed = SettingsRoute(rawValue: routeValue) else {
+        throw PlayerCoreError.fileOperation("Invalid E2E Settings route: \(routeValue)")
+      }
+      settingsRoute = parsed
+    } else {
+      settingsRoute = nil
+    }
+    guard settingsRoute == nil || section == .settings else {
+      throw PlayerCoreError.fileOperation(
+        "An E2E Settings route requires Settings as the start section."
+      )
+    }
+
+    return E2ELaunchNavigationConfiguration(
+      section: section,
+      settingsRoute: settingsRoute
+    )
+  }
+
+  private static func optionalValue(after marker: String, in arguments: [String]) throws -> String? {
+    let markers = arguments.indices.filter { arguments[$0] == marker }
+    guard markers.count <= 1 else {
+      throw PlayerCoreError.fileOperation("Duplicate E2E navigation option: \(marker)")
+    }
+    guard let index = markers.first else { return nil }
+    guard arguments.indices.contains(index + 1) else {
+      throw PlayerCoreError.fileOperation("Missing E2E navigation value for: \(marker)")
+    }
+    let value = arguments[index + 1]
+    guard !value.isEmpty, !value.hasPrefix("-") else {
+      throw PlayerCoreError.fileOperation("Invalid E2E navigation value for: \(marker)")
+    }
+    return value
+  }
+}
+
 struct ContentView: View {
   @Environment(\.scenePhase) private var scenePhase
   @Bindable var model: PlayerModel
@@ -13,21 +89,19 @@ struct ContentView: View {
   @State private var sharedImportQueueRevision = 0
   @State private var pendingDocumentURLs: [URL] = []
   @State private var presentedPlayerBook: Book?
+  private let launchNavigation: E2ELaunchNavigationConfiguration
 
-  init(model: PlayerModel) {
+  init(
+    model: PlayerModel,
+    launchNavigation: E2ELaunchNavigationConfiguration
+  ) {
     self.model = model
-    #if E2E
-      let arguments = ProcessInfo.processInfo.arguments
-      if let option = arguments.firstIndex(of: "-e2e-start-section"),
-        arguments.indices.contains(option + 1)
-      {
-        switch arguments[option + 1] {
-        case "inbox": _selection = State(initialValue: .inbox)
-        case "settings": _selection = State(initialValue: .settings)
-        default: break
-        }
-      }
-    #endif
+    self.launchNavigation = launchNavigation
+    switch launchNavigation.section {
+    case .library: _selection = State(initialValue: .library)
+    case .inbox: _selection = State(initialValue: .inbox)
+    case .settings: _selection = State(initialValue: .settings)
+    }
   }
 
   var body: some View {
@@ -58,7 +132,10 @@ struct ContentView: View {
         .badge(reviewCount)
 
       playerTabContent {
-        LibraryOrganizationSettingsView(model: model)
+        LibraryOrganizationSettingsView(
+          model: model,
+          initialRoute: launchNavigation.settingsRoute
+        )
       }
         .tag(AppSection.settings)
         .tabItem { Label("Settings", systemImage: "gearshape") }

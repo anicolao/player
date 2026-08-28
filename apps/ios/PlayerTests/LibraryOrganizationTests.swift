@@ -3,6 +3,74 @@ import XCTest
 
 @MainActor
 final class LibraryOrganizationTests: XCTestCase {
+  func testNavigationDefaultsToLibraryAndAcceptsEveryExplicitSection() throws {
+    XCTAssertEqual(
+      try E2ELaunchNavigationConfiguration.parse(arguments: ["Player"]),
+      .library
+    )
+
+    for section in E2ELaunchNavigationConfiguration.Section.allCases {
+      let parsed = try E2ELaunchNavigationConfiguration.parse(arguments: [
+        "Player", "-e2e-start-section", section.rawValue,
+      ])
+      XCTAssertEqual(parsed.section, section)
+      XCTAssertNil(parsed.settingsRoute)
+    }
+  }
+
+  func testEverySettingsRouteParsesOnlyWithTheSettingsSection() throws {
+    for route in E2ELaunchNavigationConfiguration.SettingsRoute.allCases {
+      let parsed = try E2ELaunchNavigationConfiguration.parse(arguments: [
+        "Player", "-e2e-start-section", "settings",
+        "-e2e-start-settings-route", route.rawValue,
+      ])
+      XCTAssertEqual(parsed.section, .settings)
+      XCTAssertEqual(parsed.settingsRoute, route)
+    }
+  }
+
+  func testNavigationMarkersRejectMissingEmptyOptionLookingDuplicateAndUnknownValues() {
+    let invalidArguments = [
+      ["Player", "-e2e-start-section"],
+      ["Player", "-e2e-start-section", ""],
+      ["Player", "-e2e-start-section", "-e2e-reset"],
+      ["Player", "-e2e-start-section", "unknown"],
+      [
+        "Player", "-e2e-start-section", "library",
+        "-e2e-start-section", "inbox",
+      ],
+      ["Player", "-e2e-start-section", "settings", "-e2e-start-settings-route"],
+      [
+        "Player", "-e2e-start-section", "settings",
+        "-e2e-start-settings-route", "",
+      ],
+      [
+        "Player", "-e2e-start-section", "settings",
+        "-e2e-start-settings-route", "-e2e-reset",
+      ],
+      [
+        "Player", "-e2e-start-section", "settings",
+        "-e2e-start-settings-route", "unknown",
+      ],
+      [
+        "Player", "-e2e-start-section", "settings",
+        "-e2e-start-settings-route", "backup",
+        "-e2e-start-settings-route", "diagnostics",
+      ],
+    ]
+
+    assertNavigationRejects(invalidArguments)
+  }
+
+  func testSettingsRouteRejectsAbsentLibraryAndInboxStartSections() {
+    let route = ["-e2e-start-settings-route", "backup"]
+    assertNavigationRejects([
+      ["Player"] + route,
+      ["Player", "-e2e-start-section", "library"] + route,
+      ["Player", "-e2e-start-section", "inbox"] + route,
+    ])
+  }
+
   func testShelfViewStyleDecodesTheLegacyGridValueAndEncodesItsCurrentName() throws {
     let decoded = try JSONDecoder().decode(LibraryViewStyle.self, from: Data("\"grid\"".utf8))
     XCTAssertEqual(decoded, .shelf)
@@ -325,6 +393,21 @@ final class LibraryOrganizationTests: XCTestCase {
 
   private func uuid(_ suffix: Int) -> UUID {
     UUID(uuidString: String(format: "a0000000-0000-0000-0000-%012d", suffix))!
+  }
+
+  private func assertNavigationRejects(
+    _ invalidArguments: [[String]],
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) {
+    for arguments in invalidArguments {
+      XCTAssertThrowsError(
+        try E2ELaunchNavigationConfiguration.parse(arguments: arguments),
+        "Expected invalid E2E navigation to be rejected: \(arguments)",
+        file: file,
+        line: line
+      )
+    }
   }
 }
 

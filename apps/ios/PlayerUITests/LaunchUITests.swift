@@ -18,6 +18,23 @@ final class LaunchUITests: XCTestCase {
     XCTAssertFalse(app.descendants(matching: .any)["library-screen"].exists)
   }
 
+  func testRejectsInvalidNavigationBeforeConstructingTheFixtureEnvironment() {
+    continueAfterFailure = false
+    let app = XCUIApplication()
+    app.launchArguments = [
+      "-e2e", "-e2e-reset", "-e2e-fixture", "empty-library",
+      "-e2e-start-section", "inbox",
+      "-e2e-start-settings-route", "backup",
+      "-AppleLanguages", "(en)", "-AppleLocale", "en_CA",
+      "-NSTreatUnknownArgumentsAsOpen", "NO",
+    ]
+    app.launchEnvironment["TZ"] = "America/Toronto"
+    app.launch()
+
+    XCTAssertTrue(app.staticTexts["Local Storage Unavailable"].waitForExistence(timeout: 2))
+    XCTAssertFalse(app.descendants(matching: .any)["library-screen"].exists)
+  }
+
   func testRejectsUnknownFixtureWithoutFallingBackToProduction() {
     continueAfterFailure = false
     let app = XCUIApplication()

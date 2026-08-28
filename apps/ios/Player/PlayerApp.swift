@@ -5,6 +5,7 @@ import UIKit
 struct PlayerApp: App {
   @State private var model: PlayerModel?
   @State private var launchErrorMessage: String?
+  private let launchNavigation: E2ELaunchNavigationConfiguration
   #if E2E
     @State private var e2eDynamicTypeSize: DynamicTypeSize
   #endif
@@ -12,23 +13,39 @@ struct PlayerApp: App {
   init() {
     #if E2E
       UIView.setAnimationsEnabled(false)
-    #endif
-    do {
-      #if E2E
+      do {
+        launchNavigation = try E2ELaunchNavigationConfiguration.parse(
+          arguments: ProcessInfo.processInfo.arguments
+        )
+      } catch {
+        launchNavigation = .library
+        _e2eDynamicTypeSize = State(initialValue: .medium)
+        _model = State(initialValue: nil)
+        _launchErrorMessage = State(initialValue: error.localizedDescription)
+        return
+      }
+      do {
         _e2eDynamicTypeSize = State(
           initialValue: try E2EDynamicTypeConfiguration.parse(
             environment: ProcessInfo.processInfo.environment
           ).dynamicTypeSize
         )
-      #endif
+      } catch {
+        _e2eDynamicTypeSize = State(initialValue: .medium)
+        _model = State(initialValue: nil)
+        _launchErrorMessage = State(initialValue: error.localizedDescription)
+        return
+      }
+    #else
+      launchNavigation = .library
+    #endif
+    do {
+      let environment = try PlayerEnvironment.launchEnvironment()
       _model = State(
-        initialValue: PlayerModel(environment: try PlayerEnvironment.launchEnvironment())
+        initialValue: PlayerModel(environment: environment)
       )
       _launchErrorMessage = State(initialValue: nil)
     } catch {
-      #if E2E
-        _e2eDynamicTypeSize = State(initialValue: .medium)
-      #endif
       _model = State(initialValue: nil)
       _launchErrorMessage = State(initialValue: error.localizedDescription)
     }
@@ -38,7 +55,7 @@ struct PlayerApp: App {
     WindowGroup {
       Group {
         if let model {
-          ContentView(model: model)
+          ContentView(model: model, launchNavigation: launchNavigation)
         } else {
           LaunchStorageUnavailableView(
             detail: launchErrorMessage,
