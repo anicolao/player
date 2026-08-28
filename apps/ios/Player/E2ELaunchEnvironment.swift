@@ -12,6 +12,123 @@ struct E2EPlaybackControlConfiguration: Equatable {
   let rewindExpiryControl: Bool
 }
 
+enum E2EFixture: String, CaseIterable {
+  case emptyLibrary = "empty-library"
+  case singleAudiobookReady = "single-audiobook-ready"
+  case committedCurrentBook = "committed-current-book"
+  case monetizationExhausted = "monetization-exhausted"
+  case zeroDurationCurrentBook = "zero-duration-current-book"
+  case metadataRichBook = "metadata-rich-book"
+  case messyMultifileUnicode = "messy-multifile-unicode"
+  case safeZipImport = "safe-zip-import"
+  case importRecoveryStorage = "import-recovery-storage"
+  case syntheticImportChannels = "synthetic-import-channels"
+  case syntheticMetadataRepair = "synthetic-metadata-repair"
+  case syntheticPopulatedLibrary = "synthetic-populated-library"
+  case smartRewind = "smart-rewind"
+  case sleepTimer = "sleep-timer"
+  case bookmarks
+  case portableBackup = "portable-backup"
+  case offlineRecovery = "offline-recovery"
+}
+
+struct E2ELaunchConfiguration: Equatable {
+  enum ResetPolicy: Equatable {
+    case preserve
+    case reset
+
+    var shouldReset: Bool { self == .reset }
+  }
+
+  static let modeArgument = "-e2e"
+  static let fixtureArgument = "-e2e-fixture"
+  static let resetArgument = "-e2e-reset"
+
+  let fixture: E2EFixture
+  let resetPolicy: ResetPolicy
+
+  static func parse(arguments: [String]) throws -> E2ELaunchConfiguration? {
+    let e2eArguments = arguments.filter { $0.hasPrefix("-e2e") }
+    guard !e2eArguments.isEmpty else { return nil }
+
+    if let unknown = e2eArguments.first(where: { !recognizedArguments.contains($0) }) {
+      throw PlayerCoreError.fileOperation("Unknown E2E launch option: \(unknown)")
+    }
+
+    let modeCount = arguments.filter { $0 == modeArgument }.count
+    guard modeCount == 1 else {
+      let reason = modeCount == 0 ? "Missing" : "Duplicate"
+      throw PlayerCoreError.fileOperation("\(reason) top-level E2E mode marker.")
+    }
+
+    for argument in recognizedArguments {
+      guard arguments.filter({ $0 == argument }).count <= 1 else {
+        throw PlayerCoreError.fileOperation("Duplicate E2E launch option: \(argument)")
+      }
+    }
+
+    for argument in valueArguments {
+      guard let index = arguments.firstIndex(of: argument) else { continue }
+      guard arguments.indices.contains(index + 1) else {
+        throw PlayerCoreError.fileOperation("Missing E2E launch value for: \(argument)")
+      }
+      let value = arguments[index + 1]
+      guard !value.isEmpty, !value.hasPrefix("-") else {
+        throw PlayerCoreError.fileOperation("Invalid E2E launch value for: \(argument)")
+      }
+    }
+
+    guard let fixtureIndex = arguments.firstIndex(of: fixtureArgument) else {
+      throw PlayerCoreError.fileOperation("Missing top-level E2E fixture marker.")
+    }
+    let fixtureValue = arguments[fixtureIndex + 1]
+    guard let fixture = E2EFixture(rawValue: fixtureValue) else {
+      throw PlayerCoreError.fileOperation("Invalid top-level E2E fixture: \(fixtureValue)")
+    }
+
+    return E2ELaunchConfiguration(
+      fixture: fixture,
+      resetPolicy: arguments.contains(resetArgument) ? .reset : .preserve
+    )
+  }
+
+  // This is the complete public launch-argument vocabulary owned by the E2E
+  // harness. Keeping it centralized prevents a misspelled test option from
+  // silently selecting a different fixture or the production environment.
+  private static let flagArguments: Set<String> = [
+    modeArgument,
+    resetArgument,
+    "-e2e-event-controls",
+    "-e2e-rewind-expiry-control",
+    "-e2e-computer-receiver-ready",
+    "-e2e-mirroring-drop-progress",
+    "-e2e-computer-receiver-completed",
+    "-e2e-computer-receiver-paused",
+    "-e2e-show-mirroring-tip",
+    "-e2e-hide-mirroring-tip",
+  ]
+
+  private static let valueArguments: Set<String> = [
+    fixtureArgument,
+    "-e2e-metadata-rich-namespace",
+    "-e2e-sleep-timer-namespace",
+    "-e2e-smart-rewind-scenario",
+    "-e2e-recovery-scenario",
+    "-e2e-zip-case",
+    "-e2e-zip-limits",
+    "-e2e-zip-fail-once",
+    "-e2e-import-channel",
+    "-e2e-import-pause",
+    "-e2e-stage-share-handoff",
+    "-e2e-start-section",
+    "-e2e-start-settings-route",
+    // Retained for the checked-in multifile story's canonical launch contract.
+    "-e2e-acquisition",
+  ]
+
+  private static let recognizedArguments = flagArguments.union(valueArguments)
+}
+
 #if E2E
   func resetE2EFixtureRoot(_ root: URL) throws {
     let fileManager = FileManager.default
@@ -262,53 +379,14 @@ struct E2EPlaybackControlConfiguration: Equatable {
     return data
   }
 
-  enum E2EFixture: String, CaseIterable {
-    static let argument = "-e2e-fixture"
-    static let modeArgument = "-e2e"
-
-    case emptyLibrary = "empty-library"
-    case singleAudiobookReady = "single-audiobook-ready"
-    case committedCurrentBook = "committed-current-book"
-    case monetizationExhausted = "monetization-exhausted"
-    case zeroDurationCurrentBook = "zero-duration-current-book"
-    case metadataRichBook = "metadata-rich-book"
-    case messyMultifileUnicode = "messy-multifile-unicode"
-    case safeZipImport = "safe-zip-import"
-    case importRecoveryStorage = "import-recovery-storage"
-    case syntheticImportChannels = "synthetic-import-channels"
-    case syntheticMetadataRepair = "synthetic-metadata-repair"
-    case syntheticPopulatedLibrary = "synthetic-populated-library"
-    case smartRewind = "smart-rewind"
-    case sleepTimer = "sleep-timer"
-    case bookmarks
-    case portableBackup = "portable-backup"
-    case offlineRecovery = "offline-recovery"
-
-    static func parseForLaunch(arguments: [String]) throws -> E2EFixture? {
-      guard arguments.contains(modeArgument) else { return nil }
-      let markers = arguments.indices.filter { arguments[$0] == argument }
-      guard markers.count == 1 else {
-        let reason = markers.isEmpty ? "Missing" : "Duplicate"
-        throw PlayerCoreError.fileOperation("\(reason) top-level E2E fixture marker.")
-      }
-      let marker = markers[0]
-      guard arguments.indices.contains(marker + 1) else {
-        throw PlayerCoreError.fileOperation("Missing top-level E2E fixture value.")
-      }
-      let value = arguments[marker + 1]
-      guard !value.isEmpty, !value.hasPrefix("-"), let fixture = Self(rawValue: value) else {
-        throw PlayerCoreError.fileOperation("Invalid top-level E2E fixture: \(value)")
-      }
-      return fixture
-    }
-  }
-
   extension E2EPlaybackControlConfiguration {
     static let eventControlsArgument = "-e2e-event-controls"
     static let rewindExpiryControlArgument = "-e2e-rewind-expiry-control"
 
     static func parse(arguments: [String]) throws -> E2EPlaybackControlConfiguration {
-      guard arguments.contains(E2EFixture.modeArgument) else { return .disabled }
+      guard let launch = try E2ELaunchConfiguration.parse(arguments: arguments) else {
+        return .disabled
+      }
 
       for marker in [eventControlsArgument, rewindExpiryControlArgument] {
         guard arguments.filter({ $0 == marker }).count <= 1 else {
@@ -318,9 +396,7 @@ struct E2EPlaybackControlConfiguration: Equatable {
 
       let eventControls = arguments.contains(eventControlsArgument)
       let rewindExpiryControl = arguments.contains(rewindExpiryControlArgument)
-      guard let fixture = try E2EFixture.parseForLaunch(arguments: arguments) else {
-        throw PlayerCoreError.fileOperation("Missing fixture for E2E playback controls.")
-      }
+      let fixture = launch.fixture
 
       guard !eventControls || fixture == .committedCurrentBook else {
         throw PlayerCoreError.fileOperation(
@@ -488,19 +564,22 @@ struct E2EPlaybackControlConfiguration: Equatable {
 @MainActor
 extension PlayerEnvironment {
   static func launchEnvironment(
+    e2eLaunchConfiguration: E2ELaunchConfiguration?,
     playbackControls: E2EPlaybackControlConfiguration = .disabled
   ) throws -> PlayerEnvironment {
     #if E2E
       let arguments = ProcessInfo.processInfo.arguments
-      if let fixture = try E2EFixture.parseForLaunch(arguments: arguments) {
+      if let launch = e2eLaunchConfiguration {
+        let fixture = launch.fixture
+        let reset = launch.resetPolicy.shouldReset
         switch fixture {
         case .emptyLibrary:
-          return try emptyLibraryEnvironment(reset: arguments.contains("-e2e-reset"))
+          return try emptyLibraryEnvironment(reset: reset)
         case .singleAudiobookReady:
           return try singleAudiobookReadyEnvironment()
         case .committedCurrentBook:
           return try committedCurrentBookEnvironment(
-            reset: arguments.contains("-e2e-reset"),
+            reset: reset,
             playbackControls: playbackControls
           )
         case .monetizationExhausted:
@@ -509,40 +588,40 @@ extension PlayerEnvironment {
           return try zeroDurationCurrentBookEnvironment()
         case .metadataRichBook:
           return try metadataRichBookEnvironment(
-            reset: arguments.contains("-e2e-reset"),
+            reset: reset,
             namespace: E2EMetadataRichBookNamespace.parse(arguments: arguments)
           )
         case .messyMultifileUnicode:
-          return try messyMultifileEnvironment(reset: arguments.contains("-e2e-reset"))
+          return try messyMultifileEnvironment(reset: reset)
         case .safeZipImport:
-          return try safeZipEnvironment(reset: arguments.contains("-e2e-reset"))
+          return try safeZipEnvironment(reset: reset)
         case .importRecoveryStorage:
           return try E2EImportRecoveryEnvironment.make(
-            reset: arguments.contains("-e2e-reset"),
+            reset: reset,
             scenario: E2EImportRecoveryScenario.parseRequired(arguments: arguments).rawValue
           )
         case .syntheticImportChannels:
-          return try importIngressEnvironment(reset: arguments.contains("-e2e-reset"))
+          return try importIngressEnvironment(reset: reset)
         case .syntheticMetadataRepair:
           return try metadataRepairEnvironment()
         case .syntheticPopulatedLibrary:
-          return try populatedLibraryEnvironment(reset: arguments.contains("-e2e-reset"))
+          return try populatedLibraryEnvironment(reset: reset)
         case .smartRewind:
           return try smartRewindEnvironment(
-            reset: arguments.contains("-e2e-reset"),
+            reset: reset,
             scenario: E2ESmartRewindScenario.parseRequired(arguments: arguments).rawValue
           )
         case .sleepTimer:
           return try sleepTimerEnvironment(
-            reset: arguments.contains("-e2e-reset"),
+            reset: reset,
             namespace: E2ESleepTimerNamespace.parseRequired(arguments: arguments).rawValue
           )
         case .bookmarks:
-          return try bookmarksEnvironment(reset: arguments.contains("-e2e-reset"))
+          return try bookmarksEnvironment(reset: reset)
         case .portableBackup:
           return try portableBackupEnvironment()
         case .offlineRecovery:
-          return try offlineRecoveryEnvironment(reset: arguments.contains("-e2e-reset"))
+          return try offlineRecoveryEnvironment(reset: reset)
         }
       }
     #endif

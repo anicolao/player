@@ -196,24 +196,45 @@
   final class E2EFixtureContractTests: XCTestCase {
     func testEveryCanonicalFixtureIsAcceptedInE2EMode() throws {
       for fixture in E2EFixture.allCases {
-        let parsed = try E2EFixture.parseForLaunch(arguments: [
+        let parsed = try XCTUnwrap(E2ELaunchConfiguration.parse(arguments: [
           "Player", "-AppleLanguages", "(en)", "-e2e", "-e2e-fixture", fixture.rawValue,
           "-e2e-reset",
-        ])
-        XCTAssertEqual(parsed, fixture)
+        ]))
+        XCTAssertEqual(parsed.fixture, fixture)
+        XCTAssertEqual(parsed.resetPolicy, .reset)
       }
     }
 
-    func testLaunchWithoutE2EModePreservesProductionSelection() throws {
-      XCTAssertNil(try E2EFixture.parseForLaunch(arguments: ["Player"]))
-      XCTAssertNil(try E2EFixture.parseForLaunch(arguments: [
-        "Player", "-e2e-fixture", E2EFixture.bookmarks.rawValue,
+    func testResetAbsenceSelectsDurablePreservation() throws {
+      let parsed = try XCTUnwrap(E2ELaunchConfiguration.parse(arguments: [
+        "Player", "-e2e", "-e2e-fixture", E2EFixture.bookmarks.rawValue,
       ]))
+      XCTAssertEqual(parsed.fixture, .bookmarks)
+      XCTAssertEqual(parsed.resetPolicy, .preserve)
     }
 
-    func testE2EModeRequiresExactlyOneFixtureMarkerAndValue() {
+    func testProductionRequiresCompleteAbsenceOfE2EMarkers() throws {
+      XCTAssertNil(try E2ELaunchConfiguration.parse(arguments: [
+        "Player", "-AppleLanguages", "(en)",
+      ]))
+
+      let orphanedE2EArguments = [
+        ["Player", "-e2e-fixture", E2EFixture.bookmarks.rawValue],
+        ["Player", "-e2e-reset"],
+        ["Player", "-e2e-start-section", "settings"],
+        ["Player", "-e2e-unknown"],
+      ]
+      for arguments in orphanedE2EArguments {
+        XCTAssertThrowsError(try E2ELaunchConfiguration.parse(arguments: arguments))
+      }
+    }
+
+    func testE2EModeRequiresExactlyOneModeFixtureAndResetMarker() {
       let invalidArguments = [
         ["Player", "-e2e"],
+        [
+          "Player", "-e2e", "-e2e", "-e2e-fixture", E2EFixture.bookmarks.rawValue,
+        ],
         ["Player", "-e2e", "-e2e-fixture"],
         ["Player", "-e2e", "-e2e-fixture", "-e2e-reset"],
         ["Player", "-e2e", "-e2e-fixture", ""],
@@ -222,21 +243,76 @@
           "Player", "-e2e", "-e2e-fixture", E2EFixture.bookmarks.rawValue,
           "-e2e-fixture", E2EFixture.sleepTimer.rawValue,
         ],
+        [
+          "Player", "-e2e", "-e2e-reset", "-e2e-reset",
+          "-e2e-fixture", E2EFixture.bookmarks.rawValue,
+        ],
       ]
 
       for arguments in invalidArguments {
-        XCTAssertThrowsError(try E2EFixture.parseForLaunch(arguments: arguments), "\(arguments)")
+        XCTAssertThrowsError(
+          try E2ELaunchConfiguration.parse(arguments: arguments),
+          "\(arguments)"
+        )
       }
+    }
+
+    func testMalformedAndUnknownE2EOptionsFailClosed() {
+      let canonical = [
+        "Player", "-e2e", "-e2e-fixture", E2EFixture.emptyLibrary.rawValue,
+      ]
+      let invalidArguments = [
+        canonical + ["-e2e-unknown"],
+        canonical + ["-e2e-start-section"],
+        canonical + ["-e2e-start-section", "-e2e-reset"],
+        canonical + ["-e2e-start-section", "settings", "-e2e-start-section", "library"],
+        canonical + ["-e2e-event-controls", "-e2e-event-controls"],
+      ]
+
+      for arguments in invalidArguments {
+        XCTAssertThrowsError(
+          try E2ELaunchConfiguration.parse(arguments: arguments),
+          "Expected malformed E2E launch arguments to be rejected: \(arguments)"
+        )
+      }
+    }
+
+    @MainActor
+    func testInvalidConfigurationCannotResetFixtureRoot() throws {
+      let root = FileManager.default.temporaryDirectory.appending(
+        path: "PlayerE2EEmptyLibrary",
+        directoryHint: .isDirectory
+      )
+      try? FileManager.default.removeItem(at: root)
+      try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+      defer { try? FileManager.default.removeItem(at: root) }
+      let sentinel = root.appending(path: "sentinel.txt")
+      let sentinelData = Data("must-survive-invalid-launch".utf8)
+      try sentinelData.write(to: sentinel, options: .atomic)
+
+      XCTAssertThrowsError(
+        try {
+          let configuration = try E2ELaunchConfiguration.parse(arguments: [
+            "Player", "-e2e", "-e2e-reset", "-e2e-fixture", "empty-library",
+            "-e2e-unknown",
+          ])
+          _ = try PlayerEnvironment.launchEnvironment(
+            e2eLaunchConfiguration: configuration,
+            playbackControls: .disabled
+          )
+        }()
+      )
+      XCTAssertEqual(try Data(contentsOf: sentinel), sentinelData)
     }
   }
 
   final class E2EPlaybackControlConfigurationTests: XCTestCase {
     func testProductionAndControlFreeLaunchesRemainDisabled() throws {
-      XCTAssertEqual(
+      XCTAssertEqual(try E2EPlaybackControlConfiguration.parse(arguments: ["Player"]), .disabled)
+      XCTAssertThrowsError(
         try E2EPlaybackControlConfiguration.parse(arguments: [
           "Player", "-e2e-event-controls", "-e2e-rewind-expiry-control",
-        ]),
-        .disabled
+        ])
       )
       XCTAssertEqual(
         try E2EPlaybackControlConfiguration.parse(arguments: fixtureArguments(

@@ -5,6 +5,7 @@ import UIKit
 struct PlayerApp: App {
   @State private var model: PlayerModel?
   @State private var launchErrorMessage: String?
+  private let e2eLaunchConfiguration: E2ELaunchConfiguration?
   private let launchNavigation: E2ELaunchNavigationConfiguration
   private let playbackControls: E2EPlaybackControlConfiguration
   #if E2E
@@ -14,6 +15,19 @@ struct PlayerApp: App {
   init() {
     #if E2E
       UIView.setAnimationsEnabled(false)
+      do {
+        e2eLaunchConfiguration = try E2ELaunchConfiguration.parse(
+          arguments: ProcessInfo.processInfo.arguments
+        )
+      } catch {
+        e2eLaunchConfiguration = nil
+        launchNavigation = .library
+        playbackControls = .disabled
+        _e2eDynamicTypeSize = State(initialValue: .medium)
+        _model = State(initialValue: nil)
+        _launchErrorMessage = State(initialValue: error.localizedDescription)
+        return
+      }
       do {
         launchNavigation = try E2ELaunchNavigationConfiguration.parse(
           arguments: ProcessInfo.processInfo.arguments
@@ -50,11 +64,13 @@ struct PlayerApp: App {
         return
       }
     #else
+      e2eLaunchConfiguration = nil
       launchNavigation = .library
       playbackControls = .disabled
     #endif
     do {
       let environment = try PlayerEnvironment.launchEnvironment(
+        e2eLaunchConfiguration: e2eLaunchConfiguration,
         playbackControls: playbackControls
       )
       _model = State(
@@ -97,6 +113,7 @@ struct PlayerApp: App {
   private func retryLaunchEnvironment() {
     do {
       model = PlayerModel(environment: try PlayerEnvironment.launchEnvironment(
+        e2eLaunchConfiguration: e2eLaunchConfiguration,
         playbackControls: playbackControls
       ))
       launchErrorMessage = nil
