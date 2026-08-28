@@ -238,6 +238,7 @@ final class AccessibilityUITests: XCTestCase {
     )
     let bookDetailScreen = anyElement(app, "book-detail-screen")
     let bookDetailScrollReadiness = anyElement(app, "book-detail-scroll-readiness")
+    refreshTranslucentSurface(app)
     let bookDetailScreenPixels = ConsecutiveAccessibilityScreenObservation()
     try tester.step(
       "large-text-book-detail",
@@ -553,6 +554,28 @@ final class AccessibilityUITests: XCTestCase {
     XCTAssertTrue(
       springboard.wait(for: .runningForeground, timeout: 2),
       "SpringBoard must own the foreground before another translucent app surface is launched",
+      file: file,
+      line: line
+    )
+  }
+
+  private func refreshTranslucentSurface(
+    _ app: XCUIApplication,
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) {
+    let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+    springboard.activate()
+    XCTAssertTrue(
+      springboard.wait(for: .runningForeground, timeout: 2),
+      "SpringBoard must displace the settled translucent app surface",
+      file: file,
+      line: line
+    )
+    app.activate()
+    XCTAssertTrue(
+      app.wait(for: .runningForeground, timeout: 2),
+      "The settled app surface must return before capture",
       file: file,
       line: line
     )
