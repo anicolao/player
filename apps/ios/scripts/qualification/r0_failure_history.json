@@ -69,6 +69,495 @@
       },
       "qualificationResetCount": 1,
       "resetEvidence": "Reliability attempt 1 failed at exact SHA 0939406eca22ffa1b6b363ed3011d6a6d2502ef7, resetting Story 008's consecutive qualification count to zero."
+    },
+    {
+      "signature": "evidence:002-import-and-play:share-outcome-derived-from-fixture-intent",
+      "story": "002-import-and-play",
+      "evidence": {
+        "url": "git-commit:b96f43e5e35b84ba595cd4c6e833278c19ec382d",
+        "commit": "b96f43e5e35b84ba595cd4c6e833278c19ec382d",
+        "observation": "The pre-fix share probe selected consumed versus deduplicated from isShareReplay, a launch-fixture input, and could label a receipt recorded or retained without proving the production queue transition, durable receipt, or exact job-set mutation."
+      },
+      "rootCause": "The E2E bridge treated scenario intent as outcome evidence instead of observing the persisted receipt, job set, processing revision, and drained Pending/Processing queues.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Capture a durable pre-ingress baseline and derive consumed or deduplicated only from the production queue transition, exact receipt fingerprint, and exact persisted job-set change.",
+        "commits": [
+          "b96f43e5e35b84ba595cd4c6e833278c19ec382d"
+        ],
+        "validation": "The focused share-ingress evidence suite passed 5/5 unit cases and both canonical share UI journeys passed 2/2."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a confirmed evidence-integrity gap found before formal exact-SHA qualification, so no qualification count existed to reset."
+    },
+    {
+      "signature": "evidence:006-safe-zip-import:recovery-storage-values-fabricated",
+      "story": "006-safe-zip-import",
+      "evidence": {
+        "url": "git-commit:eca518b09a558642f6a1c667de0c4c21442ca0e2",
+        "commit": "eca518b09a558642f6a1c667de0c4c21442ca0e2",
+        "observation": "The pre-fix recovery probe hard-coded managed-duplicates=0 and converted an empty storage summary into staging-cleared=768 without inventorying the managed or staging files."
+      },
+      "rootCause": "The recovery E2E bridge projected success from fixture/model values rather than exact on-disk paths, byte counts, checksums, duplicate groups, and source preservation.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Inventory managed and staging storage, compare exact paths/bytes/checksums to sources and baseline media, and add a duplicate-managed-copy negative scenario that must fail closed.",
+        "commits": [
+          "eca518b09a558642f6a1c667de0c4c21442ca0e2"
+        ],
+        "validation": "Focused recovery parser/storage tests and the canonical ImportRecoveryStorage UI journey passed before the focused commit landed."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a confirmed evidence-integrity gap found before formal exact-SHA qualification, so no qualification count existed to reset."
+    },
+    {
+      "signature": "evidence:006-safe-zip-import:containment-and-cleanup-values-fabricated",
+      "story": "006-safe-zip-import",
+      "evidence": {
+        "url": "git-commit:74092f1bac1175813715175c4a55f19edde652b8",
+        "commit": "74092f1bac1175813715175c4a55f19edde652b8",
+        "observation": "The pre-fix ZIP probe always emitted outside-writes=0 and, for cancellation, extracted=0 and staging=0 without inspecting the fixture filesystem."
+      },
+      "rootCause": "Containment and cleanup assertions were string constants rather than observations of the source bytes, root-boundary sentinels, unexpected files, and job staging directory.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Snapshot the fixture filesystem and report actual source preservation, changed/outside files, sentinels, extracted entries, and staging file count.",
+        "commits": [
+          "74092f1bac1175813715175c4a55f19edde652b8"
+        ],
+        "validation": "Focused ZIP filesystem-evidence tests passed, and CI run 33163287440 subsequently demonstrated that the probe truthfully exposed staging=2 rather than the expected zero."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a confirmed evidence-integrity gap found before formal exact-SHA qualification, so no qualification count existed to reset."
+    },
+    {
+      "signature": "evidence:003-multifile-grouping:ordering-accessibility-aliases-ambiguous",
+      "story": "003-multifile-grouping",
+      "evidence": {
+        "url": "git-commit:b7c82a46d251d315aa31d69188e4fbc649d332ad",
+        "commit": "b7c82a46d251d315aa31d69188e4fbc649d332ad",
+        "observation": "The grouping and natural-order labels exposed child accessibility nodes under the same semantic region, so the test could not prove that its ordering evidence resolved to one unambiguous element."
+      },
+      "rootCause": "The production labels were not combined into one accessibility element and the UI test did not assert unique identity before accepting the ordering evidence.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Combine each evidence label into a single accessibility element and require exactly one natural-order identifier before capture.",
+        "commits": [
+          "b7c82a46d251d315aa31d69188e4fbc649d332ad"
+        ],
+        "validation": "The canonical Story 003 UI journey later passed with all four screenshots pixel-exact."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a confirmed selector-evidence gap found before formal exact-SHA qualification, so no qualification count existed to reset."
+    },
+    {
+      "signature": "evidence:003-multifile-grouping:commit-state-derived-from-model",
+      "story": "003-multifile-grouping",
+      "evidence": {
+        "url": "git-commit:d6596fc2acbc667917b9bc1479a5d48cabd59cd2",
+        "commit": "d6596fc2acbc667917b9bc1479a5d48cabd59cd2",
+        "observation": "The pre-fix transaction probe reported staging=0 and rollback=available from ImportJob and nonempty relative paths, without checking that the eight managed files existed at exact paths with the expected bytes and checksums or that staging was empty."
+      },
+      "rootCause": "The multifile E2E contract inferred filesystem success from model metadata rather than independently inventorying committed storage.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Inventory staging and managed media and require the exact file set, paths, presence, byte counts, checksums, and preserved sources.",
+        "commits": [
+          "d6596fc2acbc667917b9bc1479a5d48cabd59cd2"
+        ],
+        "validation": "Five focused filesystem/rollback tests passed 5/5, and canonical Story 003 passed with all four screenshots pixel-exact."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a confirmed evidence-integrity gap found before formal exact-SHA qualification, so no qualification count existed to reset."
+    },
+    {
+      "signature": "selector:013-app-store-listing:section-identifier-overwrote-shelf-scroll",
+      "story": "013-app-store-listing",
+      "evidence": {
+        "url": "git-commit:06c57f7dae524cc06348bd6fddbda3a390cd0a03",
+        "commit": "06c57f7dae524cc06348bd6fddbda3a390cd0a03",
+        "observation": "Applying library-home-recently-added-shelf to the outer BookshelfSection propagated over the nested horizontal ScrollView, so the App Store capture could not address the physical shelf scroll by library-home-recent-shelf-scroll."
+      },
+      "rootCause": "A section-level accessibility identifier was attached to the composite container instead of a distinct semantic child, overwriting the nested shelf's physical scroll identity.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Give the section heading and shelf ScrollView distinct identifiers and assert one physical ScrollView and one semantic section before capture.",
+        "commits": [
+          "06c57f7dae524cc06348bd6fddbda3a390cd0a03"
+        ],
+        "validation": "Story 013 passed in CI run 33163287440 at the exact fix SHA."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This failure was diagnosed and fixed before formal exact-SHA qualification, so no qualification count existed to reset."
+    },
+    {
+      "signature": "semantic:002-import-and-play:book-detail-expected-1-chapter-actual-0",
+      "story": "002-import-and-play",
+      "evidence": {
+        "workflowRun": 33163287440,
+        "workflowAttempt": 1,
+        "url": "https://github.com/anicolao/player/actions/runs/33163287440",
+        "commit": "06c57f7dae524cc06348bd6fddbda3a390cd0a03",
+        "observation": "testReviewsCommitsAndPlaysOneAudiobook failed its book-detail capture gate because the test required book:ready:...:1-chapters:m4a while the committed synthetic M4A truthfully exposed zero chapters."
+      },
+      "rootCause": "The newly strict semantic readiness assertion carried an incorrect expected chapter count for the deterministic import fixture.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "pending-focused-validation",
+        "summary": "Match the capture predicate to the fixture's truthful zero-chapter M4A state while retaining all playable-metadata and geometry requirements.",
+        "commits": [
+          "46dfd8b004ecd0e78585251132d499b95d1af037"
+        ],
+        "validation": "The exact expectation is corrected in source; a post-fix canonical Story 002 run is still required."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This CI failure preceded the formal exact-SHA R0 qualification sequence, so no qualification count existed to reset."
+    },
+    {
+      "signature": "walkthrough-readme:005-play-and-restore:stale-rewind-capture-bullet",
+      "story": "005-play-and-restore",
+      "evidence": {
+        "workflowRun": 33163287440,
+        "workflowAttempt": 1,
+        "url": "https://github.com/anicolao/player/actions/runs/33163287440",
+        "commit": "06c57f7dae524cc06348bd6fddbda3a390cd0a03",
+        "observation": "All five Story 005 UI tests passed, then README exact comparison failed because the reviewed walkthrough retained an obsolete capture-readiness bullet no longer emitted by the Smart Rewind test."
+      },
+      "rootCause": "The reviewed Story 005 README was not updated when capture-readiness text was removed from generated user-facing verification copy.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "pending-focused-validation",
+        "summary": "Remove the stale reviewed bullet so generated and reviewed walkthrough contracts describe the same semantic assertions.",
+        "commits": [
+          "037c9fb7b83c0e1c510dae61f1ec1a8e12a47860"
+        ],
+        "validation": "The reviewed README now matches the generated contract by inspection; a post-fix canonical Story 005 run is still required."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This CI failure preceded the formal exact-SHA R0 qualification sequence, so no qualification count existed to reset."
+    },
+    {
+      "signature": "semantic:006-safe-zip-import:cancelled-staging-expected-0-actual-2",
+      "story": "006-safe-zip-import",
+      "evidence": {
+        "workflowRun": 33163287440,
+        "workflowAttempt": 1,
+        "url": "https://github.com/anicolao/player/actions/runs/33163287440",
+        "commit": "06c57f7dae524cc06348bd6fddbda3a390cd0a03",
+        "observation": "SafeZIPImportUITests expected the cancelled probe to report staging=0, but the real filesystem evidence reported staging=2 immediately after the model published phase=cancelled."
+      },
+      "rootCause": "PlayerModel persisted and published the cancelled import job before await discardStaging completed, exposing a semantically cancelled state while two staging files still existed.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "pending-focused-validation",
+        "summary": "Serialize duplicate cancellation requests, persist the cancelled snapshot without publishing it, await staging cleanup, and only then publish the cancelled library state.",
+        "commits": [
+          "ce3312b6da23900638e47a502cb551dd14a31db9"
+        ],
+        "validation": "A deterministic checkpoint/release unit test proves cancellation is not published before cleanup; a post-fix canonical Story 006 run is still required."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This CI failure preceded the formal exact-SHA R0 qualification sequence, so no qualification count existed to reset."
+    },
+    {
+      "signature": "selector:008-library-search:confirm-finished-nested-alias-count-2",
+      "story": "008-library-search",
+      "evidence": {
+        "workflowRun": 33163287440,
+        "workflowAttempt": 1,
+        "url": "https://github.com/anicolao/player/actions/runs/33163287440",
+        "commit": "06c57f7dae524cc06348bd6fddbda3a390cd0a03",
+        "observation": "The finished confirmation assertion counted two matches instead of one even though both accessibility aliases represented the same physical Mark Finished action."
+      },
+      "rootCause": "The test equated nested accessibility aliases with duplicate controls instead of determining physical uniqueness from shared frame, identifier, label, and hittability.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "pending-focused-validation",
+        "summary": "Accept nested aliases only when every match resolves to the same physical frame and consistent identifier, label, and hittable state.",
+        "commits": [
+          "48edda491798307c7b4ca48041110f80cfde98a4"
+        ],
+        "validation": "The selector now proves one physical action by geometry and semantics; a post-fix canonical Story 008 run is still required."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This CI failure preceded the formal exact-SHA R0 qualification sequence, so no qualification count existed to reset."
+    },
+    {
+      "signature": "reveal:009-accessible-core-journeys:settings-accessibility-not-fully-visible",
+      "story": "009-accessible-core-journeys",
+      "evidence": {
+        "workflowRun": 33163287440,
+        "workflowAttempt": 1,
+        "url": "https://github.com/anicolao/player/actions/runs/33163287440",
+        "commit": "06c57f7dae524cc06348bd6fddbda3a390cd0a03",
+        "observation": "testAccessibilityPreferenceTogglesUpdateAndPersist failed because settings-accessibility did not become fully visible through settled user scrolling within the event deadline."
+      },
+      "rootCause": "The reveal helper treated nested Settings accessibility aliases as a fully contained generic target instead of proving that all aliases described one physical action with a uniquely hittable endpoint.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Require consistent identifier, label, and frame across Settings aliases and one enabled, hittable physical alias at the correlated bottom endpoint.",
+        "commits": [
+          "823e061e474b50221afe39de5dc8c8999dc2b0a3"
+        ],
+        "validation": "Fresh-build and no-source-change Story 009 runs passed both UI selectors, all 7 screenshots exactly, README comparison, and EvidenceManifest validation."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This CI failure preceded the formal exact-SHA R0 qualification sequence, so no qualification count existed to reset."
+    },
+    {
+      "signature": "reveal:009-accessible-core-journeys:edit-metadata-not-fully-visible",
+      "story": "009-accessible-core-journeys",
+      "evidence": {
+        "workflowRun": 33163287440,
+        "workflowAttempt": 1,
+        "url": "https://github.com/anicolao/player/actions/runs/33163287440",
+        "commit": "06c57f7dae524cc06348bd6fddbda3a390cd0a03",
+        "observation": "testCoreJourneysRemainCompleteAtLargestAccessibilityText failed because edit-metadata did not become fully visible through settled user scrolling."
+      },
+      "rootCause": "The largest-text Review Import reveal used a generic whole-element containment predicate and did not account for the persistent primary-action overlay when deciding whether Edit Details was safely actionable.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Require an exact Edit Details identity with at least a 44-point unobscured hit region above the primary action and tap the center of that proven region.",
+        "commits": [
+          "823e061e474b50221afe39de5dc8c8999dc2b0a3"
+        ],
+        "validation": "Fresh-build and no-source-change Story 009 runs passed both UI selectors, all 7 screenshots exactly, README comparison, and EvidenceManifest validation."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This CI failure preceded the formal exact-SHA R0 qualification sequence, so no qualification count existed to reset."
+    },
+    {
+      "signature": "overlap:009-accessible-core-journeys:review-edit-action-obscured-by-primary-action",
+      "story": "009-accessible-core-journeys",
+      "evidence": {
+        "artifact": "/tmp/player-story009-edit-obstruction-1.1787918009",
+        "url": "local-artifact:/tmp/player-story009-edit-obstruction-1.1787918009",
+        "commit": "e48e153619afc0145f5f43f2fe787e5462c76a22",
+        "observation": "After the first generic reveal correction, the core journey still failed with 'Expected edit-metadata to become safely interactable'; the action's apparent frame overlapped the fixed Review Import primary-action surface."
+      },
+      "rootCause": "The reveal contract used the mini-player as its default obstruction even on Review Import, where the actual blocking surface is the persistent review primary action.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Inject the screen's real primary-action obstruction into the unobscured-region calculation and require a 44-point safe action region before tapping.",
+        "commits": [
+          "823e061e474b50221afe39de5dc8c8999dc2b0a3"
+        ],
+        "validation": "The focused obstruction run passed 1/1 with all seven captures exact, followed by two exact full Story 009 passes at the committed source."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This local diagnostic run occurred before formal exact-SHA qualification, so no qualification count existed to reset."
+    },
+    {
+      "signature": "framing:009-accessible-core-journeys:metadata-anchor-range-admitted-40pt-drift",
+      "story": "009-accessible-core-journeys",
+      "evidence": {
+        "artifact": "/tmp/player-story009-canonical-rerun.1787914585",
+        "url": "local-artifacts:/tmp/player-story009-bounded.HV3NFn,/tmp/player-story009-final.Ud9nYd,/tmp/player-story009-canonical.c7pSed,/tmp/player-story009-framing.lTEJRT,/tmp/player-story009-canonical-rerun.1787914585",
+        "commit": "e48e153619afc0145f5f43f2fe787e5462c76a22",
+        "observation": "Metadata captures differed by roughly 35-40 points even though both Identity-anchor positions satisfied the old broad 90...135 readiness range."
+      },
+      "rootCause": "Capture readiness accepted a range of geometrically distinct layouts and reused a deadline already consumed by target revelation, so semantic readiness did not imply deterministic framing.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Use a fresh framing deadline and correlated measured displacement until each anchor settles at one canonical screen coordinate within one point.",
+        "commits": [
+          "823e061e474b50221afe39de5dc8c8999dc2b0a3"
+        ],
+        "validation": "Fresh-build and no-source-change Story 009 runs passed all 7 screenshot comparisons exactly."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "These local diagnostic runs occurred before formal exact-SHA qualification, so no qualification count existed to reset."
+    },
+    {
+      "signature": "framing:009-accessible-core-journeys:up-next-row-extended-behind-mini-player",
+      "story": "009-accessible-core-journeys",
+      "evidence": {
+        "artifact": "/tmp/player-story009-exact2.1787915086",
+        "url": "local-artifact:/tmp/player-story009-exact2.1787915086",
+        "commit": "e48e153619afc0145f5f43f2fe787e5462c76a22",
+        "observation": "The Up Next row's aggregate accessibility frame extended about six points behind the mini-player even though its visible cover, title, and author were clear."
+      },
+      "rootCause": "The capture gate required full visibility of a giant combined row accessibility frame instead of the visible constituent artwork and metadata that define the screenshot contract.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Gate the capture on the visible cover, title, and author above the mini-player while preserving the row's exact combined semantic label.",
+        "commits": [
+          "823e061e474b50221afe39de5dc8c8999dc2b0a3"
+        ],
+        "validation": "Screenshot 004 was pixel-exact in focused validation and in both final full Story 009 runs."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This local diagnostic run occurred before formal exact-SHA qualification, so no qualification count existed to reset."
+    },
+    {
+      "signature": "reveal:009-accessible-core-journeys:library-up-next-scroll-nondeterminism",
+      "story": "009-accessible-core-journeys",
+      "evidence": {
+        "artifact": "/tmp/player-story009-record.1787916382",
+        "url": "local-artifacts:/tmp/player-story009-record.1787916382,/tmp/player-story009-library-direct-a.1787916646,/tmp/player-story009-library-safe-2.1787916936",
+        "commit": "e48e153619afc0145f5f43f2fe787e5462c76a22",
+        "observation": "The old swipe settled about 35 points differently and left open-up-next behind the mini-player; one direct drag began inside the mini-player and produced no correlated interaction, while a safe-start high-velocity diagnostic overshot the target."
+      },
+      "rootCause": "The library gesture used fixed normalized coordinates and velocity without deriving a safe touch origin from the live mini-player or requiring a minimum unobscured Up Next hit region.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Derive the drag origin from live mini-player geometry, observe correlated bounded progress, require an exact enabled/hittable Up Next identity with a 44-point unobscured region, and tap its safe center.",
+        "commits": [
+          "823e061e474b50221afe39de5dc8c8999dc2b0a3"
+        ],
+        "validation": "Two focused hit-region runs passed the full core selector and exact screenshot 004, followed by two exact full Story 009 passes."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "These local diagnostic runs occurred before formal exact-SHA qualification, so no qualification count existed to reset."
+    },
+    {
+      "signature": "framing:009-accessible-core-journeys:material-refresh-did-not-restore-anchor",
+      "story": "009-accessible-core-journeys",
+      "evidence": {
+        "artifact": "/tmp/player-story009-material-refresh-3.1787919266",
+        "url": "local-artifacts:/tmp/player-story009-material-refresh-2.1787919104,/tmp/player-story009-material-refresh-3.1787919266",
+        "commit": "e48e153619afc0145f5f43f2fe787e5462c76a22",
+        "observation": "Two bounded material-refresh experiments failed before screenshot 002 because the Book Detail anchor did not return to screen y=100 ±1 after the attempted refresh."
+      },
+      "rootCause": "Trying to perturb the translucent material after framing introduced a second scroll/layout lifecycle and could not guarantee restoration to the already-proven capture coordinate.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Remove capture-time material perturbation and isolate the prior test process surface at the lifecycle boundary before the core journey begins.",
+        "commits": [
+          "823e061e474b50221afe39de5dc8c8999dc2b0a3"
+        ],
+        "validation": "The final implementation performs no material refresh and passed two full Story 009 runs with all screenshots exact."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "These local diagnostic runs occurred before formal exact-SHA qualification, so no qualification count existed to reset."
+    },
+    {
+      "signature": "screenshot:pixel-difference:009-book-detail-translucent-underlay",
+      "story": "009-accessible-core-journeys",
+      "evidence": {
+        "artifact": "/tmp/player-story009-edit-obstruction-exact-repeat.1787918276",
+        "url": "local-artifacts:/tmp/player-story009-edit-obstruction-exact-repeat.1787918276,/tmp/player-story009-compositor-stable-1.1787918727",
+        "commit": "e48e153619afc0145f5f43f2fe787e5462c76a22",
+        "observation": "Screenshot 002 differed only within y=2319...2622 under translucent tab material while all opaque geometry above y=2319 was exact; red and green no-source-change repeats alternated which prior card the blur sampled."
+      },
+      "rootCause": "Terminating the preference-persistence app did not displace its retained scene/material surface, allowing the next process's translucent tab material to sample stale underlay content nondeterministically.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "After the preference process terminates, activate SpringBoard and require it in the foreground within two seconds before starting the core journey, while preserving strict scroll correlation.",
+        "commits": [
+          "823e061e474b50221afe39de5dc8c8999dc2b0a3"
+        ],
+        "validation": "Fresh-build `/tmp/player-story009-surface-teardown-1.1787920614` and no-change repeat `/tmp/player-story009-surface-teardown-2.1787920787` both passed UI 2/2, screenshots 7/7 exact, README exact, and EvidenceManifest validation."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "These red/green diagnostic repeats occurred before formal exact-SHA qualification, so no qualification count existed to reset."
+    },
+    {
+      "signature": "screenshot:pixel-difference:003-computer-receiver-paused.png",
+      "story": "001-ios-launch",
+      "evidence": {
+        "workflowRun": 33163287440,
+        "workflowAttempt": 1,
+        "url": "https://github.com/anicolao/player/actions/runs/33163287440",
+        "commit": "06c57f7dae524cc06348bd6fddbda3a390cd0a03",
+        "observation": "The Story 001 UI tests passed, then exact comparison found 5,236 changed pixels in 003-computer-receiver-paused.png within bounds (166,791,239,184), maximum channel delta 166."
+      },
+      "rootCause": "The reviewed paused-transfer screenshot predated the production-event-backed receiver presentation and its truthful 734 KB of 1.5 MB progress state.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Review and record the production receiver's truthful paused-transfer presentation as the canonical screenshot baseline.",
+        "commits": [
+          "95bf3e084f5af5462a9ad6244dafed1f37a091a1"
+        ],
+        "validation": "Normal exact repeat `/tmp/player-story001-verify.1787921258` passed UI 4/4, screenshots 6/6 exact, and README exact."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This CI failure preceded the formal exact-SHA R0 qualification sequence, so no qualification count existed to reset."
+    },
+    {
+      "signature": "screenshot:pixel-difference:004-computer-receiver-completed.png",
+      "story": "001-ios-launch",
+      "evidence": {
+        "workflowRun": 33163287440,
+        "workflowAttempt": 1,
+        "url": "https://github.com/anicolao/player/actions/runs/33163287440",
+        "commit": "06c57f7dae524cc06348bd6fddbda3a390cd0a03",
+        "observation": "The Story 001 UI tests passed, then exact comparison found 20,475 changed pixels in 004-computer-receiver-completed.png within bounds (178,1005,849,61), maximum channel delta 216."
+      },
+      "rootCause": "The completed capture reused an import-ready fixture whose title and persistence phase did not match the production-corroborated committed-book receiver state represented by the reviewed baseline.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Use a dedicated committed-book completion fixture, then review and record the truthful completed receiver surface.",
+        "commits": [
+          "e48e153619afc0145f5f43f2fe787e5462c76a22",
+          "95bf3e084f5af5462a9ad6244dafed1f37a091a1"
+        ],
+        "validation": "Normal exact repeat `/tmp/player-story001-verify.1787921258` passed UI 4/4, screenshots 6/6 exact, and README exact."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This CI failure preceded the formal exact-SHA R0 qualification sequence, so no qualification count existed to reset."
+    },
+    {
+      "signature": "walkthrough-readme:001-ios-launch:production-receiver-evidence-drift",
+      "story": "001-ios-launch",
+      "evidence": {
+        "workflowRun": 33163287440,
+        "workflowAttempt": 1,
+        "url": "https://github.com/anicolao/player/actions/runs/33163287440",
+        "commit": "06c57f7dae524cc06348bd6fddbda3a390cd0a03",
+        "observation": "README exact comparison showed five truthful generated verifications missing from the reviewed baseline: two production-ready exchange checks plus one each for drop progress, paused HTTP progress, and completion corroboration."
+      },
+      "rootCause": "Production evidence assertions were added to Story 001 without refreshing the reviewed walkthrough contract that exact comparison enforces.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Add all five production receiver evidence verifications to the reviewed Story 001 README without weakening the generated assertions.",
+        "commits": [
+          "95bf3e084f5af5462a9ad6244dafed1f37a091a1"
+        ],
+        "validation": "Normal exact repeat `/tmp/player-story001-verify.1787921258` passed UI 4/4, screenshots 6/6 exact, and README exact."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This CI failure preceded the formal exact-SHA R0 qualification sequence, so no qualification count existed to reset."
+    },
+    {
+      "signature": "fixture:001-ios-launch:receiver-completion-title-and-phase-mismatch",
+      "story": "001-ios-launch",
+      "evidence": {
+        "workflowRun": 33163287440,
+        "workflowAttempt": 1,
+        "url": "https://github.com/anicolao/player/actions/runs/33163287440",
+        "commit": "06c57f7dae524cc06348bd6fddbda3a390cd0a03",
+        "observation": "The completed receiver leg launched single-audiobook-ready, an import-ready proposal fixture, even though the capture and production evidence required a specific title already represented by one persisted Book and one committed ImportJob."
+      },
+      "rootCause": "A fixture designed for pre-commit import review was reused for the post-commit receiver completion surface, coupling the capture to mismatched title and persistence semantics.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Introduce a dedicated receiver-completion-baseline fixture with deterministic title, media, Book, committed ImportJob, clock, and IDs, and launch the completion leg with it.",
+        "commits": [
+          "e48e153619afc0145f5f43f2fe787e5462c76a22"
+        ],
+        "validation": "After the reviewed baseline commit, normal exact Story 001 repeat `/tmp/player-story001-verify.1787921258` passed UI 4/4, screenshots 6/6 exact, and README exact."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This fixture-contract failure preceded the formal exact-SHA R0 qualification sequence, so no qualification count existed to reset."
     }
   ]
 }
