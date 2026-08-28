@@ -26,6 +26,24 @@ qualification will produce repeated measurements and compare medians within
 the same environment and command shape; local and GitHub-hosted measurements
 must not be mixed into one delta.
 
+## First parallel CI comparison
+
+Commit `be102bec0daabdc064ed411c9c1610e866ba1349` ran the same 13 canonical
+stories and core gate in five balanced macOS lanes with one shared compiled
+test bundle per lane. The [green GitHub Actions run](https://github.com/anicolao/player/actions/runs/33139873579)
+started at 03:46:26Z and completed at 04:09:04Z on 2026-08-28.
+
+| Hosted CI measurement | Before | Parallel green run | Delta |
+| --- | ---: | ---: | ---: |
+| End-to-end workflow wall clock | 43m30s | 22m38s | -20m52s (-48.0%) |
+| Canonical stories | 13 | 13 | unchanged |
+| Core gate | included | included | unchanged |
+| Maximum macOS lanes | 5 | 5 | unchanged |
+
+This is the authoritative before/after result for the CI topology change, but
+it is not yet the final R0 reliability distribution. The exact-SHA 10/10 story
+and 5/5 matrix qualification must still pass before R0 is complete.
+
 ## Current-main CI critical path
 
 The successful [GitHub Actions run](https://github.com/anicolao/player/actions/runs/33124661556)
