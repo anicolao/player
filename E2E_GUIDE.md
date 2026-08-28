@@ -57,7 +57,11 @@ To intentionally record the initial or a changed baseline, pass the exact story 
 apps/ios/scripts/run-e2e.sh --story 002-import-and-play --record 002-import-and-play
 ```
 
-The test result, raw attachments, and materialized actual walkthrough remain under `apps/ios/DerivedData/E2E/<story>/` for diagnosis. The exact comparator is [compare-walkthrough.swift](apps/ios/scripts/compare-walkthrough.swift).
+The current run manifest, phase timings, logs, test result, raw attachments,
+materialized actual walkthrough, and failure diagnostics remain under
+`apps/ios/DerivedData/E2E/<story>/`. A pixel failure includes the expected,
+actual, and red heatmap diff images plus a machine-readable summary. The exact
+comparator is [compare-walkthrough.swift](apps/ios/scripts/compare-walkthrough.swift).
 
 In GitHub Actions, the core suite and each committed story run in isolated
 parallel jobs. Within a multi-class story, XCTest may run two classes in

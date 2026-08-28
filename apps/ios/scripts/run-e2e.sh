@@ -131,36 +131,86 @@ result_bundle="${story_output}/Results/Story.xcresult"
 attachments="${story_output}/Attachments"
 actual_story="${story_output}/ActualWalkthrough"
 baseline_story="${repository_root}/tests/e2e/${story_id}"
-simulator_name="Player E2E ${story_id}"
+simulator_name="Player E2E ${story_id} $$"
 
 if [[ ! -d "${baseline_story}" ]]; then
   echo "Story directory is missing: ${baseline_story}" >&2
   exit 1
 fi
 
-"${script_dir}/verify-e2e-environment.sh"
+rm -rf "${story_output}"
+mkdir -p "${story_output}/Results" "${story_output}/Logs" "${story_output}/Diagnostics"
+run_started_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+run_commit="$(git -C "${repository_root}" rev-parse HEAD)"
+jq -n \
+  --arg story "${story_id}" \
+  --arg commit "${run_commit}" \
+  --arg startedAt "${run_started_at}" \
+  --arg status "running" \
+  '{story: $story, commit: $commit, startedAt: $startedAt, status: $status}' \
+  > "${story_output}/Run.json"
+: > "${story_output}/PhaseTimings.tsv"
+
+run_logged_phase() {
+  local phase="$1"
+  shift
+  local phase_start="${SECONDS}"
+  local phase_status=0
+  set +e
+  "$@" 2>&1 | tee "${story_output}/Logs/${phase}.log"
+  local pipeline_status=("${PIPESTATUS[@]}")
+  set -e
+  phase_status="${pipeline_status[0]}"
+  printf '%s\t%s\t%s\t%s\n' \
+    "${phase}" "${phase_start}" "${SECONDS}" "${phase_status}" \
+    >> "${story_output}/PhaseTimings.tsv"
+  return "${phase_status}"
+}
+
+capture_failure_diagnostics() {
+  if [[ -z "${simulator_id}" ]]; then return 0; fi
+  xcrun simctl io "${simulator_id}" screenshot \
+    "${story_output}/Diagnostics/failure-screen.png" >/dev/null 2>&1 || true
+  xcrun simctl spawn "${simulator_id}" log show \
+    --last 5m --style compact --predicate 'process == "Player"' \
+    > "${story_output}/Diagnostics/player.log" 2>&1 || true
+  xcrun simctl list devices --json > "${story_output}/Diagnostics/simulators.json" 2>&1 || true
+}
 
 cleanup() {
+  local run_status="$?"
+  trap - EXIT
+  set +e
+  if [[ "${run_status}" -ne 0 ]]; then
+    capture_failure_diagnostics
+  fi
   if [[ -n "${simulator_id}" ]]; then
     xcrun simctl shutdown "${simulator_id}" >/dev/null 2>&1 || true
-    xcrun simctl delete "${simulator_id}" >/dev/null 2>&1 || true
+    if ! xcrun simctl delete "${simulator_id}" >/dev/null 2>&1; then
+      echo "Could not delete E2E simulator ${simulator_id}." >&2
+      if [[ "${run_status}" -eq 0 ]]; then run_status=1; fi
+    fi
   fi
   if [[ -n "${recording_stage}" && -d "${recording_stage}" ]]; then
     rm -rf "${recording_stage}"
   fi
+  completed_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  jq \
+    --arg completedAt "${completed_at}" \
+    --arg status "$([[ "${run_status}" -eq 0 ]] && echo passed || echo failed)" \
+    --argjson exitCode "${run_status}" \
+    '. + {completedAt: $completedAt, status: $status, exitCode: $exitCode}' \
+    "${story_output}/Run.json" > "${story_output}/Run.json.next" \
+    && mv "${story_output}/Run.json.next" "${story_output}/Run.json"
+  exit "${run_status}"
 }
 trap cleanup EXIT
 
-existing_ids="$(
-  xcrun simctl list devices --json \
-    | jq -r --arg name "${simulator_name}" '.devices[][] | select(.name == $name) | .udid'
-)"
-while IFS= read -r existing_id; do
-  if [[ -n "${existing_id}" ]]; then
-    xcrun simctl delete "${existing_id}"
-  fi
-done <<< "${existing_ids}"
+if ! run_logged_phase environment "${script_dir}/verify-e2e-environment.sh"; then
+  exit 1
+fi
 
+simulator_phase_start="${SECONDS}"
 simulator_id="$(xcrun simctl create "${simulator_name}" "${device_type}" "${runtime}")"
 xcrun simctl boot "${simulator_id}"
 xcrun simctl bootstatus "${simulator_id}" -b
@@ -179,6 +229,8 @@ xcrun simctl status_bar "${simulator_id}" override \
   --wifiBars 3 \
   --cellularMode active \
   --cellularBars 4
+printf 'simulator\t%s\t%s\t0\n' "${simulator_phase_start}" "${SECONDS}" \
+  >> "${story_output}/PhaseTimings.tsv"
 
 if [[ "${skip_project_generation}" == "1" ]]; then
   if [[ ! -f "${ios_dir}/Player.xcodeproj/project.pbxproj" ]]; then
@@ -186,19 +238,21 @@ if [[ "${skip_project_generation}" == "1" ]]; then
     exit 1
   fi
 else
-  "${script_dir}/generate-project.sh"
+  if ! run_logged_phase project-generation "${script_dir}/generate-project.sh"; then
+    exit 1
+  fi
 fi
 
-rm -rf "${story_output}"
-mkdir -p "${story_output}/Results"
-
-xcodebuild build-for-testing \
+if ! run_logged_phase build xcodebuild build-for-testing \
   -project "${ios_dir}/Player.xcodeproj" \
   -scheme Player \
   -configuration E2E \
   -destination "platform=iOS Simulator,id=${simulator_id}" \
   -derivedDataPath "${build_data}" \
-  CODE_SIGNING_ALLOWED=NO
+  CODE_SIGNING_ALLOWED=NO; then
+  echo "UI-test build failed; retained diagnostics in ${story_output}" >&2
+  exit 1
+fi
 
 only_testing_arguments=()
 test_classes=()
@@ -216,7 +270,7 @@ fi
 echo "E2E execution: ${unique_test_class_count} test class(es), parallel testing ${parallel_testing}."
 
 test_status=0
-xcodebuild test-without-building \
+run_logged_phase test xcodebuild test-without-building \
   -project "${ios_dir}/Player.xcodeproj" \
   -scheme Player \
   -configuration E2E \
@@ -231,7 +285,7 @@ xcodebuild test-without-building \
 export_status=0
 if [[ -d "${result_bundle}" ]]; then
   mkdir -p "${attachments}"
-  xcrun xcresulttool export attachments \
+  run_logged_phase attachment-export xcrun xcresulttool export attachments \
     --path "${result_bundle}" \
     --output-path "${attachments}" || export_status=$?
 else
@@ -241,7 +295,7 @@ fi
 
 materialize_status=0
 if [[ ${export_status} -eq 0 ]]; then
-  "${script_dir}/export-walkthrough.sh" \
+  run_logged_phase walkthrough-materialization "${script_dir}/export-walkthrough.sh" \
     "${attachments}" \
     "${actual_story}" || materialize_status=$?
 fi
@@ -267,9 +321,10 @@ if [[ -n "${record_story}" ]]; then
   cp "${actual_story}/screenshots/ios/"*.png "${recording_stage}/screenshots/ios/"
   cp "${actual_story}/README.md" "${recording_stage}/README.md"
   cp "${baseline_story}/story.json" "${recording_stage}/story.json"
-  swift "${script_dir}/compare-walkthrough.swift" \
+  run_logged_phase screenshot-comparison swift "${script_dir}/compare-walkthrough.swift" \
     "${recording_stage}/screenshots/ios" \
-    "${actual_story}/screenshots/ios"
+    "${actual_story}/screenshots/ios" \
+    "${story_output}/Diagnostics/ScreenshotComparison"
 
   previous_baseline="${baseline_parent}/.${story_id}.previous.$$"
   mv "${baseline_story}" "${previous_baseline}"
@@ -282,7 +337,8 @@ if [[ -n "${record_story}" ]]; then
   rm -rf "${previous_baseline}"
   echo "Recorded reviewed baseline in ${baseline_story}"
 else
-  swift "${script_dir}/compare-walkthrough.swift" \
+  run_logged_phase screenshot-comparison swift "${script_dir}/compare-walkthrough.swift" \
     "${baseline_story}/screenshots/ios" \
-    "${actual_story}/screenshots/ios"
+    "${actual_story}/screenshots/ios" \
+    "${story_output}/Diagnostics/ScreenshotComparison"
 fi

@@ -221,12 +221,16 @@ jobs:
         with:
           name: ios-e2e-${{ matrix.story }}
           path: |
+            apps/ios/DerivedData/E2E/${{ matrix.story }}/Run.json
+            apps/ios/DerivedData/E2E/${{ matrix.story }}/PhaseTimings.tsv
+            apps/ios/DerivedData/E2E/${{ matrix.story }}/Logs/
+            apps/ios/DerivedData/E2E/${{ matrix.story }}/Diagnostics/
             apps/ios/DerivedData/E2E/${{ matrix.story }}/ActualWalkthrough/
             apps/ios/DerivedData/E2E/${{ matrix.story }}/Attachments/
             apps/ios/DerivedData/E2E/${{ matrix.story }}/Results/Story.xcresult/
             build/app-store-listing/screenshots/
-          if-no-files-found: warn
-          retention-days: 7
+          if-no-files-found: error
+          retention-days: 14
 
   ios-tests:
     name: Core tests and exact E2E walkthroughs
