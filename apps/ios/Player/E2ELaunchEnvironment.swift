@@ -1575,14 +1575,16 @@ extension PlayerEnvironment {
       else {
         throw PlayerCoreError.fileOperation("The synthetic populated-library fixture is unavailable.")
       }
-      let descriptor = try JSONDecoder().decode(E2EPopulatedLibraryDescriptor.self, from: descriptorData)
-      guard
-        descriptor.schemaVersion == 1,
-        descriptor.books.count == 5,
-        descriptor.audio.byteCount == audio.count,
-        descriptor.audio.sha256 == SHA256.hash(data: audio).map({ String(format: "%02x", $0) }).joined()
-      else {
-        throw PlayerCoreError.fileOperation("The synthetic populated-library fixture failed validation.")
+      let covers = try (1...5).map { index -> Data in
+        guard
+          let encoded = launchEnvironment["PLAYER_E2E_LIBRARY_COVER_B\(index)_BASE64"],
+          let cover = Data(base64Encoded: encoded)
+        else {
+          throw PlayerCoreError.fileOperation(
+            "A synthetic populated-library cover is unavailable."
+          )
+        }
+        return cover
       }
 
       let support = try FileManager.default.url(
@@ -1592,21 +1594,42 @@ extension PlayerEnvironment {
         create: true
       )
       let root = support.appending(path: "PlayerE2EPopulatedLibrary", directoryHint: .isDirectory)
+      return try populatedLibraryEnvironment(
+        reset: reset,
+        root: root,
+        descriptorData: descriptorData,
+        audio: audio,
+        covers: covers
+      )
+    }
+
+    static func populatedLibraryEnvironment(
+      reset: Bool,
+      root: URL,
+      descriptorData: Data,
+      audio: Data,
+      covers: [Data]
+    ) throws -> PlayerEnvironment {
+      let validated = try E2EPopulatedLibraryDescriptor.validated(
+        data: descriptorData,
+        audio: audio
+      )
+      let descriptor = validated.descriptor
+      guard covers.count == descriptor.books.count else {
+        throw PlayerCoreError.fileOperation(
+          "The synthetic populated-library fixture has the wrong cover count."
+        )
+      }
+
       if reset { try resetE2EFixtureRoot(root) }
       try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
 
-      let clock = ISO8601DateFormatter().date(from: descriptor.clock)
-        ?? Date(timeIntervalSince1970: 1_776_000_000)
+      let clock = validated.clock
       var books: [Book] = []
       for (index, fixtureBook) in descriptor.books.enumerated() {
-        guard
-          let bookID = UUID(uuidString: fixtureBook.id),
-          let assetID = UUID(uuidString: fixtureBook.assetID),
-          let coverEncoded = launchEnvironment["PLAYER_E2E_LIBRARY_COVER_B\(index + 1)_BASE64"],
-          let cover = Data(base64Encoded: coverEncoded)
-        else {
-          throw PlayerCoreError.fileOperation("A synthetic populated-library record is invalid.")
-        }
+        let bookID = validated.bookIDs[index]
+        let assetID = validated.assetIDs[index]
+        let cover = covers[index]
         let relativePath = "Media/\(bookID.uuidString.lowercased())/\(assetID.uuidString.lowercased()).m4b"
         let managedURL = root.appending(path: relativePath)
         if !FileManager.default.fileExists(atPath: managedURL.path) {
@@ -1679,15 +1702,15 @@ extension PlayerEnvironment {
         )
       }
 
+      let currentBookID = validated.currentBookID
       guard
-        let currentBookID = UUID(uuidString: descriptor.currentBookID),
         let currentBook = books.first(where: { $0.id == currentBookID }),
-        let seedEventID = UUID(uuidString: "90000000-0000-0000-0000-000000000701"),
-        let collectionID = UUID(uuidString: descriptor.generatedIDs.collection),
-        let trashID = UUID(uuidString: descriptor.generatedIDs.trashTransaction)
+        let seedEventID = UUID(uuidString: "90000000-0000-0000-0000-000000000701")
       else {
         throw PlayerCoreError.fileOperation("The synthetic populated-library identity map is invalid.")
       }
+      let collectionID = validated.collectionID
+      let trashID = validated.trashTransactionID
       let seedEvent = PositionEvent.acknowledged(
         id: seedEventID,
         bookID: currentBookID,
@@ -1709,8 +1732,8 @@ extension PlayerEnvironment {
           updatedAt: clock
         ),
         positionJournal: [seedEvent],
-        upNextBookIDs: descriptor.upNext.compactMap(UUID.init(uuidString:)),
-        allBooksViewStyle: LibraryViewStyle(rawValue: descriptor.viewPreference) ?? .shelf
+        upNextBookIDs: validated.upNextBookIDs,
+        allBooksViewStyle: validated.viewPreference
       )
       E2ELibraryOrganizationBridge.shared.configure(
         rootURL: root,
@@ -2116,7 +2139,7 @@ extension PlayerEnvironment {
 }
 
 #if E2E
-  private struct E2EPopulatedLibraryDescriptor: Decodable {
+  struct E2EPopulatedLibraryDescriptor: Decodable {
     struct Audio: Decodable {
       var byteCount: Int
       var sha256: String
@@ -2159,6 +2182,71 @@ extension PlayerEnvironment {
     var upNext: [String]
     var viewPreference: String
     var generatedIDs: GeneratedIDs
+
+    struct Validated {
+      let descriptor: E2EPopulatedLibraryDescriptor
+      let clock: Date
+      let bookIDs: [UUID]
+      let assetIDs: [UUID]
+      let currentBookID: UUID
+      let upNextBookIDs: [UUID]
+      let viewPreference: LibraryViewStyle
+      let collectionID: UUID
+      let trashTransactionID: UUID
+    }
+
+    static func validated(data: Data, audio: Data) throws -> Validated {
+      let descriptor = try JSONDecoder().decode(Self.self, from: data)
+      let checksum = SHA256.hash(data: audio).map { String(format: "%02x", $0) }.joined()
+      let clockFormatter = ISO8601DateFormatter()
+      guard
+        descriptor.schemaVersion == 1,
+        descriptor.books.count == 5,
+        descriptor.audio.byteCount == audio.count,
+        descriptor.audio.sha256 == checksum,
+        let clock = clockFormatter.date(from: descriptor.clock),
+        clockFormatter.string(from: clock) == descriptor.clock,
+        let viewPreference = LibraryViewStyle(rawValue: descriptor.viewPreference),
+        let currentBookID = UUID(uuidString: descriptor.currentBookID),
+        let collectionID = UUID(uuidString: descriptor.generatedIDs.collection),
+        let trashTransactionID = UUID(uuidString: descriptor.generatedIDs.trashTransaction)
+      else {
+        throw PlayerCoreError.fileOperation(
+          "The synthetic populated-library fixture failed validation."
+        )
+      }
+
+      let bookIDs = try decodedUUIDs(descriptor.books.map(\.id), field: "book")
+      let assetIDs = try decodedUUIDs(descriptor.books.map(\.assetID), field: "asset")
+      let upNextBookIDs = try decodedUUIDs(descriptor.upNext, field: "Up Next")
+      guard bookIDs.contains(currentBookID) else {
+        throw PlayerCoreError.fileOperation(
+          "The synthetic populated-library current book is not in the fixture."
+        )
+      }
+
+      return Validated(
+        descriptor: descriptor,
+        clock: clock,
+        bookIDs: bookIDs,
+        assetIDs: assetIDs,
+        currentBookID: currentBookID,
+        upNextBookIDs: upNextBookIDs,
+        viewPreference: viewPreference,
+        collectionID: collectionID,
+        trashTransactionID: trashTransactionID
+      )
+    }
+
+    private static func decodedUUIDs(_ encoded: [String], field: String) throws -> [UUID] {
+      let decoded = encoded.compactMap(UUID.init(uuidString:))
+      guard decoded.count == encoded.count else {
+        throw PlayerCoreError.fileOperation(
+          "The synthetic populated-library \(field) identity map is invalid."
+        )
+      }
+      return decoded
+    }
   }
 
   @MainActor

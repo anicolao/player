@@ -306,6 +306,135 @@
     }
   }
 
+  @MainActor
+  final class E2EPopulatedLibraryDescriptorTests: XCTestCase {
+    func testMalformedClockCannotResetFixtureRoot() throws {
+      try assertInvalidDescriptorPreservesSentinel("malformed-clock") {
+        $0["clock"] = "2026-02-30T13:41:00Z"
+      }
+    }
+
+    func testUnknownViewPreferenceCannotResetFixtureRoot() throws {
+      try assertInvalidDescriptorPreservesSentinel("unknown-view-preference") {
+        $0["viewPreference"] = "tiles"
+      }
+    }
+
+    func testMalformedUpNextUUIDCannotResetFixtureRoot() throws {
+      try assertInvalidDescriptorPreservesSentinel("malformed-up-next") {
+        $0["upNext"] = [fixtureID(2), "not-a-UUID"]
+      }
+    }
+
+    func testValidDescriptorBuildsTheExpectedFixture() async throws {
+      let root = temporaryDirectory("valid")
+      defer { try? FileManager.default.removeItem(at: root) }
+      try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+      let sentinel = root.appending(path: "sentinel.txt")
+      try Data("valid-input-may-reset".utf8).write(to: sentinel, options: .atomic)
+
+      let environment = try PlayerEnvironment.populatedLibraryEnvironment(
+        reset: true,
+        root: root,
+        descriptorData: descriptorData(validDescriptor()),
+        audio: Data(),
+        covers: fixtureCovers
+      )
+      let snapshot = try await environment.persistence.load()
+
+      XCTAssertFalse(FileManager.default.fileExists(atPath: sentinel.path))
+      XCTAssertEqual(snapshot.books.map(\.id), (1...5).compactMap { fixtureUUID($0) })
+      XCTAssertEqual(snapshot.currentBookID, fixtureUUID(1))
+      XCTAssertEqual(snapshot.upNextBookIDs, [2, 5, 3].compactMap { fixtureUUID($0) })
+      XCTAssertEqual(snapshot.allBooksViewStyle, .shelf)
+    }
+
+    private func assertInvalidDescriptorPreservesSentinel(
+      _ name: String,
+      mutate: (inout [String: Any]) -> Void,
+      file: StaticString = #filePath,
+      line: UInt = #line
+    ) throws {
+      let root = temporaryDirectory(name)
+      defer { try? FileManager.default.removeItem(at: root) }
+      try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+      let sentinel = root.appending(path: "sentinel.txt")
+      let sentinelData = Data("invalid-input-must-not-reset".utf8)
+      try sentinelData.write(to: sentinel, options: .atomic)
+      var descriptor = validDescriptor()
+      mutate(&descriptor)
+
+      XCTAssertThrowsError(
+        try PlayerEnvironment.populatedLibraryEnvironment(
+          reset: true,
+          root: root,
+          descriptorData: descriptorData(descriptor),
+          audio: Data(),
+          covers: fixtureCovers
+        ),
+        file: file,
+        line: line
+      )
+      XCTAssertEqual(try Data(contentsOf: sentinel), sentinelData, file: file, line: line)
+    }
+
+    private var fixtureCovers: [Data] {
+      (1...5).map { Data([UInt8($0)]) }
+    }
+
+    private func validDescriptor() -> [String: Any] {
+      let emptySHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      let books: [[String: Any]] = (1...5).map { index in
+        [
+          "id": fixtureID(index),
+          "assetID": fixtureID(100 + index),
+          "title": "Fixture Book \(index)",
+          "author": ["id": fixtureID(200 + index), "name": "Author \(index)"],
+          "narrator": ["id": fixtureID(300 + index), "name": "Narrator \(index)"],
+          "positionMilliseconds": index == 1 ? 45_000 : 0,
+          "finished": false,
+          "addedOrder": index,
+        ]
+      }
+      return [
+        "schemaVersion": 1,
+        "clock": "2026-08-18T13:41:00Z",
+        "audio": [
+          "byteCount": 0,
+          "sha256": emptySHA256,
+          "logicalBookDurationMilliseconds": 120_000,
+        ],
+        "books": books,
+        "currentBookID": fixtureID(1),
+        "upNext": [fixtureID(2), fixtureID(5), fixtureID(3)],
+        "viewPreference": "shelf",
+        "generatedIDs": [
+          "collection": fixtureID(501),
+          "trashTransaction": fixtureID(601),
+        ],
+      ]
+    }
+
+    private func descriptorData(_ descriptor: [String: Any]) throws -> Data {
+      try JSONSerialization.data(withJSONObject: descriptor, options: [.sortedKeys])
+    }
+
+    private func fixtureID(_ suffix: Int) -> String {
+      String(format: "90000000-0000-0000-0000-%012d", suffix)
+    }
+
+    private func fixtureUUID(_ suffix: Int) -> UUID? {
+      UUID(uuidString: fixtureID(suffix))
+    }
+
+    private func temporaryDirectory(_ name: String) -> URL {
+      FileManager.default.temporaryDirectory.appending(
+        path: "E2EPopulatedLibraryDescriptorTests-\(name)-\(UUID().uuidString)",
+        directoryHint: .isDirectory
+      )
+    }
+  }
+
   final class E2EPlaybackControlConfigurationTests: XCTestCase {
     func testProductionAndControlFreeLaunchesRemainDisabled() throws {
       XCTAssertEqual(try E2EPlaybackControlConfiguration.parse(arguments: ["Player"]), .disabled)
