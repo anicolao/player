@@ -138,6 +138,10 @@ jobs:
         if: matrix.run_core
         run: apps/ios/scripts/verify-bookshelf-branding.sh
 
+      - name: Verify StoreKit Full Unlock configuration
+        if: matrix.run_core
+        run: apps/ios/scripts/verify-storekit-configuration.sh
+
       - name: Generate Xcode project
         run: apps/ios/scripts/generate-project.sh
 

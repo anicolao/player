@@ -25,6 +25,7 @@ final class PlayerModel {
   @ObservationIgnored private var cancellingImportIDs: Set<UUID> = []
   @ObservationIgnored private var sleepTimerMonitorTask: Task<Void, Never>?
   @ObservationIgnored private var playbackProgressMonitorTask: Task<Void, Never>?
+  @ObservationIgnored private var monetizationSnapshotTask: Task<Void, Never>?
   @ObservationIgnored private var sleepTimerEvaluationInProgress = false
   @ObservationIgnored private var loadedAssetID: UUID?
   @ObservationIgnored private var loadedAssetTimelineStartSeconds = 0.0
@@ -39,6 +40,18 @@ final class PlayerModel {
     self.environment = environment
     self.playbackState = environment.playback.state
     self.monetization = environment.monetization.snapshot
+
+    let monetizationUpdates = environment.monetization.snapshotUpdates
+    monetizationSnapshotTask = Task { @MainActor [weak self] in
+      for await snapshot in monetizationUpdates {
+        guard !Task.isCancelled, let self else { return }
+        applyMonetizationSnapshot(snapshot)
+      }
+    }
+  }
+
+  deinit {
+    monetizationSnapshotTask?.cancel()
   }
 
   var presentedError: PlayerPresentationError? {
@@ -350,6 +363,16 @@ final class PlayerModel {
     if monetization.isUnlocked { isFullUnlockPresented = false }
   }
 
+  func handleOfferCodeRedemption(completed: Bool) async {
+    await environment.monetization.handleOfferCodeRedemption(completed: completed)
+    synchronizeMonetizationSnapshot()
+    if case .completed(entitlementConfirmed: true) = monetization.offerCodeRedemptionOutcome,
+      monetization.isUnlocked
+    {
+      isFullUnlockPresented = false
+    }
+  }
+
   func showFullUnlock() {
     isFullUnlockPresented = true
   }
@@ -359,10 +382,16 @@ final class PlayerModel {
   }
 
   private func synchronizeMonetizationSnapshot() {
+    applyMonetizationSnapshot(environment.monetization.snapshot)
+  }
+
+  private func applyMonetizationSnapshot(_ next: MonetizationSnapshot) {
     let previous = monetization
-    let next = environment.monetization.snapshot
     monetization = next
-    guard !next.isUnlocked else { return }
+    guard !next.isUnlocked else {
+      isFullUnlockPresented = false
+      return
+    }
     let thresholds: [(seconds: TimeInterval, message: String)] = [
       (25 * 60 * 60, "25 hours of included listening remain."),
       (10 * 60 * 60, "10 hours of included listening remain."),

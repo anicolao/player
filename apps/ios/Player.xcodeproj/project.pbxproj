@@ -325,6 +325,7 @@
 		E71DCF9F1BBC2621F00DEBD6 /* SafeZipExtractorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafeZipExtractorTests.swift; sourceTree = "<group>"; };
 		E722B4E80820C8DBA85760F1 /* OfflineRecoveryUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineRecoveryUITests.swift; sourceTree = "<group>"; };
 		E7D67B3F7F78E8750B6D9057 /* MultifileGroupingUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultifileGroupingUITests.swift; sourceTree = "<group>"; };
+		EA336C08F07CE05B4C9441B9 /* Bookshelf.storekit */ = {isa = PBXFileReference; path = Bookshelf.storekit; sourceTree = "<group>"; };
 		EAAF9801667CC81294FE4E2D /* LibrarySearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibrarySearch.swift; sourceTree = "<group>"; };
 		ED6FC3F9749C35DEF0102533 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		F0AC326B56FD170D146BC46D /* metadata-repair-replacement-cover.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "metadata-repair-replacement-cover.png"; sourceTree = "<group>"; };
@@ -621,6 +622,14 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		F0032BC296FF7A12580BE4D7 /* StoreKit */ = {
+			isa = PBXGroup;
+			children = (
+				EA336C08F07CE05B4C9441B9 /* Bookshelf.storekit */,
+			);
+			path = StoreKit;
+			sourceTree = "<group>";
+		};
 		F0155FAA4CF8E9FDC6D2BF2C /* ShareExtension */ = {
 			isa = PBXGroup;
 			children = (
@@ -663,6 +672,7 @@
 				BB585BBC87F0B3BE759DF0D0 /* SupportDiagnosticsView.swift */,
 				71FBB0E70D21F2C3534933FB /* TransportControlsView.swift */,
 				A3835AF9CA81842E614FF1BA /* Core */,
+				F0032BC296FF7A12580BE4D7 /* StoreKit */,
 			);
 			path = Player;
 			sourceTree = "<group>";

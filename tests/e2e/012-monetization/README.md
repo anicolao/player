@@ -12,7 +12,8 @@
 - Animations: disabled by the E2E build configuration
 - Network and clock data: unused by this story
 - The playback-only allowance is deterministically set to exactly 50 consumed hours.
-- The StoreKit test double supplies a localized $9.99 price and a permanent unlock transaction.
+- The production monetization manager uses a scripted sandbox StoreKit transport with isolated persistence.
+- The simulator cannot deterministically complete Apple's offer-code sheet, so the test taps the production Redeem action and injects only its completion result.
 
 ## The exhausted state explains the permanent purchase without threatening library data
 

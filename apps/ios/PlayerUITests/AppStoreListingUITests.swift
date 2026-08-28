@@ -365,6 +365,20 @@ final class AppStoreListingUITests: XCTestCase {
     let unlockScreen = unlock.scrollViews["full-unlock-screen"]
     let purchase = unlock.buttons["full-unlock-purchase"]
     let unlockReadiness = anyElement(unlock, "full-unlock-scroll-readiness")
+    let monetizationState = anyElement(unlock, "e2e-monetization-state")
+    XCTAssertTrue(waitForPredicate(
+      NSPredicate(format: "value CONTAINS %@", "phase=awaiting-products"),
+      on: monetizationState,
+      timeout: EventDeadline().remaining
+    ))
+    let completeProducts = unlock.buttons["e2e-monetization-complete-products"]
+    XCTAssertTrue(waitForExistence(completeProducts, deadline: EventDeadline()))
+    completeProducts.tap()
+    XCTAssertTrue(waitForPredicate(
+      NSPredicate(format: "label == %@", "Unlock Forever — $9.99"),
+      on: purchase,
+      timeout: EventDeadline().remaining
+    ))
     try tester.step(
       "full-unlock",
       description: "The one-time Full Unlock is clear and subscription-free",

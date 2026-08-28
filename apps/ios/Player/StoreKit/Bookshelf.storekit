@@ -1,0 +1,33 @@
+{
+  "identifier" : "B00C5E1F",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+    {
+      "displayPrice" : "9.99",
+      "familyShareable" : true,
+      "internalID" : "F011A110",
+      "localizations" : [
+        {
+          "description" : "Unlock unlimited audiobook playback in Bookshelf forever. No subscription.",
+          "displayName" : "Bookshelf Full Unlock",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.spnss.player.fullunlock",
+      "referenceName" : "Bookshelf Full Unlock",
+      "type" : "NonConsumable"
+    }
+  ],
+  "settings" : {
+
+  },
+  "subscriptionGroups" : [
+
+  ],
+  "version" : {
+    "major" : 1,
+    "minor" : 1
+  }
+}

@@ -25,7 +25,9 @@ struct FullUnlockView: View {
 
         VStack(alignment: .leading, spacing: 14) {
           FullUnlockBenefit(icon: "infinity", text: "Unlimited playback of your audiobook library")
-          FullUnlockBenefit(icon: "person.2.fill", text: "Eligible for Apple Family Sharing")
+          if model.monetization.isFamilyShareable == true {
+            FullUnlockBenefit(icon: "person.2.fill", text: "Eligible for Apple Family Sharing")
+          }
           FullUnlockBenefit(icon: "iphone.and.arrow.forward", text: "Restore on devices using your Apple Account")
           FullUnlockBenefit(icon: "nosign", text: "No subscription, advertising, or account")
         }
@@ -63,8 +65,15 @@ struct FullUnlockView: View {
     .background(PlayerColor.background)
     .navigationTitle("Full Unlock")
     .navigationBarTitleDisplayMode(.inline)
-    .offerCodeRedemption(isPresented: $isRedeemingOfferCode) { _ in
-      Task { await model.refreshMonetization() }
+    .offerCodeRedemption(isPresented: $isRedeemingOfferCode) { result in
+      let completed: Bool
+      switch result {
+      case .success:
+        completed = true
+      case .failure:
+        completed = false
+      }
+      Task { await model.handleOfferCodeRedemption(completed: completed) }
     }
     .task {
       await model.refreshMonetization()
@@ -75,6 +84,13 @@ struct FullUnlockView: View {
       containerID: "full-unlock-screen",
       axis: .vertical
     )
+    #if E2E
+      .overlay(alignment: .bottomTrailing) {
+        if E2EMonetizationStoreKitClient.shared.isConfigured {
+          E2EMonetizationControlSurface(model: model)
+        }
+      }
+    #endif
   }
 
   private var subtitle: String {
@@ -117,7 +133,7 @@ struct FullUnlockView: View {
         .accessibilityIdentifier("full-unlock-restore")
 
         Button("Redeem a Code") {
-          isRedeemingOfferCode = true
+          beginOfferCodeRedemption()
         }
         .accessibilityIdentifier("full-unlock-redeem-code")
       }
@@ -132,7 +148,95 @@ struct FullUnlockView: View {
     if let price = model.monetization.displayPrice { return "Unlock Forever — \(price)" }
     return "Unlock Forever"
   }
+
+  private func beginOfferCodeRedemption() {
+    #if E2E
+      if E2EMonetizationStoreKitClient.shared.isConfigured {
+        E2EMonetizationStoreKitClient.shared.beginOfferCodeCompletion()
+        return
+      }
+    #endif
+    isRedeemingOfferCode = true
+  }
 }
+
+#if E2E
+  private struct E2EMonetizationControlSurface: View {
+    @Bindable var model: PlayerModel
+
+    var body: some View {
+      VStack(spacing: 0) {
+        probe
+        switch E2EMonetizationStoreKitClient.shared.phase {
+        case .awaitingProducts:
+          control("Complete product lookup", identifier: "e2e-monetization-complete-products") {
+            E2EMonetizationStoreKitClient.shared.completeProductLoad()
+          }
+        case .awaitingPurchase:
+          control("Complete purchase", identifier: "e2e-monetization-complete-purchase") {
+            E2EMonetizationStoreKitClient.shared.completePurchase()
+          }
+        case .awaitingRestore:
+          control("Complete restore", identifier: "e2e-monetization-complete-restore-empty") {
+            E2EMonetizationStoreKitClient.shared.completeRestoreWithoutEntitlement()
+          }
+        case .awaitingOfferCompletion:
+          control("Complete offer-code sheet", identifier: "e2e-monetization-complete-offer-failure") {
+            E2EMonetizationStoreKitClient.shared.completeOfferCodeWithoutSheet()
+            Task { await model.handleOfferCodeRedemption(completed: false) }
+          }
+        case .ready:
+          control("Prepare offline relaunch", identifier: "e2e-monetization-prepare-offline") {
+            E2EMonetizationStoreKitClient.shared.prepareOfflineRelaunch()
+          }
+        case .idle, .offline:
+          EmptyView()
+        }
+      }
+    }
+
+    private var probe: some View {
+      Color.clear
+        .frame(width: 1, height: 1)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Monetization fixture state")
+        .accessibilityIdentifier("e2e-monetization-state")
+        .accessibilityValue(probeValue)
+    }
+
+    private var probeValue: String {
+      let snapshot = model.monetization
+      return [
+        "monetization",
+        "schema=1",
+        "entitlement=\(snapshot.entitlement.rawValue)",
+        "loading=\(snapshot.isStoreLoading)",
+        "action=\(snapshot.isActionInProgress)",
+        "price=\(snapshot.displayPrice ?? "none")",
+        "family=\(snapshot.isFamilyShareable.map(String.init) ?? "unknown")",
+        "feedback=\(snapshot.feedbackMessage == nil ? "none" : "present")",
+        "books=\(model.library.books.count)",
+        "current=\(model.library.currentBookID?.uuidString.lowercased() ?? "none")",
+        E2EMonetizationStoreKitClient.shared.probeValue,
+      ].joined(separator: "|")
+    }
+
+    private func control(
+      _ label: String,
+      identifier: String,
+      action: @escaping @MainActor () -> Void
+    ) -> some View {
+      Button(action: action) {
+        Color.white.opacity(0.001)
+          .frame(width: 44, height: 44)
+          .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel(label)
+      .accessibilityIdentifier(identifier)
+    }
+  }
+#endif
 
 private struct FullUnlockBenefit: View {
   let icon: String

@@ -27,13 +27,26 @@ final class MonetizationUITests: XCTestCase {
       fixture: "monetization-exhausted",
       additionalPreconditions: [
         "The playback-only allowance is deterministically set to exactly 50 consumed hours.",
-        "The StoreKit test double supplies a localized $9.99 price and a permanent unlock transaction.",
+        "The production monetization manager uses a scripted sandbox StoreKit transport with isolated persistence.",
+        "The simulator cannot deterministically complete Apple's offer-code sheet, so the test taps the production Redeem action and injects only its completion result.",
       ]
     )
 
     app.launch()
     let unlockScreen = app.scrollViews["full-unlock-screen"]
     let scrollReadiness = app.descendants(matching: .any)["full-unlock-scroll-readiness"]
+    let state = app.descendants(matching: .any)["e2e-monetization-state"]
+    XCTAssertTrue(waitForExistence(state, deadline: EventDeadline()))
+    XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "e2e-monetization-state").count, 1)
+    XCTAssertTrue(waitForValue(state, containing: "loading=true"))
+    XCTAssertTrue(waitForValue(state, containing: "phase=awaiting-products"))
+    XCTAssertFalse(app.buttons["full-unlock-purchase"].isEnabled)
+    let completeProducts = app.buttons["e2e-monetization-complete-products"]
+    XCTAssertTrue(waitForExistence(completeProducts, deadline: EventDeadline()))
+    completeProducts.tap()
+    XCTAssertTrue(waitForValue(state, containing: "price=$9.99"))
+    XCTAssertTrue(waitForValue(state, containing: "family=true"))
+    XCTAssertTrue(waitForValue(state, containing: libraryInvariant))
 
     try tester.step(
       "included-playback-exhausted",
@@ -66,7 +79,37 @@ final class MonetizationUITests: XCTestCase {
       }
     )
 
+    app.buttons["full-unlock-restore"].tap()
+    let completeRestore = app.buttons["e2e-monetization-complete-restore-empty"]
+    XCTAssertTrue(waitForExistence(completeRestore, deadline: EventDeadline()))
+    XCTAssertTrue(waitForValue(state, containing: "action=true"))
+    XCTAssertFalse(app.buttons["full-unlock-purchase"].isEnabled)
+    XCTAssertFalse(app.buttons["full-unlock-redeem-code"].isEnabled)
+    completeRestore.tap()
+    XCTAssertTrue(waitForExistence(
+      app.staticTexts["No Full Unlock was found for this Apple Account."],
+      deadline: EventDeadline()
+    ))
+    XCTAssertTrue(waitForValue(state, containing: "action=false"))
+    XCTAssertTrue(waitForValue(state, containing: libraryInvariant))
+
+    app.buttons["full-unlock-redeem-code"].tap()
+    let completeOffer = app.buttons["e2e-monetization-complete-offer-failure"]
+    XCTAssertTrue(waitForExistence(completeOffer, deadline: EventDeadline()))
+    XCTAssertTrue(waitForValue(state, containing: "phase=awaiting-offer-completion"))
+    completeOffer.tap()
+    XCTAssertTrue(waitForExistence(
+      app.staticTexts["The offer-code sheet couldn't be completed. No Bookshelf access was changed."],
+      deadline: EventDeadline()
+    ))
+    XCTAssertTrue(waitForValue(state, containing: libraryInvariant))
+
     app.buttons["full-unlock-purchase"].tap()
+    let completePurchase = app.buttons["e2e-monetization-complete-purchase"]
+    XCTAssertTrue(waitForExistence(completePurchase, deadline: EventDeadline()))
+    XCTAssertTrue(waitForValue(state, containing: "action=true"))
+    XCTAssertFalse(app.buttons["full-unlock-purchase"].isEnabled)
+    completePurchase.tap()
     try tester.step(
       "full-unlock-purchased",
       description: "A successful non-consumable transaction permanently unlocks playback",
@@ -92,7 +135,41 @@ final class MonetizationUITests: XCTestCase {
       }
     )
 
+    XCTAssertTrue(waitForValue(state, containing: libraryInvariant))
+    let prepareOffline = app.buttons["e2e-monetization-prepare-offline"]
+    XCTAssertTrue(waitForExistence(prepareOffline, deadline: EventDeadline()))
+    prepareOffline.tap()
+    XCTAssertTrue(waitForValue(state, containing: "phase=offline"))
+    XCTAssertTrue(terminateAndWait(app))
+    app.launchArguments.removeAll { $0 == "-e2e-reset" }
+    app.launch()
+
+    let relaunchedState = app.descendants(matching: .any)["e2e-monetization-state"]
+    XCTAssertTrue(waitForExistence(app.staticTexts["Bookshelf is unlocked"], deadline: EventDeadline()))
+    XCTAssertTrue(waitForValue(relaunchedState, containing: "entitlement=fullUnlock"))
+    XCTAssertTrue(waitForValue(relaunchedState, containing: "phase=offline"))
+    XCTAssertTrue(waitForValue(relaunchedState, containing: libraryInvariant))
+    XCTAssertTrue(waitForExistence(
+      app.staticTexts[
+        "The App Store could not be reached. You can keep using your included playback and try again later."
+      ],
+      deadline: EventDeadline()
+    ))
+    XCTAssertFalse(app.staticTexts["Eligible for Apple Family Sharing"].exists)
+
     tester.generateDocs()
+  }
+
+  private var libraryInvariant: String {
+    "books=1|current=20000000-0000-0000-0000-000000000001"
+  }
+
+  private func waitForValue(_ element: XCUIElement, containing token: String) -> Bool {
+    waitForPredicate(
+      NSPredicate(format: "value CONTAINS %@", token),
+      on: element,
+      timeout: EventDeadline().remaining
+    )
   }
 
   private func fullUnlockCaptureReadiness(

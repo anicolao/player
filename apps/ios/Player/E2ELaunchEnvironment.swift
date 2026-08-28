@@ -1,5 +1,7 @@
 import CryptoKit
 import Foundation
+import Observation
+import Security
 import UIKit
 
 struct E2EPersistedLibrary {
@@ -23,6 +25,8 @@ struct E2EPersistedLibrary {
 }
 
 struct E2EPlaybackControlConfiguration: Equatable {
+  static let configurationOSStatusArgument = "-e2e-audio-session-configure-osstatus"
+
   static let disabled = E2EPlaybackControlConfiguration(
     eventControls: false,
     rewindExpiryControl: false,
@@ -500,7 +504,6 @@ private final class E2EFixtureResetLease: @unchecked Sendable {
   extension E2EPlaybackControlConfiguration {
     static let eventControlsArgument = "-e2e-event-controls"
     static let rewindExpiryControlArgument = "-e2e-rewind-expiry-control"
-    static let configurationOSStatusArgument = "-e2e-audio-session-configure-osstatus"
 
     static func parse(arguments: [String]) throws -> E2EPlaybackControlConfiguration {
       guard let launch = try E2ELaunchConfiguration.parse(arguments: arguments) else {
@@ -725,6 +728,171 @@ private final class E2EFixtureResetLease: @unchecked Sendable {
     func installEventHandler(
       _ handler: @escaping @MainActor @Sendable (AudioSessionEvent) async -> Void
     ) {}
+  }
+
+  @MainActor
+  @Observable
+  final class E2EMonetizationStoreKitClient: StoreKitClient {
+    enum Phase: String {
+      case idle
+      case awaitingProducts = "awaiting-products"
+      case ready
+      case awaitingPurchase = "awaiting-purchase"
+      case awaitingRestore = "awaiting-restore"
+      case awaitingOfferCompletion = "awaiting-offer-completion"
+      case offline
+    }
+
+    static let shared = E2EMonetizationStoreKitClient()
+    static let suiteName = "com.spnss.player.e2e.monetization-exhausted"
+
+    private(set) var phase = Phase.idle
+    private(set) var isConfigured = false
+    private var defaults: UserDefaults?
+    private var productsContinuation: CheckedContinuation<[StoreKitProduct], any Error>?
+    private var purchaseContinuation: CheckedContinuation<StoreKitPurchaseResult, any Error>?
+    private var restoreContinuation: CheckedContinuation<Void, any Error>?
+
+    private init() {}
+
+    func configure(defaults: UserDefaults, reset: Bool) {
+      precondition(productsContinuation == nil && purchaseContinuation == nil && restoreContinuation == nil)
+      self.defaults = defaults
+      if reset {
+        defaults.removePersistentDomain(forName: Self.suiteName)
+        defaults.set(MonetizationSnapshot.includedPlaybackSeconds, forKey: "allowance-seconds")
+      }
+      isConfigured = true
+      phase = defaults.bool(forKey: "offline") ? .offline : .idle
+    }
+
+    func products(for identifiers: [String]) async throws -> [StoreKitProduct] {
+      guard phase != .offline else { throw E2EMonetizationStoreError.offline }
+      guard identifiers == [StoreKitMonetizationManager.fullUnlockProductID] else {
+        throw E2EMonetizationStoreError.invalidProductRequest
+      }
+      phase = .awaitingProducts
+      return try await withCheckedThrowingContinuation { continuation in
+        productsContinuation = continuation
+      }
+    }
+
+    func purchase(productID: String) async throws -> StoreKitPurchaseResult {
+      guard phase != .offline else { throw E2EMonetizationStoreError.offline }
+      guard productID == StoreKitMonetizationManager.fullUnlockProductID else {
+        throw E2EMonetizationStoreError.invalidProductRequest
+      }
+      phase = .awaitingPurchase
+      return try await withCheckedThrowingContinuation { continuation in
+        purchaseContinuation = continuation
+      }
+    }
+
+    func sync() async throws {
+      guard phase != .offline else { throw E2EMonetizationStoreError.offline }
+      phase = .awaitingRestore
+      try await withCheckedThrowingContinuation { continuation in
+        restoreContinuation = continuation
+      }
+    }
+
+    func entitlementStatus(productID: String) async throws -> StoreKitEntitlementStatus {
+      guard productID == StoreKitMonetizationManager.fullUnlockProductID else {
+        throw E2EMonetizationStoreError.invalidProductRequest
+      }
+      guard phase != .offline else { return .unavailable }
+      return ownsUnlock ? .active(transaction) : .noEntitlement
+    }
+
+    func transactionUpdates() -> AsyncStream<StoreKitTransactionVerification> {
+      AsyncStream { _ in }
+    }
+
+    func completeProductLoad() {
+      guard let continuation = productsContinuation else { return }
+      productsContinuation = nil
+      phase = .ready
+      continuation.resume(returning: [
+        StoreKitProduct(
+          id: StoreKitMonetizationManager.fullUnlockProductID,
+          displayPrice: "$9.99",
+          isFamilyShareable: true,
+          type: .nonConsumable
+        )
+      ])
+    }
+
+    func completePurchase() {
+      guard let continuation = purchaseContinuation else { return }
+      purchaseContinuation = nil
+      ownsUnlock = true
+      phase = .ready
+      continuation.resume(returning: .success(.verified(transaction)))
+    }
+
+    func completeRestoreWithoutEntitlement() {
+      guard let continuation = restoreContinuation else { return }
+      restoreContinuation = nil
+      ownsUnlock = false
+      phase = .ready
+      continuation.resume()
+    }
+
+    func beginOfferCodeCompletion() {
+      guard phase == .ready else { return }
+      phase = .awaitingOfferCompletion
+    }
+
+    func completeOfferCodeWithoutSheet() {
+      guard phase == .awaitingOfferCompletion else { return }
+      phase = .ready
+    }
+
+    func prepareOfflineRelaunch() {
+      defaults?.set(true, forKey: "offline")
+      phase = .offline
+    }
+
+    var probeValue: String {
+      "scripted-storekit|schema=1|phase=\(phase.rawValue)|owned=\(ownsUnlock)"
+    }
+
+    private var ownsUnlock: Bool {
+      get { defaults?.bool(forKey: "store-owns-unlock") == true }
+      set { defaults?.set(newValue, forKey: "store-owns-unlock") }
+    }
+
+    private var transaction: StoreKitTransaction {
+      StoreKitTransaction(
+        id: 12,
+        productID: StoreKitMonetizationManager.fullUnlockProductID,
+        environment: .sandbox,
+        isRevoked: false
+      )
+    }
+  }
+
+  private enum E2EMonetizationStoreError: Error {
+    case invalidProductRequest
+    case offline
+  }
+
+  @MainActor
+  private final class E2EMonetizationPlaybackKeychain: PlaybackAllowanceKeychain {
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults) {
+      self.defaults = defaults
+    }
+
+    func loadSeconds(service: String, account: String) -> TimeInterval? {
+      defaults.object(forKey: "allowance-seconds") as? TimeInterval
+    }
+
+    func saveSeconds(_ seconds: TimeInterval, service: String, account: String) -> OSStatus {
+      defaults.set(seconds, forKey: "allowance-seconds")
+      return errSecSuccess
+    }
   }
 #endif
 
@@ -1097,9 +1265,21 @@ extension PlayerEnvironment {
     }
 
     private static func monetizationExhaustedEnvironment(reset: Bool) throws -> PlayerEnvironment {
-      var snapshot = MonetizationSnapshot.included
-      snapshot.consumedPlaybackSeconds = MonetizationSnapshot.includedPlaybackSeconds
-      snapshot.displayPrice = "$9.99"
+      guard let defaults = UserDefaults(suiteName: E2EMonetizationStoreKitClient.suiteName) else {
+        throw PlayerCoreError.fileOperation("Could not create the isolated E2E monetization sandbox.")
+      }
+      let storeKit = E2EMonetizationStoreKitClient.shared
+      storeKit.configure(defaults: defaults, reset: reset)
+      let persistence = PlaybackAllowancePersistence(
+        storeEnvironment: .sandbox,
+        userDefaults: defaults,
+        keychainService: E2EMonetizationStoreKitClient.suiteName,
+        keychain: E2EMonetizationPlaybackKeychain(defaults: defaults)
+      )
+      if reset {
+        _ = persistence.saveConsumedPlaybackSeconds(MonetizationSnapshot.includedPlaybackSeconds)
+        persistence.saveCachedUnlock(false)
+      }
       let support = try FileManager.default.url(
         for: .applicationSupportDirectory,
         in: .userDomainMask,
@@ -1109,7 +1289,12 @@ extension PlayerEnvironment {
       return try committedCurrentBookEnvironment(
         reset: reset,
         playbackControls: .disabled,
-        monetization: DeterministicMonetizationManager(snapshot: snapshot),
+        monetization: StoreKitMonetizationManager(
+          persistence: persistence,
+          storeEnvironment: .sandbox,
+          userDefaults: defaults,
+          storeKit: storeKit
+        ),
         root: support.appending(
           path: "PlayerE2EMonetizationExhausted",
           directoryHint: .isDirectory
