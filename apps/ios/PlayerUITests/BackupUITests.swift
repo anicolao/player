@@ -56,7 +56,14 @@ final class BackupUITests: XCTestCase {
         .exists(
           app.buttons["e2e-backup-export"],
           "The deterministic production export action is available"),
-      ]
+      ],
+      captureReadiness: backupCaptureReadiness(
+        app,
+        expectedProbe:
+          "backup:restored:books=1:bookmarks=1:position=42000:media=1:audio=true",
+        specification:
+          "At capture, the verified one-book library and production backup choices are idle at the top with no transient UI"
+      )
     )
 
     tapWalkthroughAction("e2e-backup-export", in: app)
@@ -74,7 +81,14 @@ final class BackupUITests: XCTestCase {
           "backup:exported:books=1:bookmarks=1:position=42000:media=1:audio=true",
           "The prepared package retains the complete catalog and exactly one managed audio file"
         )
-      ]
+      ],
+      captureReadiness: backupCaptureReadiness(
+        app,
+        expectedProbe:
+          "backup:exported:books=1:bookmarks=1:position=42000:media=1:audio=true",
+        specification:
+          "At capture, the checksum-verified portable export and unchanged source library are settled at the top with no transient UI"
+      )
     )
 
     tapWalkthroughAction("e2e-backup-clear", in: app)
@@ -92,7 +106,14 @@ final class BackupUITests: XCTestCase {
           "backup:cleared:books=0:bookmarks=0:position=-1:media=0:audio=false",
           "No catalog record or managed audio copy remains"
         )
-      ]
+      ],
+      captureReadiness: backupCaptureReadiness(
+        app,
+        expectedProbe:
+          "backup:cleared:books=0:bookmarks=0:position=-1:media=0:audio=false",
+        specification:
+          "At capture, the cleared catalog and absent managed audio are settled at the top with no transient UI"
+      )
     )
 
     tapWalkthroughAction("e2e-backup-restore", in: app)
@@ -110,7 +131,14 @@ final class BackupUITests: XCTestCase {
           "backup:restored:books=1:bookmarks=1:position=42000:media=1:audio=true",
           "Book, bookmark, listening position, and exactly one audio file are restored"
         )
-      ]
+      ],
+      captureReadiness: backupCaptureReadiness(
+        app,
+        expectedProbe:
+          "backup:restored:books=1:bookmarks=1:position=42000:media=1:audio=true",
+        specification:
+          "At capture, the integrity-verified catalog, position, bookmark, and one managed audio file are restored and settled at the top with no transient UI"
+      )
     )
 
     app.tabBars.buttons["Library"].tap()
@@ -127,6 +155,32 @@ final class BackupUITests: XCTestCase {
 
   private func anyElement(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {
     app.descendants(matching: .any)[identifier]
+  }
+
+  private func backupCaptureReadiness(
+    _ app: XCUIApplication,
+    expectedProbe: String,
+    specification: String
+  ) -> CaptureReadiness {
+    let scroll = app.scrollViews["backup-scroll"]
+    let readiness = anyElement(app, "backup-scroll-readiness")
+    let probe = anyElement(app, "backup-e2e-probe")
+    let heading = app.staticTexts["Protect your library"]
+    let purpose = anyElement(app, "backup-purpose")
+    return CaptureReadiness(specification: specification, anchor: probe) {
+      guard let state = ScrollReadinessState(readiness.value) else { return false }
+      return probe.exists
+        && probe.value.map(String.init(describing:)) == expectedProbe
+        && state.containerID == "backup-scroll"
+        && state.axis == .vertical
+        && state.isIdle
+        && state.atTop
+        && elementIsFullyVisible(heading, within: scroll, requiresHittable: false)
+        && elementIsFullyVisible(purpose, within: scroll, requiresHittable: false)
+        && !app.keyboards.firstMatch.exists
+        && !app.alerts.firstMatch.exists
+        && !app.sheets.firstMatch.exists
+    }
   }
 
   private func requireBackupTopVisible(_ app: XCUIApplication) {
