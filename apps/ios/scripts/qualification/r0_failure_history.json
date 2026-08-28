@@ -567,15 +567,17 @@
         "commit": "e48e153619afc0145f5f43f2fe787e5462c76a22",
         "observation": "Screenshot 002 differed only within y=2319...2622 under translucent tab material while all opaque geometry above y=2319 was exact; red and green no-source-change repeats alternated which prior card the blur sampled. The same bounds recurred in `/tmp/player-r0-accessibility-r6-result` even after the SpringBoard lifecycle workaround, while Story 009 passed UI 2/2 and every other screenshot was exact."
       },
-      "rootCause": "Supported hypothesis: the system translucent tab material can retain or resample a backdrop that is not fully determined by the app's correlated semantic, geometry, and consecutive-pixel state; activating SpringBoard reduced but did not eliminate the stale underlay.",
-      "diagnosisStatus": "supported-hypothesis",
+      "rootCause": "The system translucent tab material sampled the previously composited application surface across relaunches. Semantic and geometry readiness stabilized the opaque tree but could not determine that retained underlay; the identical Book Detail surface also had to be acquired as a stable composited frame before the canonical relaunch.",
+      "diagnosisStatus": "confirmed",
       "fix": {
-        "status": "pending-focused-validation",
-        "summary": "Replace the insufficient lifecycle-only workaround with a deterministic production rendering or independently observable material-underlay boundary without masking the tab region or weakening exact screenshot coverage.",
+        "status": "verified",
+        "summary": "Frame and acquire the identical production Book Detail surface as stable consecutive pixels, displace it through SpringBoard, then perform the canonical relaunch and exact full-region capture.",
         "commits": [
-          "823e061e474b50221afe39de5dc8c8999dc2b0a3"
+          "823e061e474b50221afe39de5dc8c8999dc2b0a3",
+          "4df08870dd5aad7f600cab4908b9f9cbfca5338e",
+          "4faec877c2ac89d10525d6bdc7f711bd801f84eb"
         ],
-        "validation": "The original workaround passed two focused runs, but `/tmp/player-r0-accessibility-r6-result` reopened the same exact y=2319...2622 signature; replacement-fix validation is pending."
+        "validation": "The hosted run at 4df0887 proved that semantic preframing alone was insufficient. With forced composited acquisition, clean full Story 009 artifact `/tmp/player-r0-ci2-fix/apps/ios/DerivedData/E2E/009-accessible-core-journeys.run.e4t1Jc` passed both selectors 2/2, matched all seven screenshots including the complete translucent region pixel-exact, and matched the reviewed README."
       },
       "qualificationResetCount": 0,
       "resetEvidence": "These red/green diagnostic repeats occurred before formal exact-SHA qualification, so no qualification count existed to reset."
@@ -880,6 +882,148 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "The R6 pull-request run was not an accepted formal exact-SHA qualification attempt, so no consecutive Story 009 qualification count existed to reset."
+    },
+    {
+      "signature": "semantic:007-sleep-timer:shared-readiness-deadline-prevented-scroll-action",
+      "story": "007-sleep-timer",
+      "evidence": {
+        "workflowRun": 33208910582,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions job 98976976081 retained Story 007 diagnostics",
+        "url": "https://github.com/anicolao/player/actions/runs/33208910582/job/98976976081",
+        "commit": "e6232192a850cac929149f18d352bfd8f94b3120",
+        "observation": "The Sleep Timer screen was ready at its top with interaction=0 and completion=0, but baseline readiness and virtualized-target accessibility queries exhausted the scroll helper's deadline before any Swipe or synthesized event occurred; the history row remained absent."
+      },
+      "rootCause": "Separating screen existence from scrolling was insufficient because scrollUntil still shared one two-second deadline between baseline readiness/query work and the independently observable gesture-plus-completion phase.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Give baseline readiness its own bounded deadline, then start a fresh two-second action deadline with the already-observed baseline immediately before gesture synthesis and correlated completion.",
+        "commits": [
+          "4df08870dd5aad7f600cab4908b9f9cbfca5338e"
+        ],
+        "validation": "Full canonical artifacts `/tmp/player-r0-scroll-phase-story007` and `/tmp/player-r0-scroll-phase-story007-repeat` passed both selectors 2/2 on consecutive no-source-change runs, emitted a real history-reveal swipe, matched all three screenshots pixel-exact, and matched the reviewed README."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "The predecessor pull-request run was not an accepted formal exact-SHA qualification attempt, so no consecutive Story 007 qualification count existed to reset."
+    },
+    {
+      "signature": "semantic:009-accessible-core-journeys:shared-readiness-deadline-prevented-scroll-action",
+      "story": "009-accessible-core-journeys",
+      "evidence": {
+        "workflowRun": 33208910582,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions job 98976976370 retained Story 009 diagnostics",
+        "url": "https://github.com/anicolao/player/actions/runs/33208910582/job/98976976370",
+        "commit": "e6232192a850cac929149f18d352bfd8f94b3120",
+        "observation": "The populated Library was ready at its top with interaction=0 and completion=0, while accessibility queries for the virtualized Up Next target consumed the remaining shared deadline. No scroll gesture was issued and the target stayed obstructed below the viewport."
+      },
+      "rootCause": "The generic scroll primitive reused its baseline-readiness deadline for the later action, so hosted accessibility snapshot latency could prevent the Up Next gesture from starting even after the container was independently known to exist.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Separate baseline readiness from the gesture/correlated-completion event budget in the shared scroll primitive without lengthening either transition beyond two seconds.",
+        "commits": [
+          "4df08870dd5aad7f600cab4908b9f9cbfca5338e"
+        ],
+        "validation": "Final full artifact `/tmp/player-r0-scroll-phase-story009` passed both Story 009 selectors 2/2, completed the Up Next journey, matched all seven screenshots pixel-exact, and matched the reviewed README."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "The predecessor pull-request run was not an accepted formal exact-SHA qualification attempt, so no consecutive Story 009 qualification count existed to reset."
+    },
+    {
+      "signature": "framing:009-accessible-core-journeys:direction-dependent-pan-hysteresis",
+      "story": "009-accessible-core-journeys",
+      "evidence": {
+        "artifact": "/tmp/player-r0-accessibility-r6-surface-result-repeat",
+        "url": "local-artifacts:/tmp/player-r0-accessibility-r6-surface-result-repeat,/tmp/player-r0-accessibility-r6-asymmetric-result",
+        "commit": "e6232192a850cac929149f18d352bfd8f94b3120",
+        "observation": "A long downward framing correction targeted y=150 but stopped at y=148.667. Applying the same extra hysteresis symmetrically then moved shorter Metadata and Now Playing anchors 1.333 points past their exact targets."
+      },
+      "rootCause": "XCTest's synthesized pan recognizer consumed 30 physical pixels for short qualification-device corrections but 34 physical pixels for the observed long downward correction; one symmetric ten-point assumption could not frame both classes exactly.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Calibrate long downward corrections to the observed 34-pixel recognizer threshold while preserving the 30-pixel threshold for upward and short corrections.",
+        "commits": [
+          "4df08870dd5aad7f600cab4908b9f9cbfca5338e"
+        ],
+        "validation": "Distance-aware artifact `/tmp/player-r0-accessibility-r6-distance-result` passed both selectors with every opaque frame exact; subsequent identical-surface repeats and final full Story 009 matched all seven screenshots pixel-exact."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "These local focused diagnostics preceded an accepted formal exact-SHA qualification count, so there was no consecutive count to reset."
+    },
+    {
+      "signature": "framing:009-accessible-core-journeys:shared-correction-deadline-prevented-fine-adjustment",
+      "story": "009-accessible-core-journeys",
+      "evidence": {
+        "workflowRun": 33213559220,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions job 98992081219 retained Story 009 diagnostics",
+        "url": "https://github.com/anicolao/player/actions/runs/33213559220/job/98992081219",
+        "commit": "4df08870dd5aad7f600cab4908b9f9cbfca5338e",
+        "observation": "The Accessibility preferences anchor was initially corrected toward y=150 by a real synthesized gesture. On the hosted runner it settled at y=147.667 with correlated idle geometry, but readiness, the gesture, and accessibility correlation had consumed the shared two-second deadline, so the expected fine correction could not begin. Story 005 and the other four lane-2 selectors passed."
+      },
+      "rootCause": "Capture framing reused one two-second deadline for initial readiness and every independently observable correction gesture. Hosted accessibility latency left no action budget after a valid first correction settled slightly beyond the exact reviewed anchor.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Keep initial readiness and each of at most three real framing corrections independently bounded to two seconds, allowing a settled first correction to be measured and followed by a precise event-driven adjustment without any fixed wait.",
+        "commits": [
+          "8c3582c993313aa4a4e8b144886d3ba3049b0a0b"
+        ],
+        "validation": "Focused canonical artifact `/tmp/player-r0-framing-fix-story009-third` passed Story 009 UI 2/2. The repaired Accessibility path performed the required second synthesized correction, matched all seven screenshots pixel-exact, matched the reviewed README exactly, and retained a complete evidence bundle."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "The failed pull-request run was not an accepted formal exact-SHA qualification attempt, so no consecutive Story 009 qualification count existed to reset."
+    },
+    {
+      "signature": "screenshot:009-accessible-core-journeys:identical-preflight-not-composited",
+      "story": "009-accessible-core-journeys",
+      "evidence": {
+        "workflowRun": 33215920897,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions job 98999383491 and artifact 9703985081 retained Story 009 expected, actual, and diff evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33215920897/job/98999383491",
+        "commit": "8c3582c993313aa4a4e8b144886d3ba3049b0a0b",
+        "observation": "Story 009 passed UI 2/2 and six screenshots were exact. Screenshot 002 differed only at y=2319...2622, exactly the native translucent tab backdrop, despite the identical semantic and geometry preflight; 174,367 pixels exceeded 8/255 while all opaque content remained exact."
+      },
+      "rootCause": "Framing the identical Book Detail hierarchy did not force Core Animation to acquire and retain that surface before termination. The later native material could therefore sample an older application surface even though semantic and geometry observations had stabilized.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Acquire the preflight with screenshots and require two consecutive identical composited frames before displacement and canonical relaunch.",
+        "commits": [
+          "4faec877c2ac89d10525d6bdc7f711bd801f84eb"
+        ],
+        "validation": "Clean full Story 009 artifact `/tmp/player-r0-ci2-fix/apps/ios/DerivedData/E2E/009-accessible-core-journeys.run.e4t1Jc` passed UI 2/2, matched all seven screenshots pixel-exact, and matched the reviewed README. The compositor observation is event driven and each required transition remains bounded to two seconds."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "The pull-request run was not an accepted formal exact-SHA qualification attempt, so no consecutive Story 009 qualification count existed to reset."
+    },
+    {
+      "signature": "infrastructure:003-multifile-grouping:deferred-uninstalled-target-launch",
+      "story": "003-multifile-grouping",
+      "evidence": {
+        "workflowRun": 33215920897,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions job 98999383207 and artifact 9704125346 retained the launch timeline and black failure frame",
+        "url": "https://github.com/anicolao/player/actions/runs/33215920897/job/98999383207",
+        "commit": "8c3582c993313aa4a4e8b144886d3ba3049b0a0b",
+        "observation": "XCTest requested the target at 22:43:04, Xcode did not acknowledge its launch token until 22:44:19, the built-in 60-second launch future expired, and the application process did not appear until 22:44:49. Stories 013 and 001 on the same lane had already passed."
+      },
+      "rootCause": "The first target launch left MobileInstallation of the newly built application inside XCTest's timed launch transaction. Hosted simulator installation was deferred for 75 seconds before the application process existed, so this was orchestration latency rather than product startup latency.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Fail closed on the exact E2E application product and install it explicitly on the fresh leased simulator before starting test-without-building.",
+        "commits": [
+          "4faec877c2ac89d10525d6bdc7f711bd801f84eb"
+        ],
+        "validation": "The shell contract verifies exact-product installation precedes XCTest. Clean canonical Story 003 artifact `/tmp/player-r0-ci2-fix/apps/ios/DerivedData/E2E/003-multifile-grouping.run.VAaD1H` installed in one second, passed its UI test, matched all four screenshots pixel-exact, and matched the reviewed README."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "The pull-request run was not an accepted formal exact-SHA qualification attempt, so no consecutive Story 003 qualification count existed to reset."
     }
   ]
 }
