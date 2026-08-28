@@ -7,6 +7,12 @@ on:
         description: Full commit SHA to qualify; must equal the selected workflow ref
         required: true
         type: string
+  workflow_call:
+    inputs:
+      expected_sha:
+        description: Full commit SHA to qualify; must equal the caller revision
+        required: true
+        type: string
 
 permissions:
   contents: read

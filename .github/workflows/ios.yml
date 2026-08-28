@@ -2,6 +2,12 @@ name: iOS
 
 on:
   workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: Optional exact SHA for the formal R0 qualification gate
+        required: false
+        default: ''
+        type: string
   pull_request:
     paths:
       - apps/ios/**
@@ -68,6 +74,7 @@ permissions:
 jobs:
   e2e-shards:
     name: iOS shard ${{ matrix.shard }}
+    if: inputs.expected_sha == ''
     runs-on: macos-26
     timeout-minutes: 45
     strategy:
@@ -220,7 +227,7 @@ jobs:
 
   ios-tests:
     name: Core tests and exact E2E walkthroughs
-    if: always()
+    if: ${{ always() && inputs.expected_sha == '' }}
     needs: [e2e-shards]
     runs-on: ubuntu-latest
     steps:
@@ -228,3 +235,10 @@ jobs:
         env:
           SHARD_RESULT: ${{ needs.e2e-shards.result }}
         run: test "$SHARD_RESULT" = success
+
+  r0-qualification:
+    name: Formal exact-SHA R0 qualification
+    if: inputs.expected_sha != ''
+    uses: ./.github/workflows/r0-qualification.yml
+    with:
+      expected_sha: ${{ inputs.expected_sha }}
