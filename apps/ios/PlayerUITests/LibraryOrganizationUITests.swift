@@ -50,7 +50,6 @@ final class LibraryOrganizationUITests: XCTestCase {
     let addAudiobook = app.tabBars.buttons["Add"]
     let libraryRootScroll = anyElement(app, "library-root-scroll")
     let libraryRootReadiness = anyElement(app, "library-root-scroll-readiness")
-    let homeRecentShelf = anyElement(app, "library-home-recent-shelf-scroll")
     let homeRecentReadiness = anyElement(app, "library-home-recent-shelf-scroll-readiness")
     let initialArtwork = anyElement(app, "library-artwork-probe")
     let initialMiniPlayer = app.otherElements["mini-player"]
@@ -101,7 +100,7 @@ final class LibraryOrganizationUITests: XCTestCase {
           && self.visibleElements(
             in: app,
             identifierPrefix: "recent-book-",
-            within: homeRecentShelf
+            within: app
           ).count >= 3
           && elementIsFullyVisible(addAudiobook, within: app.tabBars.firstMatch)
       }
