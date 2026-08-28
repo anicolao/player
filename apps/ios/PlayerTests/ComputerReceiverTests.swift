@@ -363,6 +363,79 @@ final class ComputerReceiverTests: XCTestCase {
     XCTAssertEqual(secondPort, firstPort)
   }
 
+  func testReceiverFallsBackFromAnUnavailablePreferredPortAndPersistsTheReplacement() async throws {
+    let suiteName = "ComputerReceiverPortFallback-\(UUID().uuidString)"
+    let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    addTeardownBlock { defaults.removePersistentDomain(forName: suiteName) }
+    let blockerPreference = ComputerReceiverPortPreference(
+      userDefaults: defaults,
+      key: "blockerPort",
+      defaultPort: nil
+    )
+    let receiverPreference = ComputerReceiverPortPreference(
+      userDefaults: defaults,
+      key: "receiverPort",
+      defaultPort: nil
+    )
+    let blockerRoot = temporaryRoot()
+    let fallbackRoot = temporaryRoot()
+    let reuseRoot = temporaryRoot()
+
+    let blocker = ComputerReceiverServer(
+      rootURL: blockerRoot,
+      bundle: .main,
+      portPreference: blockerPreference
+    )
+    addTeardownBlock {
+      await blocker.stop()
+      try FileManager.default.removeItem(at: blockerRoot)
+    }
+    let blockerReady = try await blocker.start(
+      importHandler: successfulReceiverImport,
+      eventHandler: { _ in }
+    )
+    let unavailablePort = try XCTUnwrap(URL(string: blockerReady.address)?.port)
+    receiverPreference.recordBoundPort(UInt16(unavailablePort))
+
+    let fallbackServer = ComputerReceiverServer(
+      rootURL: fallbackRoot,
+      bundle: .main,
+      portPreference: receiverPreference
+    )
+    addTeardownBlock {
+      await fallbackServer.stop()
+      try FileManager.default.removeItem(at: fallbackRoot)
+    }
+    let fallbackReady = try await fallbackServer.start(
+      importHandler: successfulReceiverImport,
+      eventHandler: { _ in }
+    )
+    let fallbackPort = try XCTUnwrap(URL(string: fallbackReady.address)?.port)
+    XCTAssertNotEqual(fallbackPort, unavailablePort)
+    XCTAssertEqual(receiverPreference.preferredPort(), UInt16(fallbackPort))
+
+    await fallbackServer.stop()
+    await blocker.stop()
+
+    let reuseServer = ComputerReceiverServer(
+      rootURL: reuseRoot,
+      bundle: .main,
+      portPreference: receiverPreference
+    )
+    addTeardownBlock {
+      await reuseServer.stop()
+      try FileManager.default.removeItem(at: reuseRoot)
+    }
+    let reuseReady = try await reuseServer.start(
+      importHandler: successfulReceiverImport,
+      eventHandler: { _ in }
+    )
+    let reusedPort = try XCTUnwrap(URL(string: reuseReady.address)?.port)
+    await reuseServer.stop()
+
+    XCTAssertEqual(reusedPort, fallbackPort)
+  }
+
   func testInterruptedHTTPRequestResumesFromDurableServerOffset() async throws {
     let root = temporaryRoot()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -528,6 +601,17 @@ final class ComputerReceiverTests: XCTestCase {
     for (field, value) in headers { request.setValue(value, forHTTPHeaderField: field) }
     let (data, response) = try await URLSession.shared.data(for: request)
     return (data, try XCTUnwrap(response as? HTTPURLResponse))
+  }
+
+  private var successfulReceiverImport: ComputerReceiverServer.ImportHandler {
+    { _ in
+      DirectImportOutcome(
+        state: .completed,
+        message: "Imported",
+        addedBookCount: 1,
+        cleanupIncomingFiles: true
+      )
+    }
   }
 
   private func sendInterruptedUpload(
