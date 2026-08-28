@@ -333,6 +333,76 @@
       "resetEvidence": "This local selector failure occurred before formal exact-SHA R0 qualification, so no qualification count existed to reset."
     },
     {
+      "signature": "framing:007-sleep-timer:bookmark-capture-required-nonterminal-and-bottom",
+      "story": "007-sleep-timer",
+      "evidence": {
+        "workflowRun": 33174602477,
+        "workflowAttempt": 1,
+        "artifact": "/tmp/player-ci331746-lane1.BF4NdQ/007/apps/ios/DerivedData/E2E/007-sleep-timer",
+        "url": "https://github.com/anicolao/player/actions/runs/33174602477",
+        "commit": "bf62689338078af6719e6d8f21d4829acb251171",
+        "observation": "BookmarkUITests.swift:395 failed even though the diagnostic probe reported settled progress at offset 351.333 with maximum 372.333 and both complete bookmark rows and actions correctly framed above the mini-player; the capture condition additionally required atBottom."
+      },
+      "rootCause": "The bookmark capture predicate contradicted its semantic goal by requiring both the intended nonterminal segment framing and the terminal scroll endpoint, although the fully visible cards and actions were already valid before atBottom became true.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Gate the bookmark screenshot on settled, unobscured geometry for the required rows and actions without requiring the unrelated terminal atBottom state.",
+        "commits": [
+          "da383f21c15d5976e8f3b547b12f3ce36ecaf024"
+        ],
+        "validation": "Exact-SHA shard `apps/ios/DerivedData/E2EShards/r0-ci331746-exact` exited 0 at 538299ad880269db400a3d5bd3b27e4395761423; retained artifact `apps/ios/DerivedData/E2E/007-sleep-timer` passed Story 007 UI 2/2, matched all 3 canonical screenshots exactly, matched the reviewed README exactly, and produced a valid EvidenceManifest."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This production CI failure occurred before the formal exact-SHA qualification sequence for the fix, so no qualification count existed to reset."
+    },
+    {
+      "signature": "framing:009-accessible-core-journeys:swiftui-endpoint-preceded-ax-frame",
+      "story": "009-accessible-core-journeys",
+      "evidence": {
+        "workflowRun": 33174602477,
+        "workflowAttempt": 1,
+        "artifact": "/tmp/player-ci331746-lane2.7KK6xJ/009",
+        "url": "https://github.com/anicolao/player/actions/runs/33174602477",
+        "commit": "bf62689338078af6719e6d8f21d4829acb251171",
+        "observation": "AccessibilityUITests.swift:881 failed with `Expected to settle at screen y 150.0 ± 1` after the production SwiftUI scroll probe had reached its endpoint but before XCTest's accessibility frame reflected the same final geometry."
+      },
+      "rootCause": "The capture gate treated settled production scroll geometry as sufficient without correlating the asynchronously refreshed XCTest accessibility frame for the visible semantic target.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Within the existing two-second event deadline, require the accessibility frame to correlate with the settled production endpoint and retain both geometry sources in failure diagnostics.",
+        "commits": [
+          "538299ad880269db400a3d5bd3b27e4395761423"
+        ],
+        "validation": "Exact-SHA shard `apps/ios/DerivedData/E2EShards/r0-ci331746-exact` exited 0 at 538299ad880269db400a3d5bd3b27e4395761423; retained artifact `apps/ios/DerivedData/E2E/009-accessible-core-journeys` passed Story 009 UI 2/2, matched all 7 canonical screenshots exactly, matched the reviewed README exactly, and produced a valid EvidenceManifest."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This production CI failure occurred before the formal exact-SHA qualification sequence for the fix, so no qualification count existed to reset."
+    },
+    {
+      "signature": "screenshot:pixel-difference:009-book-detail-glass-without-consecutive-compositor-frames",
+      "story": "009-accessible-core-journeys",
+      "evidence": {
+        "artifact": "/tmp/player-story009-ci331746-repro.1787924100",
+        "url": "local-artifact:/tmp/player-story009-ci331746-repro.1787924100",
+        "commit": "e62d9356a1b8a1fd3a2b3ef9a8234e090c761198",
+        "observation": "Both Story 009 UI tests passed and the semantic and main geometry evidence matched, but 002-large-text-book-detail.png differed by 174,367 pixels only below y=2319 in the glass region while the other six screenshots matched exactly."
+      },
+      "rootCause": "The glass-heavy Book Detail capture correlated semantic and accessibility geometry but did not require two consecutive identical decoded compositor pixel buffers, allowing a transient material-underlay frame to be recorded.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "For the glass-heavy capture, require consecutive decoded compositor pixel buffers in addition to the correlated semantic and accessibility geometry before recording the screenshot.",
+        "commits": [
+          "538299ad880269db400a3d5bd3b27e4395761423"
+        ],
+        "validation": "Exact-SHA shard `apps/ios/DerivedData/E2EShards/r0-ci331746-exact` exited 0 at 538299ad880269db400a3d5bd3b27e4395761423; retained artifact `apps/ios/DerivedData/E2E/009-accessible-core-journeys` passed Story 009 UI 2/2, matched all 7 canonical screenshots exactly including 002-large-text-book-detail.png, matched the reviewed README exactly, and produced a valid EvidenceManifest."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This local post-CI reproduction preceded the formal exact-SHA qualification sequence for the fix, so no qualification count existed to reset."
+    },
+    {
       "signature": "reveal:009-accessible-core-journeys:settings-accessibility-not-fully-visible",
       "story": "009-accessible-core-journeys",
       "evidence": {
