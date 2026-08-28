@@ -137,6 +137,39 @@ import UIKit
     }
   }
 
+  enum E2EMetadataReplacementCoverPayload {
+    static let environmentKey = "PLAYER_E2E_METADATA_REPLACEMENT_COVER_BASE64"
+    static let maximumDecodedBytes = 20 * 1_024 * 1_024
+
+    static func parse(
+      environment: [String: String],
+      maximumDecodedBytes: Int = maximumDecodedBytes
+    ) throws -> Data {
+      guard let encoded = environment[environmentKey] else {
+        throw PlayerCoreError.fileOperation(
+          "Missing synthetic metadata-repair replacement cover."
+        )
+      }
+      guard maximumDecodedBytes > 0, !encoded.isEmpty else {
+        throw PlayerCoreError.fileOperation(
+          "Invalid synthetic metadata-repair replacement cover."
+        )
+      }
+      let maximumEncodedBytes = ((maximumDecodedBytes + 2) / 3) * 4
+      guard encoded.utf8.count <= maximumEncodedBytes,
+        let data = Data(base64Encoded: encoded),
+        !data.isEmpty,
+        data.count <= maximumDecodedBytes,
+        UIImage(data: data) != nil
+      else {
+        throw PlayerCoreError.fileOperation(
+          "Invalid synthetic metadata-repair replacement cover."
+        )
+      }
+      return data
+    }
+  }
+
   enum E2EFixture: String, CaseIterable {
     static let argument = "-e2e-fixture"
     static let modeArgument = "-e2e"
@@ -1204,6 +1237,9 @@ extension PlayerEnvironment {
       else {
         throw PlayerCoreError.fileOperation("The synthetic metadata-repair fixture is unavailable.")
       }
+      let replacementCover = try E2EMetadataReplacementCoverPayload.parse(
+        environment: environment
+      )
 
       let root = FileManager.default.temporaryDirectory.appending(
         path: "PlayerE2EMetadataRepair",
@@ -1281,7 +1317,8 @@ extension PlayerEnvironment {
         sourceURL: sourceURL,
         sourceBytes: audio,
         managedURL: managedURL,
-        checksum: checksum
+        checksum: checksum,
+        replacementCoverData: replacementCover
       )
       let ids = (10...30).compactMap {
         UUID(uuidString: String(format: "80000000-0000-0000-0000-%012d", $0))
@@ -1942,14 +1979,27 @@ extension PlayerEnvironment {
     private var sourceBytes: Data?
     private var managedURL: URL?
     private var checksum: String?
+    private(set) var replacementCoverData: Data?
 
-    var isConfigured: Bool { sourceURL != nil && sourceBytes != nil && managedURL != nil }
+    var isConfigured: Bool {
+      sourceURL != nil
+        && sourceBytes != nil
+        && managedURL != nil
+        && replacementCoverData != nil
+    }
 
-    func configure(sourceURL: URL, sourceBytes: Data, managedURL: URL, checksum: String) {
+    func configure(
+      sourceURL: URL,
+      sourceBytes: Data,
+      managedURL: URL,
+      checksum: String,
+      replacementCoverData: Data
+    ) {
       self.sourceURL = sourceURL
       self.sourceBytes = sourceBytes
       self.managedURL = managedURL
       self.checksum = checksum
+      self.replacementCoverData = replacementCoverData
     }
 
     var integrityValue: String {

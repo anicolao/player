@@ -7,6 +7,56 @@ import XCTest
 @MainActor
 final class PlayerCoreTests: XCTestCase {
   #if E2E
+    func testMetadataReplacementCoverPayloadAcceptsSmallValidImage() throws {
+      let imageData = UIGraphicsImageRenderer(size: CGSize(width: 2, height: 3)).pngData {
+        context in
+        UIColor.systemOrange.setFill()
+        context.fill(CGRect(x: 0, y: 0, width: 2, height: 3))
+      }
+
+      XCTAssertEqual(
+        try E2EMetadataReplacementCoverPayload.parse(environment: [
+          E2EMetadataReplacementCoverPayload.environmentKey: imageData.base64EncodedString(),
+        ]),
+        imageData
+      )
+    }
+
+    func testMetadataReplacementCoverPayloadRejectsMissingEmptyMalformedAndNonImageData() {
+      let invalidEnvironments: [[String: String]] = [
+        [:],
+        [E2EMetadataReplacementCoverPayload.environmentKey: ""],
+        [E2EMetadataReplacementCoverPayload.environmentKey: "not-base64!"],
+        [
+          E2EMetadataReplacementCoverPayload.environmentKey:
+            Data("valid base64 but not an image".utf8).base64EncodedString(),
+        ],
+      ]
+
+      for environment in invalidEnvironments {
+        XCTAssertThrowsError(
+          try E2EMetadataReplacementCoverPayload.parse(environment: environment)
+        )
+      }
+    }
+
+    func testMetadataReplacementCoverPayloadRejectsImageBeyondBound() {
+      let imageData = UIGraphicsImageRenderer(size: CGSize(width: 2, height: 3)).pngData {
+        context in
+        UIColor.systemIndigo.setFill()
+        context.fill(CGRect(x: 0, y: 0, width: 2, height: 3))
+      }
+
+      XCTAssertThrowsError(
+        try E2EMetadataReplacementCoverPayload.parse(
+          environment: [
+            E2EMetadataReplacementCoverPayload.environmentKey: imageData.base64EncodedString(),
+          ],
+          maximumDecodedBytes: imageData.count - 1
+        )
+      )
+    }
+
     func testScrollReadinessProtocolParsesBoundFiniteEndpointGeometry() {
       let horizontal = ScrollReadinessState(
         scrollReadinessValue(

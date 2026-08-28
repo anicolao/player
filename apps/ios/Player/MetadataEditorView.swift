@@ -521,7 +521,7 @@ struct MetadataEditorView: View {
 
   private func chooseCoverPhoto() {
     #if E2E
-      guard let data = E2EMetadataReplacementCover.data else {
+      guard let data = E2EMetadataRepairBridge.shared.replacementCoverData else {
         errorMessage = "The deterministic replacement photo is unavailable."
         return
       }
@@ -734,15 +734,6 @@ private struct MetadataEditorDraft: Equatable {
     }
   }
 }
-
-#if E2E
-  private enum E2EMetadataReplacementCover {
-    static var data: Data? {
-      ProcessInfo.processInfo.environment["PLAYER_E2E_METADATA_REPLACEMENT_COVER_BASE64"]
-        .flatMap { Data(base64Encoded: $0) }
-    }
-  }
-#endif
 
 private extension String {
   var nonEmpty: String? { isEmpty ? nil : self }
