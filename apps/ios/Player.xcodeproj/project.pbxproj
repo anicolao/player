@@ -90,6 +90,7 @@
 		7C0EDCCE51C436D2CF61D225 /* harbor-at-dawn-cover.png in Resources */ = {isa = PBXBuildFile; fileRef = 5C76BBD4693166AB63F1527A /* harbor-at-dawn-cover.png */; };
 		7D18DF81E703DEEA12ECFF86 /* L’Écho — piste 3.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 9101B008DF263F7327189F17 /* L’Écho — piste 3.m4a */; };
 		7D3C2B0477FCE5FE4B1BD9F6 /* L’Écho — piste 6 – fin.m4a in Resources */ = {isa = PBXBuildFile; fileRef = D3085638600B5ABEC354A6AF /* L’Écho — piste 6 – fin.m4a */; };
+		7FC1DE84B6D031578687F4F8 /* E2ESeededLibraryStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA07D0513F106C7DD7F5AA1F /* E2ESeededLibraryStoreTests.swift */; };
 		800640FD32AD264DB1A88C35 /* SleepTimerUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CA7265ABF3FC6EDADF32303 /* SleepTimerUITests.swift */; };
 		802BF547D36282A858668428 /* ComputerReceiverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C08D876E2DA33C1BEF019DDD /* ComputerReceiverTests.swift */; };
 		82EC61DCD0C0FB4E6A47E974 /* ShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 7BB5B988D90DC7221F1FA3B8 /* ShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -299,6 +300,7 @@
 		C73E46DA9C6BB64ABCC2CA40 /* SmartRewind.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartRewind.swift; sourceTree = "<group>"; };
 		C884007A591C7AA4EA2160DB /* E2ESleepTimerBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = E2ESleepTimerBridge.swift; sourceTree = "<group>"; };
 		C8AD0E1BABB922E62EE878C8 /* FileSystemMediaManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileSystemMediaManager.swift; sourceTree = "<group>"; };
+		CA07D0513F106C7DD7F5AA1F /* E2ESeededLibraryStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = E2ESeededLibraryStoreTests.swift; sourceTree = "<group>"; };
 		CB02A22ADE7392D8BA567EA0 /* ratio-limit.zip */ = {isa = PBXFileReference; lastKnownFileType = archive.zip; path = "ratio-limit.zip"; sourceTree = "<group>"; };
 		CC8EB5090AC96805FFF1B8A8 /* AppStoreListingUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStoreListingUITests.swift; sourceTree = "<group>"; };
 		D09A4E4E776E73279970B73B /* SyntheticZIPs.sha256 */ = {isa = PBXFileReference; path = SyntheticZIPs.sha256; sourceTree = "<group>"; };
@@ -339,6 +341,7 @@
 				9374E3896D3347234C84FCD2 /* AccessibilityPreferencesTests.swift */,
 				33067548C9FC0D001EE8D1AD /* BookmarkTests.swift */,
 				C08D876E2DA33C1BEF019DDD /* ComputerReceiverTests.swift */,
+				CA07D0513F106C7DD7F5AA1F /* E2ESeededLibraryStoreTests.swift */,
 				73553E45B1C943ADABAF3285 /* ImportRecoveryTests.swift */,
 				F12684BF4C62D36D069CCE58 /* LibraryBackupTests.swift */,
 				757F78167DF0040938B7D00F /* LibraryOrganizationTests.swift */,
@@ -870,6 +873,7 @@
 				D0F13F26E6F9579512E438A8 /* AccessibilityPreferencesTests.swift in Sources */,
 				B4DD99D81F66749B3437BC38 /* BookmarkTests.swift in Sources */,
 				802BF547D36282A858668428 /* ComputerReceiverTests.swift in Sources */,
+				7FC1DE84B6D031578687F4F8 /* E2ESeededLibraryStoreTests.swift in Sources */,
 				717409201F41544772A28753 /* ImportRecoveryTests.swift in Sources */,
 				37FD4B4043A6002D7CB3C6F0 /* LibraryBackupTests.swift in Sources */,
 				5D73B87F535127B58E71D27D /* LibraryOrganizationTests.swift in Sources */,

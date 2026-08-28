@@ -152,10 +152,18 @@ final class LibraryBackupTests: XCTestCase {
     }
   }
 
-  func testAutomaticDatabaseBackupsAreValidDeduplicatedAndRotated() async throws {
+  func testAutomaticDatabaseBackupsUseStableEqualTimestampOrderForRotationRecoveryAndDeduplication()
+    async throws
+  {
     let root = temporaryDirectory("automatic-backups")
     defer { try? FileManager.default.removeItem(at: root) }
-    let store = CodableLibraryStore(fileURL: root.appending(path: "Library.json"))
+    let artifactDate = Date(timeIntervalSince1970: 1_700_000_000)
+    let artifactIDs = LockedArtifactIDSequence(values: (1...7).map(artifactUUID))
+    let store = CodableLibraryStore(
+      fileURL: root.appending(path: "Library.json"),
+      artifactNow: { artifactDate },
+      artifactID: { artifactIDs.next() }
+    )
     for index in 0..<5 {
       var snapshot = LibrarySnapshot.empty
       snapshot.allBooksViewStyle = index.isMultiple(of: 2) ? .shelf : .list
@@ -169,10 +177,18 @@ final class LibraryBackupTests: XCTestCase {
         )
       ]
       try await store.save(snapshot)
+      try setAutomaticBackupDates(in: root, to: artifactDate)
     }
     let backups = await store.automaticBackups()
     XCTAssertEqual(backups.count, 3)
     XCTAssertTrue(backups.allSatisfy { $0.byteCount > 0 })
+    XCTAssertEqual(
+      backups.map { $0.url.lastPathComponent },
+      [5, 4, 3].map {
+        "library-1700000000000-\(artifactUUID($0).uuidString.lowercased()).json"
+      },
+      "Equal filesystem timestamps use the artifact name as a stable total-order tie-break."
+    )
 
     try Data("not json".utf8).write(to: root.appending(path: "Library.json"), options: .atomic)
     let restored = try await store.restoreLatestAutomaticBackup()
@@ -184,6 +200,42 @@ final class LibraryBackupTests: XCTestCase {
     try await store.save(restored)
     let countAfterDuplicateSave = await store.automaticBackups().count
     XCTAssertEqual(countAfterDuplicateSave, countBeforeDuplicateSave)
+  }
+
+  func testFreshLibraryUsesInjectedIdentityForQuarantinedEvidence() async throws {
+    let root = temporaryDirectory("deterministic-quarantine")
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let libraryURL = root.appending(path: "Library.json")
+    let corruptBytes = Data("preserve exact corrupt evidence".utf8)
+    try corruptBytes.write(to: libraryURL)
+    let artifactDate = Date(timeIntervalSince1970: 1_700_000_000)
+    let quarantineID = artifactUUID(40)
+    let backupID = artifactUUID(41)
+    let artifactIDs = LockedArtifactIDSequence(values: [quarantineID, backupID])
+    let store = CodableLibraryStore(
+      fileURL: libraryURL,
+      artifactNow: { artifactDate },
+      artifactID: { artifactIDs.next() }
+    )
+
+    let fresh = try await store.beginFreshLibraryPreservingPrimary()
+    XCTAssertEqual(fresh, .empty)
+
+    let expectedEvidence = root.appending(
+      path: "Recovery/Quarantine/library-1700000000000-"
+        + "\(quarantineID.uuidString.lowercased()).json"
+    )
+    XCTAssertEqual(try Data(contentsOf: expectedEvidence), corruptBytes)
+    let durableFresh = try await store.load()
+    XCTAssertEqual(durableFresh, .empty)
+    XCTAssertEqual(
+      try FileManager.default.contentsOfDirectory(
+        at: expectedEvidence.deletingLastPathComponent(),
+        includingPropertiesForKeys: nil
+      ).map(\.lastPathComponent),
+      [expectedEvidence.lastPathComponent]
+    )
   }
 
   func testEverySchemaFourThroughCurrentMigratesAndRoundTripsWithABackup() async throws {
@@ -355,6 +407,24 @@ final class LibraryBackupTests: XCTestCase {
     }.sorted()
   }
 
+  private func setAutomaticBackupDates(in root: URL, to date: Date) throws {
+    let directory = root.appending(path: "AutomaticBackups")
+    let backups = try FileManager.default.contentsOfDirectory(
+      at: directory,
+      includingPropertiesForKeys: nil
+    )
+    for backup in backups {
+      try FileManager.default.setAttributes(
+        [.modificationDate: date],
+        ofItemAtPath: backup.path
+      )
+    }
+  }
+
+  private func artifactUUID(_ suffix: Int) -> UUID {
+    UUID(uuidString: String(format: "c0000000-0000-0000-0000-%012d", suffix))!
+  }
+
   private func temporaryDirectory(_ name: String) -> URL {
     FileManager.default.temporaryDirectory.appending(
       path: "PlayerTests-\(name)-\(UUID().uuidString)",
@@ -364,5 +434,21 @@ final class LibraryBackupTests: XCTestCase {
 
   private func uuid(_ suffix: Int) -> UUID {
     UUID(uuidString: String(format: "b0000000-0000-0000-0000-%012d", suffix))!
+  }
+}
+
+private final class LockedArtifactIDSequence: @unchecked Sendable {
+  private let lock = NSLock()
+  private var values: [UUID]
+
+  init(values: [UUID]) {
+    self.values = values
+  }
+
+  func next() -> UUID {
+    lock.lock()
+    defer { lock.unlock() }
+    precondition(!values.isEmpty, "The deterministic artifact ID sequence is exhausted.")
+    return values.removeFirst()
   }
 }

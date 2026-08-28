@@ -12,6 +12,44 @@ import UIKit
       throw PlayerCoreError.fileOperation("Could not reset E2E fixture root: \(root.lastPathComponent)")
     }
   }
+
+  enum E2EMetadataRichBookNamespace {
+    static let argument = "-e2e-metadata-rich-namespace"
+    static let defaultValue = "default"
+
+    static func parse(arguments: [String]) throws -> String {
+      let markers = arguments.indices.filter { arguments[$0] == argument }
+      guard markers.count <= 1 else {
+        throw PlayerCoreError.fileOperation("Duplicate Metadata Rich Book E2E namespace.")
+      }
+      guard let marker = markers.first else { return defaultValue }
+      guard arguments.indices.contains(marker + 1) else {
+        throw PlayerCoreError.fileOperation("Missing Metadata Rich Book E2E namespace.")
+      }
+      let namespace = arguments[marker + 1]
+      let bytes = Array(namespace.utf8)
+      let isLowercaseLetterOrDigit: (UInt8) -> Bool = {
+        (UInt8(ascii: "a")...UInt8(ascii: "z")).contains($0)
+          || (UInt8(ascii: "0")...UInt8(ascii: "9")).contains($0)
+      }
+      guard (1...64).contains(bytes.count),
+        bytes.first.map(isLowercaseLetterOrDigit) == true,
+        bytes.last.map(isLowercaseLetterOrDigit) == true,
+        bytes.allSatisfy({ isLowercaseLetterOrDigit($0) || $0 == UInt8(ascii: "-") })
+      else {
+        throw PlayerCoreError.fileOperation("Invalid Metadata Rich Book E2E namespace.")
+      }
+      return namespace
+    }
+
+    static func root(in support: URL, namespace: String) -> URL {
+      let suffix = namespace == defaultValue ? "" : "-\(namespace)"
+      return support.appending(
+        path: "PlayerE2EMetadataRichBook\(suffix)",
+        directoryHint: .isDirectory
+      )
+    }
+  }
 #endif
 
 @MainActor
@@ -35,7 +73,10 @@ extension PlayerEnvironment {
         case "zero-duration-current-book":
           return try zeroDurationCurrentBookEnvironment()
         case "metadata-rich-book":
-          return try metadataRichBookEnvironment(reset: arguments.contains("-e2e-reset"))
+          return try metadataRichBookEnvironment(
+            reset: arguments.contains("-e2e-reset"),
+            namespace: E2EMetadataRichBookNamespace.parse(arguments: arguments)
+          )
         case "messy-multifile-unicode":
           return try messyMultifileEnvironment(reset: arguments.contains("-e2e-reset"))
         case "safe-zip-import":
@@ -826,17 +867,17 @@ extension PlayerEnvironment {
       )
     }
 
-    private static func metadataRichBookEnvironment(reset: Bool) throws -> PlayerEnvironment {
+    private static func metadataRichBookEnvironment(
+      reset: Bool,
+      namespace: String
+    ) throws -> PlayerEnvironment {
       let support = try FileManager.default.url(
         for: .applicationSupportDirectory,
         in: .userDomainMask,
         appropriateFor: nil,
         create: true
       )
-      let root = support.appending(
-        path: "PlayerE2EMetadataRichBook",
-        directoryHint: .isDirectory
-      )
+      let root = E2EMetadataRichBookNamespace.root(in: support, namespace: namespace)
       if reset { try resetE2EFixtureRoot(root) }
 
       let bookID = UUID(uuidString: "30000000-0000-0000-0000-000000000001")!
@@ -1889,8 +1930,7 @@ extension PlayerEnvironment {
     }
 
     func load() async throws -> LibrarySnapshot {
-      let existing = try await base.load()
-      guard existing == .empty else { return existing }
+      if let existing = try await base.loadIfPresent() { return existing }
       try await base.save(seed)
       return seed
     }

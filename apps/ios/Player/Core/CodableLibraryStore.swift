@@ -6,16 +6,29 @@ actor CodableLibraryStore: LibraryPersisting {
 
   private let fileURL: URL
   private let fileManager: FileManager
+  private let artifactNow: @Sendable () -> Date
+  private let artifactID: @Sendable () -> UUID
 
-  init(fileURL: URL, fileManager: FileManager = .default) {
+  init(
+    fileURL: URL,
+    fileManager: FileManager = .default,
+    artifactNow: @escaping @Sendable () -> Date = { Date() },
+    artifactID: @escaping @Sendable () -> UUID = { UUID() }
+  ) {
     self.fileURL = fileURL
     self.fileManager = fileManager
+    self.artifactNow = artifactNow
+    self.artifactID = artifactID
   }
 
   func load() throws -> LibrarySnapshot {
-    guard fileManager.fileExists(atPath: fileURL.path) else {
-      return .empty
-    }
+    try loadIfPresent() ?? .empty
+  }
+
+  /// Loads a durable snapshot without conflating an absent store with a valid,
+  /// deliberately persisted empty library.
+  func loadIfPresent() throws -> LibrarySnapshot? {
+    guard fileManager.fileExists(atPath: fileURL.path) else { return nil }
 
     let data = try Data(contentsOf: fileURL)
     let header: SchemaHeader
@@ -197,7 +210,14 @@ actor CodableLibraryStore: LibraryPersisting {
           byteCount: Int64(values.fileSize ?? 0)
         ))
     }
-    return backups.sorted { $0.createdAt > $1.createdAt }
+    return backups.sorted { lhs, rhs in
+      automaticBackupIsNewer(
+        lhsURL: lhs.url,
+        lhsDate: lhs.createdAt,
+        rhsURL: rhs.url,
+        rhsDate: rhs.createdAt
+      )
+    }
   }
 
   func restoreLatestAutomaticBackup() async throws -> LibrarySnapshot {
@@ -275,8 +295,8 @@ actor CodableLibraryStore: LibraryPersisting {
     guard fileManager.fileExists(atPath: fileURL.path) else { return nil }
     try fileManager.createDirectory(at: quarantineDirectory, withIntermediateDirectories: true)
     let destination = quarantineDirectory.appending(
-      path: "library-\(Int(Date().timeIntervalSince1970 * 1_000))-"
-        + "\(UUID().uuidString.lowercased()).json"
+      path: "library-\(Int(artifactNow().timeIntervalSince1970 * 1_000))-"
+        + "\(artifactID().uuidString.lowercased()).json"
     )
     try fileManager.moveItem(at: fileURL, to: destination)
     return destination
@@ -292,21 +312,14 @@ actor CodableLibraryStore: LibraryPersisting {
         includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey],
         options: [.skipsHiddenFiles]
       )) ?? []
-    if let latest = existing.sorted(by: { lhs, rhs in
-      let left =
-        (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
-        ?? .distantPast
-      let right =
-        (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
-        ?? .distantPast
-      return left > right
-    }).first,
+    if let latest = existing.sorted(by: automaticBackupURLIsNewer).first,
       (try? Data(contentsOf: latest)) == sourceData
     {
       return
     }
     let name =
-      "\(prefix)-\(Int(Date().timeIntervalSince1970 * 1_000))-\(UUID().uuidString.lowercased()).json"
+      "\(prefix)-\(Int(artifactNow().timeIntervalSince1970 * 1_000))-"
+      + "\(artifactID().uuidString.lowercased()).json"
     try sourceData.write(
       to: directory.appending(path: name),
       options: [.atomic, .completeFileProtectionUnlessOpen]
@@ -317,18 +330,35 @@ actor CodableLibraryStore: LibraryPersisting {
       options: [.skipsHiddenFiles]
     ).filter {
       (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
-    }.sorted { lhs, rhs in
-      let left =
-        (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
-        ?? .distantPast
-      let right =
-        (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
-        ?? .distantPast
-      return left > right
-    }
+    }.sorted(by: automaticBackupURLIsNewer)
     for expired in backups.dropFirst(Self.automaticBackupLimit) {
       try? fileManager.removeItem(at: expired)
     }
+  }
+
+  private func automaticBackupURLIsNewer(_ lhs: URL, _ rhs: URL) -> Bool {
+    let left =
+      (try? lhs.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+      ?? .distantPast
+    let right =
+      (try? rhs.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+      ?? .distantPast
+    return automaticBackupIsNewer(
+      lhsURL: lhs,
+      lhsDate: left,
+      rhsURL: rhs,
+      rhsDate: right
+    )
+  }
+
+  private func automaticBackupIsNewer(
+    lhsURL: URL,
+    lhsDate: Date,
+    rhsURL: URL,
+    rhsDate: Date
+  ) -> Bool {
+    if lhsDate != rhsDate { return lhsDate > rhsDate }
+    return lhsURL.lastPathComponent > rhsURL.lastPathComponent
   }
 
   private func migrateImportGroupingDefaults(in snapshot: LibrarySnapshot) -> LibrarySnapshot {

@@ -6,29 +6,54 @@ final class AccessibilityUITests: XCTestCase {
 
   func testAccessibilityPreferenceTogglesUpdateAndPersist() throws {
     continueAfterFailure = false
-    let app = makeApplication(fixture: "single-audiobook-ready")
+    let namespace = "accessibility-preferences-persistence"
+    let app = makeApplication(
+      fixture: "metadata-rich-book",
+      reset: true,
+      metadataRichNamespace: namespace
+    )
     app.launch()
-    app.tabBars.buttons["Settings"].tap()
-    let accessibility = app.buttons["settings-accessibility"]
-    align("e2e-align-settings-accessibility", to: accessibility, in: app)
-    accessibility.tap()
+    let initial = openAccessibilityPreferences(in: app)
+    assertAccessibilityPreferences(
+      initial,
+      switchValues: (highContrast: "0", reduceArtwork: "0"),
+      modelValue: "high-contrast=false:reduce-artwork=false"
+    )
 
-    let highContrast = app.switches["accessibility-high-contrast"]
-    let reduceArtwork = app.switches["accessibility-reduce-artwork"]
-    XCTAssertTrue(highContrast.waitForStringValue("0", timeout: 2))
-    XCTAssertTrue(reduceArtwork.waitForStringValue("0", timeout: 2))
-
-    tapSwitchControl(highContrast)
-    XCTAssertTrue(highContrast.waitForStringValue("1", timeout: 2))
-    tapSwitchControl(reduceArtwork)
-    XCTAssertTrue(reduceArtwork.waitForStringValue("1", timeout: 2))
-
-    let preferences = anyElement(app, "accessibility-preferences-state")
+    let highContrastDeadline = EventDeadline()
+    tapSwitchControl(initial.highContrast, deadline: highContrastDeadline)
     XCTAssertTrue(
-      preferences.waitForStringValue(
-        "high-contrast=true:reduce-artwork=true",
-        timeout: 2
-      ))
+      initial.preferences.waitForStringValue(
+        "high-contrast=true:reduce-artwork=false",
+        timeout: highContrastDeadline.remaining
+      )
+    )
+    XCTAssertTrue(
+      initial.highContrast.waitForStringValue("1", timeout: highContrastDeadline.remaining)
+    )
+
+    let reduceArtworkDeadline = EventDeadline()
+    tapSwitchControl(initial.reduceArtwork, deadline: reduceArtworkDeadline)
+    assertAccessibilityPreferences(
+      initial,
+      switchValues: (highContrast: "1", reduceArtwork: "1"),
+      modelValue: "high-contrast=true:reduce-artwork=true",
+      deadline: reduceArtworkDeadline
+    )
+
+    XCTAssertTrue(terminateAndWait(app))
+    let restoredApp = makeApplication(
+      fixture: "metadata-rich-book",
+      reset: false,
+      metadataRichNamespace: namespace
+    )
+    restoredApp.launch()
+    let restored = openAccessibilityPreferences(in: restoredApp)
+    assertAccessibilityPreferences(
+      restored,
+      switchValues: (highContrast: "1", reduceArtwork: "1"),
+      modelValue: "high-contrast=true:reduce-artwork=true"
+    )
   }
 
   func testCoreJourneysRemainCompleteAtLargestAccessibilityText() throws {
@@ -92,7 +117,7 @@ final class AccessibilityUITests: XCTestCase {
       ]
     )
 
-    app.terminate()
+    XCTAssertTrue(terminateAndWait(app))
     app = makeApplication(fixture: "metadata-rich-book")
     app.launch()
     app.staticTexts["Harbor at Dawn"].tap()
@@ -133,7 +158,7 @@ final class AccessibilityUITests: XCTestCase {
       ]
     )
 
-    app.terminate()
+    XCTAssertTrue(terminateAndWait(app))
     app = try makePopulatedLibraryApplication()
     app.launch()
     let upNext = app.buttons["open-up-next"]
@@ -157,7 +182,7 @@ final class AccessibilityUITests: XCTestCase {
       ]
     )
 
-    app.terminate()
+    XCTAssertTrue(terminateAndWait(app))
     app = makeApplication(fixture: "single-audiobook-ready")
     app.launch()
     app.tabBars.buttons["Settings"].tap()
@@ -192,7 +217,7 @@ final class AccessibilityUITests: XCTestCase {
       ]
     )
 
-    app.terminate()
+    XCTAssertTrue(terminateAndWait(app))
     app = makeReceiverApplication()
     app.launch()
     app.buttons["receive-from-computer-empty-library"].tap()
@@ -218,9 +243,17 @@ final class AccessibilityUITests: XCTestCase {
     tester.generateDocs()
   }
 
-  private func makeApplication(fixture: String) -> XCUIApplication {
+  private func makeApplication(
+    fixture: String,
+    reset: Bool = true,
+    metadataRichNamespace: String? = nil
+  ) -> XCUIApplication {
     let app = XCUIApplication()
-    app.launchArguments = baseArguments(fixture: fixture)
+    app.launchArguments = baseArguments(
+      fixture: fixture,
+      reset: reset,
+      metadataRichNamespace: metadataRichNamespace
+    )
     app.launchEnvironment["TZ"] = "America/Toronto"
     app.launchEnvironment["PLAYER_E2E_DYNAMIC_TYPE"] = "accessibility5"
     return app
@@ -256,12 +289,21 @@ final class AccessibilityUITests: XCTestCase {
     return app
   }
 
-  private func baseArguments(fixture: String) -> [String] {
-    [
-      "-e2e", "-e2e-reset", "-e2e-fixture", fixture,
+  private func baseArguments(
+    fixture: String,
+    reset: Bool = true,
+    metadataRichNamespace: String? = nil
+  ) -> [String] {
+    var arguments = [
+      "-e2e", "-e2e-fixture", fixture,
       "-AppleLanguages", "(en)", "-AppleLocale", "en_CA",
       "-NSTreatUnknownArgumentsAsOpen", "NO",
     ]
+    if reset { arguments.insert("-e2e-reset", at: 1) }
+    if let metadataRichNamespace {
+      arguments += ["-e2e-metadata-rich-namespace", metadataRichNamespace]
+    }
+    return arguments
   }
 
   private func fixtureData(resource: String, extension fileExtension: String) throws -> Data {
@@ -275,27 +317,93 @@ final class AccessibilityUITests: XCTestCase {
     app.descendants(matching: .any).matching(identifier: identifier).firstMatch
   }
 
-  private func tapSwitchControl(_ element: XCUIElement) {
-    XCTAssertTrue(element.waitForExistence(timeout: 2))
+  private func openAccessibilityPreferences(
+    in app: XCUIApplication
+  ) -> (highContrast: XCUIElement, reduceArtwork: XCUIElement, preferences: XCUIElement) {
+    let settingsDeadline = EventDeadline()
+    let settings = app.tabBars.buttons["Settings"]
+    XCTAssertTrue(waitForExistence(settings, deadline: settingsDeadline))
+    settings.tap()
+
+    let accessibilityDeadline = EventDeadline()
+    let accessibility = app.buttons["settings-accessibility"]
+    align(
+      "e2e-align-settings-accessibility",
+      to: accessibility,
+      in: app,
+      deadline: accessibilityDeadline
+    )
+    accessibility.tap()
+
+    let controlsDeadline = EventDeadline()
+    let highContrast = app.switches["accessibility-high-contrast"]
+    let reduceArtwork = app.switches["accessibility-reduce-artwork"]
+    let preferences = anyElement(app, "accessibility-preferences-state")
+    XCTAssertTrue(waitForExistence(highContrast, deadline: controlsDeadline))
+    XCTAssertTrue(waitForExistence(reduceArtwork, deadline: controlsDeadline))
+    XCTAssertTrue(waitForExistence(preferences, deadline: controlsDeadline))
+    return (highContrast, reduceArtwork, preferences)
+  }
+
+  private func assertAccessibilityPreferences(
+    _ controls: (
+      highContrast: XCUIElement,
+      reduceArtwork: XCUIElement,
+      preferences: XCUIElement
+    ),
+    switchValues: (highContrast: String, reduceArtwork: String),
+    modelValue: String,
+    deadline: EventDeadline = EventDeadline()
+  ) {
+    XCTAssertTrue(
+      controls.preferences.waitForStringValue(modelValue, timeout: deadline.remaining),
+      "The persisted accessibility model should publish \(modelValue)"
+    )
+    XCTAssertTrue(
+      controls.highContrast.waitForStringValue(
+        switchValues.highContrast,
+        timeout: deadline.remaining
+      ),
+      "The high-contrast switch should expose \(switchValues.highContrast)"
+    )
+    XCTAssertTrue(
+      controls.reduceArtwork.waitForStringValue(
+        switchValues.reduceArtwork,
+        timeout: deadline.remaining
+      ),
+      "The reduce-artwork switch should expose \(switchValues.reduceArtwork)"
+    )
+  }
+
+  private func tapSwitchControl(
+    _ element: XCUIElement,
+    deadline: EventDeadline = EventDeadline()
+  ) {
+    XCTAssertTrue(waitForExistence(element, deadline: deadline))
     element.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
   }
 
   private func align(
     _ controlIdentifier: String,
     to element: XCUIElement,
-    in app: XCUIApplication
+    in app: XCUIApplication,
+    deadline: EventDeadline = EventDeadline()
   ) {
     let control = app.buttons[controlIdentifier]
-    XCTAssertTrue(control.waitForExistence(timeout: 2))
+    XCTAssertTrue(waitForExistence(control, deadline: deadline))
     control.tap()
-    waitUntilHittable(element)
+    waitUntilHittable(element, deadline: deadline)
   }
 
-  private func waitUntilHittable(_ element: XCUIElement) {
+  private func waitUntilHittable(
+    _ element: XCUIElement,
+    deadline: EventDeadline = EventDeadline()
+  ) {
     XCTAssertTrue(
       waitForPredicate(
         NSPredicate(format: "exists == true AND hittable == true"),
-        on: element
+        on: element,
+        timeout: deadline.remaining
       ),
       "Expected \(element.identifier) to become visible and hittable"
     )
