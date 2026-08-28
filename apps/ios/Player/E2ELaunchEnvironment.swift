@@ -177,6 +177,133 @@ import UIKit
       return fixture
     }
   }
+
+  struct E2ESafeZIPArguments: Equatable {
+    enum ArchiveCase: String, CaseIterable {
+      case valid
+      case traversal
+      case symlink
+      case ratio
+      case count
+      case size
+    }
+
+    enum FailOnce: String {
+      case inspection
+    }
+
+    struct Limits: Equatable {
+      let maximumEntryCount: Int
+      let maximumEntryBytes: UInt64
+      let maximumEntryExpansionRatio: Double
+    }
+
+    static let caseArgument = "-e2e-zip-case"
+    static let limitsArgument = "-e2e-zip-limits"
+    static let failOnceArgument = "-e2e-zip-fail-once"
+
+    let archiveCase: ArchiveCase
+    let limits: Limits
+    let failOnce: FailOnce?
+
+    static func parse(arguments: [String]) throws -> E2ESafeZIPArguments {
+      let caseValue = try requiredValue(after: caseArgument, in: arguments)
+      guard let archiveCase = ArchiveCase(rawValue: caseValue) else {
+        throw PlayerCoreError.fileOperation("Invalid Safe ZIP E2E case: \(caseValue)")
+      }
+
+      let limitsValue = try requiredValue(after: limitsArgument, in: arguments)
+      let limits = try parseLimits(limitsValue)
+
+      let failOnceValue = try optionalValue(after: failOnceArgument, in: arguments)
+      let failOnce: FailOnce?
+      if let failOnceValue {
+        guard let parsed = FailOnce(rawValue: failOnceValue), archiveCase == .valid else {
+          throw PlayerCoreError.fileOperation(
+            "Invalid Safe ZIP E2E fail-once configuration: \(failOnceValue)"
+          )
+        }
+        failOnce = parsed
+      } else {
+        failOnce = nil
+      }
+
+      return E2ESafeZIPArguments(
+        archiveCase: archiveCase,
+        limits: limits,
+        failOnce: failOnce
+      )
+    }
+
+    private static func requiredValue(after marker: String, in arguments: [String]) throws -> String {
+      let markers = arguments.indices.filter { arguments[$0] == marker }
+      guard markers.count == 1 else {
+        let reason = markers.isEmpty ? "Missing" : "Duplicate"
+        throw PlayerCoreError.fileOperation("\(reason) Safe ZIP E2E option: \(marker)")
+      }
+      return try value(after: marker, at: markers[0], in: arguments)
+    }
+
+    private static func optionalValue(after marker: String, in arguments: [String]) throws -> String? {
+      let markers = arguments.indices.filter { arguments[$0] == marker }
+      guard markers.count <= 1 else {
+        throw PlayerCoreError.fileOperation("Duplicate Safe ZIP E2E option: \(marker)")
+      }
+      guard let index = markers.first else { return nil }
+      return try value(after: marker, at: index, in: arguments)
+    }
+
+    private static func value(after marker: String, at index: Int, in arguments: [String]) throws -> String {
+      guard arguments.indices.contains(index + 1) else {
+        throw PlayerCoreError.fileOperation("Missing Safe ZIP E2E value for: \(marker)")
+      }
+      let value = arguments[index + 1]
+      guard !value.isEmpty, !value.hasPrefix("-") else {
+        throw PlayerCoreError.fileOperation("Invalid Safe ZIP E2E value for: \(marker)")
+      }
+      return value
+    }
+
+    private static func parseLimits(_ value: String) throws -> Limits {
+      let components = value.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
+      guard components.count == 3,
+        let entryCount = positiveInt(components[0]),
+        let entryBytes = positiveUInt64(components[1]),
+        let expansionRatio = positiveDecimal(components[2])
+      else {
+        throw PlayerCoreError.fileOperation("Invalid Safe ZIP E2E limits: \(value)")
+      }
+      return Limits(
+        maximumEntryCount: entryCount,
+        maximumEntryBytes: entryBytes,
+        maximumEntryExpansionRatio: expansionRatio
+      )
+    }
+
+    private static func positiveInt(_ value: String) -> Int? {
+      guard isASCIIInteger(value), let parsed = Int(value), parsed > 0 else { return nil }
+      return parsed
+    }
+
+    private static func positiveUInt64(_ value: String) -> UInt64? {
+      guard isASCIIInteger(value), let parsed = UInt64(value), parsed > 0 else { return nil }
+      return parsed
+    }
+
+    private static func positiveDecimal(_ value: String) -> Double? {
+      let components = value.split(separator: ".", omittingEmptySubsequences: false)
+      guard (1...2).contains(components.count), components.allSatisfy({ isASCIIInteger(String($0)) }),
+        let parsed = Double(value), parsed.isFinite, parsed > 0
+      else { return nil }
+      return parsed
+    }
+
+    private static func isASCIIInteger(_ value: String) -> Bool {
+      !value.isEmpty && value.utf8.allSatisfy {
+        (UInt8(ascii: "0")...UInt8(ascii: "9")).contains($0)
+      }
+    }
+  }
 #endif
 
 @MainActor
@@ -1649,6 +1776,7 @@ extension PlayerEnvironment {
 
     private static func safeZipEnvironment(reset: Bool) throws -> PlayerEnvironment {
       let arguments = ProcessInfo.processInfo.arguments
+      let options = try E2ESafeZIPArguments.parse(arguments: arguments)
       let root = FileManager.default.temporaryDirectory.appending(
         path: "PlayerE2ESafeZIP",
         directoryHint: .isDirectory
@@ -1656,7 +1784,6 @@ extension PlayerEnvironment {
       if reset { try resetE2EFixtureRoot(root) }
       try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
 
-      let zipCase = argumentValue(after: "-e2e-zip-case", in: arguments) ?? "valid"
       guard
         let encoded = ProcessInfo.processInfo.environment["PLAYER_E2E_ZIP_FIXTURE_BASE64"],
         let bytes = Data(base64Encoded: encoded)
@@ -1665,17 +1792,16 @@ extension PlayerEnvironment {
       }
       let sourceURL = root.appending(path: "selected-audiobook.zip")
       try bytes.write(to: sourceURL, options: .atomic)
-      E2EZipAcquisition.shared.configure(zipCase: zipCase, sourceURL: sourceURL, sourceBytes: bytes)
+      E2EZipAcquisition.shared.configure(
+        zipCase: options.archiveCase.rawValue,
+        sourceURL: sourceURL,
+        sourceBytes: bytes
+      )
 
       var policy = ZipExtractionPolicy.audiobook
-      if let limits = argumentValue(after: "-e2e-zip-limits", in: arguments) {
-        let values = limits.split(separator: ",").compactMap { Double($0) }
-        if values.count == 3 {
-          policy.maximumEntryCount = Int(values[0])
-          policy.maximumEntryBytes = UInt64(values[1])
-          policy.maximumEntryExpansionRatio = values[2]
-        }
-      }
+      policy.maximumEntryCount = options.limits.maximumEntryCount
+      policy.maximumEntryBytes = options.limits.maximumEntryBytes
+      policy.maximumEntryExpansionRatio = options.limits.maximumEntryExpansionRatio
       let result = InspectedAudio(
         title: nil,
         authors: [],
@@ -1683,27 +1809,18 @@ extension PlayerEnvironment {
         artworkData: nil,
         container: "M4A"
       )
-      let shouldFailOnce = arguments.contains("-e2e-zip-fail-once")
-        && argumentValue(after: "-e2e-zip-fail-once", in: arguments) == "inspection"
       let ids = (1...12).compactMap {
         UUID(uuidString: String(format: "60000000-0000-0000-0000-%012d", $0))
       }
       return PlayerEnvironment(
         persistence: CodableLibraryStore(fileURL: root.appending(path: "Library.json")),
         media: FileSystemMediaManager(rootURL: root.appending(path: "PlayerData")),
-        inspector: E2EZipAudioInspector(result: result, failOnce: shouldFailOnce),
+        inspector: E2EZipAudioInspector(result: result, failOnce: options.failOnce == .inspection),
         playback: DeterministicPlaybackController(),
         clock: FixedPlayerClock(value: Date(timeIntervalSince1970: 1_700_000_000)),
         ids: DeterministicPlayerIDGenerator(values: ids),
         zipExtractor: SafeZipExtractor(policy: policy)
       )
-    }
-
-    private static func argumentValue(after marker: String, in arguments: [String]) -> String? {
-      guard let index = arguments.firstIndex(of: marker), arguments.indices.contains(index + 1) else {
-        return nil
-      }
-      return arguments[index + 1]
     }
 
     private static func metadataRichArtwork() -> Data {

@@ -230,6 +230,139 @@
     }
   }
 
+  final class E2ESafeZIPArgumentsTests: XCTestCase {
+    func testCanonicalCasesAndOptionalInspectionFailureParseExactly() throws {
+      for archiveCase in E2ESafeZIPArguments.ArchiveCase.allCases {
+        let parsed = try E2ESafeZIPArguments.parse(arguments: canonicalArguments(
+          archiveCase: archiveCase
+        ))
+        XCTAssertEqual(parsed.archiveCase, archiveCase)
+        XCTAssertEqual(
+          parsed.limits,
+          E2ESafeZIPArguments.Limits(
+            maximumEntryCount: 32,
+            maximumEntryBytes: 131_072,
+            maximumEntryExpansionRatio: 20
+          )
+        )
+        XCTAssertNil(parsed.failOnce)
+      }
+
+      let retry = try E2ESafeZIPArguments.parse(arguments: canonicalArguments(
+        archiveCase: .valid,
+        suffix: ["-e2e-zip-fail-once", "inspection"]
+      ))
+      XCTAssertEqual(retry.failOnce, .inspection)
+    }
+
+    func testCaseAndLimitsAreRequiredExactlyOnceWithNonOptionValues() {
+      let invalidArguments = [
+        ["Player", "-e2e-zip-limits", "32,131072,20"],
+        ["Player", "-e2e-zip-case", "-e2e-zip-limits", "32,131072,20"],
+        ["Player", "-e2e-zip-case", "", "-e2e-zip-limits", "32,131072,20"],
+        ["Player", "-e2e-zip-case", "unknown", "-e2e-zip-limits", "32,131072,20"],
+        [
+          "Player", "-e2e-zip-case", "valid", "-e2e-zip-case", "size",
+          "-e2e-zip-limits", "32,131072,20",
+        ],
+        ["Player", "-e2e-zip-case", "valid"],
+        ["Player", "-e2e-zip-case", "valid", "-e2e-zip-limits"],
+        ["Player", "-e2e-zip-case", "valid", "-e2e-zip-limits", "-e2e-reset"],
+        ["Player", "-e2e-zip-case", "valid", "-e2e-zip-limits", ""],
+        [
+          "Player", "-e2e-zip-case", "valid", "-e2e-zip-limits", "32,131072,20",
+          "-e2e-zip-limits", "16,65536,10",
+        ],
+      ]
+
+      for arguments in invalidArguments {
+        XCTAssertThrowsError(
+          try E2ESafeZIPArguments.parse(arguments: arguments),
+          "Expected invalid Safe ZIP arguments to be rejected: \(arguments)"
+        )
+      }
+    }
+
+    func testLimitsRejectMalformedNonFiniteFractionalAndNonPositiveValues() {
+      let invalidLimits = [
+        "32,131072",
+        "32,131072,20,1",
+        "32,,20",
+        ",131072,20",
+        "32,131072,",
+        "thirty,131072,20",
+        "32, 131072,20",
+        "32.5,131072,20",
+        "32,131072.5,20",
+        "0,131072,20",
+        "32,0,20",
+        "32,131072,0",
+        "-1,131072,20",
+        "32,-1,20",
+        "32,131072,-1",
+        "32,131072,nan",
+        "32,131072,inf",
+        "32,131072,2e1",
+        "999999999999999999999999999999999999,131072,20",
+        "32,999999999999999999999999999999999999,20",
+      ]
+
+      for limits in invalidLimits {
+        XCTAssertThrowsError(
+          try E2ESafeZIPArguments.parse(arguments: [
+            "Player", "-e2e-zip-case", "valid", "-e2e-zip-limits", limits,
+          ]),
+          "Expected invalid Safe ZIP limits to be rejected: \(limits)"
+        )
+      }
+    }
+
+    func testFailOnceIsOptionalButStrictAndOnlyValidForTheValidArchive() throws {
+      XCTAssertNil(
+        try E2ESafeZIPArguments.parse(arguments: canonicalArguments(archiveCase: .valid)).failOnce
+      )
+
+      let invalidSuffixes = [
+        ["-e2e-zip-fail-once"],
+        ["-e2e-zip-fail-once", "-e2e-reset"],
+        ["-e2e-zip-fail-once", ""],
+        ["-e2e-zip-fail-once", "unknown"],
+        [
+          "-e2e-zip-fail-once", "inspection",
+          "-e2e-zip-fail-once", "inspection",
+        ],
+      ]
+      for suffix in invalidSuffixes {
+        XCTAssertThrowsError(
+          try E2ESafeZIPArguments.parse(arguments: canonicalArguments(
+            archiveCase: .valid,
+            suffix: suffix
+          )),
+          "Expected invalid fail-once arguments to be rejected: \(suffix)"
+        )
+      }
+
+      XCTAssertThrowsError(
+        try E2ESafeZIPArguments.parse(arguments: canonicalArguments(
+          archiveCase: .traversal,
+          suffix: ["-e2e-zip-fail-once", "inspection"]
+        ))
+      )
+    }
+
+    private func canonicalArguments(
+      archiveCase: E2ESafeZIPArguments.ArchiveCase,
+      suffix: [String] = []
+    ) -> [String] {
+      [
+        "Player", "-e2e", "-e2e-fixture", "safe-zip-import",
+        "-e2e-zip-case", archiveCase.rawValue,
+        "-e2e-zip-limits", "32,131072,20",
+        "-AppleLanguages", "(en)",
+      ] + suffix
+    }
+  }
+
   final class E2EMetadataRichBookNamespaceTests: XCTestCase {
     func testDefaultNamespacePreservesTheCanonicalRoot() throws {
       let support = URL(fileURLWithPath: "/fixture-support", isDirectory: true)
