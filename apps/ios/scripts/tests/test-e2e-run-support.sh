@@ -317,10 +317,27 @@ done
 rg -Fq 'xcresulttool export diagnostics' "${run_e2e}" \
   || fail "failure diagnostics do not export the retained xcresult diagnostics"
 failure_evidence_line="$(rg -n -m 1 'failure-screenshot-evidence' "${run_e2e}" | cut -d: -f1)"
+attachment_export_line="$(rg -n -m 1 'run_logged_phase attachment-export' "${run_e2e}" | cut -d: -f1)"
+failure_screen_line="$(rg -n -m 1 'run_logged_phase failure-screen-capture' "${run_e2e}" | cut -d: -f1)"
 test_exit_line="$(rg -n -F -m 1 'exit "${test_status}"' "${run_e2e}" | cut -d: -f1)"
-[[ -n "${failure_evidence_line}" && -n "${test_exit_line}" \
+[[ -n "${attachment_export_line}" && -n "${failure_screen_line}" \
+  && -n "${failure_evidence_line}" && -n "${test_exit_line}" \
+  && "${attachment_export_line}" -lt "${failure_screen_line}" \
+  && "${failure_screen_line}" -lt "${failure_evidence_line}" \
   && "${failure_evidence_line}" -lt "${test_exit_line}" ]] \
   || fail "UI-test failures exit before screenshot evidence is materialized"
+rg -Fq 'extract-xctest-failure-frame.swift' "${run_e2e}" \
+  || fail "UI-test failures cannot fall back to an exported XCTest recording"
+bounded_live_line="$(rg -n -F -m 1 -- '--capture-live "${simulator_id}"' "${run_e2e}" | cut -d: -f1)"
+recording_fallback_line="$(rg -n -F -m 1 '"${attachments}" "${failure_screen}"' "${run_e2e}" | cut -d: -f1)"
+[[ -n "${bounded_live_line}" && -n "${recording_fallback_line}" \
+  && "${bounded_live_line}" -lt "${recording_fallback_line}" ]] \
+  || fail "the bounded live screenshot does not precede the recording fallback"
+if rg -Fq 'xcrun simctl io "${simulator_id}" screenshot' "${run_e2e}"; then
+  fail "run-e2e can still block directly on a live simulator screenshot"
+fi
+rg -Fq 'failureScreen: $failureScreen' "${run_e2e}" \
+  || fail "FailureEvidence does not bind the failure-screen provenance"
 rg -Fq -- '--retain-all-evidence' "${run_e2e}" \
   || fail "UI-test failure comparison does not retain matching expected and actual images"
 rg -Fq 'cp -R "${baseline_story}/." "${recording_stage}/"' "${run_e2e}" \

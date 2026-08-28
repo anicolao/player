@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import base64
 import json
 import tempfile
 import unittest
@@ -9,6 +10,9 @@ import evidence_manifest as evidence
 
 STORY = "001-test-story"
 NAMES = ["000-first.png", "001-second.png"]
+PNG_1X1 = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+)
 
 
 def write_json(path, payload):
@@ -67,6 +71,14 @@ class EvidenceManifestTests(unittest.TestCase):
         }
         write_json(attempt / "Diagnostics/ScreenshotComparison/summary.json", comparison)
         if failed_test:
+            source = {
+                "schemaVersion": 1,
+                "artifact": "Diagnostics/failure-screen.png",
+                "source": "live-simulator",
+                "simulatorId": "11111111-2222-3333-4444-555555555555",
+                "pixelWidth": 1,
+                "pixelHeight": 1,
+            }
             write_json(attempt / "Diagnostics/FailureEvidence.json", {
                 "testExitCode": 65,
                 "attachmentExportExitCode": 0,
@@ -74,10 +86,16 @@ class EvidenceManifestTests(unittest.TestCase):
                 "screenshotEvidenceExitCode": 1,
                 "resultBundleAvailable": True,
                 "resultBundle": "Results/Story.xcresult",
+                "failureScreenExitCode": 0,
+                "failureScreen": source,
             })
+            (attempt / "Diagnostics/failure-screen.png").write_bytes(PNG_1X1)
+            write_json(attempt / "Diagnostics/failure-screen-source.json", source)
             for relative in evidence.FAILURE_DIAGNOSTICS:
                 path = attempt / relative
-                if path.name == "FailureEvidence.json":
+                if path.name in {
+                    "FailureEvidence.json", "failure-screen.png", "failure-screen-source.json"
+                }:
                     continue
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(f"diagnostic {relative}\n".encode())
@@ -242,6 +260,87 @@ class EvidenceManifestTests(unittest.TestCase):
         manifest, errors = self.write_and_validate(attempt)
         self.assertTrue(manifest["validation"]["valid"])
         self.assertEqual(errors, [])
+
+    def test_failure_screen_png_and_live_provenance_fail_closed(self):
+        attempt = self.make_attempt(failed_test=True)
+        source_path = attempt / "Diagnostics/failure-screen-source.json"
+        failure_path = attempt / "Diagnostics/FailureEvidence.json"
+        original_png = (attempt / "Diagnostics/failure-screen.png").read_bytes()
+        original_source = source_path.read_bytes()
+        original_failure = failure_path.read_bytes()
+        mutations = (
+            lambda: (attempt / "Diagnostics/failure-screen.png").write_bytes(b"not png"),
+            lambda: write_json(source_path, {
+                **json.loads(source_path.read_text()), "pixelWidth": 2
+            }),
+            lambda: write_json(failure_path, {
+                **json.loads(failure_path.read_text()), "failureScreen": None
+            }),
+        )
+        for index, mutate in enumerate(mutations):
+            with self.subTest(index=index):
+                mutate()
+                self.assertFalse(evidence.build_manifest(
+                    attempt, self.story, STORY
+                )["validation"]["valid"])
+                (attempt / "Diagnostics/failure-screen.png").write_bytes(original_png)
+                source_path.write_bytes(original_source)
+                failure_path.write_bytes(original_failure)
+
+    def test_recording_provenance_requires_unique_newest_nonempty_manifest_attachment(self):
+        attempt = self.make_attempt(failed_test=True)
+        recording = attempt / "Attachments/recording.mp4"
+        recording.write_bytes(b"\x00\x00\x00\x14ftypqt  \x00\x00\x00\x00")
+        empty_newer = attempt / "Attachments/empty.mp4"
+        empty_newer.write_bytes(b"")
+        attachments = [{
+            "testIdentifier": "PlayerUITests/Failure/testExample()",
+            "attachments": [
+                {
+                    "exportedFileName": "recording.mp4",
+                    "suggestedHumanReadableName": "Screen Recording 2026-08-28.mp4",
+                    "timestamp": 100.0,
+                },
+                {
+                    "exportedFileName": "empty.mp4",
+                    "suggestedHumanReadableName": "Screen Recording 2026-08-28.mp4",
+                    "timestamp": 200.0,
+                },
+            ],
+        }]
+        write_json(attempt / "Attachments/manifest.json", attachments)
+        source = {
+            "schemaVersion": 1,
+            "artifact": "Diagnostics/failure-screen.png",
+            "source": "xctest-screen-recording",
+            "attachment": "Attachments/recording.mp4",
+            "testIdentifier": "PlayerUITests/Failure/testExample()",
+            "attachmentTimestamp": 100.0,
+            "requestedTimeSeconds": 2.0,
+            "actualTimeSeconds": 1.0,
+            "pixelWidth": 1,
+            "pixelHeight": 1,
+        }
+        write_json(attempt / "Diagnostics/failure-screen-source.json", source)
+        failure_path = attempt / "Diagnostics/FailureEvidence.json"
+        failure = json.loads(failure_path.read_text())
+        failure["failureScreen"] = source
+        write_json(failure_path, failure)
+        manifest, errors = self.write_and_validate(attempt)
+        self.assertTrue(manifest["validation"]["valid"])
+        self.assertEqual(errors, [])
+
+        corrupt_newer = attempt / "Attachments/corrupt-newer.mp4"
+        corrupt_newer.write_bytes(b"nonempty but corrupt")
+        attachments[0]["attachments"].append({
+            "exportedFileName": "corrupt-newer.mp4",
+            "suggestedHumanReadableName": "Screen Recording 2026-08-28.mp4",
+            "timestamp": 300.0,
+        })
+        write_json(attempt / "Attachments/manifest.json", attachments)
+        self.assertFalse(evidence.build_manifest(
+            attempt, self.story, STORY
+        )["validation"]["valid"])
 
     def test_failed_test_accepts_canonical_actual_subset_and_truthful_partial_walkthrough(self):
         attempt = self.make_attempt(failed_test=True)

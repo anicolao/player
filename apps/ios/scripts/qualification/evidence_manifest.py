@@ -4,8 +4,11 @@
 import argparse
 import hashlib
 import json
+import math
 import os
+import re
 import stat
+import struct
 import sys
 import tempfile
 from pathlib import Path, PurePosixPath
@@ -23,6 +26,7 @@ REQUIRED_FILES = (
 FAILURE_DIAGNOSTICS = (
     "Diagnostics/FailureEvidence.json",
     "Diagnostics/failure-screen.png",
+    "Diagnostics/failure-screen-source.json",
     "Diagnostics/player.log",
     "Diagnostics/simulator-system.log",
     "Diagnostics/coresimulator-host.log",
@@ -166,6 +170,147 @@ def require_nonempty(root: Path, relative: str, errors):
     return True
 
 
+def png_dimensions(path: Path):
+    try:
+        if not path.is_file() or path.is_symlink():
+            return None
+        with path.open("rb") as handle:
+            header = handle.read(24)
+    except OSError:
+        return None
+    if len(header) != 24 or header[:8] != b"\x89PNG\r\n\x1a\n" \
+            or header[8:12] != b"\x00\x00\x00\r" or header[12:16] != b"IHDR":
+        return None
+    width, height = struct.unpack(">II", header[16:24])
+    return (width, height) if width > 0 and height > 0 else None
+
+
+def screen_recording_candidates(root: Path, attachments, errors):
+    candidates = []
+    if not isinstance(attachments, list):
+        return candidates
+    for group in attachments:
+        if not isinstance(group, dict):
+            continue
+        test_identifier = group.get("testIdentifier")
+        for attachment in group.get("attachments", []):
+            if not isinstance(attachment, dict):
+                continue
+            human_name = attachment.get("suggestedHumanReadableName")
+            if not isinstance(human_name, str) or not human_name.startswith("Screen Recording ") \
+                    or not human_name.endswith(".mp4"):
+                continue
+            name = attachment.get("exportedFileName")
+            timestamp = attachment.get("timestamp")
+            if not safe_relative_path(name) or PurePosixPath(name).name != name \
+                    or not name.lower().endswith(".mp4"):
+                errors.append("XCTest screen recording has an unsafe exported filename")
+                continue
+            if not isinstance(timestamp, (int, float)) or isinstance(timestamp, bool) \
+                    or not math.isfinite(timestamp):
+                errors.append("XCTest screen recording has an invalid timestamp")
+                continue
+            path = root / "Attachments" / name
+            if path.is_file() and not path.is_symlink() and path.stat().st_size > 0:
+                try:
+                    with path.open("rb") as handle:
+                        header = handle.read(12)
+                except OSError:
+                    header = b""
+                candidates.append({
+                    "attachment": f"Attachments/{name}",
+                    "testIdentifier": test_identifier,
+                    "attachmentTimestamp": timestamp,
+                    "validContainer": len(header) == 12 and header[4:8] == b"ftyp",
+                })
+    return candidates
+
+
+def validate_failure_screen(root: Path, failure, attachments, errors):
+    png_path = root / "Diagnostics" / "failure-screen.png"
+    dimensions = png_dimensions(png_path)
+    if dimensions is None:
+        errors.append("Diagnostics/failure-screen.png is not a valid nonempty PNG with IHDR dimensions")
+    try:
+        source = load_json(root / "Diagnostics" / "failure-screen-source.json")
+    except (OSError, ValueError, TypeError, json.JSONDecodeError) as error:
+        errors.append(f"failure-screen-source.json is invalid: {error}")
+        return
+    if not isinstance(source, dict):
+        errors.append("failure-screen-source.json is not an object")
+        return
+    if not isinstance(failure, dict) or failure.get("failureScreen") != source:
+        errors.append("FailureEvidence.json does not exactly bind failure-screen provenance")
+    common = {"schemaVersion", "artifact", "source", "pixelWidth", "pixelHeight"}
+    if source.get("schemaVersion") != 1 \
+            or source.get("artifact") != "Diagnostics/failure-screen.png":
+        errors.append("failure-screen provenance has an invalid schema or artifact")
+    width, height = source.get("pixelWidth"), source.get("pixelHeight")
+    if not isinstance(width, int) or isinstance(width, bool) or width <= 0 \
+            or not isinstance(height, int) or isinstance(height, bool) or height <= 0 \
+            or dimensions != (width, height):
+        errors.append("failure-screen provenance dimensions do not match the PNG")
+
+    if source.get("source") == "live-simulator":
+        if set(source) != common | {"simulatorId"}:
+            errors.append("live-simulator failure-screen provenance has unexpected fields")
+        simulator_id = source.get("simulatorId")
+        if not isinstance(simulator_id, str) or re.fullmatch(
+            r"[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}",
+            simulator_id,
+        ) is None:
+            errors.append("live-simulator failure-screen provenance has an invalid simulator UDID")
+        return
+
+    if source.get("source") != "xctest-screen-recording":
+        errors.append("failure-screen provenance has an unknown source")
+        return
+    recording_fields = {
+        "attachment", "testIdentifier", "attachmentTimestamp",
+        "requestedTimeSeconds", "actualTimeSeconds",
+    }
+    if set(source) != common | recording_fields:
+        errors.append("XCTest recording failure-screen provenance has unexpected fields")
+    attachment = source.get("attachment")
+    test_identifier = source.get("testIdentifier")
+    timestamp = source.get("attachmentTimestamp")
+    requested = source.get("requestedTimeSeconds")
+    actual = source.get("actualTimeSeconds")
+    if not safe_relative_path(attachment) or not attachment.startswith("Attachments/") \
+            or PurePosixPath(attachment).parent != PurePosixPath("Attachments"):
+        errors.append("failure-screen provenance has an unsafe attachment path")
+    if not isinstance(test_identifier, str) or not test_identifier:
+        errors.append("failure-screen provenance has an invalid test identifier")
+    for label, value in (("attachment timestamp", timestamp), ("requested time", requested),
+                         ("actual time", actual)):
+        if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value):
+            errors.append(f"failure-screen provenance has an invalid {label}")
+    if isinstance(requested, (int, float)) and not isinstance(requested, bool) and requested <= 0:
+        errors.append("failure-screen provenance requested time is not positive")
+    if isinstance(actual, (int, float)) and not isinstance(actual, bool) \
+            and isinstance(requested, (int, float)) and not isinstance(requested, bool) \
+            and (actual < 0 or actual > requested):
+        errors.append("failure-screen provenance actual time is outside the recording")
+
+    candidates = screen_recording_candidates(root, attachments, errors)
+    if not candidates:
+        errors.append("failure-screen provenance has no nonempty XCTest recording candidate")
+        return
+    newest_timestamp = max(item["attachmentTimestamp"] for item in candidates)
+    newest = [item for item in candidates if item["attachmentTimestamp"] == newest_timestamp]
+    selected = {
+        "attachment": attachment,
+        "testIdentifier": test_identifier,
+        "attachmentTimestamp": timestamp,
+    }
+    if len(newest) != 1 or {
+        key: newest[0].get(key) for key in selected
+    } != selected:
+        errors.append("failure-screen provenance is not the unique newest nonempty XCTest recording")
+    elif newest[0].get("validContainer") is not True:
+        errors.append("failure-screen provenance references a corrupt XCTest recording container")
+
+
 def validate_comparison(root: Path, canonical, run_status, errors):
     details = {
         "canonicalNames": canonical,
@@ -231,6 +376,7 @@ def validate_comparison(root: Path, canonical, run_status, errors):
 
 def semantic_validation(root: Path, story_root: Path, expected_story=None):
     errors = []
+    attachments = []
     canonical, canonical_errors = canonical_screenshots(story_root, expected_story)
     errors.extend(canonical_errors)
     for relative in REQUIRED_FILES:
@@ -280,6 +426,7 @@ def semantic_validation(root: Path, story_root: Path, expected_story=None):
                 errors.append("FailureEvidence.json does not corroborate the failed test phase")
         except (OSError, ValueError, TypeError, json.JSONDecodeError) as error:
             errors.append(f"FailureEvidence.json is invalid: {error}")
+        validate_failure_screen(root, failure, attachments, errors)
     walkthrough = root / "ActualWalkthrough" / "README.md"
     if not walkthrough.is_file() or walkthrough.is_symlink() or walkthrough.stat().st_size == 0:
         partial_is_truthful = failed_test_phase and isinstance(failure, dict) and (

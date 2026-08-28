@@ -147,6 +147,8 @@ attachments="${story_output}/Attachments"
 actual_story="${story_output}/ActualWalkthrough"
 baseline_story="${repository_root}/tests/e2e/${story_id}"
 simulator_name="Player E2E ${story_id} $$"
+failure_screen="${story_output}/Diagnostics/failure-screen.png"
+failure_screen_source="${story_output}/Diagnostics/failure-screen-source.json"
 
 if [[ ! -d "${baseline_story}" ]]; then
   echo "Story directory is missing: ${baseline_story}" >&2
@@ -182,24 +184,83 @@ run_logged_phase() {
   return "${phase_status}"
 }
 
+capture_failure_screen() {
+  local temporary_screen="${story_output}/Diagnostics/.failure-screen-live.$$.png"
+  local temporary_source="${story_output}/Diagnostics/.failure-screen-source.$$.json"
+  local dimensions
+  local pixel_width
+  local pixel_height
+
+  if [[ -s "${failure_screen}" && -s "${failure_screen_source}" ]]; then return 0; fi
+  rm -f "${failure_screen}" "${failure_screen_source}" \
+    "${temporary_screen}" "${temporary_source}"
+
+  if [[ -n "${simulator_id}" ]] \
+    && swift "${script_dir}/extract-xctest-failure-frame.swift" \
+      --capture-live "${simulator_id}" "${temporary_screen}" >/dev/null 2>&1; then
+    dimensions="$(sips -g pixelWidth -g pixelHeight "${temporary_screen}" 2>/dev/null || true)"
+    pixel_width="$(awk '/pixelWidth:/ {print $2}' <<<"${dimensions}")"
+    pixel_height="$(awk '/pixelHeight:/ {print $2}' <<<"${dimensions}")"
+    if [[ "${pixel_width}" =~ ^[1-9][0-9]*$ && "${pixel_height}" =~ ^[1-9][0-9]*$ ]]; then
+      jq -n \
+        --arg artifact "Diagnostics/failure-screen.png" \
+        --arg source "live-simulator" \
+        --arg simulatorId "${simulator_id}" \
+        --argjson pixelWidth "${pixel_width}" \
+        --argjson pixelHeight "${pixel_height}" \
+        '{schemaVersion: 1, artifact: $artifact, source: $source,
+          simulatorId: $simulatorId, pixelWidth: $pixelWidth, pixelHeight: $pixelHeight}' \
+        > "${temporary_source}"
+      mv "${temporary_source}" "${failure_screen_source}"
+      if mv "${temporary_screen}" "${failure_screen}"; then return 0; fi
+      rm -f "${failure_screen}" "${failure_screen_source}"
+    fi
+  fi
+  rm -f "${temporary_screen}" "${temporary_source}"
+
+  swift "${script_dir}/extract-xctest-failure-frame.swift" \
+    "${attachments}" "${failure_screen}" "${failure_screen_source}"
+}
+
 capture_failure_diagnostics() {
   local semantic_evidence
-  if [[ -z "${simulator_id}" ]]; then return 0; fi
-  xcrun simctl io "${simulator_id}" screenshot \
-    "${story_output}/Diagnostics/failure-screen.png" >/dev/null 2>&1 || true
-  xcrun simctl spawn "${simulator_id}" log show \
-    --start "${run_started_at}" --style compact --info --debug \
-    --predicate 'process == "Player" OR process CONTAINS[c] "PlayerUITests" OR process CONTAINS[c] "ShareExtension"' \
-    > "${story_output}/Diagnostics/player.log" 2>&1 || true
-  xcrun simctl spawn "${simulator_id}" log show \
-    --start "${run_started_at}" --style compact --info --debug \
-    --predicate 'process == "SpringBoard" OR process == "backboardd" OR process == "runningboardd" OR process == "launchd_sim" OR subsystem BEGINSWITH "com.apple.FrontBoard" OR subsystem BEGINSWITH "com.apple.CoreSimulator"' \
-    > "${story_output}/Diagnostics/simulator-system.log" 2>&1 || true
+  capture_failure_screen >/dev/null 2>&1 || true
+  if [[ -n "${simulator_id}" ]]; then
+    xcrun simctl spawn "${simulator_id}" log show \
+      --start "${run_started_at}" --style compact --info --debug \
+      --predicate 'process == "Player" OR process CONTAINS[c] "PlayerUITests" OR process CONTAINS[c] "ShareExtension"' \
+      > "${story_output}/Diagnostics/player.log" 2>&1 || true
+    xcrun simctl spawn "${simulator_id}" log show \
+      --start "${run_started_at}" --style compact --info --debug \
+      --predicate 'process == "SpringBoard" OR process == "backboardd" OR process == "runningboardd" OR process == "launchd_sim" OR subsystem BEGINSWITH "com.apple.FrontBoard" OR subsystem BEGINSWITH "com.apple.CoreSimulator"' \
+      > "${story_output}/Diagnostics/simulator-system.log" 2>&1 || true
+  else
+    printf '%s\n' 'No owned simulator was available for app-process log collection.' \
+      > "${story_output}/Diagnostics/player.log"
+    printf '%s\n' 'No owned simulator was available for SpringBoard/CoreSimulator log collection.' \
+      > "${story_output}/Diagnostics/simulator-system.log"
+  fi
   /usr/bin/log show \
     --start "${run_started_at}" --style compact --info --debug \
     --predicate 'process == "CoreSimulatorService" OR process == "CoreSimulatorBridge" OR process == "SimulatorTrampoline"' \
     > "${story_output}/Diagnostics/coresimulator-host.log" 2>&1 || true
   xcrun simctl list devices --json > "${story_output}/Diagnostics/simulators.json" 2>&1 || true
+  if [[ ! -s "${story_output}/Diagnostics/player.log" ]]; then
+    printf '%s\n' 'The attempt-wide Player log query returned no records.' \
+      > "${story_output}/Diagnostics/player.log"
+  fi
+  if [[ ! -s "${story_output}/Diagnostics/simulator-system.log" ]]; then
+    printf '%s\n' 'The attempt-wide simulator system log query returned no records.' \
+      > "${story_output}/Diagnostics/simulator-system.log"
+  fi
+  if [[ ! -s "${story_output}/Diagnostics/coresimulator-host.log" ]]; then
+    printf '%s\n' 'The attempt-wide host CoreSimulator log query returned no records.' \
+      > "${story_output}/Diagnostics/coresimulator-host.log"
+  fi
+  if [[ ! -s "${story_output}/Diagnostics/simulators.json" ]]; then
+    printf '%s\n' '{"error":"The simulator inventory command returned no output."}' \
+      > "${story_output}/Diagnostics/simulators.json"
+  fi
 
   semantic_evidence="${story_output}/Diagnostics/semantic-probes.log"
   if [[ -f "${story_output}/Logs/test.log" ]]; then
@@ -218,6 +279,10 @@ capture_failure_diagnostics() {
       --path "${result_bundle}" \
       --output-path "${story_output}/Diagnostics/XCResultDiagnostics" \
       > "${story_output}/Diagnostics/xcresult-diagnostics-export.log" 2>&1 || true
+    if [[ ! -s "${story_output}/Diagnostics/xcresult-diagnostics-export.log" ]]; then
+      printf '%s\n' 'The xcresult diagnostics export command returned no log output.' \
+        > "${story_output}/Diagnostics/xcresult-diagnostics-export.log"
+    fi
   fi
 }
 
@@ -393,8 +458,15 @@ fi
 
 if [[ ${test_status} -ne 0 ]]; then
   failure_comparison_status=0
+  failure_screen_status=0
+  failure_screen_json=null
   result_bundle_available=false
   if [[ -d "${result_bundle}" ]]; then result_bundle_available=true; fi
+  run_logged_phase failure-screen-capture capture_failure_screen || failure_screen_status=$?
+  if [[ -s "${failure_screen_source}" ]] \
+    && jq -e 'type == "object"' "${failure_screen_source}" >/dev/null; then
+    failure_screen_json="$(<"${failure_screen_source}")"
+  fi
   mkdir -p "${actual_story}/screenshots/ios"
   run_logged_phase failure-screenshot-evidence \
     swift "${script_dir}/compare-walkthrough.swift" \
@@ -407,12 +479,16 @@ if [[ ${test_status} -ne 0 ]]; then
     --argjson attachmentExportExitCode "${export_status}" \
     --argjson materializationExitCode "${materialize_status}" \
     --argjson screenshotEvidenceExitCode "${failure_comparison_status}" \
+    --argjson failureScreenExitCode "${failure_screen_status}" \
+    --argjson failureScreen "${failure_screen_json}" \
     --argjson resultBundleAvailable "${result_bundle_available}" \
     --arg resultBundle "Results/Story.xcresult" \
     '{testExitCode: $testExitCode,
       attachmentExportExitCode: $attachmentExportExitCode,
       materializationExitCode: $materializationExitCode,
       screenshotEvidenceExitCode: $screenshotEvidenceExitCode,
+      failureScreenExitCode: $failureScreenExitCode,
+      failureScreen: $failureScreen,
       resultBundleAvailable: $resultBundleAvailable,
       resultBundle: $resultBundle}' \
     > "${story_output}/Diagnostics/FailureEvidence.json"
