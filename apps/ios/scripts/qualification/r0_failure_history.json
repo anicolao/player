@@ -562,20 +562,20 @@
       "signature": "screenshot:pixel-difference:009-book-detail-translucent-underlay",
       "story": "009-accessible-core-journeys",
       "evidence": {
-        "artifact": "/tmp/player-story009-edit-obstruction-exact-repeat.1787918276",
-        "url": "local-artifacts:/tmp/player-story009-edit-obstruction-exact-repeat.1787918276,/tmp/player-story009-compositor-stable-1.1787918727",
+        "artifact": "/tmp/player-r0-accessibility-r6-result",
+        "url": "local-artifacts:/tmp/player-story009-edit-obstruction-exact-repeat.1787918276,/tmp/player-story009-compositor-stable-1.1787918727,/tmp/player-r0-accessibility-r6-result",
         "commit": "e48e153619afc0145f5f43f2fe787e5462c76a22",
-        "observation": "Screenshot 002 differed only within y=2319...2622 under translucent tab material while all opaque geometry above y=2319 was exact; red and green no-source-change repeats alternated which prior card the blur sampled."
+        "observation": "Screenshot 002 differed only within y=2319...2622 under translucent tab material while all opaque geometry above y=2319 was exact; red and green no-source-change repeats alternated which prior card the blur sampled. The same bounds recurred in `/tmp/player-r0-accessibility-r6-result` even after the SpringBoard lifecycle workaround, while Story 009 passed UI 2/2 and every other screenshot was exact."
       },
-      "rootCause": "Terminating the preference-persistence app did not displace its retained scene/material surface, allowing the next process's translucent tab material to sample stale underlay content nondeterministically.",
-      "diagnosisStatus": "confirmed",
+      "rootCause": "Supported hypothesis: the system translucent tab material can retain or resample a backdrop that is not fully determined by the app's correlated semantic, geometry, and consecutive-pixel state; activating SpringBoard reduced but did not eliminate the stale underlay.",
+      "diagnosisStatus": "supported-hypothesis",
       "fix": {
-        "status": "verified",
-        "summary": "After the preference process terminates, activate SpringBoard and require it in the foreground within two seconds before starting the core journey, while preserving strict scroll correlation.",
+        "status": "pending-focused-validation",
+        "summary": "Replace the insufficient lifecycle-only workaround with a deterministic production rendering or independently observable material-underlay boundary without masking the tab region or weakening exact screenshot coverage.",
         "commits": [
           "823e061e474b50221afe39de5dc8c8999dc2b0a3"
         ],
-        "validation": "Fresh-build `/tmp/player-story009-surface-teardown-1.1787920614` and no-change repeat `/tmp/player-story009-surface-teardown-2.1787920787` both passed UI 2/2, screenshots 7/7 exact, README exact, and EvidenceManifest validation."
+        "validation": "The original workaround passed two focused runs, but `/tmp/player-r0-accessibility-r6-result` reopened the same exact y=2319...2622 signature; replacement-fix validation is pending."
       },
       "qualificationResetCount": 0,
       "resetEvidence": "These red/green diagnostic repeats occurred before formal exact-SHA qualification, so no qualification count existed to reset."
@@ -856,6 +856,30 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "The first formal exact-SHA batch never achieved an accepted 10/10 Story 007 result, so its consecutive qualification count remained zero."
+    },
+    {
+      "signature": "semantic:009-accessible-core-journeys:shared-container-deadline-prevented-scroll-action",
+      "story": "009-accessible-core-journeys",
+      "evidence": {
+        "workflowRun": 33199887645,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions artifact 9700417676, job 98946394754",
+        "url": "https://github.com/anicolao/player/actions/runs/33199887645/job/98946394754",
+        "commit": "1950cb7497f3e2c39bc267afb3cbe2e8b755272d",
+        "observation": "The largest-text journey entered Metadata Edit, but the container/readiness/target accessibility queries consumed the shared deadline. The retained probe reported interaction=0 and completion=0, and the test failed before any metadata scroll gesture at AccessibilityUITests.swift:884."
+      },
+      "rootCause": "Accessibility revealWithUserScroll used the same two-second EventDeadline for container existence and the later independently named scroll transition, so hosted accessibility lookup latency could prevent the transition from starting.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Give container existence its own bounded deadline so the event-driven scroll action always receives its independent two-second transition budget.",
+        "commits": [
+          "d36a6bbb402ee6a13e3423ac4c3bf1c82ec4b239"
+        ],
+        "validation": "At the exact pre-R7 product source plus this helper fix, `/tmp/player-r0-accessibility-r6-result` passed Story 009 UI 2/2 in 96.104 seconds and matched six of seven screenshots exactly. The former metadata reveal failure performed a real scroll gesture and completed; the remaining screenshot mismatch is the separately reopened translucent-underlay signature."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "The R6 pull-request run was not an accepted formal exact-SHA qualification attempt, so no consecutive Story 009 qualification count existed to reset."
     }
   ]
 }
