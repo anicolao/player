@@ -373,9 +373,8 @@ final class SleepTimerUITests: XCTestCase {
       element.tap()
       return
     }
-    let deadline = EventDeadline()
     let screen = app.descendants(matching: .any)["sleep-timer-screen"]
-    XCTAssertTrue(waitForExistence(screen, deadline: deadline))
+    XCTAssertTrue(waitForExistence(screen, deadline: EventDeadline()))
     let surface = ScrollSurface(
       container: screen,
       readiness: app.descendants(matching: .any)["sleep-timer-scroll-readiness"],
@@ -387,7 +386,7 @@ final class SleepTimerUITests: XCTestCase {
       scrollUntil(
         { element.isHittable },
         on: surface,
-        deadline: deadline,
+        deadline: EventDeadline(),
         terminalEndpoint: \.atBottom
       ) {
         screen.swipeUp(velocity: .fast)
@@ -460,9 +459,8 @@ final class SleepTimerUITests: XCTestCase {
     _ expected: String,
     in app: XCUIApplication
   ) throws {
-    let deadline = EventDeadline()
     let screen = app.descendants(matching: .any)["sleep-timer-screen"]
-    XCTAssertTrue(waitForExistence(screen, deadline: deadline))
+    XCTAssertTrue(waitForExistence(screen, deadline: EventDeadline()))
     let surface = ScrollSurface(
       container: screen,
       readiness: app.descendants(matching: .any)["sleep-timer-scroll-readiness"],
@@ -474,7 +472,7 @@ final class SleepTimerUITests: XCTestCase {
       scrollUntil(
         { element.exists && element.isHittable },
         on: surface,
-        deadline: deadline,
+        deadline: EventDeadline(),
         terminalEndpoint: \.atBottom
       ) {
         screen.swipeUp(velocity: .fast)

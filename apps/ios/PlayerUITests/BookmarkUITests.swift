@@ -381,8 +381,7 @@ final class BookmarkUITests: XCTestCase {
     jumpActions: [XCUIElement]
   ) throws {
     let miniPlayer = app.otherElements["mini-player"]
-    XCTAssertTrue(miniPlayer.exists)
-    let deadline = EventDeadline()
+    XCTAssertTrue(waitForExistence(miniPlayer, deadline: EventDeadline()))
     let scroll = app.scrollViews["book-detail-scroll"]
     let surface = ScrollSurface(
       container: scroll,
@@ -390,35 +389,42 @@ final class BookmarkUITests: XCTestCase {
       containerID: "book-detail-scroll",
       axis: .vertical
     )
-    XCTAssertTrue(waitForExistence(scroll, deadline: deadline))
+    XCTAssertTrue(waitForExistence(scroll, deadline: EventDeadline()))
 
     XCTAssertTrue(
       scrollUntil(
-        {
-          self.bookmarkSegmentIsFramed(segment, within: scroll)
-            && self.bookmarkFrameIsUnobscured(
-              rows,
-              actions: [segment] + jumpActions,
-              above: miniPlayer,
-              within: scroll
-            )
-        },
+        { surface.state()?.atBottom == true },
         on: surface,
-        deadline: deadline,
+        deadline: EventDeadline(),
         requiresScrollableRange: true,
         failureContext: {
           "segment=\(segment.frame), rows=\(rows.map(\.frame)), "
             + "actions=\(jumpActions.map(\.frame)), mini-player=\(miniPlayer.frame)"
         }
       ) {
-        performBookmarkFramingGesture(in: scroll)
+        scroll.swipeUp(velocity: .fast)
       },
-      "Both complete bookmark cards must settle above the mini-player after progress-making real gestures"
+      "Book Detail must reach its correlated bottom endpoint before bookmark framing"
     )
-  }
-
-  private func performBookmarkFramingGesture(in scroll: XCUIElement) {
-    scroll.swipeUp(velocity: .fast)
+    for element in [segment] + rows + jumpActions {
+      XCTAssertTrue(
+        waitForPredicate(
+          NSPredicate(format: "exists == true AND hittable == true"),
+          on: element
+        ),
+        "\(element.identifier) must be independently actionable after bottom-endpoint framing"
+      )
+    }
+    XCTAssertTrue(bookmarkSegmentIsFramed(segment, within: scroll))
+    XCTAssertTrue(
+      bookmarkFrameIsUnobscured(
+        rows,
+        actions: [segment] + jumpActions,
+        above: miniPlayer,
+        within: scroll
+      ),
+      "Both complete bookmark cards must settle above the mini-player at the proven bottom endpoint"
+    )
   }
 
   private func bookmarkSegmentIsFramed(
@@ -431,9 +437,8 @@ final class BookmarkUITests: XCTestCase {
   }
 
   private func revealBookmarkRow(_ row: XCUIElement, in app: XCUIApplication) throws {
-    let deadline = EventDeadline()
     let scroll = app.scrollViews["book-detail-scroll"]
-    XCTAssertTrue(waitForExistence(scroll, deadline: deadline))
+    XCTAssertTrue(waitForExistence(scroll, deadline: EventDeadline()))
     let surface = ScrollSurface(
       container: scroll,
       readiness: app.descendants(matching: .any)["book-detail-scroll-readiness"],
@@ -444,7 +449,7 @@ final class BookmarkUITests: XCTestCase {
       scrollUntil(
         { row.exists && row.isHittable },
         on: surface,
-        deadline: deadline,
+        deadline: EventDeadline(),
         terminalEndpoint: \.atBottom
       ) {
         scroll.swipeUp(velocity: .fast)
@@ -459,13 +464,10 @@ final class BookmarkUITests: XCTestCase {
     above miniPlayer: XCUIElement,
     within scroll: XCUIElement
   ) -> Bool {
-    guard scroll.exists, miniPlayer.exists else { return false }
     let unobscuredTop = scroll.frame.minY + 4
     let unobscuredBottom = miniPlayer.frame.minY - 4
     return (rows + actions).allSatisfy {
-      $0.exists && $0.isHittable
-        && $0.frame.minY >= unobscuredTop
-        && $0.frame.maxY <= unobscuredBottom
+      $0.frame.minY >= unobscuredTop && $0.frame.maxY <= unobscuredBottom
     }
   }
 

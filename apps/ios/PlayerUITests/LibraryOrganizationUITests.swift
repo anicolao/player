@@ -298,14 +298,16 @@ final class LibraryOrganizationUITests: XCTestCase {
       containerID: "all-books-recent-shelf-scroll",
       axis: .horizontal
     )
-    let leftDeadline = EventDeadline()
     XCTAssertTrue(
-      waitForExistence(recentShelf, deadline: leftDeadline)
-        && waitForScrollReadiness(
-          recentShelfSurface,
-          deadline: leftDeadline,
-          matching: { $0.isIdle && $0.atLeft }
-        )
+      waitForExistence(recentShelf, deadline: EventDeadline()),
+      "Recently Added must expose its scroll surface before endpoint verification"
+    )
+    XCTAssertTrue(
+      waitForScrollReadiness(
+        recentShelfSurface,
+        deadline: EventDeadline(),
+        matching: { $0.isIdle && $0.atLeft }
+      )
         && elementIsFullyVisible(
           recentShelfLeftEnd,
           within: recentShelf,
@@ -563,9 +565,8 @@ final class LibraryOrganizationUITests: XCTestCase {
       },
       "Library must establish a progress-making top endpoint before testing its bottom runway"
     )
-    let runwayDeadline = EventDeadline()
-    XCTAssertTrue(waitForExistence(openTrash, deadline: runwayDeadline))
-    XCTAssertTrue(waitForExistence(miniPlayer, deadline: runwayDeadline))
+    XCTAssertTrue(waitForExistence(openTrash, deadline: EventDeadline()))
+    XCTAssertTrue(waitForExistence(miniPlayer, deadline: EventDeadline()))
     XCTAssertTrue(
       scrollUntil(
         {
@@ -578,7 +579,7 @@ final class LibraryOrganizationUITests: XCTestCase {
             )
         },
         on: librarySurface,
-        deadline: runwayDeadline,
+        deadline: EventDeadline(),
         requiresInteraction: true,
         requiresScrollableRange: true,
         terminalEndpoint: \.atBottom,
@@ -1084,9 +1085,8 @@ final class LibraryOrganizationUITests: XCTestCase {
     permitsGeometrySettledFallback: Bool,
     message: String
   ) {
-    let deadline = EventDeadline()
-    XCTAssertTrue(waitForExistence(element, deadline: deadline), message)
-    XCTAssertTrue(waitForExistence(scrollContainer, deadline: deadline), message)
+    XCTAssertTrue(waitForExistence(element, deadline: EventDeadline()), message)
+    XCTAssertTrue(waitForExistence(scrollContainer, deadline: EventDeadline()), message)
     let surface = ScrollSurface(
       container: scrollContainer,
       readiness: readiness,
@@ -1104,7 +1104,7 @@ final class LibraryOrganizationUITests: XCTestCase {
           )
       },
       on: surface,
-      deadline: deadline,
+      deadline: EventDeadline(),
       terminalEndpoint: \.atBottom,
       failureContext: {
         "target=\(element.frame), target-hittable=\(element.isHittable), "
@@ -1123,7 +1123,6 @@ final class LibraryOrganizationUITests: XCTestCase {
     app: XCUIApplication,
     direction: ScrollProbeDirection
   ) {
-    let deadline = EventDeadline()
     let container = anyElement(app, "settings-scroll")
     let surface = ScrollSurface(
       container: container,
@@ -1134,12 +1133,12 @@ final class LibraryOrganizationUITests: XCTestCase {
     )
     let terminalEndpoint: KeyPath<ScrollReadinessState, Bool> =
       direction == .towardEnd ? \.atBottom : \.atTop
-    XCTAssertTrue(waitForExistence(element, deadline: deadline))
+    XCTAssertTrue(waitForExistence(element, deadline: EventDeadline()))
     XCTAssertTrue(
       scrollUntil(
         { element.isHittable },
         on: surface,
-        deadline: deadline,
+        deadline: EventDeadline(),
         direction: direction,
         terminalEndpoint: terminalEndpoint
       ) {
