@@ -30,7 +30,7 @@ struct MetadataEditorView: View {
   var body: some View {
     ZStack {
       PlayerColor.background.ignoresSafeArea()
-      ScrollViewReader { proxy in
+      ScrollViewReader { _ in
         ScrollView {
           VStack(spacing: 20) {
             coverEditor
@@ -45,20 +45,12 @@ struct MetadataEditorView: View {
           .padding(20)
         }
         .playerMiniPlayerScrollRunway()
-        #if E2E
-          .overlay(alignment: .topLeading) {
-            Button {
-              proxy.scrollTo("metadata-identity", anchor: .top)
-            } label: {
-              Color.white.opacity(0.001)
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Align Metadata identity fields")
-            .accessibilityIdentifier("e2e-align-metadata-identity")
-          }
-        #endif
+        .accessibilityIdentifier("metadata-editor-scroll")
+        .e2eScrollReadiness(
+          id: "metadata-editor-scroll-readiness",
+          containerID: "metadata-editor-scroll",
+          axis: .vertical
+        )
       }
       #if E2E
         StateProbe(

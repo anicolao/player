@@ -20,7 +20,7 @@ final class AccessibilityUITests: XCTestCase {
       modelValue: "high-contrast=false:reduce-artwork=false"
     )
 
-    let highContrastDeadline = AccessibilityEventDeadline()
+    let highContrastDeadline = EventDeadline()
     tapSwitchControl(initial.highContrast, deadline: highContrastDeadline)
     XCTAssertTrue(
       initial.preferences.waitForStringValue(
@@ -32,7 +32,7 @@ final class AccessibilityUITests: XCTestCase {
       initial.highContrast.waitForStringValue("1", timeout: highContrastDeadline.remaining)
     )
 
-    let reduceArtworkDeadline = AccessibilityEventDeadline()
+    let reduceArtworkDeadline = EventDeadline()
     tapSwitchControl(initial.reduceArtwork, deadline: reduceArtworkDeadline)
     assertAccessibilityPreferences(
       initial,
@@ -98,12 +98,20 @@ final class AccessibilityUITests: XCTestCase {
       ]
     )
 
-    let edit = app.buttons["edit-metadata"]
-    align("e2e-align-review-edit-metadata", to: edit, in: app)
+    let edit = revealWithUserScroll(
+      { app.buttons["edit-metadata"] },
+      targetID: "edit-metadata",
+      in: app,
+      containerID: "review-import-scroll"
+    )
     edit.tap()
-    let titleField = app.textFields["metadata-title-input"]
-    app.buttons["e2e-align-metadata-identity"].tap()
-    waitUntilHittable(titleField)
+    let titleField = revealWithUserScroll(
+      { app.textFields["metadata-title-input"] },
+      targetID: "metadata-title-input",
+      in: app,
+      containerID: "metadata-editor-scroll",
+      gesture: .metadataIdentity
+    )
     try tester.step(
       "large-text-metadata-repair",
       description: "Metadata fields reflow vertically instead of compressing their labels",
@@ -121,9 +129,13 @@ final class AccessibilityUITests: XCTestCase {
     app = makeApplication(fixture: "metadata-rich-book")
     app.launch()
     app.staticTexts["Harbor at Dawn"].tap()
-    let playBook = app.buttons["play-book"]
-    app.buttons["e2e-align-book-detail-play"].tap()
-    waitUntilHittable(playBook)
+    let playBook = revealWithUserScroll(
+      { app.buttons["play-book"] },
+      targetID: "play-book",
+      in: app,
+      containerID: "book-detail-scroll",
+      gesture: .bookDetailActions
+    )
     try tester.step(
       "large-text-book-detail",
       description: "Book Detail stacks identity and primary actions at the largest text size",
@@ -139,8 +151,13 @@ final class AccessibilityUITests: XCTestCase {
 
     playBook.tap()
     let slider = app.sliders["player-position-slider"]
-    let playPause = app.buttons["player-play-pause"]
-    align("e2e-align-now-playing-transport", to: playPause, in: app)
+    let playPause = revealWithUserScroll(
+      { app.buttons["player-play-pause"] },
+      targetID: "player-play-pause",
+      in: app,
+      containerID: "now-playing-scroll",
+      gesture: .nowPlayingTransport
+    )
     XCTAssertTrue(slider.waitForExistence(timeout: 2))
     try tester.step(
       "large-text-now-playing",
@@ -161,8 +178,13 @@ final class AccessibilityUITests: XCTestCase {
     XCTAssertTrue(terminateAndWait(app))
     app = try makePopulatedLibraryApplication()
     app.launch()
-    let upNext = app.buttons["open-up-next"]
-    align("e2e-align-library-up-next", to: upNext, in: app)
+    let upNext = revealWithUserScroll(
+      { app.buttons["open-up-next"] },
+      targetID: "open-up-next",
+      in: app,
+      containerID: "library-root-scroll",
+      gesture: .libraryLongForm
+    )
     upNext.tap()
     try tester.step(
       "large-text-non-drag-ordering",
@@ -192,16 +214,27 @@ final class AccessibilityUITests: XCTestCase {
       "\(layoutPicker.label) \(layoutPicker.value as? String ?? "")".contains("Shelf"),
       "The Settings layout picker should name Shelf as the active book layout"
     )
-    let accessibility = app.buttons["settings-accessibility"]
-    align("e2e-align-settings-accessibility", to: accessibility, in: app)
+    let accessibility = revealWithUserScroll(
+      { app.buttons["settings-accessibility"] },
+      targetID: "settings-accessibility",
+      in: app,
+      containerID: "settings-scroll",
+      permitsGeometrySettledFallback: true,
+      gesture: .settingsLongForm
+    )
     accessibility.tap()
     let highContrast = app.switches["accessibility-high-contrast"]
     tapSwitchControl(highContrast)
     let reduceArtwork = app.switches["accessibility-reduce-artwork"]
     tapSwitchControl(reduceArtwork)
-    let activeSettings = app.staticTexts["Active iPhone settings"]
-    app.buttons["e2e-align-active-iphone-settings"].tap()
-    waitUntilHittable(activeSettings)
+    let activeSettings = revealWithUserScroll(
+      { app.staticTexts["Active iPhone settings"] },
+      targetID: "Active iPhone settings",
+      in: app,
+      containerID: "accessibility-settings-scroll",
+      permitsGeometrySettledFallback: true,
+      gesture: .settingsLongForm
+    )
     try tester.step(
       "accessibility-preferences",
       description: "Settings distinguishes app preferences from authoritative iPhone settings",
@@ -320,22 +353,24 @@ final class AccessibilityUITests: XCTestCase {
   private func openAccessibilityPreferences(
     in app: XCUIApplication
   ) -> (highContrast: XCUIElement, reduceArtwork: XCUIElement, preferences: XCUIElement) {
-    let settingsDeadline = AccessibilityEventDeadline()
+    let settingsDeadline = EventDeadline()
     let settings = app.tabBars.buttons["Settings"]
     XCTAssertTrue(waitForExistence(settings, deadline: settingsDeadline))
     settings.tap()
 
-    let accessibilityDeadline = AccessibilityEventDeadline()
-    let accessibility = app.buttons["settings-accessibility"]
-    align(
-      "e2e-align-settings-accessibility",
-      to: accessibility,
+    let accessibilityDeadline = EventDeadline()
+    let accessibility = revealWithUserScroll(
+      { app.buttons["settings-accessibility"] },
+      targetID: "settings-accessibility",
       in: app,
+      containerID: "settings-scroll",
+      permitsGeometrySettledFallback: true,
+      gesture: .settingsLongForm,
       deadline: accessibilityDeadline
     )
     accessibility.tap()
 
-    let controlsDeadline = AccessibilityEventDeadline()
+    let controlsDeadline = EventDeadline()
     let highContrast = app.switches["accessibility-high-contrast"]
     let reduceArtwork = app.switches["accessibility-reduce-artwork"]
     let preferences = anyElement(app, "accessibility-preferences-state")
@@ -353,7 +388,7 @@ final class AccessibilityUITests: XCTestCase {
     ),
     switchValues: (highContrast: String, reduceArtwork: String),
     modelValue: String,
-    deadline: AccessibilityEventDeadline = AccessibilityEventDeadline()
+    deadline: EventDeadline = EventDeadline()
   ) {
     XCTAssertTrue(
       controls.preferences.waitForStringValue(modelValue, timeout: deadline.remaining),
@@ -377,43 +412,111 @@ final class AccessibilityUITests: XCTestCase {
 
   private func tapSwitchControl(
     _ element: XCUIElement,
-    deadline: AccessibilityEventDeadline = AccessibilityEventDeadline()
+    deadline: EventDeadline = EventDeadline()
   ) {
     XCTAssertTrue(waitForExistence(element, deadline: deadline))
     element.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
   }
 
-  private func align(
-    _ controlIdentifier: String,
-    to element: XCUIElement,
+  private func revealWithUserScroll(
+    _ target: @escaping @MainActor () -> XCUIElement,
+    targetID: String,
     in app: XCUIApplication,
-    deadline: AccessibilityEventDeadline = AccessibilityEventDeadline()
-  ) {
-    let control = app.buttons[controlIdentifier]
-    XCTAssertTrue(waitForExistence(control, deadline: deadline))
-    control.tap()
-    waitUntilHittable(element, deadline: deadline)
-  }
-
-  private func waitUntilHittable(
-    _ element: XCUIElement,
-    deadline: AccessibilityEventDeadline = AccessibilityEventDeadline()
-  ) {
-    XCTAssertTrue(
-      waitForPredicate(
-        NSPredicate(format: "exists == true AND hittable == true"),
-        on: element,
-        timeout: deadline.remaining
-      ),
-      "Expected \(element.identifier) to become visible and hittable"
+    containerID: String,
+    permitsGeometrySettledFallback: Bool = false,
+    gesture: AccessibilityScrollGesture = .standard,
+    deadline: EventDeadline = EventDeadline()
+  ) -> XCUIElement {
+    let container = anyElement(app, containerID)
+    let readiness = anyElement(app, "\(containerID)-readiness")
+    XCTAssertTrue(waitForExistence(container, deadline: deadline))
+    let surface = ScrollSurface(
+      container: container,
+      readiness: readiness,
+      containerID: containerID,
+      axis: .vertical,
+      permitsGeometrySettledFallback: permitsGeometrySettledFallback
     )
+    let miniPlayer = app.otherElements["mini-player"]
+    XCTAssertTrue(
+      scrollUntil(
+        {
+          let element = target()
+          return elementIsFullyVisible(
+            element,
+            within: container,
+            obscuredBelow: miniPlayer.exists ? miniPlayer : nil
+          )
+        },
+        on: surface,
+        deadline: deadline,
+        requiresInteraction: true,
+        requiresScrollableRange: true,
+        terminalEndpoint: \.atBottom,
+        failureContext: {
+          let element = target()
+          guard element.exists else {
+            return "target=\(targetID):missing, container=\(container.frame)"
+          }
+          return "target=\(targetID):\(element.frame), "
+            + "target-hittable=\(element.isHittable), container=\(container.frame)"
+        }
+      ) {
+        performAccessibilityScrollGesture(gesture, in: container)
+      },
+      "Expected \(targetID) to become fully visible through settled user scrolling"
+    )
+    return target()
   }
 
-  private func waitForExistence(
-    _ element: XCUIElement,
-    deadline: AccessibilityEventDeadline
-  ) -> Bool {
-    element.exists || element.waitForExistence(timeout: deadline.remaining)
+  private enum AccessibilityScrollGesture {
+    case standard
+    case metadataIdentity
+    case bookDetailActions
+    case nowPlayingTransport
+    case settingsLongForm
+    case libraryLongForm
+  }
+
+  private func performAccessibilityScrollGesture(
+    _ gesture: AccessibilityScrollGesture,
+    in element: XCUIElement
+  ) {
+    switch gesture {
+    case .standard:
+      element.swipeUp(velocity: .fast)
+    case .metadataIdentity:
+      // Clear the cover editor without the prior kinetic gesture's roughly 230-point overshoot.
+      directUpwardDrag(in: element, fromY: 0.75, toY: 0.25, velocity: 300)
+    case .bookDetailActions:
+      // Land near 834 - 257 = 577 points so Play stays fully inside the viewport.
+      directUpwardDrag(in: element, fromY: 0.82, toY: 0.16, velocity: 400)
+    case .nowPlayingTransport:
+      // Bring the transport into view while retaining the title and chapter context.
+      directUpwardDrag(in: element, fromY: 0.86, toY: 0.08, velocity: 500)
+    case .settingsLongForm:
+      // Center-origin swiping avoids bottom chrome and traverses toward the measured endpoint.
+      element.swipeUp(velocity: 2_000)
+    case .libraryLongForm:
+      // This velocity targets the measured 778...985-point Up Next clearance window.
+      element.swipeUp(velocity: 1_800)
+    }
+  }
+
+  private func directUpwardDrag(
+    in element: XCUIElement,
+    fromY: CGFloat,
+    toY: CGFloat,
+    velocity: XCUIGestureVelocity,
+    holdDuration: TimeInterval = 0.15
+  ) {
+    element.coordinate(withNormalizedOffset: CGVector(dx: 0.82, dy: fromY))
+      .press(
+        forDuration: 0.01,
+        thenDragTo: element.coordinate(withNormalizedOffset: CGVector(dx: 0.82, dy: toY)),
+        withVelocity: velocity,
+        thenHoldForDuration: holdDuration
+      )
   }
 
   private func visibleControl(
@@ -439,17 +542,5 @@ final class AccessibilityUITests: XCTestCase {
     StepVerification(specification: specification) {
       element.waitForExistence(timeout: 2) && element.label.contains(label)
     }
-  }
-}
-
-private struct AccessibilityEventDeadline {
-  private let expiresAt: TimeInterval
-
-  init(timeout: TimeInterval = 2) {
-    expiresAt = ProcessInfo.processInfo.systemUptime + min(timeout, 2)
-  }
-
-  var remaining: TimeInterval {
-    max(0, expiresAt - ProcessInfo.processInfo.systemUptime)
   }
 }

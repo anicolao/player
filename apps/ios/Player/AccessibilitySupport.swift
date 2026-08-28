@@ -109,7 +109,7 @@ struct AccessibilitySettingsView: View {
   @State private var reducesDecorativeArtwork = false
 
   var body: some View {
-    ScrollViewReader { proxy in
+    ScrollViewReader { _ in
       Form {
         Section {
           Toggle(
@@ -150,20 +150,12 @@ struct AccessibilitySettingsView: View {
         .id("active-iphone-settings")
       }
       .playerMiniPlayerScrollRunway()
-      #if E2E
-        .overlay(alignment: .topLeading) {
-          Button {
-            proxy.scrollTo("active-iphone-settings", anchor: .top)
-          } label: {
-            Color.white.opacity(0.001)
-            .frame(width: 44, height: 44)
-            .contentShape(Rectangle())
-          }
-          .buttonStyle(.plain)
-          .accessibilityLabel("Align active iPhone settings")
-          .accessibilityIdentifier("e2e-align-active-iphone-settings")
-        }
-      #endif
+      .accessibilityIdentifier("accessibility-settings-scroll")
+      .e2eScrollReadiness(
+        id: "accessibility-settings-scroll-readiness",
+        containerID: "accessibility-settings-scroll",
+        axis: .vertical
+      )
     }
     .scrollContentBackground(.hidden)
     .background(PlayerColor.background)

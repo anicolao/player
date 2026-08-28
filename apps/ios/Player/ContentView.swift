@@ -711,7 +711,7 @@ struct ReviewImportView: View {
   @State private var isConfirmingAbandonment = false
 
   var body: some View {
-    ScrollViewReader { proxy in
+    ScrollViewReader { _ in
       ZStack {
         PlayerColor.background.ignoresSafeArea()
         if let job = model.library.importJobs.first(where: { $0.id == jobID }),
@@ -726,27 +726,17 @@ struct ReviewImportView: View {
                 .padding(20)
             }
             .playerMiniPlayerScrollRunway()
+            .accessibilityIdentifier("review-import-scroll")
+            .e2eScrollReadiness(
+              id: "review-import-scroll-readiness",
+              containerID: "review-import-scroll",
+              axis: .vertical
+            )
           }
         } else {
           ProgressView("Preparing review…")
         }
       }
-      #if E2E
-        .overlay(alignment: .topLeading) {
-          if ProcessInfo.processInfo.environment["PLAYER_E2E_DYNAMIC_TYPE"] == "accessibility5" {
-            Button {
-              proxy.scrollTo("review-edit-metadata", anchor: .center)
-            } label: {
-              Color.white.opacity(0.001)
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Align Edit Details")
-            .accessibilityIdentifier("e2e-align-review-edit-metadata")
-          }
-        }
-      #endif
     }
     .navigationTitle("Review Import")
     .navigationBarTitleDisplayMode(.inline)
@@ -1507,17 +1497,6 @@ struct BookDetailView: View {
           #if E2E
             .overlay(alignment: .topLeading) {
               VStack(spacing: 0) {
-                Button {
-                  proxy.scrollTo("book-detail-play", anchor: .center)
-                } label: {
-                  Color.white.opacity(0.001)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Align Book Detail actions")
-                .accessibilityIdentifier("e2e-align-book-detail-play")
-
                 if E2EBookmarkBridge.shared.isConfigured, selectedContent == .bookmarks {
                   Button {
                     proxy.scrollTo(
@@ -1719,7 +1698,7 @@ private struct NowPlayingView: View {
     let slider = PlaybackSliderConfiguration(durationSeconds: displayedDuration)
     ZStack {
       NavigationStack {
-        ScrollViewReader { proxy in
+        ScrollViewReader { _ in
           ZStack {
             PlayerColor.background.ignoresSafeArea()
             VStack(spacing: 24) {
@@ -1843,24 +1822,13 @@ private struct NowPlayingView: View {
           }
           .padding(24)
           .accessibilityScrollsIfNeeded(dynamicTypeSize.isAccessibilitySize)
-
+          .accessibilityIdentifier("now-playing-scroll")
+          .e2eScrollReadiness(
+            id: "now-playing-scroll-readiness",
+            containerID: "now-playing-scroll",
+            axis: .vertical
+          )
           }
-          #if E2E
-            .overlay(alignment: .topLeading) {
-              if ProcessInfo.processInfo.environment["PLAYER_E2E_DYNAMIC_TYPE"] == "accessibility5" {
-                Button {
-                  proxy.scrollTo("now-playing-transport", anchor: .center)
-                } label: {
-                  Color.white.opacity(0.001)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Align Now Playing transport controls")
-                .accessibilityIdentifier("e2e-align-now-playing-transport")
-              }
-            }
-          #endif
         }
         .toolbar { nowPlayingToolbar }
         .accessibilityElement(children: .contain)

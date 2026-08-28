@@ -9,7 +9,7 @@ struct LibraryOrganizationHome: View {
 
   var body: some View {
     GeometryReader { geometry in
-      ScrollViewReader { proxy in
+      ScrollViewReader { _ in
         ScrollView {
           VStack(alignment: .leading, spacing: 26) {
             if !model.library.continueListeningBooks.isEmpty {
@@ -32,22 +32,6 @@ struct LibraryOrganizationHome: View {
           containerID: "library-root-scroll",
           axis: .vertical
         )
-        #if E2E
-          .overlay(alignment: .topLeading) {
-            if ProcessInfo.processInfo.environment["PLAYER_E2E_DYNAMIC_TYPE"] == "accessibility5" {
-              Button {
-                proxy.scrollTo("library-up-next", anchor: .center)
-              } label: {
-                Color.white.opacity(0.001)
-                  .frame(width: 44, height: 44)
-                  .contentShape(Rectangle())
-              }
-              .buttonStyle(.plain)
-              .accessibilityLabel("Align Up Next")
-              .accessibilityIdentifier("e2e-align-library-up-next")
-            }
-          }
-        #endif
       }
     }
     .navigationDestination(isPresented: $showUpNext) { UpNextView(model: model) }
@@ -1094,7 +1078,7 @@ struct LibraryOrganizationSettingsView: View {
 
   var body: some View {
     NavigationStack(path: $path) {
-      ScrollViewReader { proxy in
+      ScrollViewReader { _ in
         List {
         Section("Bookshelf") {
           NavigationLink(value: LibrarySettingsDestination.fullUnlock) {
@@ -1187,22 +1171,6 @@ struct LibraryOrganizationSettingsView: View {
           case .diagnostics: SupportDiagnosticsView(model: model)
           }
         }
-        #if E2E
-          .overlay(alignment: .topLeading) {
-            if ProcessInfo.processInfo.environment["PLAYER_E2E_DYNAMIC_TYPE"] == "accessibility5" {
-              Button {
-                proxy.scrollTo("settings-accessibility", anchor: .center)
-              } label: {
-                Color.white.opacity(0.001)
-                  .frame(width: 44, height: 44)
-                  .contentShape(Rectangle())
-              }
-              .buttonStyle(.plain)
-              .accessibilityLabel("Align Accessibility settings")
-              .accessibilityIdentifier("e2e-align-settings-accessibility")
-            }
-          }
-        #endif
       }
     }
   }
