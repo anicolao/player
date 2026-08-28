@@ -778,7 +778,7 @@ final class AccessibilityUITests: XCTestCase {
   ) -> XCUIElement {
     let container = anyElement(app, containerID)
     let readiness = anyElement(app, "\(containerID)-readiness")
-    XCTAssertTrue(waitForExistence(container, deadline: deadline))
+    XCTAssertTrue(waitForExistence(container, deadline: EventDeadline()))
     let surface = ScrollSurface(
       container: container,
       readiness: readiness,

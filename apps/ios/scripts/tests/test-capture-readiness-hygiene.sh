@@ -145,5 +145,7 @@ rg -Fq 'requiresScrollableRange: true' \
   "${ui_test_root}/BookmarkUITests.swift"
 rg -Fq 'terminalEndpoint: \.atBottom' \
   "${ui_test_root}/BookmarkUITests.swift"
+rg -Fq 'waitForExistence(container, deadline: EventDeadline())' \
+  "${ui_test_root}/AccessibilityUITests.swift"
 
 echo "Capture-readiness and selector source hygiene tests passed."
