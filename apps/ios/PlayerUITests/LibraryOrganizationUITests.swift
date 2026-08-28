@@ -719,6 +719,7 @@ final class LibraryOrganizationUITests: XCTestCase {
     let searchResultsScroll = anyElement(restoredApp, "library-search-results-scroll")
     let searchResultsReadiness = anyElement(restoredApp, "library-search-results-scroll-readiness")
     let searchArtwork = anyElement(restoredApp, "library-search-artwork-probe")
+    let metadataSearchScreen = ConsecutiveScreenObservation()
     let expectedMetadataSearch = searchValue(
       query: "mina sol",
       count: 2,
@@ -763,6 +764,7 @@ final class LibraryOrganizationUITests: XCTestCase {
             app: restoredApp,
             within: searchResultsScroll
           )
+          && metadataSearchScreen.isStable()
       }
     )
 
@@ -1285,6 +1287,25 @@ private struct CaptureGeometryObservation: Equatable, CustomStringConvertible {
       + "completionGeometry=\(completionGeometryID), offset=\(offset), "
       + "range=\(minimum)...\(maximum), content=\(contentLength), "
       + "container=\(containerLength), endpoints=\(atLeft)/\(atRight)/\(atTop)/\(atBottom)"
+  }
+}
+
+@MainActor
+private final class ConsecutiveScreenObservation {
+  private var previousRepresentation: Data?
+
+  func isStable() -> Bool {
+    let representation = XCUIScreen.main.screenshot().pngRepresentation
+    defer { previousRepresentation = representation }
+    guard let previousRepresentation else {
+      print("Capture readiness observed the first composited screen; awaiting an identical observation")
+      return false
+    }
+    let stable = previousRepresentation == representation
+    if !stable {
+      print("Capture readiness observed a compositor change; awaiting an identical observation")
+    }
+    return stable
   }
 }
 
