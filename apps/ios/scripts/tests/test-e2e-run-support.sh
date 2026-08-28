@@ -12,6 +12,22 @@ fail() {
   exit 1
 }
 
+assert_prepares_output_parent() {
+  local caller="$1"
+  local preparation="$2"
+  local invocation="$3"
+  local label="$4"
+  local preparation_line
+  local invocation_line
+
+  preparation_line="$(rg -n -F -m 1 -- "${preparation}" "${caller}" | cut -d: -f1 || true)"
+  [[ -n "${preparation_line}" ]] || fail "${label} does not prepare the E2E output parent"
+  invocation_line="$(rg -n -F -m 1 -- "${invocation}" "${caller}" | cut -d: -f1 || true)"
+  [[ -n "${invocation_line}" ]] || fail "${label} does not invoke the E2E runner"
+  (( preparation_line < invocation_line )) \
+    || fail "${label} prepares the E2E output parent after invoking the runner"
+}
+
 fake_ios="${temporary_root}/ios"
 mkdir -p "${fake_ios}"
 first_output="$("${ios_scripts}/prepare-e2e-output.sh" "${fake_ios}" 001-ios-launch)"
@@ -35,6 +51,25 @@ ln -s "${first_output}" "${explicit_parent}/linked-output"
 if "${ios_scripts}/prepare-e2e-output.sh" "${fake_ios}" 001-ios-launch "${explicit_parent}/linked-output" >/dev/null 2>&1; then
   fail "a symlink explicit output was accepted"
 fi
+
+# Explicit output allocation deliberately rejects a missing parent. Keep every
+# repository-owned orchestrator responsible for preparing that parent before it
+# delegates to run-e2e.sh; this check is static so it cannot invoke Xcode.
+assert_prepares_output_parent \
+  "${ios_scripts}/run-e2e-shard.sh" \
+  'mkdir -p "${ios_dir}/DerivedData/E2E"' \
+  '"${script_dir}/run-e2e.sh"' \
+  'the shard runner'
+assert_prepares_output_parent \
+  "${ios_scripts}/run-complete-suite.sh" \
+  'mkdir -p "${ios_dir}/DerivedData/E2E"' \
+  '"${script_dir}/run-e2e.sh"' \
+  'the complete-suite runner'
+assert_prepares_output_parent \
+  "${repository_root}/scripts/capture-marketing-screenshots" \
+  'mkdir -p "$(dirname "${story_output}")"' \
+  'apps/ios/scripts/run-e2e.sh' \
+  'the marketing screenshot runner'
 
 fake_repository="${temporary_root}/repository"
 mkdir -p \

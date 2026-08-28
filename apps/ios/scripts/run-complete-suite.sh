@@ -34,6 +34,7 @@ xcodebuild -quiet \
   test \
   CODE_SIGNING_ALLOWED=NO
 rm -rf "${core_build_data}"
+mkdir -p "${ios_dir}/DerivedData/E2E"
 
 run_story() {
   local story="$1"

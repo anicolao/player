@@ -84,6 +84,7 @@ overall_status=0
 
 rm -rf "${shard_root}"
 mkdir -p "${shard_root}/Logs" "${shard_root}/Core"
+mkdir -p "${ios_dir}/DerivedData/E2E"
 : > "${shard_root}/StoryTimings.tsv"
 jq -n \
   --arg shard "${shard_id}" \

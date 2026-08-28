@@ -18,6 +18,7 @@ fi
 
 cd "${repository_root}"
 story_output="${repository_root}/apps/ios/DerivedData/E2E/${story}"
+mkdir -p "$(dirname "${story_output}")"
 rm -rf "${story_output}"
 PLAYER_E2E_OUTPUT="${story_output}" \
 apps/ios/scripts/run-e2e.sh \
