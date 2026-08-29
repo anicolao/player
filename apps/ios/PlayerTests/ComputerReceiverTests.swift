@@ -803,7 +803,30 @@ final class ComputerReceiverTests: XCTestCase {
     // HTTP server without depending on simulator permission state.
     pageComponents.host = "127.0.0.1"
     let pageURL = try XCTUnwrap(pageComponents.url)
-    let webView = WKWebView(frame: UIScreen.main.bounds)
+    let expectedOrigin = [
+      try XCTUnwrap(pageURL.scheme),
+      "://",
+      try XCTUnwrap(pageURL.host),
+      ":",
+      String(try XCTUnwrap(pageURL.port)),
+    ].joined()
+    let documentReady = expectation(
+      description: "WebKit executed the same-origin receiver document"
+    )
+    let documentBridge = ReceiverWebDocumentBridge(documentReady: documentReady)
+    let webConfiguration = WKWebViewConfiguration()
+    // The receiver journey does not need persistent browser storage. Keeping
+    // this test ephemeral also keeps WebPrivacy/RLS database initialization
+    // outside the browser-to-receiver transport contract.
+    webConfiguration.websiteDataStore = .nonPersistent()
+    webConfiguration.userContentController.add(
+      documentBridge,
+      name: ReceiverWebDocumentBridge.messageName
+    )
+    let webView = WKWebView(
+      frame: UIScreen.main.bounds,
+      configuration: webConfiguration
+    )
     let browserHost = UIViewController()
     browserHost.view = webView
     let browserWindow = UIWindow(frame: UIScreen.main.bounds)
@@ -811,20 +834,28 @@ final class ComputerReceiverTests: XCTestCase {
     browserWindow.makeKeyAndVisible()
     defer {
       browserWindow.isHidden = true
+      webConfiguration.userContentController.removeScriptMessageHandler(
+        forName: ReceiverWebDocumentBridge.messageName
+      )
       withExtendedLifetime(browserHost) {}
+      withExtendedLifetime(documentBridge) {}
     }
-    let documentCommitted = expectation(
-      description: "WebKit committed the same-origin receiver document"
-    )
-    let navigation = ReceiverWebNavigationDelegate(documentCommitted: documentCommitted)
-    defer { withExtendedLifetime(navigation) {} }
-    webView.navigationDelegate = navigation
+    webView.navigationDelegate = documentBridge
     // testLocalHTTPFlowServesSveltePairsUploadsAndCompletes proves the built
     // receiver document and asset route. This test owns the distinct browser-
     // origin API contract, so use a minimal same-origin document rather than
     // coupling its two-second transport deadline to Svelte rendering.
-    webView.loadHTMLString("<!doctype html><title>Bookshelf Browser Test</title>", baseURL: pageURL)
-    await fulfillment(of: [documentCommitted], timeout: 2)
+    webView.loadHTMLString(
+      """
+      <!doctype html><title>Bookshelf Browser Test</title><script>
+      window.webkit.messageHandlers.\(ReceiverWebDocumentBridge.messageName)
+        .postMessage(location.origin);
+      </script>
+      """,
+      baseURL: pageURL
+    )
+    await fulfillment(of: [documentReady], timeout: 2)
+    XCTAssertEqual(documentBridge.origin, expectedOrigin)
 
     let journeyCompleted = expectation(description: "Browser completed the HTTP transfer")
     var browserResult: [String: String]?
@@ -1423,16 +1454,25 @@ private actor ControlledReceiverImportCapture {
 }
 
 @MainActor
-private final class ReceiverWebNavigationDelegate: NSObject, WKNavigationDelegate {
-  private let documentCommitted: XCTestExpectation
+private final class ReceiverWebDocumentBridge: NSObject, WKNavigationDelegate,
+  WKScriptMessageHandler
+{
+  static let messageName = "receiverDocumentReady"
+  private let documentReady: XCTestExpectation
   private var didSignal = false
+  private(set) var origin: String?
 
-  init(documentCommitted: XCTestExpectation) {
-    self.documentCommitted = documentCommitted
+  init(documentReady: XCTestExpectation) {
+    self.documentReady = documentReady
   }
 
-  func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
-    signalDocumentCommit()
+  func userContentController(
+    _ userContentController: WKUserContentController,
+    didReceive message: WKScriptMessage
+  ) {
+    guard message.name == Self.messageName else { return }
+    origin = message.body as? String
+    signalDocumentReady()
   }
 
   func webView(
@@ -1441,7 +1481,7 @@ private final class ReceiverWebNavigationDelegate: NSObject, WKNavigationDelegat
     withError error: any Error
   ) {
     XCTFail("WebKit failed to load the receiver: \(error)")
-    signalDocumentCommit()
+    signalDocumentReady()
   }
 
   func webView(
@@ -1450,12 +1490,12 @@ private final class ReceiverWebNavigationDelegate: NSObject, WKNavigationDelegat
     withError error: any Error
   ) {
     XCTFail("WebKit failed to begin loading the receiver: \(error)")
-    signalDocumentCommit()
+    signalDocumentReady()
   }
 
-  private func signalDocumentCommit() {
+  private func signalDocumentReady() {
     guard !didSignal else { return }
     didSignal = true
-    documentCommitted.fulfill()
+    documentReady.fulfill()
   }
 }
