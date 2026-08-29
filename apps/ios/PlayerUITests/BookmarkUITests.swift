@@ -263,8 +263,11 @@ final class BookmarkUITests: XCTestCase {
     XCTAssertTrue(clearLabel.waitForExistence(timeout: 2))
     clearLabel.tap()
     XCTAssertTrue(
-      waitForEmptyFieldValue(label, placeholder: "Bookmark label", timeout: 2),
-      "Expected the production clear action to empty the field; actual=\(String(describing: label.value))"
+      app.descendants(matching: .any)["bookmark-label-editor-value"].waitForStringValue(
+        "empty",
+        timeout: 2
+      ),
+      "Expected the production clear action to publish the empty label state"
     )
     let save = app.buttons["save-bookmark"]
     let disabled = XCTNSPredicateExpectation(
@@ -286,18 +289,6 @@ final class BookmarkUITests: XCTestCase {
       ),
       "The bookmark editor must finish dismissing after Save"
     )
-  }
-
-  private func waitForEmptyFieldValue(
-    _ field: XCUIElement,
-    placeholder: String,
-    timeout: TimeInterval
-  ) -> Bool {
-    let expectation = XCTNSPredicateExpectation(
-      predicate: NSPredicate(format: "value == '' OR value == %@", placeholder),
-      object: field
-    )
-    return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
   }
 
   private func assertEverySort(_ app: XCUIApplication) throws {

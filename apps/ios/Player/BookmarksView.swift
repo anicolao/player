@@ -346,7 +346,10 @@ private struct BookmarkEditorView: View {
               id: "bookmark-editor-focus-state",
               value: focusedField?.rawValue ?? "none"
             )
-            StateProbe(id: "bookmark-label-editor-value", value: label)
+            StateProbe(
+              id: "bookmark-label-editor-value",
+              value: label.isEmpty ? "empty" : label
+            )
             StateProbe(id: "bookmark-note-editor-value", value: note)
           }
         }
