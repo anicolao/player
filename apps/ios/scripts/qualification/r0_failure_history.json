@@ -1431,6 +1431,30 @@
       },
       "qualificationResetCount": 1,
       "resetEvidence": "Formal exact-SHA Story 008 attempt 06 failed at 2dac4cafdd0667f85fb7f3950cc4adf81b8f47d5, resetting the story's consecutive qualification count to zero."
+    },
+    {
+      "signature": "ui-test:TrashDeletionUITests.testPermanentlyDeletesOnlyTheConfirmedCurrentBook:exit-65",
+      "story": "008-library-search",
+      "evidence": {
+        "workflowRun": 33235409727,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions artifact 9712108164, Story qualification lane-3 job 99055473988, Story 008 attempts 02, 03, and 04",
+        "url": "https://github.com/anicolao/player/actions/runs/33235409727/job/99055473988",
+        "commit": "2dac4cafdd0667f85fb7f3950cc4adf81b8f47d5",
+        "observation": "After the destructive confirmation was physically tapped and its sheet dismissed, TrashDeletionUITests.swift:29 observed one mini-player for the full two-second deadline in Story 008 attempts 02, 03, and 04. Attempts 01 and 05-10 passed the same assertion. The failed test exposed no transaction or playback semantic state at that boundary, so the retained evidence cannot distinguish delayed removal completion from delayed view disappearance."
+      },
+      "rootCause": "The test used disappearance of the derived mini-player view as its only completion signal for an asynchronous removal transaction. The retained logs prove that the assertion began directly after the confirmation tap, and the production source proves that the button starts an unstructured Task whose removeBook result and dismiss call had no observed edge in the test. The test therefore raced the semantic transaction it intended to validate, irrespective of whether a given occurrence was delayed in the actor-backed file/persistence work or the subsequent SwiftUI view update.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Publish an E2E-only removal-state probe derived from the production library and playback state, require the complete removal/unload transition within two seconds, and then assert that the mini-player is absent without adding sleeps or retries.",
+        "commits": [
+          "ad8d5b04d9adb32f0e7f68233656fb68d5a4e01a"
+        ],
+        "validation": "Complete Story 008 artifact `/tmp/player-r0-trash-story008-complete` at ad8d5b04d9adb32f0e7f68233656fb68d5a4e01a passed both UI tests 2/2, including the exact semantic removal/unload probe followed by visible mini-player absence, matched all 10 screenshots pixel-exact, matched the reviewed README exactly, and produced valid evidence. Focused artifact `/tmp/player-r0-trash-focused-1` independently passed TrashDeletionUITests 1/1 before comparison correctly rejected its intentionally absent LibraryOrganization walkthrough captures."
+      },
+      "qualificationResetCount": 1,
+      "resetEvidence": "Story 008 attempt 01 passed at the formal exact SHA, then attempt 02 failed and reset its one-result consecutive count to zero. Attempts 03 and 04 failed while the count was already zero, so they do not add further resets; no later pass in the same run restores a formal 10/10 qualification."
     }
   ]
 }
