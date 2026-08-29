@@ -19,7 +19,14 @@ STORIES = ["001-ios-launch", "002-import-and-play", "003-multifile-grouping",
            "007-sleep-timer", "008-library-search", "009-accessible-core-journeys",
            "010-library-backup", "011-offline-recovery", "012-monetization",
            "013-app-store-listing"]
-STORY_LANES = [
+STORY_QUALIFICATION_LANES = [
+    ["004-metadata-repair", "001-ios-launch"],
+    ["005-play-and-restore", "006-safe-zip-import"],
+    ["007-sleep-timer", "010-library-backup", "012-monetization"],
+    ["008-library-search", "009-accessible-core-journeys", "003-multifile-grouping"],
+    ["011-offline-recovery", "002-import-and-play", "013-app-store-listing"],
+]
+MATRIX_QUALIFICATION_LANES = [
     ["004-metadata-repair", "006-safe-zip-import"],
     ["005-play-and-restore", "010-library-backup", "012-monetization"],
     ["007-sleep-timer", "002-import-and-play"],
@@ -147,10 +154,10 @@ class QualificationAggregatorTests(unittest.TestCase):
         }]})
         self.story_root = self.root / "stories"
         self.matrix_root = self.root / "matrices"
-        for lane_index, lane_stories in enumerate(STORY_LANES, 1):
+        for lane_index, lane_stories in enumerate(MATRIX_QUALIFICATION_LANES, 1):
             lane_root = self.story_root / f"artifact-{lane_index}"
             summaries = []
-            for story in lane_stories:
+            for story in STORY_QUALIFICATION_LANES[lane_index - 1]:
                 attempts = []
                 for index in range(1, 11):
                     artifact = f"Stories/{story}/attempt-{index:02d}"
@@ -201,7 +208,7 @@ class QualificationAggregatorTests(unittest.TestCase):
                     write_integrity_manifest(renderer_root)
                 core_artifact = None
                 core = {"required": False, "status": "not-required"}
-                if lane_index == 4:
+                if lane_index == 3:
                     core_artifact = f"Matrices/{matrix_name}/Core"
                     core_root = matrix_lane_root / core_artifact
                     (core_root / "Logs").mkdir(parents=True)
@@ -371,18 +378,18 @@ class QualificationAggregatorTests(unittest.TestCase):
         self.assertEqual(self.run_aggregate(), 1)
 
     def test_rejects_incomplete_core_evidence(self):
-        (self.matrix_root / "artifact-4/Matrices/matrix-01/Core/Logs/tests.log").unlink()
+        (self.matrix_root / "artifact-3/Matrices/matrix-01/Core/Logs/tests.log").unlink()
         self.assertEqual(self.run_aggregate(), 1)
 
     def test_rejects_core_evidence_mutated_after_attestation(self):
-        log = self.matrix_root / "artifact-4/Matrices/matrix-01/Core/Logs/tests.log"
+        log = self.matrix_root / "artifact-3/Matrices/matrix-01/Core/Logs/tests.log"
         log.write_text("replaced after manifest\n", encoding="utf-8")
         self.assertEqual(self.run_aggregate(), 1)
         errors = json.loads((self.root / "report/QualificationSummary.json").read_text())["errors"]
         self.assertTrue(any("core integrity hash mismatch" in error for error in errors))
 
     def test_rejects_a_corrupt_extracted_core_test_summary(self):
-        root = self.matrix_root / "artifact-4/Matrices/matrix-01/Core"
+        root = self.matrix_root / "artifact-3/Matrices/matrix-01/Core"
         write_json(root / "Results/CoreTestSummary.json", {
             "result": "Passed", "totalTestCount": 371, "passedTests": 370,
             "failedTests": 0, "skippedTests": 0, "expectedFailures": 0,
@@ -393,14 +400,14 @@ class QualificationAggregatorTests(unittest.TestCase):
         self.assertTrue(any("fully passing PlayerTests" in error for error in errors))
 
     def test_accounts_for_a_failed_core_test_as_an_unexplained_failure(self):
-        payload = json.loads(self.matrix_summary(4).read_text())
+        payload = json.loads(self.matrix_summary(3).read_text())
         payload["status"] = "failed"
         payload["matrices"][0]["status"] = "failed"
         payload["matrices"][0]["core"]["status"] = "failed"
         payload["matrices"][0]["core"]["signature"] = \
             "core-test:ComputerReceiverTests.testBrowser:exit-65"
         payload["matrices"][0]["core"]["testExitCode"] = 65
-        write_json(self.matrix_summary(4), payload)
+        write_json(self.matrix_summary(3), payload)
         self.assertEqual(self.run_aggregate(), 1)
         summary = json.loads((self.root / "report/QualificationSummary.json").read_text())
         observed = summary["failureAccounting"]["observed"]
@@ -409,9 +416,9 @@ class QualificationAggregatorTests(unittest.TestCase):
         self.assertEqual(observed[0]["classification"], "unexplained")
 
     def test_rejects_a_passing_core_gate_that_masks_a_fixture_failure(self):
-        payload = json.loads(self.matrix_summary(4).read_text())
+        payload = json.loads(self.matrix_summary(3).read_text())
         payload["matrices"][0]["core"]["fixtureExitCode"] = 9
-        write_json(self.matrix_summary(4), payload)
+        write_json(self.matrix_summary(3), payload)
         self.assertEqual(self.run_aggregate(), 1)
         errors = json.loads((self.root / "report/QualificationSummary.json").read_text())["errors"]
         self.assertTrue(any("masks a command failure" in error for error in errors))
@@ -520,7 +527,7 @@ class QualificationAggregatorTests(unittest.TestCase):
         self.assertTrue(any("wall-clock regressed" in error for error in errors))
 
     def test_rejects_per_story_regression_over_twenty_percent(self):
-        target = STORY_LANES[0][0]
+        target = MATRIX_QUALIFICATION_LANES[0][0]
         payload = json.loads(self.matrix_summary().read_text())
         for matrix in payload["matrices"]:
             next(story for story in matrix["stories"] if story["story"] == target)["durationSeconds"] = 13
