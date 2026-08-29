@@ -2,6 +2,7 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "${script_dir}/qualification/qualification-support.sh"
 ios_dir="$(cd "${script_dir}/.." && pwd)"
 repository_root="$(cd "${ios_dir}/../.." && pwd)"
 canonical_manifest="${repository_root}/tests/e2e/manifest.json"
@@ -128,28 +129,35 @@ trap 'exit 143' TERM
 
 run_core_tests() {
   local fixture_start="${SECONDS}"
-  local fixture_status=0
-  {
-    "${script_dir}/fixtures/verify-generated-fixtures.sh"
-    "${script_dir}/fixtures/verify-messy-multifile-fixture.sh"
-    "${script_dir}/fixtures/verify-zip-fixtures.sh"
-    "${script_dir}/fixtures/verify-import-channel-fixtures.sh"
-    "${script_dir}/fixtures/verify-metadata-repair-fixture.sh"
+  local fixture_status=0 fixture_log_status=0
+  set +e
+  qualification_run_logged_commands "${shard_root}/Logs/core-fixtures.log" \
+    "${script_dir}/fixtures/verify-generated-fixtures.sh" \
+    "${script_dir}/fixtures/verify-messy-multifile-fixture.sh" \
+    "${script_dir}/fixtures/verify-zip-fixtures.sh" \
+    "${script_dir}/fixtures/verify-import-channel-fixtures.sh" \
+    "${script_dir}/fixtures/verify-metadata-repair-fixture.sh" \
     "${script_dir}/fixtures/verify-populated-library-fixture.sh"
-  } 2>&1 | tee "${shard_root}/Logs/core-fixtures.log" || fixture_status="${PIPESTATUS[0]}"
+  fixture_status="${QUALIFICATION_COMMAND_EXIT_CODE:-0}"
+  fixture_log_status="${QUALIFICATION_LOG_EXIT_CODE:-0}"
+  set -e
   printf 'core-fixtures\t%s\t%s\t%s\n' \
-    "${fixture_start}" "${SECONDS}" "${fixture_status}" \
+    "${fixture_start}" "${SECONDS}" \
+    "$([[ "${fixture_status}" -ne 0 ]] && echo "${fixture_status}" || echo "${fixture_log_status}")" \
     >> "${shard_root}/StoryTimings.tsv"
   if [[ "${fixture_status}" -ne 0 ]]; then return "${fixture_status}"; fi
+  if [[ "${fixture_log_status}" -ne 0 ]]; then return "${fixture_log_status}"; fi
 
   local core_start="${SECONDS}"
-  local core_status=0
+  local test_status=0 test_log_status=0 cleanup_status=0
   core_simulator_lease="${simulator_lease_root}/core-shard-${shard_id}-$$.json"
   core_simulator_id="$("${script_dir}/simulator-lease.sh" acquire \
     "${core_simulator_lease}" "Player Core ${shard_id} $$" \
     "${device_type}" "${runtime}" "$$")"
   xcrun simctl boot "${core_simulator_id}"
   xcrun simctl bootstatus "${core_simulator_id}" -b
+  local -a core_pipeline_statuses
+  set +e
   xcodebuild -quiet \
     -project "${ios_dir}/Player.xcodeproj" \
     -scheme Player \
@@ -161,17 +169,28 @@ run_core_tests() {
     -resultBundlePath "${shard_root}/Core/Core.xcresult" \
     test-without-building \
     CODE_SIGNING_ALLOWED=NO \
-    2>&1 | tee "${shard_root}/Logs/core-tests.log" || core_status="${PIPESTATUS[0]}"
+    2>&1 | tee "${shard_root}/Logs/core-tests.log"
+  core_pipeline_statuses=("${PIPESTATUS[@]}")
+  set -e
+  test_status="${core_pipeline_statuses[0]}"
+  test_log_status="${core_pipeline_statuses[1]}"
   printf 'core-tests\t%s\t%s\t%s\n' \
-    "${core_start}" "${SECONDS}" "${core_status}" \
+    "${core_start}" "${SECONDS}" \
+    "$([[ "${test_status}" -ne 0 ]] && echo "${test_status}" || echo "${test_log_status}")" \
     >> "${shard_root}/StoryTimings.tsv"
+  local cleanup_start="${SECONDS}"
   if "${script_dir}/simulator-lease.sh" release "${core_simulator_lease}" "$$"; then
     core_simulator_id=""
     core_simulator_lease=""
   else
-    core_status=1
+    cleanup_status="$?"
   fi
-  return "${core_status}"
+  printf 'core-cleanup\t%s\t%s\t%s\n' \
+    "${cleanup_start}" "${SECONDS}" "${cleanup_status}" \
+    >> "${shard_root}/StoryTimings.tsv"
+  if [[ "${test_status}" -ne 0 ]]; then return "${test_status}"; fi
+  if [[ "${test_log_status}" -ne 0 ]]; then return "${test_log_status}"; fi
+  return "${cleanup_status}"
 }
 
 for story_index in "${!stories[@]}"; do

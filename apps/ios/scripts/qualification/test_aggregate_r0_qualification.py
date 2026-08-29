@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 import json
+import hashlib
 import os
+import struct
 import subprocess
 import tempfile
 import unittest
+import zlib
 from pathlib import Path
 
 import aggregate_r0_qualification as aggregate
@@ -16,7 +19,13 @@ STORIES = ["001-ios-launch", "002-import-and-play", "003-multifile-grouping",
            "007-sleep-timer", "008-library-search", "009-accessible-core-journeys",
            "010-library-backup", "011-offline-recovery", "012-monetization",
            "013-app-store-listing"]
-STORY_LANES = [STORIES[0:3], STORIES[3:6], STORIES[6:9], STORIES[9:11], STORIES[11:13]]
+STORY_LANES = [
+    ["005-play-and-restore", "004-metadata-repair"],
+    ["008-library-search", "003-multifile-grouping", "012-monetization"],
+    ["007-sleep-timer", "001-ios-launch"],
+    ["010-library-backup", "006-safe-zip-import", "011-offline-recovery"],
+    ["013-app-store-listing", "002-import-and-play", "009-accessible-core-journeys"],
+]
 
 
 def write_json(path, payload):
@@ -24,14 +33,40 @@ def write_json(path, payload):
     path.write_text(json.dumps(payload), encoding="utf-8")
 
 
-def write_story_evidence(root, canonical_root, story, artifact, duration=5):
+def write_png(path, width=1, height=1):
+    def chunk(name, data):
+        checksum = zlib.crc32(name + data) & 0xffffffff
+        return struct.pack(">I", len(data)) + name + data + struct.pack(">I", checksum)
+    header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    pixels = b"".join(b"\0" + b"\0\0\0" * width for _ in range(height))
+    payload = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header)
+               + chunk(b"IDAT", zlib.compress(pixels)) + chunk(b"IEND", b""))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(payload)
+
+
+def write_integrity_manifest(root):
+    paths = sorted(path for path in root.rglob("*")
+                   if path.is_file() and path.name != "EvidenceManifest.sha256")
+    lines = [f"{hashlib.sha256(path.read_bytes()).hexdigest()}  "
+             f"{path.relative_to(root).as_posix()}" for path in paths]
+    (root / "EvidenceManifest.sha256").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def write_story_evidence(root, canonical_root, story, artifact, duration=5, phases=None):
     evidence = root / artifact
-    write_json(evidence / "Run.json", {"story": story, "commit": SHA, "status": "passed"})
+    write_json(evidence / "Run.json", {
+        "story": story, "commit": SHA, "status": "passed", "exitCode": 0
+    })
     (evidence / "Logs").mkdir(parents=True, exist_ok=True)
     (evidence / "Logs/test.log").write_text("test entered\n", encoding="utf-8")
     (evidence / "Results/Story.xcresult").mkdir(parents=True, exist_ok=True)
     (evidence / "Results/Story.xcresult/Info.plist").write_text("plist", encoding="utf-8")
-    (evidence / "PhaseTimings.tsv").write_text(f"test\t0\t{duration}\t0\n", encoding="utf-8")
+    phase_rows = [f"test\t0\t{duration}\t0"]
+    for name, value in (phases or {}).items():
+        phase_rows.append(f"{name}\t0\t{value}\t0")
+    (evidence / "PhaseTimings.tsv").write_text(
+        "\n".join(phase_rows) + "\n", encoding="utf-8")
     write_json(evidence / "Attachments/manifest.json", [{"attachments": []}])
     (evidence / "ActualWalkthrough").mkdir(parents=True, exist_ok=True)
     (evidence / "ActualWalkthrough/README.md").write_text("# Walkthrough\n", encoding="utf-8")
@@ -64,13 +99,35 @@ class QualificationAggregatorTests(unittest.TestCase):
             screenshot.parent.mkdir(parents=True, exist_ok=True)
             screenshot.write_text("png", encoding="utf-8")
         self.baseline = self.root / "baseline.json"
-        write_json(self.baseline, {"schemaVersion": 1,
+        source = {"workflowRun": 1, "url": "https://example.test/run/1",
+                  "headCommit": SHA, "checkoutCommit": SHA,
+                  "runner": "macos-26", "xcode": "26.6", "runtime": "iOS 26.5"}
+        phase_reference = {
+            "attachment-export": 0, "build": 100, "build-provenance": 0,
+            "build-reuse": 0, "environment-reuse": 0,
+            "readme-comparison": 0, "screenshot-comparison": 0,
+            "simulator": 0, "target-install": 0, "test": 65,
+            "walkthrough-materialization": 0, "core-fixtures": 2,
+            "core-tests": 3, "app-store-renderer": 1,
+        }
+        timing = {"source": source,
+                  "suite": {"logicalWallSeconds": 100},
+                  "stories": {story: 10 for story in STORIES},
+                  "phases": phase_reference}
+        write_json(self.baseline, {"schemaVersion": 2,
                                   "thresholds": {"suiteRegression": .1, "storyRegression": .2},
                                   "appStoreAssetCount": 2,
-                                  "suite": {"logicalWallSeconds": 100},
-                                  "stories": {story: 10 for story in STORIES},
-                                  "phases": {"test": 65, "core-fixtures": 2,
-                                             "core-tests": 3, "app-store-renderer": 1}})
+                                  "appStorePixelWidth": 1,
+                                  "appStorePixelHeight": 1,
+                                  "preRemediation": timing,
+                                  "qualificationReference": {
+                                      **timing,
+                                      "coverageAdjustment": {
+                                          "reason": "Intentional remediation coverage.",
+                                          "approvedBy": "The remediation plan.",
+                                          "remediationItems": [
+                                              f"R{index}" for index in range(1, 17)
+                                          ]}}})
         self.history = self.root / "history.json"
         write_json(self.history, {"schemaVersion": 1, "entries": [{
             "signature": "screenshot:pixel-difference:003-smart-rewind-applied.png",
@@ -112,9 +169,16 @@ class QualificationAggregatorTests(unittest.TestCase):
                 story_results = []
                 for story in lane_stories:
                     artifact = f"Matrices/{matrix_name}/Stories/{story}"
-                    write_story_evidence(matrix_lane_root, self.root, story, artifact)
+                    phases = None
+                    if story == lane_stories[0]:
+                        phases = {phase: 0 for phase in aggregate.STORY_PHASES - {"test"}}
+                        phases["build"] = 20
+                    write_story_evidence(
+                        matrix_lane_root, self.root, story, artifact,
+                        phases=phases)
                     story_results.append({"story": story, "commit": SHA, "status": "passed",
                                           "signature": "none", "durationSeconds": 5,
+                                          "exitCode": 0,
                                           "testPhaseEntered": True, "evidenceValid": True,
                                           "artifact": artifact})
                 renderer = {"required": False, "status": "not-required"}
@@ -123,11 +187,16 @@ class QualificationAggregatorTests(unittest.TestCase):
                     renderer_root = matrix_lane_root / renderer_artifact
                     (renderer_root / "screenshots").mkdir(parents=True)
                     for asset in range(1, 3):
-                        (renderer_root / f"screenshots/{asset}.png").write_text("png", encoding="utf-8")
+                        write_png(renderer_root / f"screenshots/{asset}.png")
                     (renderer_root / "renderer.log").write_text("rendered\n", encoding="utf-8")
                     renderer = {"required": True, "status": "passed", "exitCode": 0,
                                 "durationSeconds": 1, "renderedAssetCount": 2,
                                 "expectedAssetCount": 2, "artifact": renderer_artifact}
+                    write_json(renderer_root / "AppStoreRendererSummary.json", renderer)
+                    write_integrity_manifest(renderer_root)
+                core_artifact = None
+                core = {"required": False, "status": "not-required"}
+                if lane_index == 4:
                     core_artifact = f"Matrices/{matrix_name}/Core"
                     core_root = matrix_lane_root / core_artifact
                     (core_root / "Logs").mkdir(parents=True)
@@ -135,14 +204,22 @@ class QualificationAggregatorTests(unittest.TestCase):
                     (core_root / "Logs/tests.log").write_text("tests\n", encoding="utf-8")
                     (core_root / "Results/Core.xcresult").mkdir(parents=True)
                     (core_root / "Results/Core.xcresult/Info.plist").write_text("plist", encoding="utf-8")
+                    write_json(core_root / "Results/CoreTestSummary.json", {
+                        "result": "Passed", "totalTestCount": 371, "passedTests": 371,
+                        "failedTests": 0, "skippedTests": 0, "expectedFailures": 0,
+                    })
+                    core = {"required": True, "status": "passed", "signature": "none",
+                            "fixtureExitCode": 0, "fixtureLogExitCode": 0,
+                            "failedFixture": None, "testRan": True, "testExitCode": 0,
+                            "testLogExitCode": 0, "resultSummaryExitCode": 0,
+                            "cleanupExitCode": 0, "fixtureDurationSeconds": 2,
+                            "testDurationSeconds": 3, "artifact": core_artifact}
+                    write_json(core_root / "CoreSummary.json", core)
+                    write_integrity_manifest(core_root)
                 matrices.append({"lane": f"lane-{lane_index}", "commit": SHA,
                                  "matrixAttempt": matrix_index, "status": "passed",
                                  "durationSeconds": 20 + lane_index, "stories": story_results,
-                                 "core": {"required": lane_index == 5,
-                                          "status": "passed" if lane_index == 5 else "not-required",
-                                          "fixtureDurationSeconds": 2 if lane_index == 5 else None,
-                                          "testDurationSeconds": 3 if lane_index == 5 else None,
-                                          "artifact": core_artifact if lane_index == 5 else None},
+                                 "core": core,
                                  "appStoreRenderer": renderer})
             write_json(matrix_lane_root / "MatrixLaneSummary.json",
                        {"stage": "matrix", "lane": f"lane-{lane_index}", "commit": SHA,
@@ -171,9 +248,60 @@ class QualificationAggregatorTests(unittest.TestCase):
         self.assertEqual(summary["status"], "passed")
         self.assertEqual(summary["storyQualification"]["durations"]["count"], 130)
         self.assertEqual(summary["matrixQualification"]["logicalWallClock"]["current"]["count"], 5)
+        self.assertEqual(summary["matrixQualification"]["logicalWallClock"]["preRemediationSeconds"], 100)
+        self.assertEqual(summary["matrixQualification"]["logicalWallClock"]["referenceSeconds"], 100)
         self.assertEqual(summary["matrixQualification"]["phaseTimings"]["test"]["current"]["median"], 65)
+        self.assertEqual(summary["matrixQualification"]["phaseTimings"]["build"]["current"]["count"], 5)
+        self.assertEqual(summary["matrixQualification"]["phaseTimings"]["build"]["current"]["median"], 100)
         self.assertTrue(summary["failureAccounting"]["rootCauseAccountingComplete"])
         self.assertEqual(len(summary["failureAccounting"]["historical"]), 1)
+
+    def test_rejects_a_runtime_reference_without_approved_coverage_provenance(self):
+        payload = json.loads(self.baseline.read_text())
+        payload["qualificationReference"].pop("coverageAdjustment")
+        write_json(self.baseline, payload)
+        self.assertEqual(self.run_aggregate(), 2)
+
+    def test_rejects_an_incomplete_remediation_coverage_adjustment(self):
+        payload = json.loads(self.baseline.read_text())
+        payload["qualificationReference"]["coverageAdjustment"]["remediationItems"].pop()
+        write_json(self.baseline, payload)
+        self.assertEqual(self.run_aggregate(), 2)
+
+    def test_rejects_non_hex_runtime_source_commits(self):
+        payload = json.loads(self.baseline.read_text())
+        payload["qualificationReference"]["source"]["checkoutCommit"] = "z" * 40
+        write_json(self.baseline, payload)
+        self.assertEqual(self.run_aggregate(), 2)
+
+    def test_rejects_the_legacy_single_runtime_baseline_schema(self):
+        payload = json.loads(self.baseline.read_text())
+        payload["schemaVersion"] = 1
+        write_json(self.baseline, payload)
+        self.assertEqual(self.run_aggregate(), 2)
+
+    def test_checked_in_runtime_baseline_matches_the_current_contract(self):
+        checked_in = Path(__file__).with_name("r0_runtime_baseline.json")
+        validated = aggregate.validate_baseline(checked_in, STORIES)
+        self.assertEqual(validated["schemaVersion"], 2)
+        self.assertEqual(set(validated["qualificationReference"]["phases"]),
+                         aggregate.REQUIRED_PHASES)
+
+    def test_rejects_a_baseline_that_omits_required_gate_phases(self):
+        payload = json.loads(self.baseline.read_text())
+        for reference in ("preRemediation", "qualificationReference"):
+            payload[reference]["phases"].pop("core-tests")
+        write_json(self.baseline, payload)
+        self.assertEqual(self.run_aggregate(), 2)
+
+    def test_rejects_nonhex_failure_history_commits(self):
+        original = json.loads(self.history.read_text())
+        for invalid in ("z" * 40, "A" * 40, "a" * 39, 7):
+            with self.subTest(invalid=invalid):
+                payload = json.loads(json.dumps(original))
+                payload["entries"][0]["fix"]["commits"] = [invalid]
+                write_json(self.history, payload)
+                self.assertEqual(self.run_aggregate(), 2)
 
     def test_rejects_missing_attempt_directory(self):
         payload = json.loads(self.story_summary().read_text())
@@ -238,12 +366,117 @@ class QualificationAggregatorTests(unittest.TestCase):
         self.assertEqual(self.run_aggregate(), 1)
 
     def test_rejects_incomplete_core_evidence(self):
-        (self.matrix_root / "artifact-5/Matrices/matrix-01/Core/Logs/tests.log").unlink()
+        (self.matrix_root / "artifact-4/Matrices/matrix-01/Core/Logs/tests.log").unlink()
         self.assertEqual(self.run_aggregate(), 1)
+
+    def test_rejects_core_evidence_mutated_after_attestation(self):
+        log = self.matrix_root / "artifact-4/Matrices/matrix-01/Core/Logs/tests.log"
+        log.write_text("replaced after manifest\n", encoding="utf-8")
+        self.assertEqual(self.run_aggregate(), 1)
+        errors = json.loads((self.root / "report/QualificationSummary.json").read_text())["errors"]
+        self.assertTrue(any("core integrity hash mismatch" in error for error in errors))
+
+    def test_rejects_a_corrupt_extracted_core_test_summary(self):
+        root = self.matrix_root / "artifact-4/Matrices/matrix-01/Core"
+        write_json(root / "Results/CoreTestSummary.json", {
+            "result": "Passed", "totalTestCount": 371, "passedTests": 370,
+            "failedTests": 0, "skippedTests": 0, "expectedFailures": 0,
+        })
+        write_integrity_manifest(root)
+        self.assertEqual(self.run_aggregate(), 1)
+        errors = json.loads((self.root / "report/QualificationSummary.json").read_text())["errors"]
+        self.assertTrue(any("fully passing PlayerTests" in error for error in errors))
+
+    def test_accounts_for_a_failed_core_test_as_an_unexplained_failure(self):
+        payload = json.loads(self.matrix_summary(4).read_text())
+        payload["status"] = "failed"
+        payload["matrices"][0]["status"] = "failed"
+        payload["matrices"][0]["core"]["status"] = "failed"
+        payload["matrices"][0]["core"]["signature"] = \
+            "core-test:ComputerReceiverTests.testBrowser:exit-65"
+        payload["matrices"][0]["core"]["testExitCode"] = 65
+        write_json(self.matrix_summary(4), payload)
+        self.assertEqual(self.run_aggregate(), 1)
+        summary = json.loads((self.root / "report/QualificationSummary.json").read_text())
+        observed = summary["failureAccounting"]["observed"]
+        self.assertEqual(observed[0]["signature"],
+                         "core-test:ComputerReceiverTests.testBrowser:exit-65")
+        self.assertEqual(observed[0]["classification"], "unexplained")
+
+    def test_rejects_a_passing_core_gate_that_masks_a_fixture_failure(self):
+        payload = json.loads(self.matrix_summary(4).read_text())
+        payload["matrices"][0]["core"]["fixtureExitCode"] = 9
+        write_json(self.matrix_summary(4), payload)
+        self.assertEqual(self.run_aggregate(), 1)
+        errors = json.loads((self.root / "report/QualificationSummary.json").read_text())["errors"]
+        self.assertTrue(any("masks a command failure" in error for error in errors))
+
+    def test_rejects_an_emitted_phase_missing_from_the_runtime_reference(self):
+        payload = json.loads(self.matrix_summary().read_text())
+        record = payload["matrices"][0]["stories"][0]
+        artifact = self.matrix_summary().parent / record["artifact"]
+        with (artifact / "PhaseTimings.tsv").open("a", encoding="utf-8") as handle:
+            handle.write("unreferenced-work\t0\t7\t0\n")
+        evidence_module.write_manifest(artifact, self.root / record["story"], record["story"])
+        self.assertEqual(self.run_aggregate(), 1)
+        errors = json.loads((self.root / "report/QualificationSummary.json").read_text())["errors"]
+        self.assertTrue(any("unreferenced phases: unreferenced-work" in error for error in errors))
+
+    def test_rejects_a_required_phase_absent_from_all_evidence(self):
+        for lane in range(1, 6):
+            payload = json.loads(self.matrix_summary(lane).read_text())
+            for matrix in payload["matrices"]:
+                for record in matrix["stories"]:
+                    artifact = self.matrix_summary(lane).parent / record["artifact"]
+                    rows = (artifact / "PhaseTimings.tsv").read_text().splitlines()
+                    (artifact / "PhaseTimings.tsv").write_text(
+                        "\n".join(row for row in rows if not row.startswith("build\t")) + "\n",
+                        encoding="utf-8")
+                    evidence_module.write_manifest(
+                        artifact, self.root / record["story"], record["story"])
+        self.assertEqual(self.run_aggregate(), 1)
+        errors = json.loads((self.root / "report/QualificationSummary.json").read_text())["errors"]
+        self.assertTrue(any("missing required phases: build" in error for error in errors))
+
+    def test_accepts_core_as_a_historical_failure_scope(self):
+        payload = json.loads(self.history.read_text())
+        payload["entries"][0]["story"] = "core"
+        write_json(self.history, payload)
+        self.assertEqual(self.run_aggregate(), 0)
 
     def test_rejects_missing_renderer_asset(self):
         (self.matrix_root / "artifact-5/Matrices/matrix-01/AppStoreListing/screenshots/1.png").unlink()
         self.assertEqual(self.run_aggregate(), 1)
+
+    def test_rejects_a_truncated_renderer_png_even_when_reattested(self):
+        root = self.matrix_root / "artifact-5/Matrices/matrix-01/AppStoreListing"
+        (root / "screenshots/1.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+        write_integrity_manifest(root)
+        self.assertEqual(self.run_aggregate(), 1)
+        errors = json.loads((self.root / "report/QualificationSummary.json").read_text())["errors"]
+        self.assertTrue(any("incomplete PNG" in error for error in errors))
+
+    def test_rejects_malformed_story_and_lane_durations_without_crashing(self):
+        story = json.loads(self.story_summary().read_text())
+        story["stories"][0]["attempts"][0]["durationSeconds"] = -1
+        story["stories"][0]["attempts"][1]["durationSeconds"] = "5"
+        story["stories"][0]["attempts"][2]["durationSeconds"] = True
+        write_json(self.story_summary(), story)
+        matrix = json.loads(self.matrix_summary().read_text())
+        matrix["matrices"][0]["durationSeconds"] = "twenty"
+        write_json(self.matrix_summary(), matrix)
+        self.assertEqual(self.run_aggregate(), 1)
+        errors = json.loads((self.root / "report/QualificationSummary.json").read_text())["errors"]
+        self.assertGreaterEqual(sum("invalid durationSeconds" in error for error in errors), 3)
+        self.assertTrue(any("invalid lane wall-clock" in error for error in errors))
+
+    def test_rejects_a_passing_attempt_with_nonzero_exit(self):
+        payload = json.loads(self.story_summary().read_text())
+        payload["stories"][0]["attempts"][0]["exitCode"] = 65
+        write_json(self.story_summary(), payload)
+        self.assertEqual(self.run_aggregate(), 1)
+        errors = json.loads((self.root / "report/QualificationSummary.json").read_text())["errors"]
+        self.assertTrue(any("passed with a nonzero exitCode" in error for error in errors))
 
     def test_rejects_suite_wall_clock_regression_over_ten_percent(self):
         for lane in range(1, 6):
@@ -256,7 +489,7 @@ class QualificationAggregatorTests(unittest.TestCase):
         self.assertTrue(any("wall-clock regressed" in error for error in errors))
 
     def test_rejects_per_story_regression_over_twenty_percent(self):
-        target = STORIES[0]
+        target = STORY_LANES[0][0]
         payload = json.loads(self.matrix_summary().read_text())
         for matrix in payload["matrices"]:
             next(story for story in matrix["stories"] if story["story"] == target)["durationSeconds"] = 13
@@ -375,6 +608,92 @@ class QualificationAggregatorTests(unittest.TestCase):
         self.assertEqual(self.failure_signature(retained, 1),
                          "screenshot:pixel-difference:003-smart-rewind-applied.png")
 
+    def test_core_failure_signature_identifies_every_failed_test_stably(self):
+        retained = self.root / "failed-core-tests"
+        (retained / "Logs").mkdir(parents=True)
+        (retained / "Logs/tests.log").write_text(
+            "Failing tests:\n"
+            "\tZebraTests.testSecond()\n"
+            "\tAlphaTests.testFirst()\n",
+            encoding="utf-8")
+        self.assertEqual(
+            self.core_failure_signature(retained, 0, 65),
+            "core-test:AlphaTests.testFirst+ZebraTests.testSecond:exit-65")
+        self.assertEqual(
+            self.core_failure_signature(retained, 7, 7),
+            "core-fixtures:exit-7")
+
+    def test_core_failure_signature_prefers_xcresult_over_the_log(self):
+        retained = self.root / "xcresult-failed-core-test"
+        (retained / "Results/Core.xcresult").mkdir(parents=True)
+        (retained / "Logs").mkdir(parents=True)
+        (retained / "Logs/tests.log").write_text(
+            "\tLogFallbackTests.testLogFailure()\n", encoding="utf-8")
+        fake_bin = self.root / "fake-core-xcresult-bin"
+        fake_bin.mkdir()
+        fake_xcrun = fake_bin / "xcrun"
+        fake_xcrun.write_text(
+            "#!/usr/bin/env bash\n"
+            "cat <<'JSON'\n"
+            '{"tests":[{"result":"Failed","identifier":'
+            '"PlayerTests/CoreAuthorityTests/testExactFailure()"}]}\n'
+            "JSON\n",
+            encoding="utf-8")
+        fake_xcrun.chmod(0o755)
+        self.assertEqual(
+            self.core_failure_signature(retained, 0, 65, extra_path=fake_bin),
+            "core-test:CoreAuthorityTests.testExactFailure:exit-65")
+
+    def test_logged_command_gate_preserves_the_first_failure_and_stops(self):
+        commands = self.root / "fixture-commands"
+        commands.mkdir()
+        marker = commands / "third-ran"
+        scripts = []
+        for name, body in (
+                ("first", "echo first\n"),
+                ("second", "echo second\nexit 7\n"),
+                ("third", f"touch '{marker}'\n")):
+            script = commands / name
+            script.write_text(f"#!/usr/bin/env bash\n{body}", encoding="utf-8")
+            script.chmod(0o755)
+            scripts.append(script)
+        support = Path(__file__).with_name("qualification-support.sh")
+        log = commands / "gate.log"
+        result = subprocess.run(
+            ["bash", "-c",
+             'set +e; . "$1"; qualification_run_logged_commands "$2" "$3" "$4" "$5"; '
+             'status=$?; set -e; printf "status=%s\\n" "$status"',
+             "qualification-command-gate-test", str(support), str(log),
+             *(str(script) for script in scripts)],
+            check=True, capture_output=True, text=True)
+        self.assertTrue(result.stdout.endswith("status=7\n"))
+        self.assertEqual(log.read_text(), "first\nsecond\n")
+        self.assertFalse(marker.exists())
+
+        log_failure = subprocess.run(
+            ["bash", "-c",
+             'set +e; . "$1"; qualification_run_logged_commands "$2" "$3"; '
+             'status=$?; set -e; printf "status=%s\\n" "$status"',
+             "qualification-log-failure-test", str(support), str(commands), str(scripts[0])],
+            check=True, capture_output=True, text=True)
+        self.assertTrue(log_failure.stdout.endswith("status=1\n"))
+
+    def test_shell_integrity_manifest_attests_the_exact_file_set(self):
+        retained = self.root / "shell-integrity"
+        (retained / "nested").mkdir(parents=True)
+        (retained / "nested/file with spaces.txt").write_text("evidence\n", encoding="utf-8")
+        support = Path(__file__).with_name("qualification-support.sh")
+        subprocess.run(
+            ["bash", "-c", '. "$1"; qualification_write_integrity_manifest "$2"',
+             "qualification-integrity-test", str(support), str(retained)],
+            check=True)
+        errors = []
+        aggregate.validate_integrity_manifest(retained, "shell fixture", errors)
+        self.assertEqual(errors, [])
+        (retained / "nested/file with spaces.txt").write_text("mutated\n", encoding="utf-8")
+        aggregate.validate_integrity_manifest(retained, "shell fixture", errors)
+        self.assertTrue(any("hash mismatch" in error for error in errors))
+
     def failure_signature(self, retained, exit_code, extra_path=None):
         support = Path(__file__).with_name("qualification-support.sh")
         environment = os.environ.copy()
@@ -383,6 +702,19 @@ class QualificationAggregatorTests(unittest.TestCase):
         result = subprocess.run(
             ["bash", "-c", '. "$1"; qualification_failure_signature "$2" "$3"',
              "qualification-signature-test", str(support), str(retained), str(exit_code)],
+            check=True, capture_output=True, text=True, env=environment)
+        return result.stdout.strip()
+
+    def core_failure_signature(self, retained, fixture_exit, test_exit, extra_path=None):
+        support = Path(__file__).with_name("qualification-support.sh")
+        environment = os.environ.copy()
+        if extra_path is not None:
+            environment["PATH"] = f"{extra_path}:{environment['PATH']}"
+        result = subprocess.run(
+            ["bash", "-c",
+             '. "$1"; qualification_core_failure_signature "$2" "$3" "$4"',
+             "qualification-core-signature-test", str(support), str(retained),
+             str(fixture_exit), str(test_exit)],
             check=True, capture_output=True, text=True, env=environment)
         return result.stdout.strip()
 

@@ -77,21 +77,30 @@ trap 'exit 143' TERM
 run_core_gate() {
   local worktree="$1" matrix_root="$2" matrix_index="$3"
   local worktree_ios="${worktree}/apps/ios"
-  local fixture_status=0 core_status=0 fixture_start core_start fixture_duration=0 core_duration=0
+  local fixture_status=0 fixture_log_status=0 failed_fixture=""
+  local test_ran=false test_status=0 test_log_status=0 cleanup_status=0
+  local result_summary_status=0
+  local fixture_start core_start fixture_duration=0 core_duration=0
+  local core_signature=none
   mkdir -p "${matrix_root}/Core/Logs" "${matrix_root}/Core/Results"
   fixture_start="${SECONDS}"
-  {
-    "${worktree_ios}/scripts/fixtures/verify-generated-fixtures.sh"
-    "${worktree_ios}/scripts/fixtures/verify-messy-multifile-fixture.sh"
-    "${worktree_ios}/scripts/fixtures/verify-zip-fixtures.sh"
-    "${worktree_ios}/scripts/fixtures/verify-import-channel-fixtures.sh"
-    "${worktree_ios}/scripts/fixtures/verify-metadata-repair-fixture.sh"
+  set +e
+  qualification_run_logged_commands "${matrix_root}/Core/Logs/fixtures.log" \
+    "${worktree_ios}/scripts/fixtures/verify-generated-fixtures.sh" \
+    "${worktree_ios}/scripts/fixtures/verify-messy-multifile-fixture.sh" \
+    "${worktree_ios}/scripts/fixtures/verify-zip-fixtures.sh" \
+    "${worktree_ios}/scripts/fixtures/verify-import-channel-fixtures.sh" \
+    "${worktree_ios}/scripts/fixtures/verify-metadata-repair-fixture.sh" \
     "${worktree_ios}/scripts/fixtures/verify-populated-library-fixture.sh"
-  } 2>&1 | tee "${matrix_root}/Core/Logs/fixtures.log" || fixture_status="${PIPESTATUS[0]}"
+  fixture_status="${QUALIFICATION_COMMAND_EXIT_CODE:-0}"
+  fixture_log_status="${QUALIFICATION_LOG_EXIT_CODE:-0}"
+  failed_fixture="${QUALIFICATION_FAILED_COMMAND:-}"
+  set -e
   fixture_duration=$((SECONDS - fixture_start))
 
-  if [[ "${fixture_status}" -eq 0 ]]; then
+  if [[ "${fixture_status}" -eq 0 && "${fixture_log_status}" -eq 0 ]]; then
     core_start="${SECONDS}"
+    local -a core_pipeline_statuses
     core_simulator_lease="${simulator_lease_root}/core-matrix-${lane}-${matrix_index}-$$.json"
     core_simulator_id="$("${base_ios_dir}/scripts/simulator-lease.sh" acquire \
       "${core_simulator_lease}" "Player R0 Core ${lane} ${matrix_index} $$" \
@@ -99,6 +108,8 @@ run_core_gate() {
       com.apple.CoreSimulator.SimRuntime.iOS-26-5 "$$")"
     xcrun simctl boot "${core_simulator_id}"
     xcrun simctl bootstatus "${core_simulator_id}" -b
+    test_ran=true
+    set +e
     xcodebuild -quiet \
       -project "${worktree_ios}/Player.xcodeproj" -scheme Player -configuration E2E \
       -destination "platform=iOS Simulator,id=${core_simulator_id}" \
@@ -106,29 +117,71 @@ run_core_gate() {
       -only-testing:PlayerTests \
       -resultBundlePath "${matrix_root}/Core/Results/Core.xcresult" \
       test-without-building CODE_SIGNING_ALLOWED=NO \
-      2>&1 | tee "${matrix_root}/Core/Logs/tests.log" || core_status="${PIPESTATUS[0]}"
+      2>&1 | tee "${matrix_root}/Core/Logs/tests.log"
+    core_pipeline_statuses=("${PIPESTATUS[@]}")
+    set -e
+    test_status="${core_pipeline_statuses[0]}"
+    test_log_status="${core_pipeline_statuses[1]}"
+    set +e
+    xcrun xcresulttool get test-results summary \
+      --path "${matrix_root}/Core/Results/Core.xcresult" --format json \
+      > "${matrix_root}/Core/Results/CoreTestSummary.json"
+    result_summary_status="$?"
+    set -e
+    if [[ "${result_summary_status}" -ne 0 ]]; then
+      rm -f "${matrix_root}/Core/Results/CoreTestSummary.json"
+    fi
     core_duration=$((SECONDS - core_start))
     if "${base_ios_dir}/scripts/simulator-lease.sh" release \
       "${core_simulator_lease}" "$$"; then
       core_simulator_id=""
       core_simulator_lease=""
     else
-      core_status=1
+      cleanup_status="$?"
     fi
-  else
-    core_status="${fixture_status}"
   fi
+  if [[ "${fixture_status}" -ne 0 || "${fixture_log_status}" -ne 0 \
+    || "${test_ran}" != true || "${test_status}" -ne 0 \
+    || "${test_log_status}" -ne 0 || "${result_summary_status}" -ne 0 \
+    || "${cleanup_status}" -ne 0 ]]; then
+    core_signature="$(qualification_core_failure_signature \
+      "${matrix_root}/Core" "${fixture_status}" "${test_status}" \
+      "${failed_fixture}" "${fixture_log_status}" "${test_log_status}" \
+      "${cleanup_status}" "${result_summary_status}")"
+  fi
+  local test_exit_json=null
+  if [[ "${test_ran}" == true ]]; then test_exit_json="${test_status}"; fi
   jq -n --argjson required true --argjson fixtureExit "${fixture_status}" \
-    --argjson testExit "${core_status}" \
+    --argjson fixtureLogExit "${fixture_log_status}" \
+    --arg failedFixture "${failed_fixture}" \
+    --argjson testRan "${test_ran}" --argjson testExit "${test_exit_json}" \
+    --argjson testLogExit "${test_log_status}" \
+    --argjson resultSummaryExit "${result_summary_status}" \
+    --argjson cleanupExit "${cleanup_status}" \
     --argjson fixtureDurationSeconds "${fixture_duration}" \
     --argjson testDurationSeconds "${core_duration}" \
     --arg artifact "Matrices/$(basename "${matrix_root}")/Core" \
-    --arg status "$([[ "${fixture_status}" -eq 0 && "${core_status}" -eq 0 ]] && echo passed || echo failed)" \
+    --arg signature "${core_signature}" \
+    --arg status "$([[ "${fixture_status}" -eq 0 && "${fixture_log_status}" -eq 0 \
+      && "${test_ran}" == true && "${test_status}" -eq 0 \
+      && "${test_log_status}" -eq 0 && "${result_summary_status}" -eq 0 \
+      && "${cleanup_status}" -eq 0 ]] \
+      && echo passed || echo failed)" \
     '{required: $required, fixtureExitCode: $fixtureExit,
-      testExitCode: $testExit, fixtureDurationSeconds: $fixtureDurationSeconds,
+      fixtureLogExitCode: $fixtureLogExit,
+      failedFixture: (if $failedFixture == "" then null else $failedFixture end),
+      testRan: $testRan, testExitCode: $testExit,
+      testLogExitCode: $testLogExit,
+      resultSummaryExitCode: $resultSummaryExit,
+      cleanupExitCode: $cleanupExit,
+      fixtureDurationSeconds: $fixtureDurationSeconds,
       testDurationSeconds: $testDurationSeconds, status: $status,
-      artifact: $artifact}' > "${matrix_root}/Core/CoreSummary.json"
-  [[ "${fixture_status}" -eq 0 && "${core_status}" -eq 0 ]]
+      signature: $signature, artifact: $artifact}' > "${matrix_root}/Core/CoreSummary.json"
+  qualification_write_integrity_manifest "${matrix_root}/Core"
+  [[ "${fixture_status}" -eq 0 && "${fixture_log_status}" -eq 0 \
+    && "${test_ran}" == true && "${test_status}" -eq 0 \
+    && "${test_log_status}" -eq 0 && "${result_summary_status}" -eq 0 \
+    && "${cleanup_status}" -eq 0 ]]
 }
 
 requested="$(printf '%s\n' "${stories[@]}" | sort)"
@@ -141,17 +194,20 @@ done <<< "${requested}"
 assert_source "${repository_root}" || { echo "Qualification source is not exact and clean." >&2; exit 2; }
 
 lane_root="${output_root}/${lane}"
-shared_build="${lane_root}/Build"
+shared_build=""
 rm -rf "${lane_root}"
 mkdir -p "${lane_root}/Matrices"
 overall_status=0
 infrastructure_invalid=0
-build_manifest_ready=0
+build_unchanged=true
 
 for ((matrix_index = 1; matrix_index <= matrix_count; matrix_index += 1)); do
+  matrix_wall_start="${SECONDS}"
   assert_source "${repository_root}" || { infrastructure_invalid=1; overall_status=1; break; }
   matrix_name="$(printf 'matrix-%02d' "${matrix_index}")"
   matrix_root="${lane_root}/Matrices/${matrix_name}"
+  shared_build="${lane_root}/Build/${matrix_name}"
+  build_manifest_ready=0
   mkdir -p "${matrix_root}/Stories"
   : > "${matrix_root}/stories.jsonl"
   active_worktree="$(mktemp -d "${RUNNER_TEMP:-/tmp}/player-r0-${lane}-${matrix_name}.XXXXXX")"
@@ -159,8 +215,6 @@ for ((matrix_index = 1; matrix_index <= matrix_count; matrix_index += 1)); do
   git -C "${repository_root}" worktree add --detach "${active_worktree}" "${expected_sha}" >/dev/null
   assert_source "${active_worktree}" || { infrastructure_invalid=1; overall_status=1; break; }
   worktree_ios="${active_worktree}/apps/ios"
-  matrix_execution_start="${SECONDS}"
-
   for story in "${stories[@]}"; do
     retained="${matrix_root}/Stories/${story}"
     story_start="${SECONDS}"
@@ -196,7 +250,8 @@ for ((matrix_index = 1; matrix_index <= matrix_count; matrix_index += 1)); do
 
     if [[ "${build_manifest_ready}" -eq 0 ]]; then
       if has_build "${shared_build}"; then
-        capture_build_manifest "${shared_build}" "${lane_root}/BuildManifest.before.sha256"
+        capture_build_manifest "${shared_build}" \
+          "${matrix_root}/BuildManifest.before.sha256"
         build_manifest_ready=1
       else
         infrastructure_invalid=1
@@ -234,11 +289,20 @@ for ((matrix_index = 1; matrix_index <= matrix_count; matrix_index += 1)); do
     mkdir -p "${renderer_root}/screenshots"
     renderer_start="${SECONDS}"
     renderer_status=0
+    renderer_pipeline_statuses=()
+    set +e
     swift "${active_worktree}/scripts/render-app-store-listing.swift" \
       "${active_worktree}/app-store/listing.json" \
       "${matrix_root}/Stories/013-app-store-listing/ActualWalkthrough/screenshots/ios" \
       "${renderer_root}/screenshots" \
-      2>&1 | tee "${renderer_root}/renderer.log" || renderer_status="${PIPESTATUS[0]}"
+      2>&1 | tee "${renderer_root}/renderer.log"
+    renderer_pipeline_statuses=("${PIPESTATUS[@]}")
+    set -e
+    if [[ "${renderer_pipeline_statuses[0]}" -ne 0 ]]; then
+      renderer_status="${renderer_pipeline_statuses[0]}"
+    elif [[ "${renderer_pipeline_statuses[1]}" -ne 0 ]]; then
+      renderer_status="${renderer_pipeline_statuses[1]}"
+    fi
     expected_assets="$(jq '.slides | length' "${active_worktree}/app-store/listing.json")"
     rendered_assets="$(find "${renderer_root}/screenshots" -type f -name '*.png' | wc -l | tr -d ' ')"
     if [[ "${rendered_assets}" -ne "${expected_assets}" ]]; then renderer_status=1; fi
@@ -251,9 +315,28 @@ for ((matrix_index = 1; matrix_index <= matrix_count; matrix_index += 1)); do
         durationSeconds: $durationSeconds, renderedAssetCount: $renderedAssetCount,
         expectedAssetCount: $expectedAssetCount, artifact: $artifact}' \
       > "${renderer_root}/AppStoreRendererSummary.json"
+    qualification_write_integrity_manifest "${renderer_root}"
     renderer_summary="$(cat "${renderer_root}/AppStoreRendererSummary.json")"
     if [[ "${renderer_status}" -ne 0 ]]; then overall_status=1; fi
   fi
+  if [[ "${build_manifest_ready}" -eq 1 ]]; then
+    capture_build_manifest "${shared_build}" \
+      "${matrix_root}/BuildManifest.after.sha256"
+    if ! cmp "${matrix_root}/BuildManifest.before.sha256" \
+      "${matrix_root}/BuildManifest.after.sha256"; then
+      build_unchanged=false
+      infrastructure_invalid=1
+      overall_status=1
+    fi
+  else
+    build_unchanged=false
+    infrastructure_invalid=1
+    overall_status=1
+  fi
+  assert_source "${active_worktree}" || { infrastructure_invalid=1; overall_status=1; }
+  git -C "${repository_root}" worktree remove --force "${active_worktree}"
+  active_worktree=""
+
   matrix_status=passed
   if [[ "${infrastructure_invalid}" -eq 1 ]] \
     || jq -s -e 'any(.[]; .status != "passed")' "${matrix_root}/stories.jsonl" >/dev/null \
@@ -265,27 +348,15 @@ for ((matrix_index = 1; matrix_index <= matrix_count; matrix_index += 1)); do
     --argjson matrixAttempt "${matrix_index}" --arg status "${matrix_status}" \
     --argjson core "${core_summary}" \
     --argjson appStoreRenderer "${renderer_summary}" \
-    --argjson durationSeconds "$((SECONDS - matrix_execution_start))" \
+    --argjson durationSeconds "$((SECONDS - matrix_wall_start))" \
     '{lane: $lane, commit: $commit, matrixAttempt: $matrixAttempt,
       status: $status, durationSeconds: $durationSeconds,
       stories: ., core: $core, appStoreRenderer: $appStoreRenderer}' \
     "${matrix_root}/stories.jsonl" > "${matrix_root}/MatrixSummary.json"
 
-  assert_source "${active_worktree}" || { infrastructure_invalid=1; overall_status=1; }
-  git -C "${repository_root}" worktree remove --force "${active_worktree}"
-  active_worktree=""
   if [[ "${infrastructure_invalid}" -eq 1 ]]; then break; fi
 done
 
-build_unchanged=false
-if [[ "${build_manifest_ready}" -eq 1 ]]; then
-  capture_build_manifest "${shared_build}" "${lane_root}/BuildManifest.after.sha256"
-  if cmp "${lane_root}/BuildManifest.before.sha256" "${lane_root}/BuildManifest.after.sha256"; then
-    build_unchanged=true
-  else
-    overall_status=1
-  fi
-fi
 assert_source "${repository_root}" || { infrastructure_invalid=1; overall_status=1; }
 
 matrix_summaries=()

@@ -1,13 +1,25 @@
 #!/usr/bin/env python3
 import argparse
+import hashlib
 import json
 import math
+import re
 import statistics
+import struct
 import sys
+import zlib
 from collections import defaultdict
 from pathlib import Path
 
 from evidence_manifest import validate_manifest
+
+STORY_PHASES = {
+    "attachment-export", "build", "build-provenance", "build-reuse",
+    "environment-reuse", "readme-comparison", "screenshot-comparison",
+    "simulator", "target-install", "test", "walkthrough-materialization",
+}
+GATE_PHASES = {"core-fixtures", "core-tests", "app-store-renderer"}
+REQUIRED_PHASES = STORY_PHASES | GATE_PHASES
 
 
 def load_json(path: Path):
@@ -32,6 +44,62 @@ def discover(root: Path, filename: str):
     return sorted(root.rglob(filename)) if root.exists() else []
 
 
+def summary_pairs(root: Path, filename: str, errors):
+    pairs = []
+    for path in discover(root, filename):
+        try:
+            value = load_json(path)
+        except (OSError, ValueError, TypeError, UnicodeError) as error:
+            errors.append(f"{path} is not valid JSON: {error}")
+            continue
+        if not isinstance(value, dict):
+            errors.append(f"{path} must contain a JSON object")
+            continue
+        pairs.append((path, value))
+    return pairs
+
+
+def nonnegative_integer(value):
+    return type(value) is int and value >= 0
+
+
+def finite_number(value, minimum):
+    return type(value) in (int, float) and math.isfinite(value) and value >= minimum
+
+
+def validate_measured_record(record, status_key, label, errors):
+    duration = record.get("durationSeconds")
+    exit_code = record.get("exitCode")
+    status = record.get(status_key)
+    signature = record.get("signature")
+    if not nonnegative_integer(duration):
+        errors.append(f"{label} has an invalid durationSeconds")
+        duration = None
+    if not nonnegative_integer(exit_code):
+        errors.append(f"{label} has an invalid exitCode")
+    if status == "passed":
+        if exit_code != 0:
+            errors.append(f"{label} reports passed with a nonzero exitCode")
+        if signature != "none":
+            errors.append(f"{label} reports passed with a failure signature")
+    elif status == "failed":
+        if exit_code == 0:
+            errors.append(f"{label} reports failed with a zero exitCode")
+        if not isinstance(signature, str) or signature == "none":
+            errors.append(f"{label} reports failed without a failure signature")
+    else:
+        errors.append(f"{label} has an invalid {status_key}")
+    return duration
+
+
+def list_field(record, key, label, errors):
+    value = record.get(key)
+    if not isinstance(value, list):
+        errors.append(f"{label} {key} must be an array")
+        return []
+    return value
+
+
 def evidence_path(lane_root: Path, relative, label, errors):
     if not isinstance(relative, str) or not relative:
         errors.append(f"{label} has no artifact path")
@@ -43,29 +111,113 @@ def evidence_path(lane_root: Path, relative, label, errors):
     return lane_root / candidate
 
 
+def validate_integrity_manifest(root: Path, label, errors):
+    manifest = root / "EvidenceManifest.sha256"
+    if not manifest.is_file():
+        errors.append(f"{label} is missing EvidenceManifest.sha256")
+        return
+    try:
+        lines = manifest.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError) as error:
+        errors.append(f"{label} has an unreadable integrity manifest: {error}")
+        return
+    declared = {}
+    for line_number, line in enumerate(lines, 1):
+        match = re.fullmatch(r"([0-9a-f]{64})  (.+)", line)
+        if match is None:
+            errors.append(f"{label} has malformed integrity row {line_number}")
+            continue
+        relative = match.group(2)
+        candidate = Path(relative)
+        normalized = candidate.as_posix()
+        if candidate.is_absolute() or ".." in candidate.parts or normalized in declared:
+            errors.append(f"{label} has an unsafe or duplicate integrity path")
+            continue
+        declared[normalized] = match.group(1)
+    actual = {}
+    try:
+        for path in root.rglob("*"):
+            if path == manifest:
+                continue
+            if path.is_symlink():
+                errors.append(f"{label} contains an unattested symbolic link")
+            elif path.is_file():
+                actual[path.relative_to(root).as_posix()] = path
+    except OSError as error:
+        errors.append(f"{label} artifacts cannot be inventoried: {error}")
+        return
+    if set(declared) != set(actual):
+        errors.append(f"{label} integrity manifest file set does not match its artifact")
+    for relative in set(declared) & set(actual):
+        try:
+            digest = hashlib.sha256(actual[relative].read_bytes()).hexdigest()
+        except OSError as error:
+            errors.append(f"{label} cannot hash {relative}: {error}")
+            continue
+        if digest != declared[relative]:
+            errors.append(f"{label} integrity hash mismatch for {relative}")
+
+
+def png_dimensions(path: Path):
+    payload = path.read_bytes()
+    if not payload.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise ValueError("invalid PNG signature")
+    offset, dimensions, ended = 8, None, False
+    while offset + 12 <= len(payload):
+        length = struct.unpack(">I", payload[offset:offset + 4])[0]
+        chunk_type = payload[offset + 4:offset + 8]
+        end = offset + 12 + length
+        if end > len(payload):
+            raise ValueError("truncated PNG chunk")
+        chunk_data = payload[offset + 8:offset + 8 + length]
+        expected_crc = struct.unpack(">I", payload[offset + 8 + length:end])[0]
+        if zlib.crc32(chunk_type + chunk_data) & 0xffffffff != expected_crc:
+            raise ValueError("invalid PNG checksum")
+        if offset == 8:
+            if chunk_type != b"IHDR" or length != 13:
+                raise ValueError("missing PNG IHDR")
+            dimensions = struct.unpack(">II", chunk_data[:8])
+        if chunk_type == b"IEND":
+            ended = True
+            if end != len(payload):
+                raise ValueError("data follows PNG IEND")
+            break
+        offset = end
+    if not ended or dimensions is None or min(dimensions) <= 0:
+        raise ValueError("incomplete PNG")
+    return dimensions
+
+
 def parse_phases(path: Path, label, errors):
     phases = defaultdict(int)
+    statuses = {}
     if not path.is_file():
         errors.append(f"{label} is missing PhaseTimings.tsv")
-        return phases
-    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        return {"durations": phases, "statuses": statuses}
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError) as error:
+        errors.append(f"{label} has unreadable PhaseTimings.tsv: {error}")
+        return {"durations": phases, "statuses": statuses}
+    for line_number, line in enumerate(lines, 1):
         fields = line.split("\t")
         if len(fields) != 4:
             errors.append(f"{label} has malformed phase row {line_number}")
             continue
         phase, start, end, status = fields
         try:
-            start_value, end_value = int(start), int(end)
+            start_value, end_value, status_value = int(start), int(end), int(status)
         except ValueError:
             errors.append(f"{label} has nonnumeric phase row {line_number}")
             continue
-        if not phase or not status or start_value < 0 or end_value < start_value:
+        if not phase or start_value < 0 or end_value < start_value or status_value < 0:
             errors.append(f"{label} has invalid phase row {line_number}")
             continue
         if phase in phases:
             errors.append(f"{label} records phase {phase} more than once")
         phases[phase] += end_value - start_value
-    return phases
+        statuses[phase] = status_value
+    return {"durations": phases, "statuses": statuses}
 
 
 def validate_attempt_evidence(lane_root, canonical_root, record, story, sha, label, errors):
@@ -89,7 +241,9 @@ def validate_attempt_evidence(lane_root, canonical_root, record, story, sha, lab
         try:
             run = load_json(run_path)
             expected_status = record.get("result", record.get("status"))
-            if run.get("story") != story or run.get("commit") != sha or run.get("status") != expected_status:
+            if (run.get("story") != story or run.get("commit") != sha
+                    or run.get("status") != expected_status
+                    or run.get("exitCode") != record.get("exitCode")):
                 errors.append(f"{label} Run.json does not match its summary")
         except (OSError, ValueError, TypeError):
             errors.append(f"{label} has invalid Run.json")
@@ -99,22 +253,32 @@ def validate_attempt_evidence(lane_root, canonical_root, record, story, sha, lab
     result = root / "Results/Story.xcresult"
     if not result.is_dir() or not (result / "Info.plist").is_file():
         errors.append(f"{label} is missing a complete result bundle")
-    phases = parse_phases(root / "PhaseTimings.tsv", label, errors)
+    phase_evidence = parse_phases(root / "PhaseTimings.tsv", label, errors)
+    phases = phase_evidence["durations"]
+    statuses = phase_evidence["statuses"]
     entered = "test" in phases
     if record.get("testPhaseEntered") is not entered:
         errors.append(f"{label} testPhaseEntered disagrees with recorded phases")
-    return phases
+    if statuses.get("test") != record.get("exitCode"):
+        errors.append(f"{label} test phase exit disagrees with its summary")
+    if record.get("result", record.get("status")) == "passed" \
+            and any(value != 0 for value in statuses.values()):
+        errors.append(f"{label} reports passed with a failed phase")
+    return phase_evidence
 
 
 def validate_story(root, canonical_root, expected_stories, sha, requested_attempts):
     errors, durations, signatures, failures = [], [], {}, []
-    pairs = [(path, load_json(path)) for path in discover(root, "StoryLaneSummary.json")]
+    pairs = summary_pairs(root, "StoryLaneSummary.json", errors)
     lanes = [item.get("lane") for _, item in pairs]
-    if len(pairs) != 5 or len(set(lanes)) != 5:
+    if any(not isinstance(lane, str) for lane in lanes):
+        errors.append("story lane summaries contain an invalid lane identifier")
+    if len(pairs) != 5 or len(set(lane for lane in lanes if isinstance(lane, str))) != 5:
         errors.append(f"expected 5 unique story lane summaries, found {len(pairs)}")
     seen = []
     for path, lane in pairs:
         lane_root = path.parent
+        lane_label = f"story lane {lane.get('lane')}"
         if lane.get("stage") != "story" or lane.get("commit") != sha:
             errors.append(f"story lane {lane.get('lane')} has the wrong stage or SHA")
         if lane.get("requestedAttempts") != requested_attempts:
@@ -123,10 +287,19 @@ def validate_story(root, canonical_root, expected_stories, sha, requested_attemp
             errors.append(f"story lane {lane.get('lane')} failed source/build integrity")
         if lane.get("status") != "passed":
             errors.append(f"story lane {lane.get('lane')} is not green")
-        for story in lane.get("stories", []):
+        for story in list_field(lane, "stories", lane_label, errors):
+            if not isinstance(story, dict):
+                errors.append(f"{lane_label} contains a non-object story")
+                continue
             story_id = story.get("story")
+            if not isinstance(story_id, str):
+                errors.append(f"{lane_label} contains a story with an invalid identifier")
+                continue
             seen.append(story_id)
-            attempts = story.get("attempts", [])
+            raw_attempts = list_field(story, "attempts", story_id, errors)
+            if any(not isinstance(attempt, dict) for attempt in raw_attempts):
+                errors.append(f"{story_id} contains a non-object attempt")
+            attempts = [attempt for attempt in raw_attempts if isinstance(attempt, dict)]
             ids = [item.get("attempt") for item in attempts]
             if story.get("commit") != sha or story.get("requestedAttempts") != requested_attempts:
                 errors.append(f"{story_id} has the wrong SHA or requested count")
@@ -135,14 +308,16 @@ def validate_story(root, canonical_root, expected_stories, sha, requested_attemp
             if story.get("passCount") != requested_attempts or story.get("failureCount") != 0:
                 errors.append(f"{story_id} did not pass {requested_attempts}/{requested_attempts}")
             for attempt in attempts:
-                durations.append(attempt.get("durationSeconds", 0))
+                label = f"{story_id} attempt {attempt.get('attempt')}"
+                duration = validate_measured_record(attempt, "result", label, errors)
+                if duration is not None:
+                    durations.append(duration)
                 signature = attempt.get("signature", "none")
                 if signature != "none":
                     signatures[signature] = signatures.get(signature, 0) + 1
                     failures.append({"stage": "story", "lane": lane.get("lane"),
                                      "story": story_id, "attempt": attempt.get("attempt"),
                                      "signature": signature})
-                label = f"{story_id} attempt {attempt.get('attempt')}"
                 if attempt.get("result") != "passed" or not attempt.get("testPhaseEntered"):
                     errors.append(f"{label} is not a measured pass")
                 validate_attempt_evidence(
@@ -153,7 +328,8 @@ def validate_story(root, canonical_root, expected_stories, sha, requested_attemp
             "signatures": signatures, "failures": failures, "errors": errors}
 
 
-def validate_renderer(lane_root, matrix, index, expected_asset_count, errors):
+def validate_renderer(lane_root, matrix, index, expected_asset_count,
+                      expected_width, expected_height, errors):
     renderer = matrix.get("appStoreRenderer", {})
     if not renderer.get("required") or renderer.get("status") != "passed" or renderer.get("exitCode") != 0:
         errors.append(f"logical matrix {index} does not contain a passing App Store renderer")
@@ -163,12 +339,29 @@ def validate_renderer(lane_root, matrix, index, expected_asset_count, errors):
     if root is None or expected != expected_asset_count:
         errors.append(f"matrix {index} renderer has invalid asset evidence")
         return None
+    validate_integrity_manifest(root, f"matrix {index} renderer", errors)
+    try:
+        retained_summary = load_json(root / "AppStoreRendererSummary.json")
+        if retained_summary != renderer:
+            errors.append(f"matrix {index} renderer summary disagrees with its lane")
+    except (OSError, ValueError, TypeError, UnicodeError) as error:
+        errors.append(f"matrix {index} renderer summary is invalid: {error}")
     pngs = list((root / "screenshots").glob("*.png")) if root.is_dir() else []
     if len(pngs) != expected or renderer.get("renderedAssetCount") != expected:
         errors.append(f"matrix {index} renderer did not produce exactly {expected} assets")
     renderer_log = root / "renderer.log"
     if not renderer_log.is_file() or renderer_log.stat().st_size == 0:
         errors.append(f"matrix {index} renderer log is missing or empty")
+    for png in pngs:
+        try:
+            dimensions = png_dimensions(png)
+        except (OSError, ValueError, struct.error) as error:
+            errors.append(f"matrix {index} renderer has invalid {png.name}: {error}")
+            continue
+        if dimensions != (expected_width, expected_height):
+            errors.append(
+                f"matrix {index} renderer {png.name} has dimensions "
+                f"{dimensions[0]}x{dimensions[1]}, expected {expected_width}x{expected_height}")
     return renderer.get("durationSeconds")
 
 
@@ -177,6 +370,13 @@ def validate_core(lane_root, gate, index, errors):
     if root is None or not root.is_dir():
         errors.append(f"logical matrix {index} core artifact directory is missing")
         return
+    validate_integrity_manifest(root, f"logical matrix {index} core", errors)
+    try:
+        retained_summary = load_json(root / "CoreSummary.json")
+        if retained_summary != gate:
+            errors.append(f"logical matrix {index} core summary disagrees with its lane")
+    except (OSError, ValueError, TypeError, UnicodeError) as error:
+        errors.append(f"logical matrix {index} core summary is invalid: {error}")
     for relative in ("Logs/fixtures.log", "Logs/tests.log"):
         path = root / relative
         if not path.is_file() or path.stat().st_size == 0:
@@ -184,43 +384,83 @@ def validate_core(lane_root, gate, index, errors):
     result = root / "Results/Core.xcresult/Info.plist"
     if not result.is_file():
         errors.append(f"logical matrix {index} core result bundle is incomplete")
+    summary_path = root / "Results/CoreTestSummary.json"
+    try:
+        summary = load_json(summary_path)
+    except (OSError, ValueError, TypeError, UnicodeError) as error:
+        errors.append(f"logical matrix {index} core test summary is invalid: {error}")
+        return
+    total = summary.get("totalTestCount")
+    if (summary.get("result") != "Passed" or not nonnegative_integer(total) or total == 0
+            or summary.get("passedTests") != total or summary.get("failedTests") != 0
+            or summary.get("skippedTests") != 0
+            or summary.get("expectedFailures") != 0):
+        errors.append(f"logical matrix {index} does not prove a fully passing PlayerTests run")
 
 
 def validate_matrices(root, canonical_root, expected_stories, sha, requested_matrices, baseline):
     errors, durations, signatures, failures = [], [], {}, []
     story_values, phase_matrix_values, wall_values = defaultdict(list), defaultdict(list), []
-    pairs = [(path, load_json(path)) for path in discover(root, "MatrixLaneSummary.json")]
+    original = baseline["preRemediation"]
+    reference = baseline["qualificationReference"]
+    pairs = summary_pairs(root, "MatrixLaneSummary.json", errors)
     lanes = [item.get("lane") for _, item in pairs]
-    if len(pairs) != 5 or len(set(lanes)) != 5:
+    if any(not isinstance(lane, str) for lane in lanes):
+        errors.append("matrix lane summaries contain an invalid lane identifier")
+    if len(pairs) != 5 or len(set(lane for lane in lanes if isinstance(lane, str))) != 5:
         errors.append(f"expected 5 unique matrix lane summaries, found {len(pairs)}")
     by_attempt = {index: [] for index in range(1, requested_matrices + 1)}
     for path, lane in pairs:
         lane_root = path.parent
+        lane_label = f"matrix lane {lane.get('lane')}"
         if lane.get("stage") != "matrix" or lane.get("commit") != sha:
             errors.append(f"matrix lane {lane.get('lane')} has the wrong stage or SHA")
         if lane.get("requestedMatrices") != requested_matrices or lane.get("matrixCount") != requested_matrices:
             errors.append(f"matrix lane {lane.get('lane')} does not contain {requested_matrices} matrices")
         if not lane.get("buildUnchanged") or lane.get("infrastructureInvalid") or lane.get("status") != "passed":
             errors.append(f"matrix lane {lane.get('lane')} failed integrity or is not green")
-        indices = [item.get("matrixAttempt") for item in lane.get("matrices", [])]
+        raw_matrices = list_field(lane, "matrices", lane_label, errors)
+        if any(not isinstance(item, dict) for item in raw_matrices):
+            errors.append(f"{lane_label} contains a non-object matrix")
+        lane_matrices = [item for item in raw_matrices if isinstance(item, dict)]
+        indices = [item.get("matrixAttempt") for item in lane_matrices]
         if indices != list(range(1, requested_matrices + 1)):
             errors.append(f"matrix lane {lane.get('lane')} has noncontiguous matrix attempts")
-        for matrix in lane.get("matrices", []):
+        for matrix in lane_matrices:
             index = matrix.get("matrixAttempt")
             if index in by_attempt: by_attempt[index].append((lane_root, matrix))
             if matrix.get("commit") != sha or matrix.get("status") != "passed":
                 errors.append(f"matrix {index} lane {lane.get('lane')} is not a measured pass")
-            for story in matrix.get("stories", []):
+            matrix_stories = list_field(matrix, "stories", f"matrix {index}", errors)
+            matrix["stories"] = [story for story in matrix_stories
+                                 if isinstance(story, dict)
+                                 and isinstance(story.get("story"), str)]
+            if not isinstance(matrix.get("core"), dict):
+                errors.append(f"matrix {index} core must be an object")
+                matrix["core"] = {}
+            if not isinstance(matrix.get("appStoreRenderer"), dict):
+                errors.append(f"matrix {index} appStoreRenderer must be an object")
+                matrix["appStoreRenderer"] = {}
+            for story in matrix_stories:
+                if not isinstance(story, dict):
+                    errors.append(f"matrix {index} contains a non-object story")
+                    continue
                 story_id = story.get("story")
-                durations.append(story.get("durationSeconds", 0))
-                story_values[story_id].append(story.get("durationSeconds", 0))
+                if not isinstance(story_id, str):
+                    errors.append(f"matrix {index} contains a story with an invalid identifier")
+                    continue
+                label = f"matrix {index} story {story_id}"
+                duration = validate_measured_record(story, "status", label, errors)
+                if duration is not None:
+                    durations.append(duration)
+                    if story_id in expected_stories:
+                        story_values[story_id].append(duration)
                 signature = story.get("signature", "none")
                 if signature != "none":
                     signatures[signature] = signatures.get(signature, 0) + 1
                     failures.append({"stage": "matrix", "lane": lane.get("lane"),
                                      "story": story_id, "matrixAttempt": index,
                                      "signature": signature})
-                label = f"matrix {index} story {story_id}"
                 if story.get("commit") != sha or story.get("status") != "passed" or not story.get("testPhaseEntered"):
                     errors.append(f"{label} is not a measured pass")
                 story["_phases"] = validate_attempt_evidence(
@@ -230,16 +470,63 @@ def validate_matrices(root, canonical_root, expected_stories, sha, requested_mat
         if len(matrices) != 5 or sorted(stories) != sorted(expected_stories) or len(stories) != len(set(stories)):
             errors.append(f"logical matrix {index} does not contain five lanes and every story exactly once")
         core = [matrix.get("core", {}) for _, matrix in matrices if matrix.get("core", {}).get("required")]
-        if len(core) != 1 or core[0].get("status") != "passed":
-            errors.append(f"logical matrix {index} does not contain one passing core gate")
+        if len(core) != 1:
+            errors.append(f"logical matrix {index} does not contain exactly one core gate")
         else:
             core_lane_root = next(lane_root for lane_root, matrix in matrices
                                   if matrix.get("core", {}).get("required"))
-            validate_core(core_lane_root, core[0], index, errors)
-            for key, phase in (("fixtureDurationSeconds", "core-fixtures"), ("testDurationSeconds", "core-tests")):
-                value = core[0].get(key)
-                if not isinstance(value, int) or value < 0: errors.append(f"logical matrix {index} has invalid {phase} timing")
-                else: phase_matrix_values[phase].append(value)
+            gate = core[0]
+            signature = gate.get("signature", "none")
+            fixture_exit = gate.get("fixtureExitCode")
+            fixture_log_exit = gate.get("fixtureLogExitCode")
+            failed_fixture = gate.get("failedFixture")
+            test_ran = gate.get("testRan")
+            test_exit = gate.get("testExitCode")
+            test_log_exit = gate.get("testLogExitCode")
+            result_summary_exit = gate.get("resultSummaryExitCode")
+            cleanup_exit = gate.get("cleanupExitCode")
+            if (not nonnegative_integer(fixture_exit)
+                    or not nonnegative_integer(fixture_log_exit)
+                    or type(test_ran) is not bool
+                    or (test_ran and not nonnegative_integer(test_exit))
+                    or (not test_ran and test_exit is not None)
+                    or not nonnegative_integer(test_log_exit)
+                    or not nonnegative_integer(result_summary_exit)
+                    or not nonnegative_integer(cleanup_exit)):
+                errors.append(f"logical matrix {index} core gate has invalid exit codes")
+            if fixture_exit != 0 and (test_ran or test_exit is not None):
+                errors.append(f"logical matrix {index} core tests ran after a fixture failure")
+            if fixture_exit != 0 and (not isinstance(failed_fixture, str) or not failed_fixture):
+                errors.append(f"logical matrix {index} fixture failure has no command identity")
+            if fixture_exit == 0 and failed_fixture is not None:
+                errors.append(f"logical matrix {index} passing fixtures report a failed command")
+            commands_passed = (fixture_exit == 0 and fixture_log_exit == 0
+                               and test_ran is True and test_exit == 0
+                               and test_log_exit == 0 and result_summary_exit == 0
+                               and cleanup_exit == 0)
+            if gate.get("status") != "passed":
+                errors.append(f"logical matrix {index} core gate is not green")
+                if commands_passed:
+                    errors.append(f"logical matrix {index} failed core gate reports successful commands")
+                if not isinstance(signature, str) or signature == "none":
+                    errors.append(f"logical matrix {index} core failure has no signature")
+                else:
+                    signatures[signature] = signatures.get(signature, 0) + 1
+                    failures.append({"stage": "matrix", "lane": "core", "story": "core",
+                                     "matrixAttempt": index, "signature": signature})
+            else:
+                if not commands_passed:
+                    errors.append(f"logical matrix {index} passing core gate masks a command failure")
+                if signature != "none":
+                    errors.append(f"logical matrix {index} passing core gate has a failure signature")
+            validate_core(core_lane_root, gate, index, errors)
+            for key, phase in (("fixtureDurationSeconds", "core-fixtures"),
+                               ("testDurationSeconds", "core-tests")):
+                value = gate.get(key)
+                if not nonnegative_integer(value):
+                    errors.append(f"logical matrix {index} has invalid {phase} timing")
+                elif phase != "core-tests" or test_ran:
+                    phase_matrix_values[phase].append(value)
         renderers = [(lane_root, matrix) for lane_root, matrix in matrices
                      if matrix.get("appStoreRenderer", {}).get("required")]
         if len(renderers) != 1:
@@ -249,21 +536,42 @@ def validate_matrices(root, canonical_root, expected_stories, sha, requested_mat
                        for story in renderers[0][1].get("stories", [])):
                 errors.append(f"logical matrix {index} renderer is not attached to Story 013")
             value = validate_renderer(renderers[0][0], renderers[0][1], index,
-                                      baseline["appStoreAssetCount"], errors)
-            if isinstance(value, int) and value >= 0: phase_matrix_values["app-store-renderer"].append(value)
+                                      baseline["appStoreAssetCount"],
+                                      baseline["appStorePixelWidth"],
+                                      baseline["appStorePixelHeight"], errors)
+            if nonnegative_integer(value):
+                phase_matrix_values["app-store-renderer"].append(value)
+            else:
+                errors.append(f"logical matrix {index} has invalid app-store-renderer timing")
         lane_durations = [matrix.get("durationSeconds") for _, matrix in matrices]
-        if len(lane_durations) != 5 or any(not isinstance(value, int) or value < 0 for value in lane_durations):
+        if len(lane_durations) != 5 or any(not nonnegative_integer(value) for value in lane_durations):
             errors.append(f"logical matrix {index} has invalid lane wall-clock timings")
         else:
             wall_values.append(max(lane_durations))
         phase_totals = defaultdict(int)
+        observed_phases = set()
         for _, matrix in matrices:
             for story in matrix.get("stories", []):
-                for phase, value in story.pop("_phases", {}).items(): phase_totals[phase] += value
-        for phase, value in phase_totals.items(): phase_matrix_values[phase].append(value)
+                phase_evidence = story.pop("_phases", {})
+                for phase, value in phase_evidence.get("durations", {}).items():
+                    observed_phases.add(phase)
+                    phase_totals[phase] += value
+        unexpected_phases = observed_phases - STORY_PHASES
+        if unexpected_phases:
+            errors.append(
+                f"logical matrix {index} records unreferenced phases: "
+                + ", ".join(sorted(unexpected_phases)))
+        missing_phases = STORY_PHASES - observed_phases
+        if missing_phases:
+            errors.append(
+                f"logical matrix {index} is missing required phases: "
+                + ", ".join(sorted(missing_phases)))
+        # Explicit zero-duration reuse rows are evidence. An absent row is not.
+        for phase in STORY_PHASES & observed_phases:
+            phase_matrix_values[phase].append(phase_totals[phase])
 
     thresholds = baseline["thresholds"]
-    suite_baseline = baseline["suite"]["logicalWallSeconds"]
+    suite_baseline = reference["suite"]["logicalWallSeconds"]
     wall_distribution = distribution(wall_values)
     suite_delta = None if wall_distribution["median"] is None else wall_distribution["median"] / suite_baseline - 1
     if suite_delta is not None and suite_delta > thresholds["suiteRegression"]:
@@ -272,37 +580,81 @@ def validate_matrices(root, canonical_root, expected_stories, sha, requested_mat
     for story in expected_stories:
         values = story_values[story]
         stats = distribution(values)
-        expected = baseline["stories"][story]
+        expected = reference["stories"][story]
         delta = None if stats["median"] is None else stats["median"] / expected - 1
-        story_timings[story] = {"baselineSeconds": expected, "current": stats, "delta": delta}
+        story_timings[story] = {
+            "preRemediationSeconds": original["stories"][story],
+            "referenceSeconds": expected,
+            "current": stats,
+            "delta": delta,
+        }
         if len(values) != requested_matrices:
             errors.append(f"{story} does not contain {requested_matrices} timing samples")
         if delta is not None and delta > thresholds["storyRegression"]:
             errors.append(f"{story} regressed {delta:.1%}; limit is {thresholds['storyRegression']:.0%}")
     phase_timings = {}
-    for phase, expected in baseline["phases"].items():
+    for phase, expected in reference["phases"].items():
         stats = distribution(phase_matrix_values.get(phase, []))
         if stats["count"] != requested_matrices:
             errors.append(f"phase {phase} does not contain {requested_matrices} timing samples")
         delta = None if stats["median"] is None or expected == 0 else stats["median"] / expected - 1
-        phase_timings[phase] = {"baselineSeconds": expected, "current": stats, "delta": delta}
+        phase_timings[phase] = {
+            "preRemediationSeconds": original["phases"][phase],
+            "referenceSeconds": expected,
+            "current": stats,
+            "delta": delta,
+        }
     return {"lanes": len(pairs), "matrices": requested_matrices, "durations": distribution(durations),
-            "logicalWallClock": {"baselineSeconds": suite_baseline, "current": wall_distribution, "delta": suite_delta},
+            "logicalWallClock": {
+                "preRemediationSeconds": original["suite"]["logicalWallSeconds"],
+                "referenceSeconds": suite_baseline,
+                "current": wall_distribution,
+                "delta": suite_delta,
+            },
             "storyTimings": story_timings, "phaseTimings": phase_timings,
             "signatures": signatures, "failures": failures, "errors": errors}
 
 
 def validate_baseline(path, expected_stories):
     baseline = load_json(path)
-    if baseline.get("schemaVersion") != 1 or set(baseline.get("stories", {})) != set(expected_stories):
-        raise ValueError("runtime baseline does not match schema or canonical stories")
-    required = [baseline.get("suite", {}).get("logicalWallSeconds"),
-                baseline.get("appStoreAssetCount"), *baseline["stories"].values()]
+    if baseline.get("schemaVersion") != 2:
+        raise ValueError("runtime baseline must use schema version 2")
+    original = baseline.get("preRemediation", {})
+    reference = baseline.get("qualificationReference", {})
+    if any(set(item.get("stories", {})) != set(expected_stories)
+           for item in (original, reference)):
+        raise ValueError("runtime baseline does not match canonical stories")
+    if (set(original.get("phases", {})) != REQUIRED_PHASES
+            or set(reference.get("phases", {})) != REQUIRED_PHASES):
+        raise ValueError("runtime references must contain the exact required phase set")
+    for label, item in (("pre-remediation", original), ("qualification", reference)):
+        source = item.get("source", {})
+        source_text = (source.get("url"), source.get("headCommit"),
+                       source.get("checkoutCommit"), source.get("runner"),
+                       source.get("xcode"), source.get("runtime"))
+        if (not isinstance(source.get("workflowRun"), int) or source["workflowRun"] <= 0
+                or any(not isinstance(value, str) or not value for value in source_text)
+                or any(re.fullmatch(r"[0-9a-f]{40}", source[key]) is None
+                       for key in ("headCommit", "checkoutCommit"))):
+            raise ValueError(f"{label} runtime reference requires exact CI provenance")
+    coverage = reference.get("coverageAdjustment", {})
+    if (not isinstance(coverage.get("reason"), str) or not coverage["reason"]
+            or not isinstance(coverage.get("approvedBy"), str) or not coverage["approvedBy"]
+            or coverage.get("remediationItems") != [f"R{index}" for index in range(1, 17)]):
+        raise ValueError("qualification reference requires an explicit coverage adjustment")
+    required = [baseline.get("appStoreAssetCount"), baseline.get("appStorePixelWidth"),
+                baseline.get("appStorePixelHeight")]
+    for item in (original, reference):
+        required += [item.get("suite", {}).get("logicalWallSeconds"), *item["stories"].values()]
     thresholds = baseline.get("thresholds", {})
-    if any(not isinstance(value, (int, float)) or value <= 0 for value in required):
+    if any(not finite_number(value, 0) or value == 0 for value in required):
         raise ValueError("runtime baseline values must be positive")
-    if any(not isinstance(value, (int, float)) or value < 0 for value in baseline.get("phases", {}).values()):
-        raise ValueError("runtime phase baseline values must be nonnegative")
+    if any(value is not None and not finite_number(value, 0)
+           for value in original.get("phases", {}).values()):
+        raise ValueError("pre-remediation phase values must be nonnegative or null when unmeasured")
+    if any(not finite_number(value, 0)
+           for value in reference.get("phases", {}).values()):
+        raise ValueError("qualification phase reference values must be nonnegative")
     if thresholds.get("suiteRegression") != 0.10 or thresholds.get("storyRegression") != 0.20:
         raise ValueError("runtime baseline must enforce 10% suite and 20% story limits")
     return baseline
@@ -315,6 +667,9 @@ def validate_failure_history(path, expected_stories):
         raise ValueError("failure history must use schema version 1")
     signatures = set()
     for entry in entries:
+        if not isinstance(entry, dict) or not isinstance(entry.get("fix"), dict) \
+                or not isinstance(entry.get("evidence"), dict):
+            raise ValueError("failure history entries must be objects")
         required_text = (entry.get("signature"), entry.get("story"), entry.get("rootCause"),
                          entry.get("resetEvidence"), entry.get("fix", {}).get("summary"),
                          entry.get("fix", {}).get("validation"), entry.get("evidence", {}).get("url"),
@@ -323,10 +678,11 @@ def validate_failure_history(path, expected_stories):
         reset_count = entry.get("qualificationResetCount")
         if any(not isinstance(value, str) or not value for value in required_text):
             raise ValueError("failure history entries require signature, evidence, cause, fix, and reset evidence")
-        if entry["story"] not in expected_stories or entry["signature"] in signatures:
+        if entry["story"] not in {*expected_stories, "core"} or entry["signature"] in signatures:
             raise ValueError("failure history stories and signatures must be canonical and unique")
         if not isinstance(commits, list) or not commits or any(
-                not isinstance(commit, str) or len(commit) != 40 for commit in commits):
+                not isinstance(commit, str)
+                or re.fullmatch(r"[0-9a-f]{40}", commit) is None for commit in commits):
             raise ValueError("failure history fixes require full commit SHAs")
         if not isinstance(reset_count, int) or reset_count < 0:
             raise ValueError("failure history reset counts must be nonnegative")
@@ -387,15 +743,18 @@ def render_report(output: Path, sha: str, story, matrices, failure_accounting):
         wall = matrices["logicalWallClock"]
         wall_change = "n/a" if wall["delta"] is None else f"{wall['delta']:.1%}"
         lines += [f"- Matrix gate: {matrices['matrices']} logical complete matrices", "", "## Runtime regression gates", "",
-                  "| Scope | Baseline (s) | Current median (s) | Change | Limit |", "|---|---:|---:|---:|---:|",
-                  f"| Complete matrix wall | {wall['baselineSeconds']} | {wall['current']['median']} | {wall_change} | 10% |"]
+                  "The enforced reference includes the separately measured, approved coverage added during remediation; the pre-remediation measurement remains visible for an honest end-to-end comparison.",
+                  "", "| Scope | Pre-remediation (s) | Expanded-coverage reference (s) | Current median (s) | Change vs reference | Limit |",
+                  "|---|---:|---:|---:|---:|---:|",
+                  f"| Complete matrix wall | {wall['preRemediationSeconds']} | {wall['referenceSeconds']} | {wall['current']['median']} | {wall_change} | 10% |"]
         for name, timing in matrices["storyTimings"].items():
             change = "n/a" if timing["delta"] is None else f"{timing['delta']:.1%}"
-            lines.append(f"| `{name}` | {timing['baselineSeconds']} | {timing['current']['median']} | {change} | 20% |")
-        lines += ["", "## Phase timing", "", "| Phase | Baseline (s) | Current median (s) | Change |", "|---|---:|---:|---:|"]
+            lines.append(f"| `{name}` | {timing['preRemediationSeconds']} | {timing['referenceSeconds']} | {timing['current']['median']} | {change} | 20% |")
+        lines += ["", "## Phase timing", "", "| Phase | Pre-remediation (s) | Expanded-coverage reference (s) | Current median (s) | Change vs reference |", "|---|---:|---:|---:|---:|"]
         for name, timing in matrices["phaseTimings"].items():
             change = "n/a" if timing["delta"] is None else f"{timing['delta']:.1%}"
-            lines.append(f"| `{name}` | {timing['baselineSeconds']} | {timing['current']['median']} | {change} |")
+            original = "n/a" if timing["preRemediationSeconds"] is None else timing["preRemediationSeconds"]
+            lines.append(f"| `{name}` | {original} | {timing['referenceSeconds']} | {timing['current']['median']} | {change} |")
     lines += ["", "## Failure signatures", ""]
     signatures = dict(story["signatures"])
     if matrices:
@@ -440,8 +799,12 @@ def main(argv=None):
     parser.add_argument("--matrix-attempts", type=int, default=5)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
-    stories = canonical_stories(args.manifest)
     try:
+        stories = canonical_stories(args.manifest)
+        if (not isinstance(stories, list) or not stories
+                or any(not isinstance(story, str) or not story for story in stories)
+                or len(stories) != len(set(stories))):
+            raise ValueError("canonical manifest must contain unique story identifiers")
         baseline = validate_baseline(args.runtime_baseline, stories)
         failure_history = validate_failure_history(args.failure_history, stories)
     except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError) as error:
