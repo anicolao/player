@@ -1335,6 +1335,30 @@
       },
       "qualificationResetCount": 1,
       "resetEvidence": "Formal Story 009 attempts 01 and 02 passed at exact SHA 2dac4cafdd0667f85fb7f3950cc4adf81b8f47d5; attempt-03 then failed at that same SHA, resetting the consecutive qualification count from two to zero."
+    },
+    {
+      "signature": "ui-test:LibraryOrganizationUITests.testOrganizesDailyLibraryAndRestoresATrashedBook:indexed-search-contract",
+      "story": "008-library-search",
+      "evidence": {
+        "workflowRun": 33238071790,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions job 99062477585 retained the Story 008 result bundle, semantic probes, screen recording, and first seven canonical captures",
+        "url": "https://github.com/anicolao/player/actions/runs/33238071790/job/99062477585",
+        "commit": "78be46c54c7e332717d1ca0fb99357758ea0b530",
+        "observation": "The organization journey expected the obsolete search:query=... value while production truthfully published search:revision=<digest>:indexed=true:query=... with the exact expected two-book result. It failed before the final three captures; the preceding seven captures and the other two lane stories remained canonical."
+      },
+      "rootCause": "R7 strengthened the production search readiness contract, but this second cross-story consumer still used exact whole-string comparisons at assertions, capture readiness, navigation returns, preference persistence, and the empty-results state.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "pending-focused-validation",
+        "summary": "Parse and validate the revision and indexed fields at every Library Organization search boundary while retaining exact comparison of the complete result suffix and all existing screenshots and navigation assertions.",
+        "commits": [
+          "05fe24f6d7524790b9f5df0e88be7aa0104320ca"
+        ],
+        "validation": "Swift parsing, E2E hygiene, and all 63 capture-readiness contracts pass. Exact hosted Story 008 validation is required on the corrected boundary."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was the normal R7 pull-request matrix rather than a formal repeated qualification attempt, so no consecutive Story 008 qualification count existed to reset."
     }
   ]
 }
