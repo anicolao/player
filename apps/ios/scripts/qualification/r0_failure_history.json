@@ -1216,6 +1216,79 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was the normal R7 pull-request matrix rather than a formal repeated qualification attempt, so no consecutive Story 007 qualification count existed to reset."
+    },
+    {
+      "signature": "ui-test:MultifileGroupingUITests.testRepairsMessyMultifileGroupingAndCommitsOneBookAtomically:exit-65",
+      "story": "003-multifile-grouping",
+      "evidence": {
+        "workflowRun": 33235409727,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions job 99055474030 and artifact 9711820379 retained Story 003 attempt-04 UI hierarchy, synthesized events, screen recording, and the first canonical capture",
+        "url": "https://github.com/anicolao/player/actions/runs/33235409727/job/99055474030",
+        "commit": "2dac4cafdd0667f85fb7f3950cc4adf81b8f47d5",
+        "observation": "After tapping Review Order, the test immediately counted ordering-evidence-natural-numeric and observed zero elements. It had not first observed review-order-screen or the revision-0 order probe; the same attempt had already proved the source grouping and captured screenshot 000."
+      },
+      "rootCause": "The cardinality assertion raced SwiftUI navigation. A successful synthesized tap acknowledges input delivery, not construction of the destination accessibility tree, so querying the destination identifier in the next statement could legitimately precede its semantic state.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Require the exact revision-0 production order probe within two seconds before asserting the natural-order identifier is unique. Also acknowledge each subsequent selection before invoking its dependent mutation, retaining every ordering, correction, and atomic-commit assertion without retries.",
+        "commits": [
+          "764692087e7ddfbdd3109d4bad497772b2a0ef5b",
+          "6b07eb8b8334522a6b5e0f90ddcf8ff81ea44e73"
+        ],
+        "validation": "At the exact R0 source plus these fixes, the focused Story 003 target built successfully and the complete MultifileGroupingUITests journey passed ten consecutive iOS 26.5 executions. Every semantic wait remains event driven and independently capped at two seconds."
+      },
+      "qualificationResetCount": 1,
+      "resetEvidence": "Formal exact-SHA qualification run 33235409727 passed Story 003 attempts 01...03, then attempt 04 failed this destination-tree assertion, resetting Story 003's consecutive qualification count to zero."
+    },
+    {
+      "signature": "infrastructure:xcode-application-launch-timeout:MultifileGroupingUITests.testRepairsMessyMultifileGroupingAndCommitsOneBookAtomically:exit-65",
+      "story": "003-multifile-grouping",
+      "evidence": {
+        "workflowRun": 33235409727,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions job 99055474030 and artifact 9711820379 retained Story 003 attempt-06 result, screen recording, simulator logs, and host CoreSimulator logs",
+        "url": "https://github.com/anicolao/player/actions/runs/33235409727/job/99055474030",
+        "commit": "2dac4cafdd0667f85fb7f3950cc4adf81b8f47d5",
+        "observation": "XCTest spent roughly 74 wall-clock seconds between orientation setup and its Xcode launch request, then reported 'Timed out while launching application via Xcode' before any fixture, production probe, or application assertion executed. Story 003 attempt 05 had completed normally immediately beforehand."
+      },
+      "rootCause": "The hosted Xcode/CoreSimulator launch transaction stalled before the target process became testable. This was runner orchestration latency, not product startup or the attempt-04 navigation race; treating every failed XCTest method as one ui-test signature conflated those causes.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Classify the exact Xcode launcher diagnostic as infrastructure before generic failed-test classification, fail closed without retrying, and retain provenance-bound screen evidence so a new formal qualification can restart from zero with the cause accurately accounted for.",
+        "commits": [
+          "f30d5f4d015f64de9f401336fb913dd8528537d0"
+        ],
+        "validation": "The qualification contract test proves the same failed method is classified as infrastructure only when the exact Xcode launcher diagnostic is present; all 21 aggregation tests pass. The ordinary assertion fixture remains classified as ui-test, so product failures are not waived."
+      },
+      "qualificationResetCount": 1,
+      "resetEvidence": "After attempt 04 reset the count and attempt 05 passed, formal attempt 06 hit this infrastructure failure and invalid evidence, invalidating lane 5 and resetting Story 003's new consecutive count to zero."
+    },
+    {
+      "signature": "evidence:003-multifile-grouping:untimestamped-issue-attachment-rejected-valid-recording",
+      "story": "003-multifile-grouping",
+      "evidence": {
+        "workflowRun": 33235409727,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions artifact 9711820379 retained attempt-06 Attachments/manifest.json and its 80,137-byte screen recording",
+        "url": "https://github.com/anicolao/player/actions/runs/33235409727/job/99055474030",
+        "commit": "2dac4cafdd0667f85fb7f3950cc4adf81b8f47d5",
+        "observation": "The attachment manifest contained a valid timestamped Screen Recording and a separate Complete Issue Description without a timestamp. The extractor required timestamp on every attachment, rejected the entire manifest as malformed, and consequently omitted failure-screen.png and failure-screen-source.json."
+      },
+      "rootCause": "The failure-frame decoder applied recording-specific provenance requirements to unrelated XCTest attachments. Xcode legitimately omits timestamp from Complete Issue Description, so strict decoding failed before the valid recording candidate could be inspected.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Allow timestamps to be absent on unrelated attachments while continuing to reject a Screen Recording that lacks a finite timestamp; select the uniquely newest nonempty recording and bind the extracted PNG to its exact manifest provenance.",
+        "commits": [
+          "f30d5f4d015f64de9f401336fb913dd8528537d0"
+        ],
+        "validation": "The extractor contract passes all positive and fail-closed cases. Against the actual retained attempt-06 manifest and MP4, the fixed extractor produced a valid 1206x2622 PNG and source JSON bound to timestamp 1787991028.405; a recording missing its own timestamp is still rejected."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This evidence defect occurred inside the already-counted attempt-06 infrastructure failure; it invalidated that attempt's evidence but did not represent an additional qualification attempt to reset."
     }
   ]
 }
