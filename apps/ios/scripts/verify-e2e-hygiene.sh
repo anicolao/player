@@ -245,6 +245,31 @@ rg -q '^[[:space:]]*PLAYER_E2E_PARALLEL_WORKERS=1' \
   "${script_dir}/run-e2e-shard.sh" \
   || fail "the shard runner must keep UI test classes serial"
 
+sed -n '/^  story-qualification:/,/^  story-gate:/p' \
+  "${qualification_workflow}" \
+  | rg -o '[0-9]{3}-[a-z0-9][a-z0-9-]*' | sort \
+  > "${temporary_root}/qualification-story-gate-stories"
+cmp "${temporary_root}/manifest-stories" \
+  "${temporary_root}/qualification-story-gate-stories" \
+  || fail "formal story qualification must cover every canonical story exactly once"
+sed -n '/^  matrix-qualification:/,/^  qualification-report:/p' \
+  "${qualification_workflow}" \
+  | rg -o '[0-9]{3}-[a-z0-9][a-z0-9-]*' | sort \
+  > "${temporary_root}/qualification-matrix-stories"
+cmp "${temporary_root}/manifest-stories" \
+  "${temporary_root}/qualification-matrix-stories" \
+  || fail "formal matrix qualification must cover every canonical story exactly once"
+for formal_section in story-qualification matrix-qualification; do
+  section_end=story-gate
+  if [[ "${formal_section}" == matrix-qualification ]]; then
+    section_end=qualification-report
+  fi
+  lane_count="$(sed -n "/^  ${formal_section}:/,/^  ${section_end}:/p" \
+    "${qualification_workflow}" | rg -c '^[[:space:]]+- lane: lane-[1-5]$')"
+  [[ "${lane_count}" -eq 5 ]] \
+    || fail "${formal_section} must define exactly five hosted lanes"
+done
+
 if rg -q 'PlayerUITests/[A-Za-z0-9_]+/test[A-Za-z0-9_]+' "${workflow}"; then
   fail "CI must derive selectors from the canonical manifest instead of duplicating them"
 fi
@@ -365,9 +390,9 @@ cmp "${temporary_root}/qualification-expected-stories" \
   "${temporary_root}/qualification-workflow-stories" \
   || fail "R0 qualification must assign every canonical story once in each phase"
 [[ "$(rg -c '^[[:space:]]+max-parallel: 5$' "${qualification_workflow}")" -eq 1 ]] \
-  || fail "R0 story qualification must schedule exactly five isolated story jobs concurrently"
-rg -q 'r0-story-evidence-\$\{\{ matrix\.story \}\}' "${qualification_workflow}" \
-  || fail "R0 story qualification artifacts must remain independently attributable by story"
+  || fail "R0 story qualification must schedule exactly five isolated lanes concurrently"
+rg -q 'r0-story-evidence-\$\{\{ matrix\.lane \}\}' "${qualification_workflow}" \
+  || fail "R0 story qualification artifacts must remain independently attributable by lane"
 [[ "$(rg -c 'arguments=.*--attempts 10' "${qualification_workflow}")" -eq 1 ]] \
   || fail "R0 story qualification must request exactly ten attempts"
 [[ "$(rg -c 'matrices 5' "${qualification_workflow}")" -eq 1 ]] \

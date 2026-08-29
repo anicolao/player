@@ -41,28 +41,25 @@ jobs:
         run: python3 apps/ios/scripts/qualification/test_aggregate_r0_qualification.py
 
   story-qualification:
-    name: Story qualification ${{ matrix.story }}
+    name: Story qualification ${{ matrix.lane }}
     needs: preflight
     runs-on: macos-26
-    timeout-minutes: 210
+    timeout-minutes: 330
     strategy:
       fail-fast: false
       max-parallel: 5
       matrix:
-        story:
-          - 001-ios-launch
-          - 002-import-and-play
-          - 003-multifile-grouping
-          - 004-metadata-repair
-          - 005-play-and-restore
-          - 006-safe-zip-import
-          - 007-sleep-timer
-          - 008-library-search
-          - 009-accessible-core-journeys
-          - 010-library-backup
-          - 011-offline-recovery
-          - 012-monetization
-          - 013-app-store-listing
+        include:
+          - lane: lane-1
+            stories: '["005-play-and-restore","004-metadata-repair"]'
+          - lane: lane-2
+            stories: '["008-library-search","003-multifile-grouping","012-monetization"]'
+          - lane: lane-3
+            stories: '["007-sleep-timer","001-ios-launch"]'
+          - lane: lane-4
+            stories: '["010-library-backup","006-safe-zip-import","011-offline-recovery"]'
+          - lane: lane-5
+            stories: '["013-app-store-listing","002-import-and-play","009-accessible-core-journeys"]'
     defaults:
       run:
         shell: nix develop --command bash --noprofile --norc -e -o pipefail {0}
@@ -83,19 +80,22 @@ jobs:
           git diff --exit-code -- apps/ios/Player.xcodeproj
       - name: Measure ten isolated attempts per story
         env:
-          STORY: ${{ matrix.story }}
+          LANE: ${{ matrix.lane }}
+          STORIES: ${{ matrix.stories }}
           EXPECTED_SHA: ${{ inputs.expected_sha }}
         run: |
-          arguments=(--lane "${STORY}" --sha "${EXPECTED_SHA}" --attempts 10 --story "${STORY}")
+          arguments=(--lane "${LANE}" --sha "${EXPECTED_SHA}" --attempts 10)
+          while IFS= read -r story; do arguments+=(--story "${story}"); done \
+            < <(jq -r '.[]' <<< "${STORIES}")
           apps/ios/scripts/qualification/run-story-lane.sh "${arguments[@]}"
       - name: Upload complete story-lane evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: r0-story-evidence-${{ matrix.story }}-${{ inputs.expected_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: r0-story-evidence-${{ matrix.lane }}-${{ inputs.expected_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            apps/ios/DerivedData/R0Qualification/Stories/${{ matrix.story }}/
-            !apps/ios/DerivedData/R0Qualification/Stories/${{ matrix.story }}/Build/
+            apps/ios/DerivedData/R0Qualification/Stories/${{ matrix.lane }}/
+            !apps/ios/DerivedData/R0Qualification/Stories/${{ matrix.lane }}/Build/
           if-no-files-found: error
           compression-level: 0
           retention-days: 30
@@ -137,26 +137,26 @@ jobs:
     name: Matrix qualification ${{ matrix.lane }}
     needs: story-gate
     runs-on: macos-26
-    timeout-minutes: 150
+    timeout-minutes: 210
     strategy:
       fail-fast: false
       matrix:
         include:
           - lane: lane-1
-            stories: '["008-library-search","009-accessible-core-journeys"]'
+            stories: '["005-play-and-restore","004-metadata-repair"]'
             core: false
           - lane: lane-2
-            stories: '["007-sleep-timer","004-metadata-repair","003-multifile-grouping"]'
+            stories: '["008-library-search","003-multifile-grouping","012-monetization"]'
             core: false
           - lane: lane-3
-            stories: '["010-library-backup","001-ios-launch","012-monetization"]'
+            stories: '["007-sleep-timer","001-ios-launch"]'
             core: false
           - lane: lane-4
-            stories: '["005-play-and-restore","011-offline-recovery","006-safe-zip-import"]'
-            core: false
-          - lane: lane-5
-            stories: '["013-app-store-listing","002-import-and-play"]'
+            stories: '["010-library-backup","006-safe-zip-import","011-offline-recovery"]'
             core: true
+          - lane: lane-5
+            stories: '["013-app-store-listing","002-import-and-play","009-accessible-core-journeys"]'
+            core: false
     defaults:
       run:
         shell: nix develop --command bash --noprofile --norc -e -o pipefail {0}
