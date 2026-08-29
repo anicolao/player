@@ -1311,6 +1311,30 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This local focused diagnostic was not an accepted formal exact-SHA qualification attempt, so it did not reset Story 001's formal consecutive qualification count."
+    },
+    {
+      "signature": "reveal:009-accessible-core-journeys:settings-endpoint-budget-expired-before-gesture",
+      "story": "009-accessible-core-journeys",
+      "evidence": {
+        "workflowRun": 33235409727,
+        "workflowAttempt": 1,
+        "artifact": "Story 009 formal attempt-03 retained diagnostics in workflow run 33235409727",
+        "url": "https://github.com/anicolao/player/actions/runs/33235409727",
+        "commit": "2dac4cafdd0667f85fb7f3950cc4adf81b8f47d5",
+        "observation": "Formal attempt-03 failed AccessibilityUITests.testAccessibilityPreferenceTogglesUpdateAndPersist at AccessibilityUITests.swift:957. The helper reported settings-accessibility missing while production readiness still reported the top endpoint (offset=-189, minimum=-189, maximum=547.67, at-top=true, at-bottom=false), and the retained activity log showed that no scroll gesture was issued."
+      },
+      "rootCause": "The terminal Settings reveal shared one two-second deadline across expensive XCTest container and alias queries. Those observations exhausted the deadline before the geometry-driven loop began, so its elapsed-time loop condition skipped every scroll gesture and then misleadingly described the non-terminal top position as the reached endpoint.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Drive the terminal reveal loop by production scroll geometry, give the initial readiness observation and every progress-making gesture transition their own independently bounded two-second event deadline, and require the initial terminal success path to prove the bottom endpoint.",
+        "commits": [
+          "3a991f8b4d15281e3e62327d384278506d641b53"
+        ],
+        "validation": "A fresh exact-commit E2E build succeeded, and the exact failed selector AccessibilityUITests.testAccessibilityPreferenceTogglesUpdateAndPersist passed 1/1 in 24.606 seconds. E2E source hygiene passed all 16 contract tests and all 63 capture-readiness call sites with no fixed waits, retries, or transition budget over two seconds."
+      },
+      "qualificationResetCount": 1,
+      "resetEvidence": "Formal Story 009 attempts 01 and 02 passed at exact SHA 2dac4cafdd0667f85fb7f3950cc4adf81b8f47d5; attempt-03 then failed at that same SHA, resetting the consecutive qualification count from two to zero."
     }
   ]
 }
