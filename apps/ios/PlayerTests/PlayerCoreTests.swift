@@ -537,7 +537,7 @@ final class PlayerCoreTests: XCTestCase {
       return (requestedImage.size, requestedImage.scale)
     }.value
 
-    XCTAssertEqual(requestedProperties.0, CGSize(width: 200, height: 300))
+    XCTAssertEqual(requestedProperties.0, CGSize(width: 300, height: 300))
     XCTAssertEqual(requestedProperties.1, 1)
     XCTAssertNotNil(MPNowPlayingArtworkFactory.make(from: image.pngData() ?? Data()))
   }
@@ -686,30 +686,34 @@ final class PlayerCoreTests: XCTestCase {
     XCTAssertEqual(nowPlaying.latest?.artworkData, original)
   }
 
-  func testRealNowPlayingPublisherSurvivesArtworkConsumption() async throws {
-    let renderer = UIGraphicsImageRenderer(size: CGSize(width: 512, height: 512))
+  func testRealNowPlayingPublisherTransfersCompleteMetadataAndSquareArtwork() async throws {
+    let renderer = UIGraphicsImageRenderer(size: CGSize(width: 1_600, height: 800))
     let artworkData = renderer.pngData { context in
       UIColor.systemOrange.setFill()
-      context.fill(CGRect(x: 0, y: 0, width: 512, height: 512))
+      context.fill(CGRect(x: 0, y: 0, width: 1_600, height: 800))
     }
+    let provider = MPNowPlayingArtworkProvider(image: try XCTUnwrap(UIImage(data: artworkData)))
+    XCTAssertEqual(provider.boundsSize, CGSize(width: 1_024, height: 1_024))
+    XCTAssertNil(MPNowPlayingArtworkFactory.make(from: Data("not an image".utf8)))
     let publisher = MPNowPlayingPublisher()
     defer { publisher.clear() }
 
-    publisher.publish(NowPlayingSnapshot(
+    var snapshot = NowPlayingSnapshot(
       bookID: UUID(uuidString: "A9000000-0000-0000-0000-000000000001")!,
       title: "Artwork concurrency regression",
       authors: ["Player Tests"],
-      narrators: [],
-      seriesName: nil,
-      chapterTitle: nil,
-      chapterIndex: nil,
-      chapterCount: 0,
+      narrators: ["Alex Reader"],
+      seriesName: "Concurrency Library",
+      chapterTitle: "Receiver Handoff",
+      chapterIndex: 1,
+      chapterCount: 4,
       durationSeconds: 60,
       elapsedSeconds: 5,
-      playbackRate: 1,
-      defaultPlaybackRate: 1,
+      playbackRate: 1.25,
+      defaultPlaybackRate: 1.25,
       artworkData: artworkData
-    ))
+    )
+    publisher.publish(snapshot)
 
     let center = MPNowPlayingInfoCenter.default()
     XCTAssertEqual(center.playbackState, .playing)
@@ -719,9 +723,40 @@ final class PlayerCoreTests: XCTestCase {
     )
     XCTAssertEqual(center.nowPlayingInfo?[MPNowPlayingInfoPropertyIsLiveStream] as? Bool, false)
     XCTAssertEqual(
-      center.nowPlayingInfo?[MPMediaItemPropertyAlbumTitle] as? String,
+      center.nowPlayingInfo?[MPMediaItemPropertyTitle] as? String,
       "Artwork concurrency regression"
     )
+    XCTAssertEqual(
+      center.nowPlayingInfo?[MPMediaItemPropertyAlbumTitle] as? String,
+      "Concurrency Library"
+    )
+    XCTAssertEqual(
+      center.nowPlayingInfo?[MPMediaItemPropertyArtist] as? String,
+      "Player Tests"
+    )
+    XCTAssertEqual(
+      center.nowPlayingInfo?[MPMediaItemPropertyPlaybackDuration] as? Double,
+      60
+    )
+    XCTAssertEqual(
+      center.nowPlayingInfo?[MPNowPlayingInfoPropertyElapsedPlaybackTime] as? Double,
+      5
+    )
+    XCTAssertEqual(center.nowPlayingInfo?[MPNowPlayingInfoPropertyPlaybackRate] as? Double, 1.25)
+    XCTAssertEqual(
+      center.nowPlayingInfo?[MPNowPlayingInfoPropertyDefaultPlaybackRate] as? Double,
+      1.25
+    )
+    XCTAssertEqual(center.nowPlayingInfo?[MPMediaItemPropertyComposer] as? String, "Alex Reader")
+    XCTAssertEqual(
+      try XCTUnwrap(center.nowPlayingInfo?[MPNowPlayingInfoPropertyPlaybackProgress] as? Double),
+      5.0 / 60.0,
+      accuracy: 0.000_1
+    )
+    XCTAssertEqual(center.nowPlayingInfo?[MPNowPlayingInfoPropertyChapterNumber] as? Int, 1)
+    XCTAssertEqual(center.nowPlayingInfo?[MPNowPlayingInfoPropertyChapterCount] as? Int, 4)
+    XCTAssertEqual(center.nowPlayingInfo?[MPMediaItemPropertyAlbumTrackNumber] as? Int, 2)
+    XCTAssertEqual(center.nowPlayingInfo?[MPMediaItemPropertyAlbumTrackCount] as? Int, 4)
     XCTAssertEqual(
       (center.nowPlayingInfo?[MPMediaItemPropertyMediaType] as? NSNumber)?.uintValue,
       MPMediaType.audioBook.rawValue
@@ -729,12 +764,26 @@ final class PlayerCoreTests: XCTestCase {
     let artwork = try XCTUnwrap(
       center.nowPlayingInfo?[MPMediaItemPropertyArtwork] as? MPMediaItemArtwork
     )
-    let transferredArtwork = try XCTUnwrap(
-      artwork.image(at: CGSize(width: 128, height: 128))
-    )
+    let artworkBox = SendableNowPlayingArtwork(artwork)
+    let transferredBox = await Task.detached {
+      SendableArtworkImage(artworkBox.artwork.image(at: CGSize(width: 128, height: 64)))
+    }.value
+    let transferredArtwork = try XCTUnwrap(transferredBox.image)
     XCTAssertEqual(
       transferredArtwork.size,
       CGSize(width: 128, height: 128)
+    )
+    let maximumArtwork = try XCTUnwrap(
+      artwork.image(at: CGSize(width: 4_096, height: 4_096))
+    )
+    XCTAssertEqual(maximumArtwork.size, CGSize(width: 1_024, height: 1_024))
+
+    snapshot.playbackRate = 0
+    publisher.publish(snapshot)
+    XCTAssertEqual(center.playbackState, .paused)
+    XCTAssertEqual(
+      center.nowPlayingInfo?[MPNowPlayingInfoPropertyElapsedPlaybackTime] as? Double,
+      5
     )
   }
 
@@ -1798,6 +1847,60 @@ final class PlayerCoreTests: XCTestCase {
     XCTAssertEqual(harness.audioSession.activateCount, 2)
   }
 
+  func testInterruptionResumeKeepsExactPositionWithoutAwayTimeRewind() async throws {
+    let clock = MutableExternalPlaybackClock(Date(timeIntervalSince1970: 1_700_000_000))
+    let harness = makeBackgroundPlaybackHarness(clock: clock)
+    await harness.model.restore()
+    harness.model.configurePlaybackIntegrations()
+    await harness.model.play(bookID: harness.book.id, at: 65)
+
+    await harness.audioSession.send(.interruptionBegan)
+    clock.advance(by: 3_600)
+    XCTAssertNotNil(
+      harness.model.smartRewindPlan(for: harness.book.id),
+      "The fixture must prove a normal resume would rewind after this interval"
+    )
+
+    await harness.audioSession.send(.interruptionEnded(shouldResume: true))
+
+    XCTAssertEqual(harness.model.playbackState.status, .playing)
+    XCTAssertEqual(harness.model.playbackState.elapsedSeconds, 65, accuracy: 0.001)
+    XCTAssertNil(harness.model.pendingResumeRewind)
+    XCTAssertEqual(
+      harness.model.library.positionJournal.map(\.reason),
+      [.play, .interruption, .play]
+    )
+    let durable = await harness.store.load()
+    XCTAssertEqual(durable.playbackPosition?.positionMilliseconds, 65_000)
+    XCTAssertEqual(harness.nowPlaying.latest?.elapsedSeconds, 65)
+    XCTAssertEqual(harness.nowPlaying.latest?.playbackRate, 1)
+  }
+
+  func testNestedInterruptionStillResumesButRouteLossCancelsPendingResume() async throws {
+    let harness = makeBackgroundPlaybackHarness()
+    await harness.model.restore()
+    harness.model.configurePlaybackIntegrations()
+    await harness.model.play(bookID: harness.book.id, at: 65)
+
+    await harness.audioSession.send(.interruptionBegan)
+    await harness.audioSession.send(.interruptionBegan)
+    await harness.audioSession.send(.interruptionEnded(shouldResume: true))
+    XCTAssertEqual(harness.model.playbackState.status, .playing)
+    XCTAssertEqual(harness.model.playbackState.elapsedSeconds, 65, accuracy: 0.001)
+
+    await harness.audioSession.send(.interruptionBegan)
+    let journalBeforeRouteLoss = harness.model.library.positionJournal
+    await harness.audioSession.send(.oldDeviceUnavailable)
+    await harness.audioSession.send(.interruptionEnded(shouldResume: true))
+
+    XCTAssertEqual(harness.model.playbackState.status, .paused)
+    XCTAssertEqual(harness.model.playbackState.elapsedSeconds, 65, accuracy: 0.001)
+    XCTAssertEqual(harness.model.library.positionJournal, journalBeforeRouteLoss)
+    let durable = await harness.store.load()
+    XCTAssertEqual(durable.playbackPosition?.positionMilliseconds, 65_000)
+    XCTAssertEqual(harness.nowPlaying.latest?.playbackRate, 0)
+  }
+
   func testNowPlayingPublishesBookChapterElapsedAndRate() async throws {
     let harness = makeBackgroundPlaybackHarness()
     await harness.model.restore()
@@ -2620,7 +2723,11 @@ final class PlayerCoreTests: XCTestCase {
     )
   }
 
-  private func makeBackgroundPlaybackHarness() -> BackgroundPlaybackHarness {
+  private func makeBackgroundPlaybackHarness(
+    clock: any PlayerClock = FixedPlayerClock(
+      value: Date(timeIntervalSince1970: 1_700_000_000)
+    )
+  ) -> BackgroundPlaybackHarness {
     let bookID = UUID(uuidString: "90000000-0000-0000-0000-000000000001")!
     let assetID = UUID(uuidString: "90000000-0000-0000-0000-000000000002")!
     let book = Book(
@@ -2663,10 +2770,15 @@ final class PlayerCoreTests: XCTestCase {
         ),
       ]
     )
-    return makeBackgroundPlaybackHarness(book: book)
+    return makeBackgroundPlaybackHarness(book: book, clock: clock)
   }
 
-  private func makeBackgroundPlaybackHarness(book: Book) -> BackgroundPlaybackHarness {
+  private func makeBackgroundPlaybackHarness(
+    book: Book,
+    clock: any PlayerClock = FixedPlayerClock(
+      value: Date(timeIntervalSince1970: 1_700_000_000)
+    )
+  ) -> BackgroundPlaybackHarness {
     let store = InMemoryLibraryStore(
       snapshot: LibrarySnapshot(books: [book], importJobs: [], currentBookID: book.id)
     )
@@ -2686,7 +2798,7 @@ final class PlayerCoreTests: XCTestCase {
         audioSession: audioSession,
         remoteCommands: remoteCommands,
         nowPlaying: nowPlaying,
-        clock: FixedPlayerClock(value: Date(timeIntervalSince1970: 1_700_000_000)),
+        clock: clock,
         ids: DeterministicPlayerIDGenerator(values: identifiers)
       )
     )
@@ -2711,6 +2823,39 @@ private struct BackgroundPlaybackHarness {
   let audioSession: DeterministicAudioSessionController
   let remoteCommands: DeterministicRemoteCommandController
   let nowPlaying: DeterministicNowPlayingPublisher
+}
+
+private final class MutableExternalPlaybackClock: PlayerClock, @unchecked Sendable {
+  private let lock = NSLock()
+  private var value: Date
+
+  init(_ value: Date) {
+    self.value = value
+  }
+
+  func now() -> Date {
+    lock.withLock { value }
+  }
+
+  func advance(by interval: TimeInterval) {
+    lock.withLock { value = value.addingTimeInterval(interval) }
+  }
+}
+
+private final class SendableNowPlayingArtwork: @unchecked Sendable {
+  let artwork: MPMediaItemArtwork
+
+  init(_ artwork: MPMediaItemArtwork) {
+    self.artwork = artwork
+  }
+}
+
+private final class SendableArtworkImage: @unchecked Sendable {
+  let image: UIImage?
+
+  init(_ image: UIImage?) {
+    self.image = image
+  }
 }
 
 private actor StubMediaManager: MediaManaging {

@@ -309,6 +309,11 @@ final class TransportPreferencesTests: XCTestCase {
     await harness.remote.send(.changePlaybackRate(1.75))
     XCTAssertEqual(harness.playback.playbackRate, 1.75)
     XCTAssertEqual(harness.remote.transportPreferences.playbackRate, 1.75)
+    XCTAssertEqual(harness.nowPlaying.latest?.elapsedSeconds, 119)
+    XCTAssertEqual(harness.nowPlaying.latest?.chapterTitle, "Third")
+    XCTAssertEqual(harness.nowPlaying.latest?.chapterIndex, 2)
+    XCTAssertEqual(harness.nowPlaying.latest?.playbackRate, 1.75)
+    XCTAssertEqual(harness.nowPlaying.latest?.defaultPlaybackRate, 1.75)
 
     let durable = await harness.store.load()
     XCTAssertEqual(durable.playbackPosition?.positionMilliseconds, 119_000)
@@ -371,6 +376,27 @@ final class TransportPreferencesTests: XCTestCase {
         .changePlaybackRate(1.5),
       ]
     )
+  }
+
+  func testProductionRemoteAdapterRejectsMalformedScrubRateAndSkipEvents() {
+    let source = RecordingRemoteCommandCenterSource()
+    let controller = MPRemoteCommandController(source: source)
+    var received: [RemotePlaybackCommand] = []
+    controller.installCommandHandler { command in received.append(command) }
+
+    let invalidInvocations: [(RemoteCommandRegistration, RemoteCommandInvocation)] = [
+      (.skipForward, .init(interval: 0)),
+      (.skipBackward, .init(interval: -.infinity)),
+      (.changePosition, .init(positionTime: -1)),
+      (.changePosition, .init(positionTime: .nan)),
+      (.changeRate, .init(playbackRate: 0.45)),
+      (.changeRate, .init(playbackRate: .infinity)),
+    ]
+
+    for (registration, invocation) in invalidInvocations {
+      assertDispatchFailed(source.send(registration, invocation: invocation))
+    }
+    XCTAssertTrue(received.isEmpty)
   }
 
   func testProductionAudioAdapterConfiguresAndTranslatesInjectedNotifications() async throws {
@@ -478,6 +504,7 @@ final class TransportPreferencesTests: XCTestCase {
     ))
     let playback = DeterministicPlaybackController()
     let remote = DeterministicRemoteCommandController()
+    let nowPlaying = DeterministicNowPlayingPublisher()
     let identifiers = (1...30).map {
       UUID(uuidString: String(format: "b0000000-0000-0000-0000-%012d", $0))!
     }
@@ -489,6 +516,7 @@ final class TransportPreferencesTests: XCTestCase {
       ),
       playback: playback,
       remoteCommands: remote,
+      nowPlaying: nowPlaying,
       clock: FixedPlayerClock(value: Date(timeIntervalSince1970: 1_800_100_000)),
       ids: DeterministicPlayerIDGenerator(values: identifiers)
     ))
@@ -497,6 +525,7 @@ final class TransportPreferencesTests: XCTestCase {
       store: store,
       playback: playback,
       remote: remote,
+      nowPlaying: nowPlaying,
       model: model
     )
   }
@@ -508,6 +537,17 @@ final class TransportPreferencesTests: XCTestCase {
   ) {
     guard case .success = result else {
       XCTFail("Expected the registered production command to dispatch", file: file, line: line)
+      return
+    }
+  }
+
+  private func assertDispatchFailed(
+    _ result: RemoteCommandDispatchResult,
+    file: StaticString = #filePath,
+    line: UInt = #line
+  ) {
+    guard case .commandFailed = result else {
+      XCTFail("Expected the malformed production command to fail", file: file, line: line)
       return
     }
   }
@@ -682,6 +722,7 @@ private struct TransportHarness {
   var store: InMemoryLibraryStore
   var playback: DeterministicPlaybackController
   var remote: DeterministicRemoteCommandController
+  var nowPlaying: DeterministicNowPlayingPublisher
   var model: PlayerModel
 }
 

@@ -2864,14 +2864,14 @@ final class PlayerModel {
     await acknowledgePlaybackPosition(seconds, reason: reason)
   }
 
-  private func resumeCurrentBook() async {
+  private func resumeCurrentBook(applyingSmartRewind: Bool = true) async {
     guard let bookID = library.currentBookID else { return }
     guard allowNewPlaybackSession() else { return }
     if environment.playback.state.loadedBookID == bookID {
       do {
         try prepareAudioSessionForPlayback()
         applyCurrentTransportConfiguration(for: bookID)
-        if let rewindPlan = smartRewindPlan(for: bookID) {
+        if applyingSmartRewind, let rewindPlan = smartRewindPlan(for: bookID) {
           _ = await applySmartRewind(rewindPlan)
         }
         environment.playback.play()
@@ -2886,7 +2886,14 @@ final class PlayerModel {
         present(error, in: .playback)
       }
     } else {
-      await play(bookID: bookID)
+      if applyingSmartRewind {
+        await play(bookID: bookID)
+      } else {
+        let acknowledgedSeconds =
+          library.playbackPosition?.bookID == bookID
+          ? library.playbackPosition?.seconds : nil
+        await play(bookID: bookID, at: acknowledgedSeconds ?? currentBookPositionSeconds)
+      }
     }
   }
 
@@ -2922,13 +2929,19 @@ final class PlayerModel {
   private func handleAudioSessionEvent(_ event: AudioSessionEvent) async {
     switch event {
     case .interruptionBegan:
-      wasPlayingBeforeInterruption = playbackState.status == .playing
-      if wasPlayingBeforeInterruption { await pause(reason: .interruption) }
+      let beganWhilePlaying = playbackState.status == .playing
+      wasPlayingBeforeInterruption = wasPlayingBeforeInterruption || beganWhilePlaying
+      if beganWhilePlaying { await pause(reason: .interruption) }
     case .interruptionEnded(let shouldResume):
       let resume = shouldResume && wasPlayingBeforeInterruption
       wasPlayingBeforeInterruption = false
-      if resume { await resumeCurrentBook() }
+      // A system interruption is not a new listening session. Resume the exact
+      // acknowledged position rather than applying the user's away-time rewind.
+      if resume { await resumeCurrentBook(applyingSmartRewind: false) }
     case .oldDeviceUnavailable:
+      // Never resume onto the speaker after a headset or car route disappears,
+      // including when route loss arrives during an active interruption.
+      wasPlayingBeforeInterruption = false
       if playbackState.status == .playing { await pause(reason: .routeChange) }
     }
   }

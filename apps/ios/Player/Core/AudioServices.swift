@@ -620,6 +620,7 @@ final class AVAudioSessionController: AudioSessionControlling {
   private let notificationSource: any AudioSessionNotificationSource
   private var notificationObservations: [any AudioSessionNotificationObservation] = []
   private var eventHandler: (@MainActor @Sendable (AudioSessionEvent) async -> Void)?
+  private var pendingEventDelivery: Task<Void, Never>?
 
   convenience init(session: AVAudioSession = .sharedInstance()) {
     self.init(
@@ -686,8 +687,7 @@ final class AVAudioSessionController: AudioSessionControlling {
     @unknown default:
       return
     }
-    guard let eventHandler else { return }
-    Task { await eventHandler(event) }
+    enqueue(event)
   }
 
   private func handleRouteChangeNotification(_ payload: AudioSessionNotificationPayload) {
@@ -695,8 +695,20 @@ final class AVAudioSessionController: AudioSessionControlling {
       let rawReason = payload.routeChangeReason,
       AVAudioSession.RouteChangeReason(rawValue: rawReason) == .oldDeviceUnavailable
     else { return }
+    enqueue(.oldDeviceUnavailable)
+  }
+
+  /// Audio-session notifications may arrive back-to-back on a non-main queue.
+  /// Preserve their observed order while the model durably checkpoints each
+  /// transition; otherwise a route loss could race a resumable interruption.
+  private func enqueue(_ event: AudioSessionEvent) {
     guard let eventHandler else { return }
-    Task { await eventHandler(.oldDeviceUnavailable) }
+    let precedingDelivery = pendingEventDelivery
+    pendingEventDelivery = Task { @MainActor in
+      await precedingDelivery?.value
+      guard !Task.isCancelled else { return }
+      await eventHandler(event)
+    }
   }
 }
 
@@ -838,6 +850,7 @@ final class MPRemoteCommandController: RemoteCommandControlling {
     source.setEnabled(true, for: .skipForward)
     let forwardTarget = source.addTarget(for: .skipForward) { invocation in
       let seconds = invocation.interval ?? self.transportPreferences.forwardSkipSeconds
+      guard seconds.isFinite, seconds > 0 else { return .commandFailed }
       Task { @MainActor in await handler(.skipForward(seconds: seconds)) }
       return .success
     }
@@ -845,13 +858,17 @@ final class MPRemoteCommandController: RemoteCommandControlling {
     source.setEnabled(true, for: .skipBackward)
     let backwardTarget = source.addTarget(for: .skipBackward) { invocation in
       let seconds = invocation.interval ?? self.transportPreferences.backwardSkipSeconds
+      guard seconds.isFinite, seconds > 0 else { return .commandFailed }
       Task { @MainActor in await handler(.skipBackward(seconds: seconds)) }
       return .success
     }
     installedTargets.append((.skipBackward, backwardTarget))
     source.setEnabled(true, for: .changePosition)
     let positionTarget = source.addTarget(for: .changePosition) { invocation in
-      guard let seconds = invocation.positionTime else {
+      guard let seconds = invocation.positionTime,
+        seconds.isFinite,
+        seconds >= 0
+      else {
         return .commandFailed
       }
       Task { @MainActor in await handler(.changePosition(seconds: seconds)) }
@@ -860,7 +877,9 @@ final class MPRemoteCommandController: RemoteCommandControlling {
     installedTargets.append((.changePosition, positionTarget))
     source.setEnabled(true, for: .changeRate)
     let rateTarget = source.addTarget(for: .changeRate) { invocation in
-      guard let rate = invocation.playbackRate else {
+      guard let rate = invocation.playbackRate,
+        TransportPreferences.isValidPlaybackRate(rate)
+      else {
         return .commandFailed
       }
       Task { @MainActor in await handler(.changePlaybackRate(rate)) }
@@ -946,6 +965,11 @@ final class MPNowPlayingPublisher: NowPlayingPublishing {
     if let chapterIndex = snapshot.chapterIndex {
       information[MPNowPlayingInfoPropertyChapterNumber] = chapterIndex
       information[MPNowPlayingInfoPropertyChapterCount] = snapshot.chapterCount
+      // Older Bluetooth/AVRCP receivers commonly consume album-track fields
+      // instead of the newer chapter keys. Publish both representations while
+      // retaining Apple's zero-based chapter number contract above.
+      information[MPMediaItemPropertyAlbumTrackNumber] = chapterIndex + 1
+      information[MPMediaItemPropertyAlbumTrackCount] = snapshot.chapterCount
     }
     if let data = snapshot.artworkData, let artwork = MPNowPlayingArtworkFactory.make(from: data) {
       information[MPMediaItemPropertyArtwork] = artwork
@@ -982,47 +1006,45 @@ final class MPNowPlayingArtworkProvider: @unchecked Sendable {
   let boundsSize: CGSize
 
   nonisolated init(image: UIImage) {
-    storedImage = image
     let sourceSize = image.size
-    let scale = min(
-      1,
-      Self.maximumDimension / max(sourceSize.width, sourceSize.height)
+    let side = min(
+      Self.maximumDimension,
+      max(1, max(sourceSize.width, sourceSize.height).rounded(.down))
     )
-    boundsSize = CGSize(
-      width: max(1, (sourceSize.width * scale).rounded(.down)),
-      height: max(1, (sourceSize.height * scale).rounded(.down))
-    )
+    boundsSize = CGSize(width: side, height: side)
+    storedImage = Self.squareImage(image, side: side)
   }
 
-  /// MediaPlayer asks for receiver-appropriate artwork dimensions. Return an
-  /// exact-size bitmap so Bluetooth and in-car displays do not have to decode
-  /// or resize an arbitrarily large embedded cover themselves.
+  /// MediaPlayer asks for receiver-appropriate artwork dimensions. Return a
+  /// square bitmap at the largest requested edge so Bluetooth and in-car
+  /// displays do not have to decode or crop an arbitrarily large cover.
   nonisolated func image(for requestedSize: CGSize) -> UIImage {
     guard requestedSize.width.isFinite, requestedSize.height.isFinite,
       requestedSize.width > 0, requestedSize.height > 0
     else { return storedImage }
 
-    let targetSize = CGSize(
-      width: min(Self.maximumDimension, max(1, requestedSize.width.rounded(.up))),
-      height: min(Self.maximumDimension, max(1, requestedSize.height.rounded(.up)))
+    let side = min(
+      Self.maximumDimension,
+      max(1, max(requestedSize.width, requestedSize.height).rounded(.up))
     )
-    let sourceSize = storedImage.size
-    guard sourceSize.width > 0, sourceSize.height > 0 else { return storedImage }
+    return Self.squareImage(storedImage, side: side)
+  }
 
-    let scale = max(
-      targetSize.width / sourceSize.width,
-      targetSize.height / sourceSize.height
-    )
+  private nonisolated static func squareImage(_ image: UIImage, side: CGFloat) -> UIImage {
+    let sourceSize = image.size
+    guard sourceSize.width > 0, sourceSize.height > 0 else { return image }
+    let targetSize = CGSize(width: side, height: side)
+    let scale = max(side / sourceSize.width, side / sourceSize.height)
     let drawSize = CGSize(width: sourceSize.width * scale, height: sourceSize.height * scale)
     let drawOrigin = CGPoint(
-      x: (targetSize.width - drawSize.width) / 2,
-      y: (targetSize.height - drawSize.height) / 2
+      x: (side - drawSize.width) / 2,
+      y: (side - drawSize.height) / 2
     )
     let format = UIGraphicsImageRendererFormat()
     format.scale = 1
     format.opaque = false
     return UIGraphicsImageRenderer(size: targetSize, format: format).image { _ in
-      storedImage.draw(in: CGRect(origin: drawOrigin, size: drawSize))
+      image.draw(in: CGRect(origin: drawOrigin, size: drawSize))
     }
   }
 }

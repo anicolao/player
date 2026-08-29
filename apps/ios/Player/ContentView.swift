@@ -2649,6 +2649,14 @@ func compactPlaybackTime(_ seconds: Double) -> String {
             .interruptionEnded(shouldResume: false)
           )
         }
+        control("Resume", identifier: "e2e-interruption-ended-resume") {
+          E2EPlaybackEventBridge.shared.sendAudioSession(
+            .interruptionEnded(shouldResume: true)
+          )
+        }
+        control("Route Lost", identifier: "e2e-old-device-unavailable") {
+          E2EPlaybackEventBridge.shared.sendAudioSession(.oldDeviceUnavailable)
+        }
         E2EPlaybackProgressControlSurface()
       }
       .padding(8)

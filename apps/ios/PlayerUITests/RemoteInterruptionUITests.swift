@@ -157,6 +157,47 @@ final class RemoteInterruptionUITests: XCTestCase {
       reason: "play"
     )
 
+    app.buttons["e2e-interruption-began"].tap()
+    _ = try requireProbe(
+      probe,
+      status: "paused",
+      positionMilliseconds: 27_000,
+      sequence: 11,
+      reason: "interruption",
+      postedAudioEvent: "interruption-began"
+    )
+
+    app.buttons["e2e-interruption-ended-resume"].tap()
+    let resumedAfterInterruption = try requireProbe(
+      probe,
+      status: "playing",
+      positionMilliseconds: 27_000,
+      sequence: 12,
+      reason: "play",
+      postedAudioEvent: "interruption-ended-resume"
+    )
+    assertIdentityAndPersistence(resumedAfterInterruption, expectedPositionMilliseconds: 27_000)
+
+    app.buttons["e2e-old-device-unavailable"].tap()
+    let routeLost = try requireProbe(
+      probe,
+      status: "paused",
+      positionMilliseconds: 27_000,
+      sequence: 13,
+      reason: "routeChange",
+      postedAudioEvent: "old-device-unavailable"
+    )
+    assertIdentityAndPersistence(routeLost, expectedPositionMilliseconds: 27_000)
+
+    app.buttons["e2e-remote-play"].tap()
+    _ = try requireProbe(
+      probe,
+      status: "playing",
+      positionMilliseconds: 27_000,
+      sequence: 14,
+      reason: "play"
+    )
+
     XCUIDevice.shared.press(.home)
     let backgroundState = XCTNSPredicateExpectation(
       predicate: NSPredicate { object, _ in
@@ -180,7 +221,7 @@ final class RemoteInterruptionUITests: XCTestCase {
       probe,
       status: "playing",
       positionMilliseconds: 27_000,
-      sequence: 11,
+      sequence: 15,
       reason: "background"
     )
     assertIdentityAndPersistence(backgrounded, expectedPositionMilliseconds: 27_000)
@@ -196,7 +237,7 @@ final class RemoteInterruptionUITests: XCTestCase {
       probe,
       status: "paused",
       positionMilliseconds: 27_000,
-      sequence: 12,
+      sequence: 16,
       reason: "pause"
     )
     assertIdentityAndPersistence(finalPause, expectedPositionMilliseconds: 27_000)
@@ -209,7 +250,7 @@ final class RemoteInterruptionUITests: XCTestCase {
       restoredProbe,
       status: "paused",
       positionMilliseconds: 27_000,
-      sequence: 12,
+      sequence: 16,
       reason: "pause"
     )
     assertIdentityAndPersistence(restored, expectedPositionMilliseconds: 27_000)
@@ -303,18 +344,26 @@ private struct PlaybackJournalProbe: Equatable {
   init?(_ value: String?) {
     guard let value else { return nil }
     let fields = value.split(separator: "|", omittingEmptySubsequences: false)
-    guard fields.count == 10,
-          fields[0] == "probe",
-          fields[1] == "paused" || fields[1] == "playing",
-          UUID(uuidString: String(fields[2])) != nil,
-          let chapterIndex = Int(fields[3]), chapterIndex >= 0,
-          let positionMilliseconds = Int(fields[4]), positionMilliseconds >= 0,
-          let sequence = Int(fields[5]), sequence > 0,
-          ["background", "interruption", "pause", "periodic", "play", "seek"]
-            .contains(String(fields[6])),
-          let persistedPositionMilliseconds = Int(fields[7]),
-          persistedPositionMilliseconds >= 0,
-          let audioSession = AudioSessionProbeEvidence(String(fields[9]))
+    guard
+      fields.count == 10,
+      fields[0] == "probe",
+      fields[1] == "paused" || fields[1] == "playing",
+      UUID(uuidString: String(fields[2])) != nil,
+      let chapterIndex = Int(fields[3]), chapterIndex >= 0,
+      let positionMilliseconds = Int(fields[4]), positionMilliseconds >= 0,
+      let sequence = Int(fields[5]), sequence > 0,
+      [
+        "background",
+        "interruption",
+        "pause",
+        "periodic",
+        "play",
+        "routeChange",
+        "seek",
+      ].contains(String(fields[6])),
+      let persistedPositionMilliseconds = Int(fields[7]),
+      persistedPositionMilliseconds >= 0,
+      let audioSession = AudioSessionProbeEvidence(String(fields[9]))
     else { return nil }
 
     status = String(fields[1])

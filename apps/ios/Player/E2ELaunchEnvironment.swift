@@ -1281,7 +1281,7 @@ extension PlayerEnvironment {
         in: libraryURL,
         prefix: "21000000",
         initialSuffix: 1,
-        requiredCount: 12
+        requiredCount: 32
       )
 
       let bookID = UUID(uuidString: "20000000-0000-0000-0000-000000000001")!
@@ -1339,7 +1339,7 @@ extension PlayerEnvironment {
         positionJournal: [seedEvent]
       )
       let persisted = CodableLibraryStore(fileURL: libraryURL)
-      let ids = (firstAvailableSuffix...(firstAvailableSuffix + 11)).map {
+      let ids = (firstAvailableSuffix...(firstAvailableSuffix + 31)).map {
         UUID(uuidString: String(format: "21000000-0000-0000-0000-%012d", $0))!
       }
       let playbackEventBridge = E2EPlaybackEventBridge.shared
