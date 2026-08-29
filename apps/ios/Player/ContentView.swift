@@ -190,7 +190,8 @@ struct ContentView: View {
       NowPlayingView(
         model: model,
         book: book,
-        showsRewindExpiryControl: playbackControls.rewindExpiryControl
+        showsRewindExpiryControl: playbackControls.rewindExpiryControl,
+        showsPlaybackEventControls: playbackControls.eventControls
       )
       .dynamicTypeSize(dynamicTypeSize)
     }
@@ -207,7 +208,7 @@ struct ContentView: View {
     }
     #if E2E
       .overlay(alignment: .topLeading) {
-        if playbackControls.eventControls {
+        if playbackControls.eventControls, presentedPlayerBook == nil {
           E2EPlaybackControlSurface(model: model)
         }
       }
@@ -1849,6 +1850,7 @@ private struct NowPlayingView: View {
   @Bindable var model: PlayerModel
   let book: Book
   let showsRewindExpiryControl: Bool
+  let showsPlaybackEventControls: Bool
   @State private var requestedPosition: Double?
   @State private var showsTransportPreferences = false
   @State private var showsSleepTimer = false
@@ -2023,6 +2025,11 @@ private struct NowPlayingView: View {
               .accessibilityIdentifier("e2e-advance-rewind-expiry")
             }
           }
+          .overlay(alignment: .topLeading) {
+            if showsPlaybackEventControls {
+              E2EPlaybackProgressControlSurface()
+            }
+          }
         #endif
       }
       if showsSleepTimer {
@@ -2053,6 +2060,7 @@ private struct NowPlayingView: View {
         }
         .buttonStyle(.plain)
         .fixedSize()
+        .accessibilityIdentifier("close-now-playing")
       }
       .sharedBackgroundVisibility(.hidden)
 
@@ -2070,7 +2078,10 @@ private struct NowPlayingView: View {
       }
       .sharedBackgroundVisibility(.hidden)
     } else {
-      ToolbarItem(placement: .topBarLeading) { Button("Done") { dismiss() } }
+      ToolbarItem(placement: .topBarLeading) {
+        Button("Done") { dismiss() }
+          .accessibilityIdentifier("close-now-playing")
+      }
       ToolbarItemGroup(placement: .topBarTrailing) {
         addBookmarkButton
         sleepTimerToolbarButton
@@ -2265,10 +2276,11 @@ private struct NowPlayingView: View {
   }
 
   private var positionAccessibilityValue: String {
-    let elapsed = sliderAccessibilityTime(displayedPosition)
-    let remaining = sliderAccessibilityTime(max(displayedDuration - displayedPosition, 0))
+    let position = visibleTimelinePosition
+    let elapsed = sliderAccessibilityTime(position)
+    let remaining = sliderAccessibilityTime(max(displayedDuration - position, 0))
     let percent = displayedDuration > 0
-      ? Int((displayedPosition / displayedDuration * 100).rounded()) : 0
+      ? Int((position / displayedDuration * 100).rounded()) : 0
     if let chapter = currentChapter {
       return "\(chapter.title), \(elapsed) elapsed, \(remaining) remaining, \(percent) percent"
     }
@@ -2428,7 +2440,7 @@ private struct MiniPlayerView: View {
     }
     .shadow(color: PlayerColor.ink.opacity(0.10), radius: 14, y: 6)
     .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-    .onTapGesture(perform: open)
+    .gesture(TapGesture().onEnded(open), including: .gesture)
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("mini-player")
     .accessibilityValue(miniPlayerValue)
@@ -2436,7 +2448,10 @@ private struct MiniPlayerView: View {
 
   private var miniPlayerValue: String {
     let milliseconds = Int((model.playbackState.elapsedSeconds * 1_000).rounded())
-    var value = "player:\(model.playbackState.status.rawValue):\(book.id.uuidString.lowercased()):0:\(milliseconds)"
+    let chapterIndex = book.chapters.lastIndex(where: {
+      $0.startSeconds <= model.playbackState.elapsedSeconds
+    }) ?? 0
+    var value = "player:\(model.playbackState.status.rawValue):\(book.id.uuidString.lowercased()):\(chapterIndex):\(milliseconds)"
     if let projection = model.activeSleepTimerProjection {
       let remaining = projection.remainingSeconds.map { Int(max(0, $0).rounded(.down)) }
       let selection = model.activeSleepTimer.map { sleepSelectionToken($0.selection) } ?? "none"
@@ -2633,6 +2648,7 @@ func compactPlaybackTime(_ seconds: Double) -> String {
             .interruptionEnded(shouldResume: false)
           )
         }
+        E2EPlaybackProgressControlSurface()
       }
       .padding(8)
       .background(PlayerColor.background.opacity(0.98), in: RoundedRectangle(cornerRadius: 10))
@@ -2685,6 +2701,38 @@ func compactPlaybackTime(_ seconds: Double) -> String {
         commands,
         E2EPlaybackEventBridge.shared.audioSessionEvidence,
       ].joined(separator: "|")
+    }
+  }
+
+  private struct E2EPlaybackProgressControlSurface: View {
+    var body: some View {
+      VStack(alignment: .leading, spacing: 4) {
+        control("Progress 45", identifier: "e2e-engine-progress-45") {
+          await E2EPlaybackEventBridge.shared.sendPlayback(.progress(seconds: 45))
+        }
+        control("Progress 75", identifier: "e2e-engine-progress-75") {
+          await E2EPlaybackEventBridge.shared.sendPlayback(.progress(seconds: 75))
+        }
+        control("Progress 90", identifier: "e2e-engine-progress-90") {
+          await E2EPlaybackEventBridge.shared.sendPlayback(.progress(seconds: 90))
+        }
+        control("Playback End", identifier: "e2e-engine-reached-end") {
+          await E2EPlaybackEventBridge.shared.sendPlayback(.reachedEnd)
+        }
+      }
+      .padding(4)
+      .background(PlayerColor.background.opacity(0.98), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func control(
+      _ label: String,
+      identifier: String,
+      action: @escaping @MainActor @Sendable () async -> Void
+    ) -> some View {
+      Button(label) { Task { await action() } }
+        .frame(minWidth: 86, minHeight: 40)
+        .buttonStyle(.bordered)
+        .accessibilityIdentifier(identifier)
     }
   }
 

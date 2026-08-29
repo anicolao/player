@@ -4,6 +4,78 @@ import XCTest
 final class MetadataChapterUITests: XCTestCase {
   private let bookID = "30000000-0000-0000-0000-000000000001"
 
+  func testInjectedProgressCrossesVisibleChapterBoundariesAndCompletes() {
+    continueAfterFailure = false
+    XCUIDevice.shared.orientation = .portrait
+
+    let setup = XCUIApplication()
+    setup.launchArguments = [
+      "-e2e", "-e2e-reset", "-e2e-fixture", "metadata-rich-book",
+      "-e2e-metadata-rich-namespace", "metadata-live-progress",
+      "-AppleLanguages", "(en)", "-AppleLocale", "en_CA",
+      "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryM",
+      "-NSTreatUnknownArgumentsAsOpen", "NO",
+    ]
+    setup.launchEnvironment["TZ"] = "America/Toronto"
+    setup.launch()
+
+    XCTAssertTrue(setup.staticTexts["Harbor at Dawn"].waitForExistence(timeout: 2))
+    setup.staticTexts["Harbor at Dawn"].tap()
+    XCTAssertTrue(setup.buttons["chapter-1"].waitForExistence(timeout: 2))
+    setup.buttons["chapter-1"].tap()
+    XCTAssertTrue(setup.otherElements["now-playing-screen"].waitForExistence(timeout: 2))
+    XCTAssertTrue(terminateAndWait(setup))
+
+    let app = XCUIApplication()
+    app.launchArguments = [
+      "-e2e", "-e2e-event-controls", "-e2e-fixture", "metadata-rich-book",
+      "-e2e-metadata-rich-namespace", "metadata-live-progress",
+      "-AppleLanguages", "(en)", "-AppleLocale", "en_CA",
+      "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryM",
+      "-NSTreatUnknownArgumentsAsOpen", "NO",
+    ]
+    app.launchEnvironment["TZ"] = "America/Toronto"
+    app.launch()
+
+    let miniPlayer = app.otherElements["mini-player"]
+    XCTAssertTrue(miniPlayer.waitForExistence(timeout: 2))
+    app.buttons["mini-player-play-pause"].tap()
+    XCTAssertTrue(miniPlayer.waitForStringValue("player:playing:\(bookID):0:0", timeout: 2))
+    miniPlayer.tap()
+    let nowPlaying = app.otherElements["now-playing-screen"]
+    XCTAssertTrue(nowPlaying.waitForExistence(timeout: 2))
+    XCTAssertTrue(tapHittableButton("e2e-engine-progress-45", in: app))
+    XCTAssertTrue(
+      nowPlaying.waitForStringValue("player:playing:\(bookID):1:45000", timeout: 2)
+    )
+    XCTAssertTrue(app.staticTexts["Crossing the Bar"].exists)
+    XCTAssertTrue(app.staticTexts["Chapter 2 of 3"].exists)
+    XCTAssertTrue(app.staticTexts["player-elapsed-time"].waitForStringValue("0m15s", timeout: 2))
+    XCTAssertTrue(app.staticTexts["player-remaining-time"].waitForStringValue("0m30s", timeout: 2))
+    let crossingSlider = String(describing: app.sliders["player-position-slider"].value)
+    XCTAssertTrue(crossingSlider.contains("Crossing the Bar"))
+    XCTAssertTrue(crossingSlider.contains("33 percent"))
+
+    XCTAssertTrue(tapHittableButton("e2e-engine-progress-75", in: app))
+    XCTAssertTrue(
+      nowPlaying.waitForStringValue("player:playing:\(bookID):2:75000", timeout: 2)
+    )
+    XCTAssertTrue(app.staticTexts["Safe Harbor"].exists)
+    XCTAssertTrue(app.staticTexts["Chapter 3 of 3"].exists)
+    XCTAssertTrue(app.staticTexts["player-elapsed-time"].waitForStringValue("0m00s", timeout: 2))
+    XCTAssertTrue(app.staticTexts["player-remaining-time"].waitForStringValue("0m45s", timeout: 2))
+    let harborSlider = String(describing: app.sliders["player-position-slider"].value)
+    XCTAssertTrue(harborSlider.contains("Safe Harbor"))
+    XCTAssertTrue(harborSlider.contains("0 percent"))
+
+    XCTAssertTrue(tapHittableButton("e2e-engine-reached-end", in: app))
+    XCTAssertTrue(
+      nowPlaying.waitForStringValue("player:paused:\(bookID):2:120000", timeout: 2)
+    )
+    XCTAssertTrue(app.staticTexts["player-elapsed-time"].waitForStringValue("0m45s", timeout: 2))
+    XCTAssertTrue(app.staticTexts["player-remaining-time"].waitForStringValue("0m00s", timeout: 2))
+  }
+
   func testShowsEmbeddedMetadataAndStartsAChapter() throws {
     continueAfterFailure = false
     XCUIDevice.shared.orientation = .portrait
@@ -131,5 +203,12 @@ final class MetadataChapterUITests: XCTestCase {
 
   private func hasExactValue(_ element: XCUIElement, _ expected: String) -> Bool {
     element.exists && element.value.map(String.init(describing:)) == expected
+  }
+
+  private func tapHittableButton(_ identifier: String, in app: XCUIApplication) -> Bool {
+    let query = app.buttons.matching(identifier: identifier)
+    guard let button = query.allElementsBoundByIndex.first(where: \.isHittable) else { return false }
+    button.tap()
+    return true
   }
 }

@@ -144,7 +144,7 @@ final class SleepTimerUITests: XCTestCase {
     XCTAssertTrue(miniPlayer.waitForExistence(timeout: 2))
     try requireValue(
       miniPlayer,
-      "player:paused:\(bookID):0:70000|sleep=\(timer101),selection=end-track,remaining=20,fade=true,phase=active"
+      "player:paused:\(bookID):1:70000|sleep=\(timer101),selection=end-track,remaining=20,fade=true,phase=active"
     )
     miniPlayer.tap()
     let activeScreen = try openSleepTimer(restored)
@@ -256,7 +256,7 @@ final class SleepTimerUITests: XCTestCase {
     expired.launch()
     let expiredMiniPlayer = expired.otherElements["mini-player"]
     XCTAssertTrue(expiredMiniPlayer.waitForExistence(timeout: 2))
-    try requireValue(expiredMiniPlayer, "player:paused:\(bookID):0:90000")
+    try requireValue(expiredMiniPlayer, "player:paused:\(bookID):1:90000")
     expiredMiniPlayer.tap()
     let contextBanner = expired.descendants(matching: .any)["sleep-resume-context"]
     try requireValue(

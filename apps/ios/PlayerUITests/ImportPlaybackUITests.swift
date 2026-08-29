@@ -40,6 +40,12 @@ final class ImportPlaybackUITests: XCTestCase {
     )
     XCTAssertTrue(app.sliders["player-position-slider"].exists)
     XCTAssertTrue(app.buttons["player-play-pause"].exists)
+    XCTAssertEqual(app.staticTexts["player-elapsed-time"].value as? String, "0m00s")
+    XCTAssertEqual(app.staticTexts["player-remaining-time"].value as? String, "0m00s")
+    let sliderValue = String(describing: app.sliders["player-position-slider"].value)
+    XCTAssertTrue(sliderValue.contains("0 percent"))
+    XCTAssertFalse(sliderValue.lowercased().contains("nan"))
+    XCTAssertFalse(sliderValue.lowercased().contains("infinite"))
   }
 
   func testReviewsCommitsAndPlaysOneAudiobook() throws {

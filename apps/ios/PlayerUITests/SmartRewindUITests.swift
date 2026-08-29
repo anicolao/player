@@ -339,18 +339,20 @@ final class SmartRewindUITests: XCTestCase {
   }
 
   private func playerValue(status: String, position: Int64) -> String {
-    let chapter: Int
+    "player:\(status):\(bookID):\(chapterIndex(at: position)):\(position)"
+  }
+
+  private func chapterIndex(at position: Int64) -> Int {
     switch position {
-    case 140_000...: chapter = 3
-    case 100_000...: chapter = 2
-    case 60_000...: chapter = 1
-    default: chapter = 0
+    case 140_000...: 3
+    case 100_000...: 2
+    case 60_000...: 1
+    default: 0
     }
-    return "player:\(status):\(bookID):\(chapter):\(position)"
   }
 
   private func miniPlayerValue(status: String, position: Int64) -> String {
-    "player:\(status):\(bookID):0:\(position)"
+    playerValue(status: status, position: position)
   }
 
   private func makeApplication(scenario: String, reset: Bool) -> XCUIApplication {

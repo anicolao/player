@@ -9,7 +9,8 @@
   ],
   "nonvisualTests": [
     "PlayerUITests/ImportPlaybackUITests/testAbandonsReadyImportAndClearsInbox",
-    "PlayerUITests/ImportPlaybackUITests/testNowPlayingRendersWhenImportedDurationIsUnavailable"
+    "PlayerUITests/ImportPlaybackUITests/testNowPlayingRendersWhenImportedDurationIsUnavailable",
+    "PlayerUITests/MetadataChapterUITests/testInjectedProgressCrossesVisibleChapterBoundariesAndCompletes"
   ],
   "fixture": "single-audiobook-ready",
   "additionalFixtures": [

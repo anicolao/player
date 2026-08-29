@@ -26,6 +26,7 @@
     private var audioNotificationHandlers: [
       AudioSessionNotificationKind: @Sendable (AudioSessionNotificationPayload) -> Void
     ] = [:]
+    @ObservationIgnored private weak var playbackController: DeterministicPlaybackController?
 
     private(set) var registeredCommands: Set<String> = []
     private(set) var registeredAudioNotifications: Set<String> = []
@@ -33,6 +34,8 @@
     private(set) var audioActivationCount = 0
     private(set) var latestPostedAudioEvent = "none"
     private(set) var beganReceivingRemoteControlEvents = false
+
+    var hasPlaybackController: Bool { playbackController != nil }
 
     var notificationObject: AnyObject { self }
 
@@ -45,6 +48,15 @@
       audioActivationCount = 0
       latestPostedAudioEvent = "none"
       beganReceivingRemoteControlEvents = false
+      playbackController = nil
+    }
+
+    func connect(playbackController: DeterministicPlaybackController) {
+      self.playbackController = playbackController
+    }
+
+    func sendPlayback(_ event: PlaybackEngineEvent) async {
+      await playbackController?.send(event)
     }
 
     func configureForSpokenAudio(options: AVAudioSession.CategoryOptions) throws {

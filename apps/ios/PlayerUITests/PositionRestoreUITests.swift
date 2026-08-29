@@ -7,6 +7,81 @@ final class PositionRestoreUITests: XCTestCase {
   private let seekPositionMilliseconds = 60_000
   private let restoreToleranceMilliseconds = 500
 
+  func testLiveProgressUpdatesMiniAndFullPlayerAcrossLifecycle() throws {
+    continueAfterFailure = false
+    XCUIDevice.shared.orientation = .portrait
+
+    let app = makeApplication(reset: true, eventControls: true)
+    app.launch()
+    let miniPlayer = app.otherElements["mini-player"]
+    let miniTransport = app.buttons["mini-player-play-pause"]
+    let miniTimeline = app.staticTexts["mini-player-timeline"]
+    XCTAssertTrue(miniTransport.waitForExistence(timeout: 2))
+
+    miniTransport.tap()
+    _ = try requirePlaybackState(
+      miniPlayer,
+      status: "playing",
+      positionMilliseconds: initialPositionMilliseconds
+    )
+    XCTAssertFalse(
+      app.otherElements["now-playing-screen"].exists,
+      "The mini-player transport must not also open Now Playing"
+    )
+
+    app.buttons["e2e-engine-progress-45"].tap()
+    _ = try requirePlaybackState(miniPlayer, status: "playing", positionMilliseconds: 45_000)
+    XCTAssertTrue(miniTimeline.waitForStringValue("0m45s of 2m00s", timeout: 2))
+
+    miniPlayer.tap()
+    let nowPlaying = app.otherElements["now-playing-screen"]
+    XCTAssertTrue(nowPlaying.waitForExistence(timeout: 2))
+    _ = try requirePlaybackState(nowPlaying, status: "playing", positionMilliseconds: 45_000)
+    XCTAssertTrue(app.staticTexts["player-elapsed-time"].waitForStringValue("0m45s", timeout: 2))
+    XCTAssertTrue(app.staticTexts["player-remaining-time"].waitForStringValue("1m15s", timeout: 2))
+    XCTAssertTrue(
+      String(describing: app.sliders["player-position-slider"].value).contains("38 percent")
+    )
+
+    try tapHittableButton("e2e-engine-progress-75", in: app)
+    _ = try requirePlaybackState(nowPlaying, status: "playing", positionMilliseconds: 75_000)
+    XCTAssertTrue(app.staticTexts["player-elapsed-time"].waitForStringValue("1m15s", timeout: 2))
+    XCTAssertTrue(app.staticTexts["player-remaining-time"].waitForStringValue("0m45s", timeout: 2))
+    XCTAssertTrue(
+      waitForPredicate(
+        NSPredicate { object, _ in
+          guard let element = object as? XCUIElement else { return false }
+          return String(describing: element.value).contains("63 percent")
+        },
+        on: app.sliders["player-position-slider"]
+      )
+    )
+
+    try tapHittableButton("close-now-playing", in: app)
+    XCTAssertTrue(miniPlayer.waitForExistence(timeout: 2))
+    XCUIDevice.shared.press(.home)
+    XCTAssertTrue(app.wait(for: .runningBackground, timeout: 2))
+    app.activate()
+    XCTAssertTrue(app.wait(for: .runningForeground, timeout: 2))
+    try tapHittableButton("e2e-engine-progress-90", in: app)
+    _ = try requirePlaybackState(miniPlayer, status: "playing", positionMilliseconds: 90_000)
+    XCTAssertTrue(miniTimeline.waitForStringValue("1m30s of 2m00s", timeout: 2))
+
+    miniTransport.tap()
+    _ = try requirePlaybackState(miniPlayer, status: "paused", positionMilliseconds: 90_000)
+    app.buttons["e2e-engine-progress-45"].tap()
+    _ = try requirePlaybackState(miniPlayer, status: "paused", positionMilliseconds: 90_000)
+
+    XCTAssertTrue(terminateAndWait(app))
+    let restored = makeApplication(reset: false, eventControls: true)
+    restored.launch()
+    _ = try requirePlaybackState(
+      restored.otherElements["mini-player"],
+      status: "paused",
+      positionMilliseconds: 90_000
+    )
+  }
+
   func testRestoresAnAcknowledgedPausedPositionAfterTermination() throws {
     continueAfterFailure = false
     XCUIDevice.shared.orientation = .portrait
@@ -224,7 +299,7 @@ final class PositionRestoreUITests: XCTestCase {
     tester.generateDocs()
   }
 
-  private func makeApplication(reset: Bool) -> XCUIApplication {
+  private func makeApplication(reset: Bool, eventControls: Bool = false) -> XCUIApplication {
     let app = XCUIApplication()
     app.launchArguments = [
       "-e2e",
@@ -236,6 +311,9 @@ final class PositionRestoreUITests: XCTestCase {
     ]
     if reset {
       app.launchArguments.insert("-e2e-reset", at: 1)
+    }
+    if eventControls {
+      app.launchArguments.insert("-e2e-event-controls", at: 1)
     }
     app.launchEnvironment["TZ"] = "America/Toronto"
     return app
@@ -258,6 +336,21 @@ final class PositionRestoreUITests: XCTestCase {
       "The player did not report status=\(status), position=\(positionMilliseconds.map(String.init) ?? "any"); latest=\(String(describing: element.value))"
     )
     throw PositionRestoreTestError.semanticStateUnavailable
+  }
+
+  private func tapHittableButton(_ identifier: String, in app: XCUIApplication) throws {
+    let query = app.buttons.matching(identifier: identifier)
+    let candidate = query.element
+    guard candidate.waitForExistence(timeout: 2) else {
+      XCTFail("No button reported identifier \(identifier)")
+      throw PositionRestoreTestError.semanticStateUnavailable
+    }
+    _ = waitForPredicate(NSPredicate(format: "hittable == true"), on: candidate)
+    guard let button = query.allElementsBoundByIndex.first(where: \.isHittable) else {
+      XCTFail("No hittable button reported identifier \(identifier)")
+      throw PositionRestoreTestError.semanticStateUnavailable
+    }
+    button.tap()
   }
 
   private func adjustSliderAndRequireAcknowledgement(

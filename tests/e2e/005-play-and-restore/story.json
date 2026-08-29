@@ -7,6 +7,7 @@
     "PlayerUITests/SmartRewindUITests/testSmartRewindAdaptsClampsPersistsAndUndoesExactly"
   ],
   "nonvisualTests": [
+    "PlayerUITests/PositionRestoreUITests/testLiveProgressUpdatesMiniAndFullPlayerAcrossLifecycle",
     "PlayerUITests/RemoteInterruptionUITests/testRemoteInterruptionAndBackgroundEventsJournalAcknowledgedPositions",
     "PlayerUITests/SmartRewindUITests/testSmartRewindNoticeDismissesAfterFiveSecondsOfPlaybackProgress"
   ],

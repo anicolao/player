@@ -581,9 +581,9 @@ private final class E2EFixtureResetLease: @unchecked Sendable {
       }
       let fixture = launch.fixture
 
-      guard !eventControls || fixture == .committedCurrentBook else {
+      guard !eventControls || [.committedCurrentBook, .metadataRichBook].contains(fixture) else {
         throw PlayerCoreError.fileOperation(
-          "E2E event controls require the committed-current-book fixture."
+          "E2E event controls require a playback fixture."
         )
       }
       if rewindExpiryControl {
@@ -966,7 +966,8 @@ extension PlayerEnvironment {
         case .metadataRichBook:
           return try metadataRichBookEnvironment(
             reset: reset,
-            namespace: E2EMetadataRichBookNamespace.parse(arguments: arguments)
+            namespace: E2EMetadataRichBookNamespace.parse(arguments: arguments),
+            playbackControls: playbackControls
           )
         case .messyMultifileUnicode:
           return try messyMultifileEnvironment(reset: reset)
@@ -1290,12 +1291,16 @@ extension PlayerEnvironment {
         UUID(uuidString: String(format: "21000000-0000-0000-0000-%012d", $0))!
       }
       let playbackEventBridge = E2EPlaybackEventBridge.shared
-      if playbackControls.eventControls { playbackEventBridge.reset() }
+      let playback = DeterministicPlaybackController()
+      if playbackControls.eventControls {
+        playbackEventBridge.reset()
+        playbackEventBridge.connect(playbackController: playback)
+      }
       return PlayerEnvironment(
         persistence: E2ESeededLibraryStore(base: persisted, seed: seed),
         media: FileSystemMediaManager(rootURL: root),
         inspector: DeterministicAudioInspector(result: .failure(.unreadableAudio("unused"))),
-        playback: DeterministicPlaybackController(),
+        playback: playback,
         audioSession: playbackControls.eventControls
           ? AVAudioSessionController(
             platform: playbackEventBridge,
@@ -1872,6 +1877,7 @@ extension PlayerEnvironment {
     static func metadataRichBookEnvironment(
       reset: Bool,
       namespace: String,
+      playbackControls: E2EPlaybackControlConfiguration = .disabled,
       root overrideRoot: URL? = nil
     ) throws -> PlayerEnvironment {
       let artworkOverride = try E2EMetadataRichCoverPayload.parseOverride(
@@ -1963,6 +1969,12 @@ extension PlayerEnvironment {
         UUID(uuidString: String(format: "31000000-0000-0000-0000-%012d", $0))!
       }
       let seed = LibrarySnapshot(books: [book], importJobs: [], currentBookID: nil)
+      let playbackEventBridge = E2EPlaybackEventBridge.shared
+      let playback = DeterministicPlaybackController()
+      if playbackControls.eventControls {
+        playbackEventBridge.reset()
+        playbackEventBridge.connect(playbackController: playback)
+      }
       return PlayerEnvironment(
         persistence: E2ESeededLibraryStore(
           base: CodableLibraryStore(fileURL: libraryURL),
@@ -1970,7 +1982,16 @@ extension PlayerEnvironment {
         ),
         media: FileSystemMediaManager(rootURL: root),
         inspector: DeterministicAudioInspector(result: .failure(.unreadableAudio("unused"))),
-        playback: DeterministicPlaybackController(),
+        playback: playback,
+        audioSession: playbackControls.eventControls
+          ? AVAudioSessionController(
+            platform: playbackEventBridge,
+            notificationSource: playbackEventBridge
+          )
+          : DisabledAudioSessionController(),
+        remoteCommands: playbackControls.eventControls
+          ? MPRemoteCommandController(source: playbackEventBridge)
+          : DisabledRemoteCommandController(),
         clock: FixedPlayerClock(value: Date(timeIntervalSince1970: 1_700_000_000)),
         ids: DeterministicPlayerIDGenerator(values: ids)
       )

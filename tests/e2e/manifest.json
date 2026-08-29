@@ -12,7 +12,8 @@
     "PlayerUITests/ImportPlaybackUITests/testReviewsCommitsAndPlaysOneAudiobook",
     "PlayerUITests/MetadataChapterUITests/testShowsEmbeddedMetadataAndStartsAChapter",
     "PlayerUITests/ImportIngressResilienceUITests/testDocumentOpenResumesOneImportAcrossAcquireAndInspectRestarts",
-    "PlayerUITests/ImportIngressResilienceUITests/testConsumesAndDeduplicatesShareExtensionAppGroupHandoff"
+    "PlayerUITests/ImportIngressResilienceUITests/testConsumesAndDeduplicatesShareExtensionAppGroupHandoff",
+    "PlayerUITests/MetadataChapterUITests/testInjectedProgressCrossesVisibleChapterBoundariesAndCompletes"
   ]},
   {"story":"003-multifile-grouping","tests":["PlayerUITests/MultifileGroupingUITests/testRepairsMessyMultifileGroupingAndCommitsOneBookAtomically"]},
   {"story":"004-metadata-repair","tests":[
@@ -21,6 +22,7 @@
   ]},
   {"story":"005-play-and-restore","tests":[
     "PlayerUITests/PositionRestoreUITests/testRestoresAnAcknowledgedPausedPositionAfterTermination",
+    "PlayerUITests/PositionRestoreUITests/testLiveProgressUpdatesMiniAndFullPlayerAcrossLifecycle",
     "PlayerUITests/RemoteInterruptionUITests/testRemoteInterruptionAndBackgroundEventsJournalAcknowledgedPositions",
     "PlayerUITests/TransportControlsUITests/testCustomizesAndRestoresListeningControls",
     "PlayerUITests/SmartRewindUITests/testSmartRewindAdaptsClampsPersistsAndUndoesExactly",

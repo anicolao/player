@@ -41,6 +41,23 @@ The deterministic engine does not advance position with wall-clock time. A seek
 is acknowledged before its adjustment completes. An orderly pause durably
 journals its exposed position before the button action completes.
 
+`testLiveProgressUpdatesMiniAndFullPlayerAcrossLifecycle` injects absolute
+asset-time progress events at the playback-engine boundary. One event must
+update the mini-player state and timeline, Now Playing elapsed/remaining labels,
+slider accessibility value, and external Now Playing projection without adding
+a periodic journal record. It verifies the same behavior after closing Now
+Playing and after a real background/foreground cycle. A progress event delivered
+after pausing is ignored, and relaunch restores the final acknowledged pause.
+Tapping `mini-player-play-pause` must change transport state without presenting
+Now Playing.
+
+`testInjectedProgressCrossesVisibleChapterBoundariesAndCompletes` uses the
+three-chapter metadata fixture. Progress at 45 and 75 seconds must move chapter
+context and chapter-relative timeline accessibility from chapter two to chapter
+three. The engine-end event pauses at 120 seconds and records one durable
+completion checkpoint. These moving states are semantic-only and do not alter
+the reviewed screenshot baselines.
+
 On restoration, the reported position must satisfy:
 
 ```text
