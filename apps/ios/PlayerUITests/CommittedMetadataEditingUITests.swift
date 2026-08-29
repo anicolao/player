@@ -531,21 +531,24 @@ final class CommittedMetadataEditingUITests: XCTestCase {
     order: [String]?
   ) throws {
     let probe = anyElement(app, "library-search-probe")
+    let matchesExpectedSearch: () -> Bool = {
+      guard probe.exists,
+        let value = probe.value.map(String.init(describing:)),
+        let state = SearchProbe(value)
+      else { return false }
+      return state.indexed
+        && state.query == query
+        && state.count == count
+        && (order == nil || state.order == order)
+    }
+    let deadline = EventDeadline()
+    if matchesExpectedSearch() { return }
     let expectation = XCTNSPredicateExpectation(
-      predicate: NSPredicate { _, _ in
-        guard probe.exists,
-          let value = probe.value.map(String.init(describing:)),
-          let state = SearchProbe(value)
-        else { return false }
-        return state.indexed
-          && state.query == query
-          && state.count == count
-          && (order == nil || state.order == order)
-      },
+      predicate: NSPredicate { _, _ in matchesExpectedSearch() },
       object: nil
     )
-    guard XCTWaiter.wait(for: [expectation], timeout: EventDeadline().remaining) == .completed
-    else {
+    _ = XCTWaiter.wait(for: [expectation], timeout: deadline.remaining)
+    guard matchesExpectedSearch() else {
       XCTFail("Search did not reach query=\(query), count=\(count), order=\(String(describing: order)); actual=\(String(describing: probe.value))")
       throw CommittedMetadataTestError.semanticStateUnavailable
     }
