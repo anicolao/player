@@ -1407,6 +1407,30 @@
       },
       "qualificationResetCount": 1,
       "resetEvidence": "Formal exact-SHA workflow 33235409727 attempt 1 failed Story 008 qualification attempt 05 at 2dac4cafdd0667f85fb7f3950cc4adf81b8f47d5, resetting Story 008's consecutive qualification count to zero."
+    },
+    {
+      "signature": "ui-test:008-library-search:collection-picker-navigation-not-ready",
+      "story": "008-library-search",
+      "evidence": {
+        "workflowRun": 33235409727,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions job 99055473988 retained the XCTest timeline and failed accessibility hierarchy for formal attempt 06",
+        "url": "https://github.com/anicolao/player/actions/runs/33235409727/job/99055473988",
+        "commit": "2dac4cafdd0667f85fb7f3950cc4adf81b8f47d5",
+        "observation": "Formal Story 008 attempt 06 synthesized a tap on Add Books, then immediately queried the first collection-select-book control. The failure hierarchy still contained the Collections back button and Add Books toolbar button but no picker controls, proving the destination had not entered the accessibility tree before selection began."
+      },
+      "rootCause": "The journey treated completion of the synthesized NavigationLink tap as proof that SwiftUI had published the collection picker and its model-backed rows. On a loaded hosted simulator, the destination accessibility state lagged that gesture, so the immediate row lookup raced navigation even though the identifier was valid in every successful attempt.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Publish an exact picker-state probe and require the newly created empty collection and the picker’s complete ordered book set before selecting any row, with each semantic transition event bounded to two seconds.",
+        "commits": [
+          "d1c80f7d8ada8da1421b5ad2b351248d0f73cb9e"
+        ],
+        "validation": "A fresh iOS 26.5 build passed the complete two-selector Story 008 journey twice consecutively; both attempts matched all ten canonical screenshots pixel-exact and matched the reviewed walkthrough README exactly. Source hygiene also passes."
+      },
+      "qualificationResetCount": 1,
+      "resetEvidence": "Formal exact-SHA Story 008 attempt 06 failed at 2dac4cafdd0667f85fb7f3950cc4adf81b8f47d5, resetting the story's consecutive qualification count to zero."
     }
   ]
 }
