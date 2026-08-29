@@ -252,8 +252,13 @@ struct BackupSettingsView: View {
         #if E2E
           .overlay(alignment: .topLeading) {
             if E2EBackupBridge.shared.isConfigured {
-              e2eTriggerButton("e2e-fixture-clear-library") {
-                try await E2EBackupBridge.shared.clear(using: model)
+              HStack(spacing: 0) {
+                e2eTriggerButton("e2e-fixture-clear-library") {
+                  try await E2EBackupBridge.shared.clear(using: model)
+                }
+                e2eTriggerButton("e2e-fixture-replace-catalog") {
+                  try await E2EBackupBridge.shared.replaceCatalogPreservingMedia(using: model)
+                }
               }
             }
           }
@@ -296,16 +301,25 @@ struct BackupSettingsView: View {
     ) {
       Button("Restore Backup", role: .destructive) {
         guard let pendingRestoreURL else { return }
+        operationState = .restoringPortable
         startOperation { await restorePortable(from: pendingRestoreURL) }
       }
-      Button("Cancel", role: .cancel) {
+      .accessibilityIdentifier("backup-confirm-portable-restore")
+      Button("Cancel") {
         pendingRestoreURL = nil
         operationState = .cancelled
       }
+      .accessibilityIdentifier("backup-cancel-portable-restore")
     } message: {
       Text(
         "The selected backup replaces books, progress, bookmarks, preferences, and managed audio only after every included file passes its integrity check."
       )
+    }
+    .onChange(of: confirmsPortableRestore) { _, isPresented in
+      if !isPresented, operationState == .confirmingPortableRestore {
+        pendingRestoreURL = nil
+        operationState = .cancelled
+      }
     }
     .confirmationDialog(
       "Restore the latest database backup?",
@@ -313,13 +327,21 @@ struct BackupSettingsView: View {
       titleVisibility: .visible
     ) {
       Button("Restore Database", role: .destructive) {
+        operationState = .restoringAutomatic
         startOperation { await restoreAutomatic() }
       }
-      Button("Cancel", role: .cancel) { operationState = .cancelled }
+      .accessibilityIdentifier("backup-confirm-automatic-restore")
+      Button("Cancel") { operationState = .cancelled }
+        .accessibilityIdentifier("backup-cancel-automatic-restore")
     } message: {
       Text(
         "Managed audio is left in place. Current library organization and listening data will be replaced."
       )
+    }
+    .onChange(of: confirmsAutomaticRestore) { _, isPresented in
+      if !isPresented, operationState == .confirmingAutomaticRestore {
+        operationState = .cancelled
+      }
     }
     .sheet(item: $preparedBackup, onDismiss: cancelUndeliveredPreparedBackup) { backup in
       #if E2E
@@ -484,6 +506,9 @@ struct BackupSettingsView: View {
       message = "Library restored from the latest valid database backup."
       operationState = .succeeded("automatic-restore")
       await reloadAutomaticBackups()
+      #if E2E
+        e2eRevision += 1
+      #endif
     } catch is CancellationError {
       operationState = .cancelled
     } catch {
@@ -510,6 +535,7 @@ struct BackupSettingsView: View {
       }
       do {
         try await action()
+        await reloadAutomaticBackups()
       } catch {
         localError = PlayerPresentationError.presenting(error, in: .backup)
       }
@@ -575,6 +601,14 @@ struct BackupSettingsView: View {
           .accessibilityIdentifier("e2e-files-save-backup")
           Button("Cancel") { onOutcome(.cancelled) }
             .accessibilityIdentifier("e2e-files-cancel-export")
+          Button("Simulate Provider Failure") {
+            onFailure(
+              PlayerCoreError.fileOperation(
+                "The selected Files provider could not save the backup."
+              )
+            )
+          }
+          .accessibilityIdentifier("e2e-files-fail-export")
         }
         .padding(28)
         .navigationTitle("Files")

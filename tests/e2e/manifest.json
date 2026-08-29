@@ -42,7 +42,10 @@
     "PlayerUITests/AccessibilityUITests/testAccessibilityPreferenceTogglesUpdateAndPersist",
     "PlayerUITests/AccessibilityUITests/testCoreJourneysRemainCompleteAtLargestAccessibilityText"
   ]},
-  {"story":"010-library-backup","tests":["PlayerUITests/BackupUITests/testExportsClearsAndRestoresAVerifiedPortableLibrary"]},
+  {"story":"010-library-backup","tests":[
+    "PlayerUITests/BackupUITests/testExportsClearsAndRestoresAVerifiedPortableLibrary",
+    "PlayerUITests/BackupUITests/testProductionBackupCancellationKindsAndFailuresPreserveTheLibrary"
+  ]},
   {"story":"011-offline-recovery","tests":["PlayerUITests/OfflineRecoveryUITests/testRecoversStartupAndExportsOnlySanitizedOfflineDiagnostics"]},
   {"story":"012-monetization","tests":["PlayerUITests/MonetizationUITests/testExplainsExhaustionAndCompletesAOneTimeUnlock"]},
   {"story":"013-app-store-listing","tests":["PlayerUITests/AppStoreListingUITests/testCapturesCanonicalMarketingSurfaces"]}

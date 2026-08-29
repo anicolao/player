@@ -123,7 +123,7 @@ final class BackupUITests: XCTestCase {
     let selectedBackup = app.buttons["e2e-files-select-backup"]
     XCTAssertTrue(selectedBackup.waitForExistence(timeout: 2))
     selectedBackup.tap()
-    let restore = app.buttons["Restore Backup"]
+    let restore = app.buttons["Restore Backup"].firstMatch
     XCTAssertTrue(restore.waitForExistence(timeout: 2))
     restore.tap()
     try requireOperation("succeeded-portable-restore", in: app)
@@ -151,6 +151,36 @@ final class BackupUITests: XCTestCase {
       )
     )
 
+    tapWalkthroughAction("e2e-fixture-replace-catalog", in: app)
+    try requireProbeValue(
+      "backup:books=1:bookmarks=1:position=42000:media=1:audio=true:catalog=false:files=1:kind=includingMedia:payloads=1:prepared=0",
+      in: app
+    )
+    let automaticRestore = app.buttons["backup-restore-automatic"]
+    revealBackupAction(automaticRestore, in: app)
+    automaticRestore.tap()
+    try requireOperation("confirming-automatic-restore", in: app)
+    let cancelAutomatic = app.buttons["backup-cancel-automatic-restore"].firstMatch
+    XCTAssertTrue(cancelAutomatic.waitForExistence(timeout: 2))
+    cancelAutomatic.tap()
+    try requireOperation("cancelled", in: app)
+    try requireProbeValue(
+      "backup:books=1:bookmarks=1:position=42000:media=1:audio=true:catalog=false:files=1:kind=includingMedia:payloads=1:prepared=0",
+      in: app
+    )
+
+    revealBackupAction(automaticRestore, in: app)
+    automaticRestore.tap()
+    try requireOperation("confirming-automatic-restore", in: app)
+    let confirmAutomatic = app.buttons["Restore Database"].firstMatch
+    XCTAssertTrue(confirmAutomatic.waitForExistence(timeout: 2))
+    confirmAutomatic.tap()
+    try requireOperation("succeeded-automatic-restore", in: app)
+    try requireProbeValue(
+      "backup:books=1:bookmarks=1:position=42000:media=1:audio=true:catalog=true:files=1:kind=includingMedia:payloads=1:prepared=0",
+      in: app
+    )
+
     app.tabBars.buttons["Library"].tap()
     let resume = app.buttons["resume-book-a1000000-0000-0000-0000-000000000001"]
     XCTAssertTrue(resume.waitForExistence(timeout: 2))
@@ -161,6 +191,182 @@ final class BackupUITests: XCTestCase {
       in: app
     )
     tester.generateDocs()
+  }
+
+  func testProductionBackupCancellationKindsAndFailuresPreserveTheLibrary() throws {
+    continueAfterFailure = false
+    XCUIDevice.shared.orientation = .portrait
+    let app = launchBackupFixture()
+    let original =
+      "backup:books=1:bookmarks=1:position=42000:media=1:audio=true:catalog=true:files=0:kind=none:payloads=0:prepared=0"
+    try requireProbeValue(original, in: app)
+
+    tapProductionAction("backup-export", in: app)
+    try requireOperation("awaiting-files-includingMedia", in: app)
+    let cancelExport = app.buttons["e2e-files-cancel-export"]
+    XCTAssertTrue(cancelExport.waitForExistence(timeout: 2))
+    cancelExport.tap()
+    try requireOperation("cancelled", in: app)
+    try requireProbeValue(original, in: app)
+
+    tapProductionAction("backup-export", in: app)
+    try requireOperation("awaiting-files-includingMedia", in: app)
+    let failExport = app.buttons["e2e-files-fail-export"]
+    XCTAssertTrue(failExport.waitForExistence(timeout: 2))
+    failExport.tap()
+    try requireOperation("failed-export", in: app)
+    try requireProbeValue(original, in: app)
+    dismissBackupAlert(in: app)
+
+    selectExportKind("Metadata only", in: app)
+    tapProductionAction("backup-export", in: app)
+    try requireOperation("awaiting-files-metadataOnly", in: app)
+    let save = app.buttons["e2e-files-save-backup"]
+    XCTAssertTrue(save.waitForExistence(timeout: 2))
+    save.tap()
+    try requireOperation("succeeded-export-metadataOnly", in: app)
+    let metadataExport =
+      "backup:books=1:bookmarks=1:position=42000:media=1:audio=true:catalog=true:files=1:kind=metadataOnly:payloads=0:prepared=0"
+    try requireProbeValue(metadataExport, in: app)
+
+    tapProductionAction("backup-restore", in: app)
+    try requireOperation("awaiting-restore-selection", in: app)
+    let cancelSelection = app.buttons["e2e-files-cancel-restore"]
+    XCTAssertTrue(cancelSelection.waitForExistence(timeout: 2))
+    cancelSelection.tap()
+    try requireOperation("cancelled", in: app)
+    try requireProbeValue(metadataExport, in: app)
+
+    tapProductionAction("backup-restore", in: app)
+    try requireOperation("awaiting-restore-selection", in: app)
+    let selectBackup = app.buttons["e2e-files-select-backup"]
+    XCTAssertTrue(selectBackup.waitForExistence(timeout: 2))
+    selectBackup.tap()
+    try requireOperation("confirming-portable-restore", in: app)
+    let cancelRestore = app.buttons["backup-cancel-portable-restore"].firstMatch
+    XCTAssertTrue(cancelRestore.waitForExistence(timeout: 2))
+    cancelRestore.tap()
+    try requireOperation("cancelled", in: app)
+    try requireProbeValue(metadataExport, in: app)
+
+    selectExportKind("With audio", in: app)
+    tapProductionAction("backup-export", in: app)
+    try requireOperation("awaiting-files-includingMedia", in: app)
+    XCTAssertTrue(save.waitForExistence(timeout: 2))
+    save.tap()
+    try requireOperation("succeeded-export-includingMedia", in: app)
+    let mediaExport =
+      "backup:books=1:bookmarks=1:position=42000:media=1:audio=true:catalog=true:files=1:kind=includingMedia:payloads=1:prepared=0"
+    try requireProbeValue(mediaExport, in: app)
+
+    try assertRejectedRestore(
+      selectionIdentifier: "e2e-files-select-tampered-backup",
+      unchangedProbe: mediaExport,
+      in: app
+    )
+    try assertRejectedRestore(
+      selectionIdentifier: "e2e-files-select-incompatible-backup",
+      unchangedProbe: mediaExport,
+      in: app
+    )
+  }
+
+  private func launchBackupFixture() -> XCUIApplication {
+    let app = XCUIApplication()
+    app.launchArguments = [
+      "-e2e", "-e2e-fixture", "portable-backup", "-e2e-reset",
+      "-e2e-start-section", "settings",
+      "-e2e-start-settings-route", "backup",
+      "-AppleLanguages", "(en)", "-AppleLocale", "en_CA",
+      "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryM",
+      "-NSTreatUnknownArgumentsAsOpen", "NO",
+    ]
+    app.launchEnvironment["TZ"] = "America/Toronto"
+    app.launchEnvironment["PLAYER_E2E_DYNAMIC_TYPE"] = "medium"
+    app.launch()
+    requireBackupTopVisible(app)
+    return app
+  }
+
+  private func selectExportKind(_ label: String, in app: XCUIApplication) {
+    let picker = app.buttons["backup-export-kind"]
+    XCTAssertTrue(picker.waitForExistence(timeout: 2))
+    if !picker.label.contains(label) {
+      picker.tap()
+      let choice = app.buttons[label]
+      XCTAssertTrue(choice.waitForExistence(timeout: 2))
+      choice.tap()
+    }
+    XCTAssertTrue(
+      waitForPredicate(NSPredicate(format: "label CONTAINS %@", label), on: picker),
+      "The visible Backup contents picker must select \(label)"
+    )
+  }
+
+  private func assertRejectedRestore(
+    selectionIdentifier: String,
+    unchangedProbe: String,
+    in app: XCUIApplication
+  ) throws {
+    tapProductionAction("backup-restore", in: app)
+    try requireOperation("awaiting-restore-selection", in: app)
+    let selection = app.buttons[selectionIdentifier]
+    XCTAssertTrue(selection.waitForExistence(timeout: 2))
+    selection.tap()
+    try requireOperation("confirming-portable-restore", in: app)
+    let restore = app.buttons["Restore Backup"].firstMatch
+    XCTAssertTrue(restore.waitForExistence(timeout: 2))
+    restore.tap()
+    try requireOperation("failed-restore", in: app)
+    try requireProbeValue(unchangedProbe, in: app)
+    dismissBackupAlert(in: app)
+  }
+
+  private func dismissBackupAlert(in app: XCUIApplication) {
+    let alert = app.alerts.firstMatch
+    XCTAssertTrue(alert.waitForExistence(timeout: 2))
+    XCTAssertFalse(alert.label.isEmpty)
+    let dismiss = alert.buttons["OK"]
+    XCTAssertTrue(dismiss.waitForExistence(timeout: 2))
+    dismiss.tap()
+    XCTAssertTrue(
+      waitForPredicate(NSPredicate(format: "exists == false"), on: alert),
+      "The backup error must dismiss after acknowledging it"
+    )
+  }
+
+  private func revealBackupAction(_ element: XCUIElement, in app: XCUIApplication) {
+    let scroll = app.scrollViews["backup-scroll"]
+    let surface = ScrollSurface(
+      container: scroll,
+      readiness: anyElement(app, "backup-scroll-readiness"),
+      containerID: "backup-scroll",
+      axis: .vertical,
+      permitsGeometrySettledFallback: true
+    )
+    XCTAssertTrue(element.waitForExistence(timeout: 2))
+    XCTAssertTrue(
+      scrollUntil(
+        { element.isHittable },
+        on: surface,
+        deadline: EventDeadline(),
+        direction: .towardEnd,
+        terminalEndpoint: \.atBottom
+      ) {
+        upwardDrag(in: scroll, velocity: .fast)
+      },
+      "The requested Backup action must scroll into view"
+    )
+  }
+
+  private func upwardDrag(in element: XCUIElement, velocity: XCUIGestureVelocity) {
+    element.coordinate(withNormalizedOffset: CGVector(dx: 0.82, dy: 0.72))
+      .press(
+        forDuration: 0.05,
+        thenDragTo: element.coordinate(withNormalizedOffset: CGVector(dx: 0.82, dy: 0.28)),
+        withVelocity: velocity,
+        thenHoldForDuration: 0
+      )
   }
 
   private func anyElement(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {

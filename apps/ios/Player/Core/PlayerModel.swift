@@ -266,6 +266,10 @@ final class PlayerModel {
       try await environment.persistence.save(snapshot)
       await restore()
     }
+
+    func adoptPrimaryLibraryForBackupE2E(_ snapshot: LibrarySnapshot) {
+      library = snapshot
+    }
   #endif
 
   private func recoverInterruptedSleepTimer() -> Bool {

@@ -4144,6 +4144,19 @@ extension PlayerEnvironment {
       try await model.replaceLibraryForBackupE2E(with: .empty)
     }
 
+    func replaceCatalogPreservingMedia(using model: PlayerModel) async throws {
+      guard let rootURL, var changed = expectedLibrary, !changed.books.isEmpty else {
+        throw PlayerCoreError.fileOperation("The automatic-restore fixture is unavailable.")
+      }
+      changed.books[0].title = "Changed after automatic backup"
+      let primaryURL = rootURL.appending(path: "Library.json", directoryHint: .notDirectory)
+      try CodableLibraryStore.encodedCurrentSnapshot(changed).write(
+        to: primaryURL,
+        options: [.atomic, .completeFileProtectionUnlessOpen]
+      )
+      model.adoptPrimaryLibraryForBackupE2E(changed)
+    }
+
     func value(for model: PlayerModel) -> String {
       guard let rootURL, let expectedLibrary, let expectedAudio, let managedRelativePath else {
         return "backup:unconfigured"

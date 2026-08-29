@@ -13,7 +13,7 @@
 - Network and clock data: unused by this story
 - The fixture contains one synthetic M4B payload, artwork, progress, organization, and a bookmark
 - Export and restore call the production package writer, streaming checksum verifier, and atomic media replacement
-- The system document picker itself is represented by deterministic E2E controls; its production entry points remain visible above
+- The production Export and Restore buttons drive deterministic adapters only at the otherwise unavailable Files boundary
 
 ## Backup choices explain portable media and local automatic copies
 
@@ -27,7 +27,6 @@
 - [x] Automatic copies are distinguished from portable exports
 - [x] A system-destination export begins here
 - [x] A Bookshelf backup can be selected from Files
-- [x] The deterministic production export action is available
 
 ## A media-inclusive package preserves one checksum-verified audio payload
 

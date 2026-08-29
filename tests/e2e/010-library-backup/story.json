@@ -2,6 +2,9 @@
   "id": "010-library-backup",
   "platform": "ios",
   "test": "PlayerUITests/BackupUITests/testExportsClearsAndRestoresAVerifiedPortableLibrary",
+  "nonvisualTests": [
+    "PlayerUITests/BackupUITests/testProductionBackupCancellationKindsAndFailuresPreserveTheLibrary"
+  ],
   "fixture": "portable-backup",
   "screenshots": [
     "000-backup-settings.png",
