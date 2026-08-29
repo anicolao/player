@@ -4103,16 +4103,18 @@ extension PlayerEnvironment {
       let unexpectedAdditions = currentFiles.keys.filter { relativePath in
         baselineFiles[relativePath] == nil
           && !Self.isExpectedMutation(relativePath, jobRoot: jobRoot)
-      }
+      }.sorted()
       let changedOrRemovedBaselineFiles = baselineFiles.keys.filter {
         currentFiles[$0] != baselineFiles[$0]
-      }
+      }.sorted()
       let stagingPrefix = jobRoot + "/"
       let stagingFileCount = currentFiles.keys.filter { $0.hasPrefix(stagingPrefix) }.count
       let sentinelPath = "ContainmentSentinels/root-boundary.bin"
 
       return E2EZipFilesystemEvidence(
         outsideWriteCount: unexpectedAdditions.count + changedOrRemovedBaselineFiles.count,
+        outsideWritePaths: unexpectedAdditions.map { "added:\($0)" }
+          + changedOrRemovedBaselineFiles.map { "changed-or-removed:\($0)" },
         stagingFileCount: stagingFileCount,
         sentinelsPreserved: currentFiles[sentinelPath] == baselineFiles[sentinelPath]
       )
@@ -4179,11 +4181,13 @@ extension PlayerEnvironment {
 
   struct E2EZipFilesystemEvidence: Equatable {
     var outsideWriteCount: Int?
+    var outsideWritePaths: [String]?
     var stagingFileCount: Int?
     var sentinelsPreserved: Bool
 
     static let unavailable = E2EZipFilesystemEvidence(
       outsideWriteCount: nil,
+      outsideWritePaths: nil,
       stagingFileCount: nil,
       sentinelsPreserved: false
     )

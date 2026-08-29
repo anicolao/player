@@ -272,6 +272,45 @@ final class SafeZipExtractorTests: XCTestCase {
     XCTAssertEqual(try Data(contentsOf: source), sourceData)
   }
 
+  func testReadyImportIsPublishedOnlyAfterItsDurableSaveCompletes() async throws {
+    let root = try temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let source = root.appending(path: "book.zip")
+    try ZipFixture.make([
+      .init(name: "Book/01.mp3", data: Data("one".utf8)),
+      .init(name: "Book/02.mp3", data: Data("two".utf8)),
+    ]).write(to: source)
+    let ids = (1...5).map {
+      UUID(uuidString: String(format: "62000000-0000-0000-0000-%012d", $0))!
+    }
+    let store = DelayedReadyLibraryStore()
+    let model = PlayerModel(environment: PlayerEnvironment(
+      persistence: store,
+      media: FileSystemMediaManager(rootURL: root.appending(path: "Storage")),
+      inspector: ZipTestInspector(),
+      playback: ZipTestPlaybackController(),
+      ids: DeterministicPlayerIDGenerator(values: ids)
+    ))
+
+    let importTask = Task { await model.importAudioSelection(from: [source]) }
+    await store.waitUntilReadySaveStarts()
+    XCTAssertNotEqual(
+      model.library.importJobs.first?.phase,
+      .ready,
+      "Observers must not see ready while its persistence transaction is still in flight"
+    )
+
+    await store.allowReadySaveToFinish()
+    let importedJobID = await importTask.value
+    let jobID = try XCTUnwrap(importedJobID)
+    XCTAssertEqual(
+      model.library.importJobs.first(where: { $0.id == jobID })?.phase,
+      .ready
+    )
+    let persisted = await store.load()
+    XCTAssertEqual(persisted.importJobs.first?.phase, .ready)
+  }
+
   func testPlayerModelCommitsValidArchiveAndRepeatedAddIsIdempotent() async throws {
     let root = try temporaryDirectory()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -483,6 +522,30 @@ private func XCTAssertThrowsZipError<T: Sendable>(
 private actor ZipProgressRecorder {
   private(set) var values: [ZipExtractionProgress] = []
   func record(_ value: ZipExtractionProgress) { values.append(value) }
+}
+
+private actor DelayedReadyLibraryStore: LibraryPersisting {
+  private var snapshot = LibrarySnapshot.empty
+  private let readySaveStarted = AsyncSignal()
+  private let readySaveAllowed = AsyncSignal()
+
+  func load() -> LibrarySnapshot { snapshot }
+
+  func save(_ candidate: LibrarySnapshot) async {
+    if candidate.importJobs.contains(where: { $0.phase == .ready }) {
+      await readySaveStarted.signal()
+      await readySaveAllowed.wait()
+    }
+    snapshot = candidate
+  }
+
+  func waitUntilReadySaveStarts() async {
+    await readySaveStarted.wait()
+  }
+
+  func allowReadySaveToFinish() async {
+    await readySaveAllowed.signal()
+  }
 }
 
 private actor AsyncSignal {

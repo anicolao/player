@@ -1536,6 +1536,7 @@
         fixture.acquisition.filesystemEvidence(jobID: jobID),
         E2EZipFilesystemEvidence(
           outsideWriteCount: 0,
+          outsideWritePaths: [],
           stagingFileCount: 3,
           sentinelsPreserved: true
         )
@@ -1554,6 +1555,13 @@
 
       let evidence = fixture.acquisition.filesystemEvidence(jobID: jobID)
       XCTAssertEqual(evidence.outsideWriteCount, 2)
+      XCTAssertEqual(
+        evidence.outsideWritePaths,
+        [
+          "added:escaped.m4a",
+          "changed-or-removed:ContainmentSentinels/root-boundary.bin",
+        ]
+      )
       XCTAssertEqual(evidence.stagingFileCount, 0)
       XCTAssertFalse(evidence.sentinelsPreserved)
     }

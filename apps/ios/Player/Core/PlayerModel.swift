@@ -3893,8 +3893,14 @@ final class PlayerModel {
   private func replaceAndPersist(_ job: ImportJob) async throws {
     var updated = job
     updated.updatedAt = environment.clock.now()
-    replace(updated)
-    try await persist()
+    var candidate = library
+    if let index = candidate.importJobs.firstIndex(where: { $0.id == updated.id }) {
+      candidate.importJobs[index] = updated
+    } else {
+      candidate.importJobs.append(updated)
+    }
+    try await environment.persistence.save(candidate)
+    library = candidate
   }
 
   private func missingTargetError(_ target: MetadataTarget) -> PlayerCoreError {

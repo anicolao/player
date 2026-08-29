@@ -2857,8 +2857,11 @@ func compactPlaybackTime(_ seconds: Double) -> String {
       let jobID = UUID(uuidString: "60000000-0000-0000-0000-000000000001")!
       let filesystem = acquisition.filesystemEvidence(jobID: jobID)
       let outsideWrites = filesystem.outsideWriteCount.map(String.init) ?? "unavailable"
+      let outsidePathDiagnostic = filesystem.outsideWritePaths.flatMap { paths in
+        paths.isEmpty ? nil : ":outside-paths=\(paths.joined(separator: ","))"
+      } ?? ""
       let integrity =
-        "source-unchanged=\(acquisition.sourceIsUnchanged):outside-writes=\(outsideWrites)"
+        "source-unchanged=\(acquisition.sourceIsUnchanged):outside-writes=\(outsideWrites)\(outsidePathDiagnostic)"
       guard let job = model.library.importJobs.first(where: {
         $0.id == jobID
       }) else {
