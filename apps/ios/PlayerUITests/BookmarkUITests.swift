@@ -249,9 +249,9 @@ final class BookmarkUITests: XCTestCase {
     let librarySearch = restored.textFields["library-search-input"]
     XCTAssertTrue(librarySearch.waitForExistence(timeout: 2))
     try focusAndType("cafe clue", into: librarySearch, in: restored)
-    try requireValue(
+    try requireSearchValue(
       restored.descendants(matching: .any)["library-search-probe"],
-      "search:query=cafe clue:count=1:sort=title:direction=ascending:status=any:formats=any:missing=false:empty=none:order=\(bookID)"
+      "query=cafe clue:count=1:sort=title:direction=ascending:status=any:formats=any:missing=false:empty=none:order=\(bookID)"
     )
     tester.generateDocs()
   }
@@ -588,6 +588,38 @@ final class BookmarkUITests: XCTestCase {
   ) throws {
     guard element.waitForStringValue(expected, timeout: timeout) else {
       XCTFail("Expected \(element) to expose \(expected); actual=\(String(describing: element.value))")
+      throw BookmarkUITestError.probeUnavailable
+    }
+  }
+
+  private func requireSearchValue(
+    _ element: XCUIElement,
+    _ expectedResult: String
+  ) throws {
+    func matches(_ value: String?) -> Bool {
+      guard let value else { return false }
+      let fields = value.split(separator: ":", maxSplits: 3, omittingEmptySubsequences: false)
+      return fields.count == 4
+        && fields[0] == "search"
+        && fields[1].hasPrefix("revision=")
+        && fields[1].dropFirst("revision=".count).count == 64
+        && fields[2] == "indexed=true"
+        && fields[3] == expectedResult
+    }
+
+    let expectation = XCTNSPredicateExpectation(
+      predicate: NSPredicate { object, _ in
+        guard let element = object as? XCUIElement else { return false }
+        return matches(element.value.map(String.init(describing:)))
+      },
+      object: element
+    )
+    _ = XCTWaiter.wait(for: [expectation], timeout: 2)
+    guard matches(element.value.map(String.init(describing:))) else {
+      XCTFail(
+        "Expected indexed library search result \(expectedResult); "
+          + "actual=\(String(describing: element.value))"
+      )
       throw BookmarkUITestError.probeUnavailable
     }
   }
