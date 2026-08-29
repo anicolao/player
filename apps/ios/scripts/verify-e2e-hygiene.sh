@@ -364,6 +364,10 @@ rg -o '[0-9]{3}-[a-z0-9][a-z0-9-]*' "${qualification_workflow}" \
 cmp "${temporary_root}/qualification-expected-stories" \
   "${temporary_root}/qualification-workflow-stories" \
   || fail "R0 qualification must assign every canonical story once in each phase"
+[[ "$(rg -c '^[[:space:]]+max-parallel: 5$' "${qualification_workflow}")" -eq 1 ]] \
+  || fail "R0 story qualification must schedule exactly five isolated story jobs concurrently"
+rg -q 'r0-story-evidence-\$\{\{ matrix\.story \}\}' "${qualification_workflow}" \
+  || fail "R0 story qualification artifacts must remain independently attributable by story"
 [[ "$(rg -c 'arguments=.*--attempts 10' "${qualification_workflow}")" -eq 1 ]] \
   || fail "R0 story qualification must request exactly ten attempts"
 [[ "$(rg -c 'matrices 5' "${qualification_workflow}")" -eq 1 ]] \
