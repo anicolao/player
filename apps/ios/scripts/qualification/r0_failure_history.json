@@ -1555,25 +1555,25 @@
       "resetEvidence": "This was a normal pull-request matrix run rather than a formal repeated qualification attempt, so no consecutive Story 003 qualification count existed to reset."
     },
     {
-      "signature": "core-test:ComputerReceiverTests.testWebKitBrowserLoadsReceiverAndCompletesARealLocalHTTPImport:advertised-lan-navigation",
+      "signature": "core-test:ComputerReceiverTests.testWebKitBrowserLoadsReceiverAndCompletesARealLocalHTTPImport:detached-browser-scheduling",
       "story": "core",
       "evidence": {
-        "workflowRun": 33249644840,
+        "workflowRun": 33251344130,
         "workflowAttempt": 1,
-        "artifact": "GitHub Actions lane-5 summary artifact 9714376245 retained Core.xcresult and core-tests.log",
-        "url": "https://github.com/anicolao/player/actions/runs/33249644840/job/99093005345",
-        "commit": "f6df9be857468b4225274de68587ecca6e9e8a65",
-        "observation": "The shared core run again passed 370 of 371 tests after the navigation delegate was retained. The sole test loaded the receiver through its advertised LAN address on a fresh simulator; its production-page event remained unfulfilled for two seconds, JavaScript consequently ran in the blank document and reported an invalid URL, and no upload reached the import handler."
+        "artifact": "GitHub Actions lane-5 summary artifact 9715165083 retained Core.xcresult and core-tests.log",
+        "url": "https://github.com/anicolao/player/actions/runs/33251344130/job/99097440838",
+        "commit": "2c9a74fa28b6011df5f5efb3471efde42c59e7fa",
+        "observation": "All 13 canonical UI stories passed and the shared core run passed 370 of 371 tests. After the delegate had been retained and the URL changed to loopback, the real WebKit test still emitted neither a completion nor a provisional-failure event for two seconds. JavaScript then ran in the unchanged blank document, reported an invalid relative URL, and no upload reached the import handler."
       },
-      "rootCause": "The in-process WebKit integration test unnecessarily depended on simulator local-network privacy state by navigating to the receiver's advertised LAN address. A fresh hosted simulator can gate that route even though the receiver is already listening, whereas a reused developer simulator with prior permission passes. The test needs a real browser and real HTTP server, but it does not need a LAN hop to validate that contract.",
+      "rootCause": "The integration test created a zero-sized WKWebView without a view controller or window, then treated it like a visible browser. WebKit does not promise prompt navigation scheduling for a non-renderable detached view; under hosted load it could leave that navigation idle without a success or failure callback. The recurrence after both delegate retention and loopback routing isolated detached browser scheduling from those earlier environmental dependencies.",
       "diagnosisStatus": "confirmed",
       "fix": {
         "status": "verified",
-        "summary": "Navigate the in-process WebKit browser to the same live receiver over loopback, preserve the separately tested advertised-address contract, and fulfill the page event on provisional navigation failure so any actual routing error is reported immediately rather than as a timeout.",
+        "summary": "Host a nonzero WKWebView in a visible UIWindow for the real browser journey, while retaining loopback isolation, production HTML, live HTTP, JavaScript upload, explicit navigation failures, and the same two-second completion bound.",
         "commits": [
-          "605cf57210b6c0cc562c416e169d3caa147800e8"
+          "38137f0969b6c03dbc7deb87dbcfb16215166428"
         ],
-        "validation": "The exact real-browser journey passed ten repetitions on the existing simulator and ten repetitions on a newly created permission-clean iOS 26.5 simulator. Each repetition retained production HTML navigation, JavaScript pairing, upload through fetch, app import-handler delivery, and terminal HTTP-state coverage; the observed test-case duration was approximately 0.33 seconds."
+        "validation": "The exact visible-browser journey passed 20 repetitions on the existing simulator and 20 repetitions on a newly created permission-clean iOS 26.5 simulator. The complete 371-test core suite also passed 371/371. Every browser repetition retained production HTML navigation, JavaScript pairing, upload through fetch, app import-handler delivery, and terminal HTTP-state coverage."
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request matrix run rather than a formal repeated qualification attempt, so no consecutive core qualification count existed to reset."
