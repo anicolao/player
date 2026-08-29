@@ -1289,6 +1289,28 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This evidence defect occurred inside the already-counted attempt-06 infrastructure failure; it invalidated that attempt's evidence but did not represent an additional qualification attempt to reset."
+    },
+    {
+      "signature": "ui-test:LaunchUITests.testLaunchesIntoEmptyLibrary:receiver-paused-transition-timeout",
+      "story": "001-ios-launch",
+      "evidence": {
+        "artifact": "/tmp/player-r0-overlay-story001-committed",
+        "url": "local-artifacts:/tmp/player-r0-overlay-story001-committed",
+        "commit": "47bde226adb8a3bf57b0385508931d0a5e25cf8a",
+        "observation": "The exact-commit focused Story 001 run captured screenshots 000 through 002 exactly, then launched the paused receiver. Its semantic value remained receiver:connected for the complete two-second event deadline instead of reaching receiver:paused, so the UI test exited 65 and screenshots 003 through 005 were never attached. The retained test log records the final value and assertion at TestStepHelper.swift:792."
+      },
+      "rootCause": "The deterministic receiver binding's activate method launched its production HTTP scenario in an unstructured Task and returned immediately. The application could therefore report an intermediate paired-client event while the UI test began its terminal paused-state deadline, with no activation completion edge ordering the remaining manifest and interrupted-upload events before observation.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "pending-focused-validation",
+        "summary": "Make deterministic binding activation await its production HTTP scenario, and require the core regression test to observe the complete paused event sequence immediately when ComputerReceiverServer.start returns.",
+        "commits": [
+          "38b1572b4a6ce77ee7e931d1509519740119faec"
+        ],
+        "validation": "The focused core regression passed on the exact fix source and proves server start returns with the 734,003-of-1,468,006 paused event already published. Full Story 001 validation could not complete because the constrained local simulator volume independently launched the third app into Local Storage Unavailable; screenshots 000 through 002 remained pixel-exact. A normal hosted Story 001 repeat must verify the full journey."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This local focused diagnostic was not an accepted formal exact-SHA qualification attempt, so it did not reset Story 001's formal consecutive qualification count."
     }
   ]
 }
