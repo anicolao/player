@@ -11,7 +11,7 @@ final class MultifileGroupingUITests: XCTestCase {
   private let b3 = "30000000-0000-0000-0000-000000000203"
   private let b4 = "30000000-0000-0000-0000-000000000204"
 
-  func testRepairsMessyMultifileGroupingAndCommitsOneBookAtomically() throws {
+  func testRepairsMessyMultifileGroupingAndCommitsExactlyOneBook() throws {
     continueAfterFailure = false
     XCUIDevice.shared.orientation = .portrait
 

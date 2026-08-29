@@ -59,9 +59,7 @@ final class BookmarkUITests: XCTestCase {
     probe = try requireProbe(app, count: 2, position: 15_000, clock: 1_700_030_060)
     XCTAssertEqual(probe["order"], "\(boundaryBookmarkID),\(secondBookmarkID)")
 
-    let doneButtons = app.navigationBars.buttons.matching(
-      NSPredicate(format: "label == %@", "Done")
-    )
+    let doneButtons = app.navigationBars.buttons.matching(identifier: "close-now-playing")
     let done = doneButtons.element
     XCTAssertTrue(done.waitForExistence(timeout: 2))
     XCTAssertEqual(

@@ -9,7 +9,7 @@ final class RemoteInterruptionUITests: XCTestCase {
   ]
   private let registeredAudioNotifications: Set<String> = ["interruption", "route-change"]
 
-  func testRemoteInterruptionAndBackgroundEventsJournalAcknowledgedPositions() throws {
+  func testRemoteInterruptionRouteLossAndBackgroundEventsJournalAcknowledgedPositions() throws {
     continueAfterFailure = false
     XCUIDevice.shared.orientation = .portrait
 

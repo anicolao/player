@@ -19,15 +19,15 @@
     "PlayerUITests/ImportIngressResilienceUITests/testConsumesAndDeduplicatesShareExtensionAppGroupHandoff",
     "PlayerUITests/MetadataChapterUITests/testInjectedProgressCrossesVisibleChapterBoundariesAndCompletes"
   ]},
-  {"story":"003-multifile-grouping","tests":["PlayerUITests/MultifileGroupingUITests/testRepairsMessyMultifileGroupingAndCommitsOneBookAtomically"]},
+  {"story":"003-multifile-grouping","tests":["PlayerUITests/MultifileGroupingUITests/testRepairsMessyMultifileGroupingAndCommitsExactlyOneBook"]},
   {"story":"004-metadata-repair","tests":[
     "PlayerUITests/MetadataRepairUITests/testRepairsLocksCommitsAndUndoesMetadataWithoutChangingAudio",
-    "PlayerUITests/CommittedMetadataEditingUITests/testEditsPersistsIndexesAndUndoesACommittedBookAtomically"
+    "PlayerUITests/CommittedMetadataEditingUITests/testPersistsCommittedMetadataUpdatesIndexesAndUndoesAtomically"
   ]},
   {"story":"005-play-and-restore","tests":[
     "PlayerUITests/PositionRestoreUITests/testRestoresAnAcknowledgedPausedPositionAfterTermination",
     "PlayerUITests/PositionRestoreUITests/testLiveProgressUpdatesMiniAndFullPlayerAcrossLifecycle",
-    "PlayerUITests/RemoteInterruptionUITests/testRemoteInterruptionAndBackgroundEventsJournalAcknowledgedPositions",
+    "PlayerUITests/RemoteInterruptionUITests/testRemoteInterruptionRouteLossAndBackgroundEventsJournalAcknowledgedPositions",
     "PlayerUITests/TransportControlsUITests/testCustomizesAndRestoresListeningControls",
     "PlayerUITests/TransportControlsUITests/testUsesCurrentLibraryDefaultsAcrossPlaybackRemoteControlsAndRelaunch",
     "PlayerUITests/TransportControlsUITests/testFailedLibraryDefaultsClearKeepsEditorAndOverrideTruthful",

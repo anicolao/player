@@ -1,7 +1,7 @@
 {
   "id": "003-multifile-grouping",
   "platform": "ios",
-  "test": "PlayerUITests/MultifileGroupingUITests/testRepairsMessyMultifileGroupingAndCommitsOneBookAtomically",
+  "test": "PlayerUITests/MultifileGroupingUITests/testRepairsMessyMultifileGroupingAndCommitsExactlyOneBook",
   "fixture": "messy-multifile-unicode",
   "screenshots": [
     "000-explainable-grouping.png",

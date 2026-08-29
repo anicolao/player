@@ -8,7 +8,7 @@
   ],
   "nonvisualTests": [
     "PlayerUITests/PositionRestoreUITests/testLiveProgressUpdatesMiniAndFullPlayerAcrossLifecycle",
-    "PlayerUITests/RemoteInterruptionUITests/testRemoteInterruptionAndBackgroundEventsJournalAcknowledgedPositions",
+    "PlayerUITests/RemoteInterruptionUITests/testRemoteInterruptionRouteLossAndBackgroundEventsJournalAcknowledgedPositions",
     "PlayerUITests/TransportControlsUITests/testUsesCurrentLibraryDefaultsAcrossPlaybackRemoteControlsAndRelaunch",
     "PlayerUITests/TransportControlsUITests/testFailedLibraryDefaultsClearKeepsEditorAndOverrideTruthful",
     "PlayerUITests/SmartRewindUITests/testSmartRewindNoticeDismissesAfterFiveSecondsOfPlaybackProgress"

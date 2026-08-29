@@ -398,8 +398,11 @@ rg -Fq -- '--retain-all-evidence' "${run_e2e}" \
   || fail "UI-test failure comparison does not retain matching expected and actual images"
 rg -Fq 'cp -R "${baseline_story}/." "${recording_stage}/"' "${run_e2e}" \
   || fail "baseline recording does not preserve reviewed auxiliary story files"
-rg -Fq 'find "${recording_stage}/screenshots/ios" -type f -depth -delete' "${run_e2e}" \
-  || fail "baseline recording does not replace the complete prior screenshot set"
+rg -Fq 'find "${recording_stage}/screenshots/ios" -type f -name '\''*.png'\'' -depth -delete' "${run_e2e}" \
+  || fail "baseline recording does not replace the complete prior screenshot image set"
+if rg -Fq 'find "${recording_stage}/screenshots/ios" -type f -depth -delete' "${run_e2e}"; then
+  fail "baseline recording still deletes reviewed non-image comparison policy"
+fi
 
 python3 "${ios_scripts}/qualification/test_evidence_manifest.py" \
   || fail "the content-addressed per-attempt evidence contract is not fail closed"

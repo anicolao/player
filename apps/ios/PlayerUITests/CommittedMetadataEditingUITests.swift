@@ -39,7 +39,7 @@ final class CommittedMetadataEditingUITests: XCTestCase {
 
   private var focusedMetadataField: String?
 
-  func testEditsPersistsIndexesAndUndoesACommittedBookAtomically() throws {
+  func testPersistsCommittedMetadataUpdatesIndexesAndUndoesAtomically() throws {
     continueAfterFailure = false
     XCUIDevice.shared.orientation = .portrait
     var app = makeApplication(reset: true)

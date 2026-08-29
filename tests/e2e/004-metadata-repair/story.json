@@ -3,7 +3,7 @@
   "platform": "ios",
   "test": "PlayerUITests/MetadataRepairUITests/testRepairsLocksCommitsAndUndoesMetadataWithoutChangingAudio",
   "nonvisualTests": [
-    "PlayerUITests/CommittedMetadataEditingUITests/testEditsPersistsIndexesAndUndoesACommittedBookAtomically"
+    "PlayerUITests/CommittedMetadataEditingUITests/testPersistsCommittedMetadataUpdatesIndexesAndUndoesAtomically"
   ],
   "fixture": "synthetic-metadata-repair",
   "screenshots": [

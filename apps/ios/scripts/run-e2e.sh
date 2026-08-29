@@ -520,7 +520,7 @@ if [[ -n "${record_story}" ]]; then
   baseline_parent="$(dirname "${baseline_story}")"
   recording_stage="$(mktemp -d "${baseline_parent}/.${story_id}.recording.XXXXXX")"
   cp -R "${baseline_story}/." "${recording_stage}/"
-  find "${recording_stage}/screenshots/ios" -type f -depth -delete
+  find "${recording_stage}/screenshots/ios" -type f -name '*.png' -depth -delete
   cp "${actual_story}/screenshots/ios/"*.png "${recording_stage}/screenshots/ios/"
   cp "${actual_story}/README.md" "${recording_stage}/README.md"
   cp "${baseline_story}/story.json" "${recording_stage}/story.json"
