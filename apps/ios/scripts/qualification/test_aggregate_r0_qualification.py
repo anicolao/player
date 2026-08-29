@@ -20,11 +20,11 @@ STORIES = ["001-ios-launch", "002-import-and-play", "003-multifile-grouping",
            "010-library-backup", "011-offline-recovery", "012-monetization",
            "013-app-store-listing"]
 STORY_LANES = [
-    ["005-play-and-restore", "004-metadata-repair"],
-    ["008-library-search", "003-multifile-grouping", "012-monetization"],
-    ["007-sleep-timer", "001-ios-launch"],
-    ["010-library-backup", "006-safe-zip-import", "011-offline-recovery"],
-    ["013-app-store-listing", "002-import-and-play", "009-accessible-core-journeys"],
+    ["004-metadata-repair", "006-safe-zip-import"],
+    ["005-play-and-restore", "010-library-backup", "012-monetization"],
+    ["007-sleep-timer", "002-import-and-play"],
+    ["008-library-search", "001-ios-launch", "003-multifile-grouping"],
+    ["011-offline-recovery", "009-accessible-core-journeys", "013-app-store-listing"],
 ]
 
 

@@ -51,15 +51,15 @@ jobs:
       matrix:
         include:
           - lane: lane-1
-            stories: '["005-play-and-restore","004-metadata-repair"]'
+            stories: '["004-metadata-repair","006-safe-zip-import"]'
           - lane: lane-2
-            stories: '["008-library-search","003-multifile-grouping","012-monetization"]'
+            stories: '["005-play-and-restore","010-library-backup","012-monetization"]'
           - lane: lane-3
-            stories: '["007-sleep-timer","001-ios-launch"]'
+            stories: '["007-sleep-timer","002-import-and-play"]'
           - lane: lane-4
-            stories: '["010-library-backup","006-safe-zip-import","011-offline-recovery"]'
+            stories: '["008-library-search","001-ios-launch","003-multifile-grouping"]'
           - lane: lane-5
-            stories: '["013-app-store-listing","002-import-and-play","009-accessible-core-journeys"]'
+            stories: '["011-offline-recovery","009-accessible-core-journeys","013-app-store-listing"]'
     defaults:
       run:
         shell: nix develop --command bash --noprofile --norc -e -o pipefail {0}
@@ -143,19 +143,19 @@ jobs:
       matrix:
         include:
           - lane: lane-1
-            stories: '["005-play-and-restore","004-metadata-repair"]'
+            stories: '["004-metadata-repair","006-safe-zip-import"]'
             core: false
           - lane: lane-2
-            stories: '["008-library-search","003-multifile-grouping","012-monetization"]'
+            stories: '["005-play-and-restore","010-library-backup","012-monetization"]'
             core: false
           - lane: lane-3
-            stories: '["007-sleep-timer","001-ios-launch"]'
-            core: false
-          - lane: lane-4
-            stories: '["010-library-backup","006-safe-zip-import","011-offline-recovery"]'
+            stories: '["007-sleep-timer","002-import-and-play"]'
             core: true
+          - lane: lane-4
+            stories: '["008-library-search","001-ios-launch","003-multifile-grouping"]'
+            core: false
           - lane: lane-5
-            stories: '["013-app-store-listing","002-import-and-play","009-accessible-core-journeys"]'
+            stories: '["011-offline-recovery","009-accessible-core-journeys","013-app-store-listing"]'
             core: false
     defaults:
       run:
