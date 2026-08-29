@@ -122,7 +122,7 @@ final class MultifileGroupingUITests: XCTestCase {
       }
     )
 
-    app.buttons["review-order-button"].tap()
+    try tapPhysicalAction(reviewOrder, in: app)
     let orderScreen = anyElement(app, "review-order-screen")
     let orderProbe = anyElement(app, "order-probe")
     let orderingEvidence = anyElement(app, "ordering-evidence-natural-numeric")
@@ -364,6 +364,26 @@ final class MultifileGroupingUITests: XCTestCase {
     !app.keyboards.firstMatch.exists
       && !app.alerts.firstMatch.exists
       && !app.sheets.firstMatch.exists
+  }
+
+  private func tapPhysicalAction(_ action: XCUIElement, in app: XCUIApplication) throws {
+    let actionFrame = action.frame
+    let appFrame = app.frame
+    guard action.exists,
+      actionFrame.width >= 44,
+      actionFrame.height >= 44,
+      !appFrame.isEmpty,
+      appFrame.contains(actionFrame)
+    else {
+      XCTFail("The multifile journey expected a visible 44-point action target")
+      throw MultifileGroupingTestError.semanticStateUnavailable
+    }
+    app.coordinate(
+      withNormalizedOffset: CGVector(
+        dx: (actionFrame.midX - appFrame.minX) / appFrame.width,
+        dy: (actionFrame.midY - appFrame.minY) / appFrame.height
+      )
+    ).tap()
   }
 
   private func requireValue(_ element: XCUIElement, _ expected: String) throws {
