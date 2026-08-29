@@ -1601,6 +1601,54 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request matrix run rather than a formal repeated qualification attempt, so no consecutive Story 010 qualification count existed to reset."
+    },
+    {
+      "signature": "ui-test:MonetizationUITests.testExplainsExhaustionAndCompletesAOneTimeUnlock:restore-action-not-delivered",
+      "story": "012-monetization",
+      "evidence": {
+        "workflowRun": 33258293959,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 012 artifact 9716928344 and lane-3 summary artifact 9716928641 retained the failed XCTest timeline and diagnostics",
+        "url": "https://github.com/anicolao/player/actions/runs/33258293959/job/99115726451",
+        "commit": "67ecb978406e34105fa842566ea0dcce793ee256",
+        "observation": "XCTest found the visible and enabled full-unlock-restore control and completed its element-bound tap, but e2e-monetization-complete-restore-empty never appeared within the two-second event deadline. The restore state remained ready with no action in flight, proving the SwiftUI action was not delivered."
+      },
+      "rootCause": "The journey treated completion of an element-bound XCTest tap as proof that the SwiftUI restore action received input. Under hosted accessibility-server slowdown, XCTest synthesized against a stale element snapshot without delivering the action, even though the control was visible and enabled.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Require the Restore control to be visible, enabled, fully contained, and at least 44 points tall, then synthesize one touch at its physical center through the stable application surface. Also expose and await the durable PlayerModel restoration event before the fast entitlement relaunch assertion.",
+        "commits": [
+          "622f2b4c695e58b0f2569ff183cf1c7cf1f1cd13"
+        ],
+        "validation": "Fresh canonical Story 012 output /tmp/player-r0-story012-qualified passed the complete restore, redeem, purchase, and offline relaunch journey in 21.490 seconds. Both owned screenshots matched pixel-exact, and the walkthrough README matched exactly."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request matrix run rather than a formal repeated qualification attempt, so no consecutive Story 012 qualification count existed to reset."
+    },
+    {
+      "signature": "core-test:ComputerReceiverTests.testWebKitBrowserCompletesARealLocalHTTPImport:document-finish-deadline",
+      "story": "core",
+      "evidence": {
+        "workflowRun": 33258293959,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions lane-5 summary artifact 9716985124 retained Core.xcresult and core-tests.log",
+        "url": "https://github.com/anicolao/player/actions/runs/33258293959/job/99115726323",
+        "commit": "67ecb978406e34105fa842566ea0dcce793ee256",
+        "observation": "The shared core run passed 370 of 371 tests. Its sole failure was the two-second full-document didFinish expectation in the real WebKit browser-origin API test; every subsequent live pairing, upload, import-handler delivery, and completed-status assertion passed in the same test."
+      },
+      "rootCause": "The browser-origin API journey needs the minimal same-origin document to commit before executing JavaScript, but the test waited for the stronger full-document rendering event. Hosted WebKit rendering completion exceeded that transport prerequisite's deadline even though the navigation had committed and the entire receiver transfer subsequently succeeded.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Await WKNavigationDelegate.didCommit, the exact event that establishes the document origin needed by the JavaScript transfer, while retaining explicit provisional and committed navigation failure callbacks plus every live receiver API assertion.",
+        "commits": [
+          "4ad24123c0d40a84625cd524db415af0eb5d6e36"
+        ],
+        "validation": "The exact browser-origin API test passed 50/50 repetitions on the reusable simulator in 14.739 seconds and 50/50 on a newly created permission-clean iOS 26.5 simulator in 16.419 seconds. The complete core suite then passed 371/371 in 5.073 seconds."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request matrix run rather than a formal repeated qualification attempt, so no consecutive core qualification count existed to reset."
     }
   ]
 }
