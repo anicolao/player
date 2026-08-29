@@ -323,13 +323,14 @@ func uniquelyIdentifiedElement(
 @MainActor
 extension XCUIElement {
   func waitForStringValue(_ expectedValue: String, timeout: TimeInterval) -> Bool {
-    if currentStringValue == expectedValue { return true }
-    let expectation = XCTNSPredicateExpectation(
-      predicate: NSPredicate(format: "exists == true AND value == %@", expectedValue),
-      object: self
-    )
+    let predicate = NSPredicate(format: "exists == true AND value == %@", expectedValue)
+    if predicate.evaluate(with: self) { return true }
+    let expectation = XCTNSPredicateExpectation(predicate: predicate, object: self)
     if XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed { return true }
-    return currentStringValue == expectedValue
+    // Re-evaluate the same semantic condition after a deadline-edge wakeup.
+    // Splitting this into separate `exists` and `value` queries can report false
+    // even when the value snapshot available at the deadline is already exact.
+    return predicate.evaluate(with: self)
   }
 
   fileprivate var currentStringValue: String? {
