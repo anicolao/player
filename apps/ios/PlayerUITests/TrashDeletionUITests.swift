@@ -26,10 +26,11 @@ final class TrashDeletionUITests: XCTestCase {
       app.sheets["Move this audiobook to Trash?"],
       identifier: "remove-book-to-trash"
     )
-    XCTAssertTrue(waitForNoElements(
-      app.descendants(matching: .any).matching(identifier: "mini-player"),
-      deadline: EventDeadline()
-    ))
+    try requireValue(
+      app.descendants(matching: .any)["trash-removal-probe"],
+      "trash-removal:target-book-present=false:transaction=recoverable:current=none:playback=unloaded:loaded=none"
+    )
+    XCTAssertFalse(miniPlayer.exists)
 
     let libraryBack = app.navigationBars.buttons["Library"]
     XCTAssertTrue(waitForExistence(libraryBack, deadline: EventDeadline()))

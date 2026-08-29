@@ -219,6 +219,17 @@ struct ContentView: View {
           } ?? "setup=ready"
         )
       }
+      .overlay(alignment: .topLeading) {
+        if E2ELibraryOrganizationBridge.shared.isConfigured {
+          StateProbe(
+            id: "trash-removal-probe",
+            value: E2ELibraryOrganizationBridge.shared.removalEvidence(
+              library: model.library,
+              playback: model.playbackState
+            )
+          )
+        }
+      }
       .overlay(alignment: .topTrailing) {
         if E2EMultifileAcquisition.shared.isConfigured {
           E2EMultifileTransactionProbes(model: model)

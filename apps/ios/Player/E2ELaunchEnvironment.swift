@@ -3165,6 +3165,10 @@ extension PlayerEnvironment {
     private var libraryURL: URL?
     private var sourceURL: URL?
 
+    var isConfigured: Bool {
+      rootURL != nil && purgeTargetBookID != nil && purgeTransactionID != nil
+    }
+
     func configure(
       rootURL: URL,
       trackedBookID: String,
@@ -3191,6 +3195,29 @@ extension PlayerEnvironment {
       self.expectedManagedByteCount = expectedManagedByteCount
       self.libraryURL = libraryURL
       self.sourceURL = sourceURL
+    }
+
+    func removalEvidence(
+      library: LibrarySnapshot,
+      playback: PlaybackState
+    ) -> String {
+      guard let purgeTargetBookID, let purgeTransactionID else {
+        return "trash-removal:unconfigured"
+      }
+      let targetBookPresent = library.books.contains {
+        $0.id.uuidString.lowercased() == purgeTargetBookID
+      }
+      let transaction = library.trashTransactions.first { $0.id == purgeTransactionID }
+      let current = library.currentBookID?.uuidString.lowercased() ?? "none"
+      let loaded = playback.loadedBookID?.uuidString.lowercased() ?? "none"
+      return [
+        "trash-removal",
+        "target-book-present=\(targetBookPresent)",
+        "transaction=\(transaction?.status.rawValue ?? "none")",
+        "current=\(current)",
+        "playback=\(playback.status.rawValue)",
+        "loaded=\(loaded)",
+      ].joined(separator: ":")
     }
 
     var managedChecksumPreserved: Bool {
