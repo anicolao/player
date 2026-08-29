@@ -83,9 +83,18 @@ run_core_gate() {
   local fixture_start core_start fixture_duration=0 core_duration=0
   local core_signature=none
   mkdir -p "${matrix_root}/Core/Logs" "${matrix_root}/Core/Results"
+  core_simulator_lease="${simulator_lease_root}/core-matrix-${lane}-${matrix_index}-$$.json"
+  core_simulator_id="$("${base_ios_dir}/scripts/simulator-lease.sh" acquire \
+    "${core_simulator_lease}" "Player R0 Core ${lane} ${matrix_index} $$" \
+    com.apple.CoreSimulator.SimDeviceType.iPhone-17 \
+    com.apple.CoreSimulator.SimRuntime.iOS-26-5 "$$")"
+  xcrun simctl boot "${core_simulator_id}"
+  xcrun simctl bootstatus "${core_simulator_id}" -b
+  export PLAYER_CORE_SIMULATOR_ID="${core_simulator_id}"
   fixture_start="${SECONDS}"
   set +e
   qualification_run_logged_commands "${matrix_root}/Core/Logs/fixtures.log" \
+    "${worktree_ios}/scripts/prepare-core-web-runtime.sh" \
     "${worktree_ios}/scripts/fixtures/verify-generated-fixtures.sh" \
     "${worktree_ios}/scripts/fixtures/verify-messy-multifile-fixture.sh" \
     "${worktree_ios}/scripts/fixtures/verify-zip-fixtures.sh" \
@@ -101,13 +110,6 @@ run_core_gate() {
   if [[ "${fixture_status}" -eq 0 && "${fixture_log_status}" -eq 0 ]]; then
     core_start="${SECONDS}"
     local -a core_pipeline_statuses
-    core_simulator_lease="${simulator_lease_root}/core-matrix-${lane}-${matrix_index}-$$.json"
-    core_simulator_id="$("${base_ios_dir}/scripts/simulator-lease.sh" acquire \
-      "${core_simulator_lease}" "Player R0 Core ${lane} ${matrix_index} $$" \
-      com.apple.CoreSimulator.SimDeviceType.iPhone-17 \
-      com.apple.CoreSimulator.SimRuntime.iOS-26-5 "$$")"
-    xcrun simctl boot "${core_simulator_id}"
-    xcrun simctl bootstatus "${core_simulator_id}" -b
     test_ran=true
     set +e
     xcodebuild -quiet \
@@ -136,6 +138,7 @@ run_core_gate() {
       "${core_simulator_lease}" "$$"; then
       core_simulator_id=""
       core_simulator_lease=""
+      unset PLAYER_CORE_SIMULATOR_ID
     else
       cleanup_status="$?"
     fi

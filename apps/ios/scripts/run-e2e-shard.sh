@@ -128,10 +128,19 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 run_core_tests() {
-  local fixture_start="${SECONDS}"
+  local fixture_start
   local fixture_status=0 fixture_log_status=0
+  core_simulator_lease="${simulator_lease_root}/core-shard-${shard_id}-$$.json"
+  core_simulator_id="$("${script_dir}/simulator-lease.sh" acquire \
+    "${core_simulator_lease}" "Player Core ${shard_id} $$" \
+    "${device_type}" "${runtime}" "$$")"
+  xcrun simctl boot "${core_simulator_id}"
+  xcrun simctl bootstatus "${core_simulator_id}" -b
+  export PLAYER_CORE_SIMULATOR_ID="${core_simulator_id}"
+  fixture_start="${SECONDS}"
   set +e
   qualification_run_logged_commands "${shard_root}/Logs/core-fixtures.log" \
+    "${script_dir}/prepare-core-web-runtime.sh" \
     "${script_dir}/fixtures/verify-generated-fixtures.sh" \
     "${script_dir}/fixtures/verify-messy-multifile-fixture.sh" \
     "${script_dir}/fixtures/verify-zip-fixtures.sh" \
@@ -150,12 +159,6 @@ run_core_tests() {
 
   local core_start="${SECONDS}"
   local test_status=0 test_log_status=0 cleanup_status=0
-  core_simulator_lease="${simulator_lease_root}/core-shard-${shard_id}-$$.json"
-  core_simulator_id="$("${script_dir}/simulator-lease.sh" acquire \
-    "${core_simulator_lease}" "Player Core ${shard_id} $$" \
-    "${device_type}" "${runtime}" "$$")"
-  xcrun simctl boot "${core_simulator_id}"
-  xcrun simctl bootstatus "${core_simulator_id}" -b
   local -a core_pipeline_statuses
   set +e
   xcodebuild -quiet \
@@ -182,6 +185,7 @@ run_core_tests() {
   if "${script_dir}/simulator-lease.sh" release "${core_simulator_lease}" "$$"; then
     core_simulator_id=""
     core_simulator_lease=""
+    unset PLAYER_CORE_SIMULATOR_ID
   else
     cleanup_status="$?"
   fi
