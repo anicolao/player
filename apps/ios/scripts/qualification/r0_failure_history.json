@@ -1673,6 +1673,30 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request matrix run rather than a formal repeated qualification attempt, so no consecutive Story 004 qualification count existed to reset."
+    },
+    {
+      "signature": "core-test:ComputerReceiverTests.testWebKitBrowserCompletesARealLocalHTTPImport:cold-default-store-startup",
+      "story": "core",
+      "evidence": {
+        "workflowRun": 33263534324,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions lane-5 summary artifact 9718298313 retained Core.xcresult and core-tests.log",
+        "url": "https://github.com/anicolao/player/actions/runs/33263534324/job/99129424404",
+        "commit": "aebad97c54cfab9c385e05a3a2118ca3fc18d8a3",
+        "observation": "The shared core run passed 370 of 371 tests. Its sole failure was the two-second didCommit event in the real WebKit browser-origin API test. The receiver listener was ready in 6 milliseconds, but the default WebKit store entered a cold WebPrivacy/ResourceLoadStatistics initialization stall and reported WebContent unresponsive. The same test then completed the real pairing, upload, import-handler delivery, and terminal-state request once WebKit resumed; those app-owned operations took under 300 milliseconds."
+      },
+      "rootCause": "The browser API contract used the default persistent WKWebsiteDataStore even though it owns no persistent-browser-storage behavior. On the hosted simulator, cold WebPrivacy and ResourceLoadStatistics initialization delayed the WebContent process independently of the ready receiver server. WKNavigationDelegate.didCommit was also only a proxy for the actual prerequisite: executable JavaScript with the receiver origin.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Use an isolated nonpersistent WebKit store and have the minimal receiver-origin document emit a script message containing location.origin. Await that exact executable-document event within two seconds, assert the origin, and retain the real live-server pairing, upload, import, status, and navigation-failure contracts.",
+        "commits": [
+          "df818a92cd2133a27819bbe92910de2076dc4e5c"
+        ],
+        "validation": "The exact browser-origin API journey passed 100/100 repetitions on the reusable simulator, 100/100 on a newly provisioned iOS 26.5 simulator, and 5/5 one-shot attempts across five additional separately created cold simulators. The complete core suite then passed 371/371. No wait was lengthened and no retry was introduced."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request matrix run rather than a formal repeated qualification attempt, so no consecutive core qualification count existed to reset."
     }
   ]
 }
