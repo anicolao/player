@@ -1359,6 +1359,54 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was the normal R7 pull-request matrix rather than a formal repeated qualification attempt, so no consecutive Story 008 qualification count existed to reset."
+    },
+    {
+      "signature": "ui-test:008-library-search:add-action-result-not-presented",
+      "story": "008-library-search",
+      "evidence": {
+        "workflowRun": 33235409727,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions artifact 9712108164 retained Story 008 attempt-03 XCTest logs and accessibility hierarchies",
+        "url": "https://github.com/anicolao/player/actions/runs/33235409727/job/99055473988",
+        "commit": "2dac4cafdd0667f85fb7f3950cc4adf81b8f47d5",
+        "observation": "Attempt 03 verified the Add item as existent and hittable, captured the reviewed Library frame, and synthesized an element-bound tap. Two seconds later no computer-receiver-screen existed; the retained hierarchy still showed the populated Library and the unchanged 98-by-54-point Add item in the tab bar."
+      },
+      "rootCause": "The test treated completion of an element-bound XCTest tap as proof that the fixed tab action received input. Under the hosted accessibility-server slowdown, XCTest synthesized against its element snapshot without delivering the Add selection to SwiftUI, and the test had no stable physical input anchor tied to the visible tab-item frame.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "pending-focused-validation",
+        "summary": "Require a visible 44-point target contained by the physical tab bar, synthesize one touch at that target through the stable application surface, and require the receiver presentation as the event-driven action postcondition within two seconds.",
+        "commits": [
+          "30b8e96dd715b3e952eb00d6443d26db2f02355c"
+        ],
+        "validation": "The integrated fix passes deterministic E2E source hygiene. Focused Story 008 and hosted validation remain pending."
+      },
+      "qualificationResetCount": 1,
+      "resetEvidence": "Formal exact-SHA workflow 33235409727 attempt 1 failed Story 008 qualification attempt 03 at 2dac4cafdd0667f85fb7f3950cc4adf81b8f47d5, resetting Story 008's consecutive qualification count to zero."
+    },
+    {
+      "signature": "ui-test:008-library-search:add-action-ax-hittable-false",
+      "story": "008-library-search",
+      "evidence": {
+        "workflowRun": 33235409727,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions artifact 9712108164 retained Story 008 attempt-05 failure video, query evidence, and final failure frame",
+        "url": "https://github.com/anicolao/player/actions/runs/33235409727/job/99055473988",
+        "commit": "2dac4cafdd0667f85fb7f3950cc4adf81b8f47d5",
+        "observation": "Attempt 05's accessibility queries slowed while the populated Library remained visually complete. The final failure frame shows the Add item unobscured in its 98-by-54-point tab-bar frame, but XCTest's exists-and-hittable predicate returned false and stopped the story before the action."
+      },
+      "rootCause": "The pre-action contract used XCTest's transient isHittable result as the sole truth for a fixed, visibly framed tab action. The hosted accessibility server could report that derived property false while the physical target remained present and unobscured, converting accessibility-query degradation into a false product failure.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "pending-focused-validation",
+        "summary": "Verify the fixed action through its independently observable tab-contained 44-point geometry and the real receiver-presentation result instead of accepting or rejecting it from the transient isHittable property.",
+        "commits": [
+          "30b8e96dd715b3e952eb00d6443d26db2f02355c"
+        ],
+        "validation": "The integrated fix passes deterministic E2E source hygiene. Focused Story 008 and hosted validation remain pending."
+      },
+      "qualificationResetCount": 1,
+      "resetEvidence": "Formal exact-SHA workflow 33235409727 attempt 1 failed Story 008 qualification attempt 05 at 2dac4cafdd0667f85fb7f3950cc4adf81b8f47d5, resetting Story 008's consecutive qualification count to zero."
     }
   ]
 }
