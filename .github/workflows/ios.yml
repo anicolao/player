@@ -82,35 +82,35 @@ jobs:
       matrix:
         include:
           - shard: lane-1
-            story_1: 007-sleep-timer
-            story_2: 006-safe-zip-import
-            story_3: ''
-            run_core: false
-            renders_listing: false
-          - shard: lane-2
-            story_1: 005-play-and-restore
+            story_1: 008-library-search
             story_2: 009-accessible-core-journeys
             story_3: ''
             run_core: false
             renders_listing: false
+          - shard: lane-2
+            story_1: 007-sleep-timer
+            story_2: 004-metadata-repair
+            story_3: 003-multifile-grouping
+            run_core: false
+            renders_listing: false
           - shard: lane-3
-            story_1: 008-library-search
-            story_2: 002-import-and-play
+            story_1: 010-library-backup
+            story_2: 001-ios-launch
             story_3: 012-monetization
             run_core: false
             renders_listing: false
           - shard: lane-4
-            story_1: 013-app-store-listing
-            story_2: 001-ios-launch
-            story_3: 003-multifile-grouping
-            run_core: false
-            renders_listing: true
-          - shard: lane-5
-            story_1: 010-library-backup
+            story_1: 005-play-and-restore
             story_2: 011-offline-recovery
-            story_3: 004-metadata-repair
-            run_core: true
+            story_3: 006-safe-zip-import
+            run_core: false
             renders_listing: false
+          - shard: lane-5
+            story_1: 013-app-store-listing
+            story_2: 002-import-and-play
+            story_3: ''
+            run_core: true
+            renders_listing: true
     defaults:
       run:
         shell: nix develop --command bash --noprofile --norc -e -o pipefail {0}

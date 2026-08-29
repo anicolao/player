@@ -143,19 +143,19 @@ jobs:
       matrix:
         include:
           - lane: lane-1
-            stories: '["007-sleep-timer","006-safe-zip-import"]'
+            stories: '["008-library-search","009-accessible-core-journeys"]'
             core: false
           - lane: lane-2
-            stories: '["005-play-and-restore","009-accessible-core-journeys"]'
+            stories: '["007-sleep-timer","004-metadata-repair","003-multifile-grouping"]'
             core: false
           - lane: lane-3
-            stories: '["008-library-search","002-import-and-play","012-monetization"]'
+            stories: '["010-library-backup","001-ios-launch","012-monetization"]'
             core: false
           - lane: lane-4
-            stories: '["013-app-store-listing","001-ios-launch","003-multifile-grouping"]'
+            stories: '["005-play-and-restore","011-offline-recovery","006-safe-zip-import"]'
             core: false
           - lane: lane-5
-            stories: '["010-library-backup","011-offline-recovery","004-metadata-repair"]'
+            stories: '["013-app-store-listing","002-import-and-play"]'
             core: true
     defaults:
       run:
