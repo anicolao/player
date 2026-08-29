@@ -1107,9 +1107,9 @@ private final class NWComputerReceiverConnection: ComputerReceiverConnection, @u
       return ComputerReceiverBoundEndpoint(host: "192.168.1.42", port: 49_152)
     }
 
-    func activate() {
+    func activate() async {
       guard isActive, connectionHandler != nil else { return }
-      Task { await runScenario() }
+      await runScenario()
     }
 
     func stop() async {

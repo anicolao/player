@@ -292,7 +292,6 @@ final class ComputerReceiverTests: XCTestCase {
       importHandler: successfulReceiverImport,
       eventHandler: { observedEvents.append($0) }
     )
-    await fulfillment(of: [scenarioFinished], timeout: 2)
 
     XCTAssertTrue(observedEvents.contains(.connected(clientName: "Bookshelf E2E Computer")))
     XCTAssertTrue(observedEvents.contains(.receiving(
@@ -309,6 +308,7 @@ final class ComputerReceiverTests: XCTestCase {
       if case .completed = $0 { return true }
       return false
     }))
+    await fulfillment(of: [scenarioFinished], timeout: 2)
   }
 
   func testCompletedScenarioIntentWithoutProductionCompletionEventRemainsReady() async throws {
