@@ -36,7 +36,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ "${lane}" =~ ^lane-[1-5]$ ]] || { echo "A lane-1 through lane-5 identifier is required." >&2; exit 2; }
+[[ "${lane}" =~ ^[a-z0-9][a-z0-9-]*$ ]] \
+  || { echo "A lowercase story-lane identifier is required." >&2; exit 2; }
 [[ "${expected_sha}" =~ ^[0-9a-f]{40}$ ]] || { echo "A full lowercase commit SHA is required." >&2; exit 2; }
 [[ "${attempt_count}" =~ ^[1-9][0-9]*$ ]] || { echo "Attempt count must be positive." >&2; exit 2; }
 [[ ${#stories[@]} -gt 0 ]] || { echo "At least one --story is required." >&2; exit 2; }
