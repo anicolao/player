@@ -307,7 +307,13 @@ final class OfflineRecoveryUITests: XCTestCase {
 
   private func proveSupportBundleExportOutcomes() throws {
     var app = launchRecoveryApp(scenario: "support-export")
-    app.buttons["startup-recovery-diagnostics"].tap()
+    try tapRecoveryAction("startup-recovery-diagnostics", in: app)
+    XCTAssertTrue(
+      anyElement(app, "startup-recovery-action-state").waitForStringValue(
+        "awaiting-files",
+        timeout: 2
+      )
+    )
     XCTAssertTrue(app.buttons["e2e-files-save-support-bundle"].waitForExistence(timeout: 2))
     app.buttons["e2e-files-save-support-bundle"].tap()
     XCTAssertTrue(
@@ -329,7 +335,13 @@ final class OfflineRecoveryUITests: XCTestCase {
     XCTAssertTrue(terminateAndWait(app))
 
     app = launchRecoveryApp(scenario: "support-export")
-    app.buttons["startup-recovery-diagnostics"].tap()
+    try tapRecoveryAction("startup-recovery-diagnostics", in: app)
+    XCTAssertTrue(
+      anyElement(app, "startup-recovery-action-state").waitForStringValue(
+        "awaiting-files",
+        timeout: 2
+      )
+    )
     XCTAssertTrue(app.buttons["e2e-files-cancel-support-bundle"].waitForExistence(timeout: 2))
     app.buttons["e2e-files-cancel-support-bundle"].tap()
     XCTAssertTrue(
@@ -348,7 +360,7 @@ final class OfflineRecoveryUITests: XCTestCase {
     XCTAssertTrue(terminateAndWait(app))
 
     app = launchRecoveryApp(scenario: "support-preparation-fails")
-    app.buttons["startup-recovery-diagnostics"].tap()
+    try tapRecoveryAction("startup-recovery-diagnostics", in: app)
     let alert = app.alerts["Couldn’t Create Support Bundle"]
     XCTAssertTrue(alert.waitForExistence(timeout: 2))
     XCTAssertTrue(
@@ -365,6 +377,31 @@ final class OfflineRecoveryUITests: XCTestCase {
       )
     )
     XCTAssertTrue(terminateAndWait(app))
+  }
+
+  private func tapRecoveryAction(
+    _ identifier: String,
+    in app: XCUIApplication
+  ) throws {
+    let action = app.buttons[identifier]
+    XCTAssertTrue(action.waitForExistence(timeout: 2))
+    let actionFrame = action.frame
+    let appFrame = app.frame
+    guard action.isEnabled,
+      actionFrame.width >= 44,
+      actionFrame.height >= 44,
+      !appFrame.isEmpty,
+      appFrame.contains(actionFrame)
+    else {
+      XCTFail("Expected recovery action \(identifier) to be an enabled 44-point target")
+      throw OfflineRecoveryTestError.semanticStateUnavailable
+    }
+    app.coordinate(
+      withNormalizedOffset: CGVector(
+        dx: (actionFrame.midX - appFrame.minX) / appFrame.width,
+        dy: (actionFrame.midY - appFrame.minY) / appFrame.height
+      )
+    ).tap()
   }
 
   private func launchRecoveryApp(scenario: String) -> XCUIApplication {
@@ -413,4 +450,8 @@ final class OfflineRecoveryUITests: XCTestCase {
   private func hasExactValue(_ element: XCUIElement, _ expected: String) -> Bool {
     element.exists && element.value.map(String.init(describing:)) == expected
   }
+}
+
+private enum OfflineRecoveryTestError: Error {
+  case semanticStateUnavailable
 }

@@ -68,6 +68,8 @@ struct StartupRecoveryView: View {
           Button("Export Sanitized Support Bundle") {
             Task { await prepareSupportBundle() }
           }
+          .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+          .contentShape(Rectangle())
           .disabled(isWorking)
           .accessibilityIdentifier("startup-recovery-diagnostics")
           Button("Start with an Empty Library", role: .destructive) {
