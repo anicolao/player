@@ -927,7 +927,6 @@ final class AccessibilityUITests: XCTestCase {
       revealed = revealWithSettledListGeometry(
         targetIsVisible,
         on: surface,
-        deadline: deadline,
         requiresTerminalEndpoint: targetMode.requiresTerminalEndpoint,
         failureContext: failureContext
       ) {
@@ -1191,14 +1190,14 @@ final class AccessibilityUITests: XCTestCase {
   private func revealWithSettledListGeometry(
     _ condition: @escaping () -> Bool,
     on surface: ScrollSurface,
-    deadline: EventDeadline,
     requiresTerminalEndpoint: Bool = false,
     failureContext: () -> String,
     gesture: () -> Void
   ) -> Bool {
+    let initialReadinessDeadline = EventDeadline()
     guard waitForScrollReadiness(
       surface,
-      deadline: deadline,
+      deadline: initialReadinessDeadline,
       matching: { $0.isIdle && $0.geometryReady }
     ), let before = surface.state(), before.isIdle, before.geometryReady
     else {
@@ -1206,18 +1205,22 @@ final class AccessibilityUITests: XCTestCase {
       return false
     }
 
-    if !requiresTerminalEndpoint && condition() { return true }
+    if condition() && (!requiresTerminalEndpoint || before.atBottom) { return true }
 
     var current = before
-    while deadline.remaining >= 0.2, current.hasScrollableRange, !current.atBottom {
+    while current.hasScrollableRange, !current.atBottom {
       let previous = current
       gesture()
       let remainingRange = previous.maximum - previous.offset
       let requiredProgress = min(previous.containerLength * 0.25, remainingRange)
       var settledState: ScrollReadinessState?
+      // Accessibility alias queries can be slow on a newly booted hosted
+      // simulator. Their duration must not consume the independently bounded
+      // product transition that follows the user's gesture.
+      let gestureDeadline = EventDeadline()
       let observedSettledProgress = waitForScrollReadiness(
         surface,
-        deadline: deadline
+        deadline: gestureDeadline
       ) { after in
         let settled = after.isIdle
           && after.geometryReady
