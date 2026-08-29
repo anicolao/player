@@ -171,10 +171,9 @@ final class CommittedMetadataEditingUITests: XCTestCase {
       timeout: EventDeadline().remaining
     ))
     save.tap()
-    XCTAssertTrue(waitForNoElements(
-      app.descendants(matching: .any).matching(identifier: ID.editor),
-      deadline: EventDeadline()
-    ))
+    // The committed model probe is the exact Save-completion event. Waiting for
+    // the source editor's accessibility node to disappear is weaker and can
+    // observe a stale node after Book Detail is already on screen.
     try requireValue(anyElement(app, ID.integrity), editedEvidence)
     XCTAssertTrue(waitForExistence(app.staticTexts["The Amber Archive"], deadline: EventDeadline()))
     XCTAssertTrue(waitForExistence(app.staticTexts["Leona Quill"], deadline: EventDeadline()))
