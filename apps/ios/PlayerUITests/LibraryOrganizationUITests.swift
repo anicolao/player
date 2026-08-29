@@ -783,7 +783,7 @@ final class LibraryOrganizationUITests: XCTestCase {
       "metadata-search",
       description: "Local search finds contributor metadata without a network",
       verifications: [
-        .valueEquals(
+        searchValueVerification(
           searchProbe,
           expectedMetadataSearch,
           "Normalized contributor search returns exactly the two matching books in title order"
@@ -796,7 +796,7 @@ final class LibraryOrganizationUITests: XCTestCase {
         specification: "At capture, the exact two-book contributor result order and cover-bearing rows are settled on idle search geometry with submitted focus dismissed",
         anchor: searchResultsReadiness,
         prime: {
-          self.hasExactValue(searchProbe, expectedMetadataSearch)
+          self.searchValueMatches(searchProbe, expectedMetadataSearch)
             && self.hasExactValue(searchArtwork, self.artworkValue(self.books))
             && self.hasExactValue(searchFocus, "unfocused")
             && self.hasSettledLayout(
@@ -817,7 +817,7 @@ final class LibraryOrganizationUITests: XCTestCase {
             && metadataSearchScreen.prime()
         }
       ) {
-        self.hasExactValue(searchProbe, expectedMetadataSearch)
+        self.searchValueMatches(searchProbe, expectedMetadataSearch)
           && self.hasExactValue(searchArtwork, self.artworkValue(self.books))
           && self.hasExactValue(searchFocus, "unfocused")
           && self.hasSettledLayout(
@@ -860,20 +860,20 @@ final class LibraryOrganizationUITests: XCTestCase {
         "book:ready:\(bookID):1-chapters:m4b"
       )
       navigateBack(restoredApp, label: "Search", destination: searchProbe)
-      try requireValue(searchProbe, expectedMetadataSearch)
+      try requireSearchValue(searchProbe, expectedMetadataSearch)
     }
 
     restoredApp.buttons["clear-search-query"].tap()
     searchInput.tap()
     searchInput.typeText("Quiet Evenings\n")
-    try requireValue(
+    try requireSearchValue(
       searchProbe,
       searchValue(query: "quiet evenings", count: 2, order: [books[0], books[1]])
     )
     restoredApp.buttons["clear-search-query"].tap()
     searchInput.tap()
     searchInput.typeText("Full Book\n")
-    try requireValue(
+    try requireSearchValue(
       searchProbe,
       searchValue(query: "full book", count: 5, order: allBookOrder)
     )
@@ -893,7 +893,11 @@ final class LibraryOrganizationUITests: XCTestCase {
       "filtered-search",
       description: "Search combines a listening-state filter with a meaningful sort",
       verifications: [
-        .valueEquals(searchProbe, persistedSearchValue, "Finished books are sorted newest-first"),
+        searchValueVerification(
+          searchProbe,
+          persistedSearchValue,
+          "Finished books are sorted newest-first"
+        ),
         .exists(restoredApp.staticTexts["2 books · Finished · Recently added"], "The active result summary is explicit"),
         .exists(restoredApp.buttons["clear-library-search"], "All active choices can be cleared in one tap"),
       ],
@@ -902,7 +906,7 @@ final class LibraryOrganizationUITests: XCTestCase {
         specification: "At capture, the exact finished/recent order and two cover-bearing results are settled on idle search geometry with sort/filter menus closed",
         anchor: searchResultsReadiness
       ) {
-        self.hasExactValue(searchProbe, persistedSearchValue)
+        self.searchValueMatches(searchProbe, persistedSearchValue)
           && self.hasExactValue(searchArtwork, self.artworkValue(self.books))
           && self.hasSettledLayout(
             searchLayoutReadiness,
@@ -928,7 +932,7 @@ final class LibraryOrganizationUITests: XCTestCase {
     searchRelaunch.launch()
     searchRelaunch.buttons["open-library-search"].tap()
     let relaunchedProbe = anyElement(searchRelaunch, "library-search-probe")
-    try requireValue(relaunchedProbe, persistedSearchValue)
+    try requireSearchValue(relaunchedProbe, persistedSearchValue)
     let relaunchedInput = searchRelaunch.textFields["library-search-input"]
     relaunchedInput.tap()
     relaunchedInput.typeText("No Such Audiobook\n")
@@ -945,7 +949,7 @@ final class LibraryOrganizationUITests: XCTestCase {
       "no-search-matches",
       description: "No search matches is distinct from an empty library",
       verifications: [
-        .valueEquals(
+        searchValueVerification(
           relaunchedProbe,
           noMatchValue,
           "The durable sort and filter remain active while the query has no matches"
@@ -958,7 +962,7 @@ final class LibraryOrganizationUITests: XCTestCase {
         specification: "At capture, the exact durable no-match search state is laid out with submitted focus dismissed and its one-tap recovery fully visible",
         anchor: relaunchedLayout
       ) {
-        self.hasExactValue(relaunchedProbe, noMatchValue)
+        self.searchValueMatches(relaunchedProbe, noMatchValue)
           && self.hasExactValue(relaunchedArtwork, self.artworkValue(self.books))
           && self.hasExactValue(relaunchedFocus, "unfocused")
           && self.hasSettledLayout(
@@ -970,7 +974,10 @@ final class LibraryOrganizationUITests: XCTestCase {
       }
     )
     searchRelaunch.buttons["Clear Search and Filters"].tap()
-    try requireValue(relaunchedProbe, searchValue(query: "", count: 5, order: allBookOrder))
+    try requireSearchValue(
+      relaunchedProbe,
+      searchValue(query: "", count: 5, order: allBookOrder)
+    )
     tester.generateDocs()
   }
 
@@ -1358,6 +1365,60 @@ final class LibraryOrganizationUITests: XCTestCase {
     order: [String]
   ) -> String {
     "search:query=\(query):count=\(count):sort=\(sort):direction=\(direction):status=\(status):formats=\(formats):missing=\(missing):empty=\(empty):order=\(order.isEmpty ? "none" : order.joined(separator: ","))"
+  }
+
+  private func searchValueMatches(_ element: XCUIElement, _ expected: String) -> Bool {
+    guard expected.hasPrefix("search:"),
+      let value = element.value.map(String.init(describing:))
+    else { return false }
+    let fields = value.split(separator: ":", maxSplits: 3, omittingEmptySubsequences: false)
+    guard fields.count == 4,
+      fields[0] == "search",
+      fields[1].hasPrefix("revision="),
+      fields[2] == "indexed=true"
+    else { return false }
+    let revision = fields[1].dropFirst("revision=".count)
+    return revision.count == 64
+      && revision.allSatisfy(\.isHexDigit)
+      && fields[3] == expected.dropFirst("search:".count)
+  }
+
+  private func requireSearchValue(_ element: XCUIElement, _ expected: String) throws {
+    guard waitForSearchValue(element, expected) else {
+      XCTFail(
+        "The indexed library search did not reach \(expected); actual=\(String(describing: element.value))"
+      )
+      throw LibraryOrganizationTestError.semanticStateUnavailable
+    }
+  }
+
+  private func waitForSearchValue(_ element: XCUIElement, _ expected: String) -> Bool {
+    let deadline = EventDeadline()
+    let expectation = XCTNSPredicateExpectation(
+      predicate: NSPredicate { _, _ in self.searchValueMatches(element, expected) },
+      object: element
+    )
+    if !searchValueMatches(element, expected) {
+      _ = XCTWaiter.wait(for: [expectation], timeout: deadline.remaining)
+    }
+    return searchValueMatches(element, expected)
+  }
+
+  private func searchValueVerification(
+    _ element: XCUIElement,
+    _ expected: String,
+    _ specification: String
+  ) -> StepVerification {
+    StepVerification(specification: specification) {
+      guard self.waitForSearchValue(element, expected) else {
+        print(
+          "Search verification failed: identifier=\(element.identifier), "
+            + "expected indexed result=\(expected), latest=\(String(describing: element.value))"
+        )
+        return false
+      }
+      return true
+    }
   }
 
   private func requireValue(_ element: XCUIElement, _ expected: String) throws {
