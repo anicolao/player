@@ -781,7 +781,7 @@ final class LibraryOrganizationUITests: XCTestCase {
     XCTAssertTrue(searchInput.waitForExistence(timeout: 2))
     searchInput.tap()
     searchInput.typeText("Mina Sol\n")
-    let searchProbe = anyElement(restoredApp, "library-search-results-probe")
+    let searchProbe = anyElement(restoredApp, "library-search-probe")
     let searchFocus = anyElement(restoredApp, "library-search-focus-state")
     let searchLayoutReadiness = anyElement(restoredApp, "library-search-layout-readiness")
     let searchResultsScroll = anyElement(restoredApp, "library-search-results-scroll")
@@ -900,13 +900,13 @@ final class LibraryOrganizationUITests: XCTestCase {
 
     restoredApp.buttons["search-sort"].tap()
     restoredApp.buttons["search-sort-recently-added"].tap()
-    try requireValue(
+    try requireSearchValue(
       searchProbe,
       searchValue(query: "", count: 5, sort: "recentlyAdded", order: books)
     )
     restoredApp.buttons["search-sort"].tap()
     restoredApp.buttons["search-sort-direction"].tap()
-    try requireValue(
+    try requireSearchValue(
       searchProbe,
       searchValue(
         query: "", count: 5, sort: "recentlyAdded", direction: "descending",
@@ -961,7 +961,7 @@ final class LibraryOrganizationUITests: XCTestCase {
     let searchRelaunch = try makeApplication(reset: false)
     searchRelaunch.launch()
     searchRelaunch.buttons["open-library-search"].tap()
-    let relaunchedProbe = anyElement(searchRelaunch, "library-search-results-probe")
+    let relaunchedProbe = anyElement(searchRelaunch, "library-search-probe")
     try requireSearchValue(relaunchedProbe, persistedSearchValue)
     let relaunchedInput = searchRelaunch.textFields["library-search-input"]
     relaunchedInput.tap()
@@ -1398,9 +1398,7 @@ final class LibraryOrganizationUITests: XCTestCase {
   }
 
   private func searchValueMatches(_ element: XCUIElement, _ expected: String) -> Bool {
-    guard expected.hasPrefix("search:"),
-      let value = element.value.map(String.init(describing:))
-    else { return false }
+    guard let value = element.value as? String else { return false }
     let fields = value.split(separator: ":", maxSplits: 3, omittingEmptySubsequences: false)
     guard fields.count == 4,
       fields[0] == "search",
@@ -1410,7 +1408,7 @@ final class LibraryOrganizationUITests: XCTestCase {
     let revision = fields[1].dropFirst("revision=".count)
     return revision.count == 64
       && revision.allSatisfy(\.isHexDigit)
-      && fields[3] == expected.dropFirst("search:".count)
+      && fields[3] == expected
   }
 
   private func requireSearchValue(_ element: XCUIElement, _ expected: String) throws {
