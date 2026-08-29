@@ -1098,28 +1098,52 @@
       "resetEvidence": "This pull-request matrix was a diagnostic run rather than an accepted formal exact-SHA qualification attempt, so no consecutive Story 004 qualification count existed to reset."
     },
     {
-      "signature": "ui-test:BookmarkUITests.testBookmarksCaptureOrganizeSearchJumpDeleteAndUndoExactly:exit-65",
-      "story": "007-sleep-timer",
+      "signature": "ui-test:PositionRestoreUITests.testRestoresAnAcknowledgedPausedPositionAfterTermination:exit-65",
+      "story": "005-play-and-restore",
       "evidence": {
-        "workflowRun": 33238071790,
+        "workflowRun": 33235409727,
         "workflowAttempt": 1,
-        "artifact": "GitHub Actions job 99062477483 retained the Story 007 result bundle, semantic probes, and direct test log",
-        "url": "https://github.com/anicolao/player/actions/runs/33238071790/job/99062477483",
-        "commit": "78be46c54c7e332717d1ca0fb99357758ea0b530",
-        "observation": "The search probe truthfully published search:revision=<digest>:indexed=true before its result fields, but the bookmark journey still required the pre-revision exact string. The observed result fields were otherwise exactly the expected one-book cafe clue result."
+        "artifact": "GitHub Actions job 99055474035 retained Story 005 attempt-05 failure evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33235409727/job/99055474035",
+        "commit": "2dac4cafdd0667f85fb7f3950cc4adf81b8f47d5",
+        "observation": "Story 005 qualification attempt 05 detected one Ready for Apple Intelligence title, but the banner disappeared while XCTest resolved the element-bound swipe. XCTest retried the transient title for more than 20 seconds, then failed at TestStepHelper.swift:176 after SpringBoard contained only its clock; the restored screenshot was never attached."
       },
-      "rootCause": "R7 strengthened the production search readiness contract with a library revision and indexing state, but this cross-story consumer continued comparing the obsolete whole value. The assertion therefore rejected the new truthful prefix instead of parsing and validating it.",
+      "rootCause": "The dismissal gesture was bound to the transient notification-title element. Automatic banner dismissal could invalidate that element between the unique query and gesture synthesis, so XCTest converted a successfully vanished overlay into an unbounded internal retry and UI-test failure.",
       "diagnosisStatus": "confirmed",
       "fix": {
         "status": "pending-focused-validation",
-        "summary": "Parse the probe into its four contract fields, require a 64-character revision and indexed=true, and compare the complete result suffix under the existing event-driven two-second deadline.",
+        "summary": "Calculate the banner gesture from its observed frame but anchor input to stable SpringBoard coordinates, then require the title query to become empty within the existing two-second event deadline.",
         "commits": [
-          "3e4e862482e5eeed024a0a0ae740d6157e9fc11b"
+          "fa7a534604ec58bc8ddfa5420cca80596485d3ae"
         ],
-        "validation": "The focused source diff and JSON contract pass repository checks. A local test build was attempted but excluded when the host exhausted disk during the linker; exact hosted validation remains required before this entry can be marked verified."
+        "validation": "The exact fix commit passed focused Story 005 UI 5/5, all four screenshots pixel-exact, and the reviewed README exactly; the intermittent system banner did not appear locally, so a hosted repeat that exercises the banner must still verify the repaired disappearance race."
       },
-      "qualificationResetCount": 0,
-      "resetEvidence": "This was the normal R7 pull-request matrix rather than a formal repeated qualification attempt, so no consecutive Story 007 qualification count existed to reset."
+      "qualificationResetCount": 1,
+      "resetEvidence": "Formal exact-SHA workflow 33235409727 attempt 1 failed Story 005 qualification attempt 05 at 2dac4cafdd0667f85fb7f3950cc4adf81b8f47d5, resetting Story 005's consecutive qualification count to zero."
+    },
+    {
+      "signature": "screenshot:pixel-difference:000-empty-library.png",
+      "story": "001-ios-launch",
+      "evidence": {
+        "workflowRun": 33235409727,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions job 99055474035 retained Story 001 attempt-05 expected, actual, and diff images",
+        "url": "https://github.com/anicolao/player/actions/runs/33235409727/job/99055474035",
+        "commit": "2dac4cafdd0667f85fb7f3950cc4adf81b8f47d5",
+        "observation": "Story 001 qualification attempt 05 observed no Apple Intelligence title at test time 14.66 seconds, then evaluated capture readiness until 18.63 seconds. The banner arrived during that interval and screenshot 000 captured it across y=176...460, producing 322,307 over-threshold pixels while all five later screenshots matched canonically."
+      },
+      "rootCause": "System-overlay resolution occurred before app-owned capture readiness. A notification that arrived while readiness predicates were evaluated therefore bypassed the only dismissal check and was attached as canonical walkthrough evidence.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "pending-focused-validation",
+        "summary": "Resolve system overlays again at the capture boundary and, when dismissal changes the composited frame, re-establish the same semantic and prepared-screenshot readiness before attaching evidence.",
+        "commits": [
+          "fa7a534604ec58bc8ddfa5420cca80596485d3ae"
+        ],
+        "validation": "A source-equivalent focused local build passed Story 001 UI 5/5, all six screenshots pixel-exact, and the reviewed README exactly; the intermittent late system banner did not appear locally, so an exact-SHA hosted repeat must still verify capture-boundary dismissal."
+      },
+      "qualificationResetCount": 1,
+      "resetEvidence": "Formal exact-SHA workflow 33235409727 attempt 1 failed Story 001 qualification attempt 05 at 2dac4cafdd0667f85fb7f3950cc4adf81b8f47d5, resetting Story 001's consecutive qualification count to zero."
     }
   ]
 }
