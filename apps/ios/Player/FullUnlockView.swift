@@ -215,6 +215,7 @@ struct FullUnlockView: View {
         "price=\(snapshot.displayPrice ?? "none")",
         "family=\(snapshot.isFamilyShareable.map(String.init) ?? "unknown")",
         "feedback=\(snapshot.feedbackMessage == nil ? "none" : "present")",
+        "restored=\(model.isRestored)",
         "books=\(model.library.books.count)",
         "current=\(model.library.currentBookID?.uuidString.lowercased() ?? "none")",
         E2EMonetizationStoreKitClient.shared.probeValue,

@@ -79,7 +79,11 @@ final class MonetizationUITests: XCTestCase {
       }
     )
 
-    app.buttons["full-unlock-restore"].tap()
+    tapPhysicalAction(
+      app.buttons["full-unlock-restore"],
+      within: unlockScreen,
+      in: app
+    )
     let completeRestore = app.buttons["e2e-monetization-complete-restore-empty"]
     XCTAssertTrue(waitForExistence(completeRestore, deadline: EventDeadline()))
     XCTAssertTrue(waitForValue(state, containing: "action=true"))
@@ -145,10 +149,11 @@ final class MonetizationUITests: XCTestCase {
     app.launch()
 
     let relaunchedState = app.descendants(matching: .any)["e2e-monetization-state"]
-    XCTAssertTrue(waitForExistence(app.staticTexts["Bookshelf is unlocked"], deadline: EventDeadline()))
+    XCTAssertTrue(waitForExistence(relaunchedState, deadline: EventDeadline()))
+    XCTAssertTrue(waitForValue(relaunchedState, containing: libraryInvariant))
     XCTAssertTrue(waitForValue(relaunchedState, containing: "entitlement=fullUnlock"))
     XCTAssertTrue(waitForValue(relaunchedState, containing: "phase=offline"))
-    XCTAssertTrue(waitForValue(relaunchedState, containing: libraryInvariant))
+    XCTAssertTrue(waitForExistence(app.staticTexts["Bookshelf is unlocked"], deadline: EventDeadline()))
     XCTAssertTrue(waitForExistence(
       app.staticTexts[
         "The App Store could not be reached. You can keep using your included playback and try again later."
@@ -161,7 +166,7 @@ final class MonetizationUITests: XCTestCase {
   }
 
   private var libraryInvariant: String {
-    "books=1|current=20000000-0000-0000-0000-000000000001"
+    "restored=true|books=1|current=20000000-0000-0000-0000-000000000001"
   }
 
   private func waitForValue(_ element: XCUIElement, containing token: String) -> Bool {
@@ -170,6 +175,31 @@ final class MonetizationUITests: XCTestCase {
       on: element,
       timeout: EventDeadline().remaining
     )
+  }
+
+  private func tapPhysicalAction(
+    _ action: XCUIElement,
+    within container: XCUIElement,
+    in app: XCUIApplication
+  ) {
+    let actionFrame = action.frame
+    let appFrame = app.frame
+    guard action.exists,
+      action.isEnabled,
+      elementIsFullyVisible(action, within: container),
+      !actionFrame.isEmpty,
+      !appFrame.isEmpty,
+      appFrame.contains(actionFrame)
+    else {
+      XCTFail("Expected the monetization action to be enabled and fully visible")
+      return
+    }
+    app.coordinate(
+      withNormalizedOffset: CGVector(
+        dx: (actionFrame.midX - appFrame.minX) / appFrame.width,
+        dy: (actionFrame.midY - appFrame.minY) / appFrame.height
+      )
+    ).tap()
   }
 
   private func fullUnlockCaptureReadiness(
