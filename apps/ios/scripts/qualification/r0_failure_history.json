@@ -15,12 +15,12 @@
       "rootCause": "XCUIElement slider adjustment can return before SwiftUI has consumed the requested endpoint, and the journey issued the second adjustment without first observing the zoom endpoint. The two unobserved interactions compounded into a valid but partial crop.",
       "diagnosisStatus": "confirmed",
       "fix": {
-        "status": "pending-focused-validation",
+        "status": "verified",
         "summary": "Drive each slider independently to its semantic endpoint, retrying only while a shared event deadline remains, and require the exact zoom state before moving the horizontal focal point.",
         "commits": [
           "eb5d204763888c9a7b364d773affc43909583677"
         ],
-        "validation": "Source hygiene and qualification aggregation contracts pass. Focused Story 004 validation is pending the shared simulator lease."
+        "validation": "The complete canonical Story 004 journey passed on iOS 26.5 in 39.735 seconds, including all four pixel-exact screenshots and the exact reviewed walkthrough README. Source hygiene and qualification aggregation contracts also pass."
       },
       "qualificationResetCount": 1,
       "resetEvidence": "Formal exact-SHA qualification run 33235409727 failed Story 004 attempt 9, resetting the consecutive qualification count."
