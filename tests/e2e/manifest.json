@@ -41,6 +41,7 @@
     "PlayerUITests/BookmarkUITests/testBookmarksCaptureOrganizeSearchJumpDeleteAndUndoExactly"
   ]},
   {"story":"008-library-search","tests":[
+    "PlayerUITests/LibrarySearchCoverageUITests/testEveryProductionSortAndFilterPersistsClearsAndResets",
     "PlayerUITests/LibraryOrganizationUITests/testOrganizesDailyLibraryAndRestoresATrashedBook",
     "PlayerUITests/TrashDeletionUITests/testPermanentlyDeletesOnlyTheConfirmedCurrentBook"
   ]},

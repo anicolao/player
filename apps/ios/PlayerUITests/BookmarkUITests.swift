@@ -250,7 +250,7 @@ final class BookmarkUITests: XCTestCase {
     XCTAssertTrue(librarySearch.waitForExistence(timeout: 2))
     try focusAndType("cafe clue", into: librarySearch, in: restored)
     try requireSearchValue(
-      restored.descendants(matching: .any)["library-search-probe"],
+      restored.descendants(matching: .any)["library-search-results-probe"],
       "query=cafe clue:count=1:sort=title:direction=ascending:status=any:formats=any:missing=false:empty=none:order=\(bookID)"
     )
     tester.generateDocs()

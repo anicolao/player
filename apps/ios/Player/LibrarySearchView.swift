@@ -5,6 +5,8 @@ struct LibrarySearchView: View {
   @State private var query = ""
   @State private var index = LibrarySearchIndex.empty
   @State private var isIndexed = false
+  @State private var pendingPreferences: LibrarySearchPreferences?
+  @State private var preferenceUpdateTask: Task<Void, Never>?
   @FocusState private var isSearchFocused: Bool
 
   var body: some View {
@@ -22,6 +24,7 @@ struct LibrarySearchView: View {
       StateProbe(id: "library-search-screen", value: isIndexed ? "ready" : "indexing")
       StateProbe(id: "library-search-probe", value: probeValue)
       #if E2E
+        StateProbe(id: "library-search-results-probe", value: resultProbeValue)
         LibraryArtworkStateProbe(model: model, id: "library-search-artwork-probe")
         StateProbe(
           id: "library-search-focus-state",
@@ -79,7 +82,7 @@ struct LibrarySearchView: View {
         if preferences != .default || !query.isEmpty {
           Button("Clear All") {
             query = ""
-            Task { _ = await model.clearLibrarySearchPreferences() }
+            persistPreferences(.default)
           }
           .buttonStyle(.bordered)
           .accessibilityIdentifier("clear-library-search")
@@ -168,7 +171,7 @@ struct LibrarySearchView: View {
       } actions: {
         Button("Clear Search and Filters") {
           query = ""
-          Task { _ = await model.clearLibrarySearchPreferences() }
+          persistPreferences(.default)
         }
         .buttonStyle(.borderedProminent)
         .tint(PlayerColor.accent)
@@ -206,7 +209,9 @@ struct LibrarySearchView: View {
     }
   }
 
-  private var preferences: LibrarySearchPreferences { model.library.searchPreferences }
+  private var preferences: LibrarySearchPreferences {
+    pendingPreferences ?? model.library.searchPreferences
+  }
 
   private var result: LibrarySearchResult {
     index.search(query: query, preferences: preferences)
@@ -232,6 +237,10 @@ struct LibrarySearchView: View {
   }
 
   private var probeValue: String {
+    "search:revision=\(searchRevision.value):indexed=\(isIndexed):\(resultProbeValue)"
+  }
+
+  private var resultProbeValue: String {
     let order = result.books.map { $0.id.uuidString.lowercased() }.joined(separator: ",")
     let status = preferences.status?.rawValue ?? "any"
     let formats = preferences.formats.sorted().joined(separator: ",")
@@ -239,7 +248,7 @@ struct LibrarySearchView: View {
     if !result.books.isEmpty { empty = "none" }
     else if result.normalizedQuery.isEmpty { empty = "filters" }
     else { empty = "query" }
-    return "search:revision=\(searchRevision.value):indexed=\(isIndexed):query=\(result.normalizedQuery):count=\(result.books.count):sort=\(preferences.sort.rawValue):direction=\(preferences.direction.rawValue):status=\(status):formats=\(formats.isEmpty ? "any" : formats):missing=\(preferences.missingMetadataOnly):empty=\(empty):order=\(order.isEmpty ? "none" : order)"
+    return "query=\(result.normalizedQuery):count=\(result.books.count):sort=\(preferences.sort.rawValue):direction=\(preferences.direction.rawValue):status=\(status):formats=\(formats.isEmpty ? "any" : formats):missing=\(preferences.missingMetadataOnly):empty=\(empty):order=\(order.isEmpty ? "none" : order)"
   }
 
   private func searchSortButton(_ title: String, value: LibrarySearchSort, id: String) -> some View {
@@ -269,6 +278,18 @@ struct LibrarySearchView: View {
   private func updatePreferences(_ change: @escaping (inout LibrarySearchPreferences) -> Void) {
     var updated = preferences
     change(&updated)
-    Task { _ = await model.setLibrarySearchPreferences(updated) }
+    persistPreferences(updated)
+  }
+
+  private func persistPreferences(_ updated: LibrarySearchPreferences) {
+    pendingPreferences = updated
+    let precedingUpdate = preferenceUpdateTask
+    preferenceUpdateTask = Task {
+      _ = await precedingUpdate?.value
+      _ = await model.setLibrarySearchPreferences(updated)
+      if pendingPreferences == updated {
+        pendingPreferences = nil
+      }
+    }
   }
 }

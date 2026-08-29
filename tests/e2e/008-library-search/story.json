@@ -3,9 +3,13 @@
   "platform": "ios",
   "test": "PlayerUITests/LibraryOrganizationUITests/testOrganizesDailyLibraryAndRestoresATrashedBook",
   "nonvisualTests": [
+    "PlayerUITests/LibrarySearchCoverageUITests/testEveryProductionSortAndFilterPersistsClearsAndResets",
     "PlayerUITests/TrashDeletionUITests/testPermanentlyDeletesOnlyTheConfirmedCurrentBook"
   ],
   "fixture": "synthetic-populated-library",
+  "additionalFixtures": [
+    "synthetic-search-matrix"
+  ],
   "screenshots": [
     "000-populated-library.png",
     "001-curated-collection.png",

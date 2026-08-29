@@ -781,7 +781,7 @@ final class LibraryOrganizationUITests: XCTestCase {
     XCTAssertTrue(searchInput.waitForExistence(timeout: 2))
     searchInput.tap()
     searchInput.typeText("Mina Sol\n")
-    let searchProbe = anyElement(restoredApp, "library-search-probe")
+    let searchProbe = anyElement(restoredApp, "library-search-results-probe")
     let searchFocus = anyElement(restoredApp, "library-search-focus-state")
     let searchLayoutReadiness = anyElement(restoredApp, "library-search-layout-readiness")
     let searchResultsScroll = anyElement(restoredApp, "library-search-results-scroll")
@@ -900,8 +900,19 @@ final class LibraryOrganizationUITests: XCTestCase {
 
     restoredApp.buttons["search-sort"].tap()
     restoredApp.buttons["search-sort-recently-added"].tap()
+    try requireValue(
+      searchProbe,
+      searchValue(query: "", count: 5, sort: "recentlyAdded", order: books)
+    )
     restoredApp.buttons["search-sort"].tap()
     restoredApp.buttons["search-sort-direction"].tap()
+    try requireValue(
+      searchProbe,
+      searchValue(
+        query: "", count: 5, sort: "recentlyAdded", direction: "descending",
+        order: Array(books.reversed())
+      )
+    )
     restoredApp.buttons["search-filter"].tap()
     restoredApp.buttons["search-filter-finished"].tap()
     let persistedSearchValue = searchValue(
@@ -950,7 +961,7 @@ final class LibraryOrganizationUITests: XCTestCase {
     let searchRelaunch = try makeApplication(reset: false)
     searchRelaunch.launch()
     searchRelaunch.buttons["open-library-search"].tap()
-    let relaunchedProbe = anyElement(searchRelaunch, "library-search-probe")
+    let relaunchedProbe = anyElement(searchRelaunch, "library-search-results-probe")
     try requireSearchValue(relaunchedProbe, persistedSearchValue)
     let relaunchedInput = searchRelaunch.textFields["library-search-input"]
     relaunchedInput.tap()
@@ -1383,7 +1394,7 @@ final class LibraryOrganizationUITests: XCTestCase {
     empty: String = "none",
     order: [String]
   ) -> String {
-    "search:query=\(query):count=\(count):sort=\(sort):direction=\(direction):status=\(status):formats=\(formats):missing=\(missing):empty=\(empty):order=\(order.isEmpty ? "none" : order.joined(separator: ","))"
+    "query=\(query):count=\(count):sort=\(sort):direction=\(direction):status=\(status):formats=\(formats):missing=\(missing):empty=\(empty):order=\(order.isEmpty ? "none" : order.joined(separator: ","))"
   }
 
   private func searchValueMatches(_ element: XCUIElement, _ expected: String) -> Bool {

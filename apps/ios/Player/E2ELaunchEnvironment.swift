@@ -53,6 +53,7 @@ enum E2EFixture: String, CaseIterable {
   case syntheticMetadataRepair = "synthetic-metadata-repair"
   case syntheticCommittedMetadata = "synthetic-committed-metadata"
   case syntheticPopulatedLibrary = "synthetic-populated-library"
+  case syntheticSearchMatrix = "synthetic-search-matrix"
   case syntheticPermanentTrash = "synthetic-permanent-trash"
   case smartRewind = "smart-rewind"
   case sleepTimer = "sleep-timer"
@@ -1025,6 +1026,8 @@ extension PlayerEnvironment {
           )
         case .syntheticPopulatedLibrary:
           return try populatedLibraryEnvironment(reset: reset)
+        case .syntheticSearchMatrix:
+          return try populatedLibraryEnvironment(reset: reset, searchCoverageScenario: true)
         case .syntheticPermanentTrash:
           return try permanentTrashEnvironment(reset: reset)
         case .smartRewind:
@@ -2367,7 +2370,10 @@ extension PlayerEnvironment {
       )
     }
 
-    private static func populatedLibraryEnvironment(reset: Bool) throws -> PlayerEnvironment {
+    private static func populatedLibraryEnvironment(
+      reset: Bool,
+      searchCoverageScenario: Bool = false
+    ) throws -> PlayerEnvironment {
       let launchEnvironment = ProcessInfo.processInfo.environment
       guard
         let descriptorEncoded = launchEnvironment["PLAYER_E2E_LIBRARY_DESCRIPTOR_BASE64"],
@@ -2395,14 +2401,19 @@ extension PlayerEnvironment {
         appropriateFor: nil,
         create: true
       )
-      let root = support.appending(path: "PlayerE2EPopulatedLibrary", directoryHint: .isDirectory)
+      let root = support.appending(
+        path: searchCoverageScenario
+          ? "PlayerE2ESearchMatrix" : "PlayerE2EPopulatedLibrary",
+        directoryHint: .isDirectory
+      )
       return try populatedLibraryEnvironment(
         reset: reset,
         root: root,
         descriptorData: descriptorData,
         audio: audio,
         covers: covers,
-        permanentTrashScenario: false
+        permanentTrashScenario: false,
+        searchCoverageScenario: searchCoverageScenario
       )
     }
 
@@ -2453,7 +2464,8 @@ extension PlayerEnvironment {
       descriptorData: Data,
       audio: Data,
       covers: [Data],
-      permanentTrashScenario: Bool = false
+      permanentTrashScenario: Bool = false,
+      searchCoverageScenario: Bool = false
     ) throws -> PlayerEnvironment {
       let validated = try E2EPopulatedLibraryDescriptor.validated(
         data: descriptorData,
@@ -2476,7 +2488,9 @@ extension PlayerEnvironment {
         .map { String(format: "%02x", $0) }.joined()
       let sourceRoot = FileManager.default.temporaryDirectory.appending(
         path: permanentTrashScenario
-          ? "PlayerE2EPermanentTrashSource" : "PlayerE2EPopulatedLibrarySource",
+          ? "PlayerE2EPermanentTrashSource"
+          : (searchCoverageScenario
+            ? "PlayerE2ESearchMatrixSource" : "PlayerE2EPopulatedLibrarySource"),
         directoryHint: .isDirectory
       )
       if reset { try resetE2EFixtureRoot(sourceRoot) }
@@ -2498,7 +2512,9 @@ extension PlayerEnvironment {
         let assetAudio = permanentTrashScenario && index == 0 ? purgeTargetAudio : audio
         let assetChecksum = permanentTrashScenario && index == 0
           ? purgeTargetChecksum : descriptor.audio.sha256
-        let relativePath = "Media/\(bookID.uuidString.lowercased())/\(assetID.uuidString.lowercased()).m4b"
+        let usesMP3 = searchCoverageScenario && index == 1
+        let fileExtension = usesMP3 ? "mp3" : "m4b"
+        let relativePath = "Media/\(bookID.uuidString.lowercased())/\(assetID.uuidString.lowercased()).\(fileExtension)"
         let managedURL = root.appending(path: relativePath)
         let shouldHaveManagedCopy = persistedLibrary?.books.contains(where: { $0.id == bookID }) ?? true
         if shouldHaveManagedCopy && !FileManager.default.fileExists(atPath: managedURL.path) {
@@ -2508,14 +2524,18 @@ extension PlayerEnvironment {
           )
           try assetAudio.write(to: managedURL, options: .atomic)
         }
+        let searchDurations = [90.0, 150.0, 60.0, 120.0, 30.0]
+        let assetDuration = searchCoverageScenario
+          ? searchDurations[index]
+          : Double(descriptor.audio.logicalBookDurationMilliseconds) / 1_000
         let asset = AudioAsset(
           id: assetID,
-          originalFilename: "library-book-audio.m4b",
+          originalFilename: "library-book-audio.\(fileExtension)",
           managedRelativePath: relativePath,
           checksumSHA256: assetChecksum,
           byteCount: Int64(assetAudio.count),
-          durationSeconds: Double(descriptor.audio.logicalBookDurationMilliseconds) / 1_000,
-          container: "M4B"
+          durationSeconds: assetDuration,
+          container: usesMP3 ? "MP3" : "M4B"
         )
         let author = Contributor(
           id: fixtureBook.author.id,
@@ -2528,10 +2548,11 @@ extension PlayerEnvironment {
         let memberships = fixtureBook.series.map {
           [SeriesMembership(seriesID: $0.id, name: $0.name, position: $0.position)]
         } ?? []
+        let isMissingMetadata = searchCoverageScenario && index == 3
         let metadata = AudiobookMetadata(
           title: fixtureBook.title,
-          authors: [author],
-          narrators: [narrator],
+          authors: isMissingMetadata ? [] : [author],
+          narrators: isMissingMetadata ? [] : [narrator],
           seriesMemberships: memberships,
           cover: CoverArtwork(originalData: cover, mediaType: "image/png", source: .embedded)
         )
@@ -2546,12 +2567,12 @@ extension PlayerEnvironment {
           Book(
             id: bookID,
             title: fixtureBook.title,
-            authors: [fixtureBook.author.name],
+            authors: isMissingMetadata ? [] : [fixtureBook.author.name],
             durationSeconds: asset.durationSeconds,
             artworkData: cover,
             assets: [asset],
             dateAdded: clock.addingTimeInterval(Double(fixtureBook.addedOrder)),
-            narrators: [fixtureBook.narrator.name],
+            narrators: isMissingMetadata ? [] : [fixtureBook.narrator.name],
             seriesName: fixtureBook.series?.name,
             seriesPosition: fixtureBook.series?.position,
             artworkMediaType: "image/png",

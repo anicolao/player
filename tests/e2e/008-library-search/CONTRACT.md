@@ -275,21 +275,36 @@ fields without network access. Results are `search-result-<book UUID>`.
 
 The Story first searches `Mina Sol` and requires b5 then b3 in title order. It
 also programmatically requires `Quiet Evenings` to find the two collection
-members and `Full Book` to find all five chapter matches. Search state is exposed
-by `library-search-probe`:
+members and `Full Book` to find all five chapter matches. Stable result state is
+exposed by `library-search-results-probe`. The separate `library-search-probe`
+also carries the index revision and readiness used by metadata-editing coverage:
 
 ```text
-search:query=<normalized query>:count=<n>:sort=<sort>:direction=<direction>:status=<status-or-any>:formats=<csv-or-any>:missing=<bool>:empty=<none|query|filters>:order=<canonical UUID csv-or-none>
+query=<normalized query>:count=<n>:sort=<sort>:direction=<direction>:status=<status-or-any>:formats=<csv-or-any>:missing=<bool>:empty=<none|query|filters>:order=<canonical UUID csv-or-none>
 ```
 
-Controls are `search-sort`, `search-sort-recently-added`,
-`search-sort-direction`, `search-filter`, `search-filter-finished`, and
-`clear-library-search`. Finished plus recently-added descending yields b4 then
-b3 and the visible summary `2 books · Finished · Recently added`. Sort and
-filter preferences persist across process termination; the query intentionally
-does not.
+Sort controls are `search-sort`, `search-sort-title`, `search-sort-author`,
+`search-sort-series`, `search-sort-recently-added`, `search-sort-duration`,
+`search-sort-progress`, and `search-sort-direction`. Filter controls are
+`search-filter`, `search-filter-any-status`, `search-filter-unplayed`,
+`search-filter-in-progress`, `search-filter-finished`, `search-filter-m4b`, and
+`search-filter-missing-metadata`. `clear-library-search` and
+`empty-search-clear-all` expose both production reset paths. Finished plus
+recently-added descending yields b4 then b3 and the visible summary
+`2 books · Finished · Recently added`. Sort and filter preferences persist
+across process termination; the query intentionally does not.
 
 After relaunch, `No Such Audiobook` must expose `library-search-empty` with
 `empty=query`, while the library still contains five books and the durable sort
 and filter remain explicit. `empty-search-clear-all` restores default title
 order and all five results. This state must never reuse the empty-library copy.
+
+The nonvisual R13 journey uses the dedicated `synthetic-search-matrix` fixture.
+It retains the five stable identities and covers while varying duration, format,
+and metadata completeness so every production menu choice has an observable
+result. It proves Title, Author, Series order, Recently added, Duration, and
+Progress in both directions; Any, Unplayed, In progress, Finished, M4B, and
+Missing metadata independently; and a combined Unplayed + M4B + Missing metadata
+empty state. It also opens a result, verifies query-empty and filter-empty copy,
+uses both Clear All actions, restores preferences after relaunch, and proves an
+E2E fixture reset returns the durable defaults.
