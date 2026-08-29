@@ -40,14 +40,16 @@ final class LibrarySearchTests: XCTestCase {
     XCTAssertTrue(index.search(query: "unrelated", preferences: .default).books.isEmpty)
   }
 
-  func testSearchCombinesListeningAndFormatFiltersWithEveryRequiredSort() {
+  func testEverySearchSortUsesBothDirectionsAndStableIdentityTieBreaks() {
     let now = Date(timeIntervalSince1970: 1_800_000_000)
     let alpha = makeBook(
       id: uuid(1), title: "Alpha", author: Contributor(displayName: "Zed Author"),
+      series: SeriesMembership(name: "Signals", position: "10"),
       dateAdded: now, duration: 90, position: 45_000, status: .inProgress
     )
     let beta = makeBook(
       id: uuid(2), title: "Beta", author: Contributor(displayName: "Ana Author"),
+      series: SeriesMembership(name: "Signals", position: "2"),
       filename: "beta.mp3", dateAdded: now.addingTimeInterval(20), duration: 120,
       position: 0, status: .unplayed, container: "MP3"
     )
@@ -59,24 +61,136 @@ final class LibrarySearchTests: XCTestCase {
       books: [gamma, alpha, beta], importJobs: [], currentBookID: nil
     ))
 
+    let ascending: [(sort: LibrarySearchSort, order: [UUID])] = [
+      (.title, [alpha.id, beta.id, gamma.id]),
+      (.author, [beta.id, gamma.id, alpha.id]),
+      (.series, [gamma.id, beta.id, alpha.id]),
+      (.recentlyAdded, [alpha.id, gamma.id, beta.id]),
+      (.duration, [gamma.id, alpha.id, beta.id]),
+      (.progress, [beta.id, alpha.id, gamma.id]),
+    ]
+    for (sort, order) in ascending {
+      var preferences = LibrarySearchPreferences.default
+      preferences.sort = sort
+      XCTAssertEqual(
+        index.search(query: "", preferences: preferences).books.map(\.id),
+        order,
+        "\(sort.rawValue) must implement its ascending production order"
+      )
+      preferences.direction = .descending
+      XCTAssertEqual(
+        index.search(query: "", preferences: preferences).books.map(\.id),
+        Array(order.reversed()),
+        "\(sort.rawValue) must reverse every comparison, including identity ties"
+      )
+    }
+
+    let lowerID = makeBook(
+      id: uuid(10), title: "Same", author: Contributor(displayName: "Same"),
+      series: SeriesMembership(name: "Same", position: "1"), dateAdded: now,
+      duration: 10, position: 1_000
+    )
+    let higherID = makeBook(
+      id: uuid(11), title: "Same", author: Contributor(displayName: "Same"),
+      series: SeriesMembership(name: "Same", position: "1"), dateAdded: now,
+      duration: 10, position: 1_000
+    )
+    let tiedIndex = LibrarySearchIndex(library: LibrarySnapshot(
+      books: [higherID, lowerID], importJobs: [], currentBookID: nil
+    ))
+    for sort in LibrarySearchSort.allCases {
+      var preferences = LibrarySearchPreferences.default
+      preferences.sort = sort
+      XCTAssertEqual(
+        tiedIndex.search(query: "", preferences: preferences).books.map(\.id),
+        [lowerID.id, higherID.id]
+      )
+      preferences.direction = .descending
+      XCTAssertEqual(
+        tiedIndex.search(query: "", preferences: preferences).books.map(\.id),
+        [higherID.id, lowerID.id]
+      )
+    }
+  }
+
+  func testEverySearchFilterWorksIndependentlyAndInRepresentativeCombinations() {
+    let completeM4B = makeBook(
+      id: uuid(1), title: "Complete M4B", author: Contributor(displayName: "Author"),
+      position: 40_000, status: .inProgress
+    )
+    let unplayedMP3 = makeBook(
+      id: uuid(2), title: "Unplayed MP3", author: Contributor(displayName: "Author"),
+      filename: "unplayed.mp3", status: .unplayed, container: "MP3"
+    )
+    let missingNarratorM4B = makeBook(
+      id: uuid(3), title: "Missing Narrator", author: Contributor(displayName: "Author"),
+      hasNarrator: false, position: 120_000, status: .finished
+    )
+    let missingAuthorMP3 = makeBook(
+      id: uuid(4), title: "Missing Author", author: Contributor(displayName: ""),
+      hasAuthor: false, filename: "missing.mp3", status: .unplayed, container: "MP3"
+    )
+    let books = [completeM4B, unplayedMP3, missingNarratorM4B, missingAuthorMP3]
+    let index = LibrarySearchIndex(library: LibrarySnapshot(
+      books: books, importJobs: [], currentBookID: nil
+    ))
+
+    func result(_ update: (inout LibrarySearchPreferences) -> Void) -> [UUID] {
+      var preferences = LibrarySearchPreferences.default
+      update(&preferences)
+      return index.search(query: "", preferences: preferences).books.map(\.id)
+    }
+
+    XCTAssertEqual(result { $0.status = nil }, books.sorted(by: { $0.title < $1.title }).map(\.id))
+    XCTAssertEqual(result { $0.status = .unplayed }, [missingAuthorMP3.id, unplayedMP3.id])
+    XCTAssertEqual(result { $0.status = .inProgress }, [completeM4B.id])
+    XCTAssertEqual(result { $0.status = .finished }, [missingNarratorM4B.id])
+    XCTAssertEqual(result { $0.formats = ["m4b"] }, [completeM4B.id, missingNarratorM4B.id])
+    XCTAssertEqual(result { $0.missingMetadataOnly = true }, [missingAuthorMP3.id, missingNarratorM4B.id])
+    XCTAssertEqual(result {
+      $0.status = .finished
+      $0.formats = ["M4B"]
+      $0.missingMetadataOnly = true
+    }, [missingNarratorM4B.id])
+    XCTAssertTrue(result {
+      $0.status = .inProgress
+      $0.formats = ["MP3"]
+      $0.missingMetadataOnly = true
+    }.isEmpty)
+
+    var combined = LibrarySearchPreferences.default
+    combined.status = .unplayed
+    combined.formats = ["MP3"]
+    combined.missingMetadataOnly = true
+    combined.sort = .author
+    combined.direction = .descending
+    XCTAssertEqual(
+      index.search(query: "missing", preferences: combined).books.map(\.id),
+      [missingAuthorMP3.id],
+      "Query, listening state, format, metadata, sort, and direction compose deterministically"
+    )
+  }
+
+  func testSearchPreferenceSummaryDescribesEveryFilterAndSort() {
+    let expectedSortTokens: [(sort: LibrarySearchSort, token: String)] = [
+      (.title, "Title"), (.author, "Author"), (.series, "Series order"),
+      (.recentlyAdded, "Recently added"), (.duration, "Duration"), (.progress, "Progress"),
+    ]
+    for (sort, token) in expectedSortTokens {
+      var preferences = LibrarySearchPreferences.default
+      preferences.sort = sort
+      XCTAssertEqual(preferences.summaryTokens, [token])
+    }
+
     var preferences = LibrarySearchPreferences.default
     preferences.status = .inProgress
-    preferences.formats = ["M4B"]
-    XCTAssertEqual(index.search(query: "", preferences: preferences).books.map(\.id), [alpha.id])
-
-    preferences.status = nil
-    preferences.formats = []
-    preferences.sort = .author
-    XCTAssertEqual(index.search(query: "", preferences: preferences).books.map(\.id), [beta.id, gamma.id, alpha.id])
-    preferences.sort = .recentlyAdded
-    preferences.direction = .descending
-    XCTAssertEqual(index.search(query: "", preferences: preferences).books.map(\.id), [beta.id, gamma.id, alpha.id])
-    preferences.sort = .duration
-    preferences.direction = .ascending
-    XCTAssertEqual(index.search(query: "", preferences: preferences).books.map(\.id), [gamma.id, alpha.id, beta.id])
-    preferences.sort = .progress
-    preferences.direction = .descending
-    XCTAssertEqual(index.search(query: "", preferences: preferences).books.map(\.id), [gamma.id, alpha.id, beta.id])
+    preferences.formats = ["MP3", "M4B"]
+    preferences.missingMetadataOnly = true
+    preferences.sort = .series
+    XCTAssertEqual(
+      preferences.summaryTokens,
+      ["In progress", "M4B, MP3", "Missing metadata", "Series order"]
+    )
   }
 
   func testSearchPreferencesPersistAndClearAtomically() async {
@@ -180,6 +294,8 @@ final class LibrarySearchTests: XCTestCase {
     title: String,
     author: Contributor,
     narrator: Contributor = Contributor(displayName: "Reader"),
+    hasAuthor: Bool = true,
+    hasNarrator: Bool = true,
     series: SeriesMembership? = nil,
     filename: String = "book.m4b",
     chapter: String = "Full Book",
@@ -200,19 +316,19 @@ final class LibrarySearchTests: XCTestCase {
     )
     let metadata = AudiobookMetadata(
       title: title,
-      authors: [author],
-      narrators: [narrator],
+      authors: hasAuthor ? [author] : [],
+      narrators: hasNarrator ? [narrator] : [],
       seriesMemberships: series.map { [$0] } ?? []
     )
     return Book(
       id: id,
       title: title,
-      authors: [author.displayName],
+      authors: hasAuthor ? [author.displayName] : [],
       durationSeconds: duration,
       artworkData: nil,
       assets: [asset],
       dateAdded: dateAdded,
-      narrators: [narrator.displayName],
+      narrators: hasNarrator ? [narrator.displayName] : [],
       seriesName: series?.name,
       seriesPosition: series?.position,
       chapters: [Chapter(
