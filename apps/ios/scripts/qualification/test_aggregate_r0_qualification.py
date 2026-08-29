@@ -27,11 +27,11 @@ STORY_QUALIFICATION_LANES = [
     ["011-offline-recovery", "002-import-and-play", "013-app-store-listing"],
 ]
 MATRIX_QUALIFICATION_LANES = [
-    ["004-metadata-repair", "006-safe-zip-import"],
-    ["005-play-and-restore", "010-library-backup", "012-monetization"],
-    ["007-sleep-timer", "002-import-and-play"],
-    ["008-library-search", "001-ios-launch", "003-multifile-grouping"],
-    ["011-offline-recovery", "009-accessible-core-journeys", "013-app-store-listing"],
+    ["004-metadata-repair", "012-monetization"],
+    ["005-play-and-restore", "011-offline-recovery", "003-multifile-grouping"],
+    ["007-sleep-timer", "008-library-search"],
+    ["001-ios-launch", "002-import-and-play", "010-library-backup"],
+    ["006-safe-zip-import", "009-accessible-core-journeys", "013-app-store-listing"],
 ]
 
 

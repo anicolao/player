@@ -1,7 +1,9 @@
 # Application remediation plan
 
-**Status:** Implementation complete through R16; corrected hosted validation,
-formal R0 qualification, and physical-device release acceptance are in progress
+**Status:** Implementation and deterministic automated coverage are complete
+through R16. The repaired predecessor passed normal CI; the final scheduling
+candidate, formal exact-SHA R0 qualification, and physical-device release
+acceptance remain pending.
 **Created:** 2026-08-27
 **Source:** Report-only application and test-coverage audit completed 2026-08-27
 
@@ -19,7 +21,9 @@ accepted.
 
 ## Delivery rules
 
-1. Complete R0, including its repeated-run exit gate, before starting R1.
+1. Complete the R0 harness and focused stabilization before product
+   remediation, then perform repeated exact-SHA qualification after R1-R16 are
+   integrated so the accepted evidence covers the final implementation.
 2. Address R1-R16 in order. A newly discovered data-loss, security, purchase,
    or playback-blocking defect may preempt the sequence, but must be documented
    with the reason.
@@ -74,7 +78,7 @@ release pass while its remaining gate is listed as pending.
 
 | Remediation | Implementation / automated evidence | Remaining gate |
 | --- | --- | --- |
-| R0 | Event-driven two-second waits, fail-closed evidence, the canonical selector manifest, repeated-attempt tooling, five normal shared-build lanes, and 13 independently attributed formal story jobs capped at five concurrent hosted runners are implemented. The first formal attempt exposed separately diagnosed failures in Stories 001, 003, 004, 005, 008, and 009; all 63 historical failure records now have confirmed causes and verified fixes. The corrected normal matrix passed all five lanes at `c5cd74786b31f1e75faa0e159d965a225691bcf3` in [run 33245228601](https://github.com/anicolao/player/actions/runs/33245228601). | Run the final exact-SHA gate and require 10/10 for every story plus 5/5 complete matrices. Publish its generated stability and timing report. |
+| R0 | Event-driven two-second waits, fail-closed evidence, the canonical selector manifest, repeated-attempt tooling, five normal shared-build lanes, five formal story-lane jobs covering all 13 independently attributed stories, and five subsequent matrix-lane jobs are implemented. The validator accepts 79 unique historical failure signatures, each with a confirmed cause and verified fix; 12 formal qualification resets are retained. Run [33278492881](https://github.com/anicolao/player/actions/runs/33278492881) passed the repaired exact predecessor `33573a0d50805d7e73ef78d86588e598611ca4b1` without a rerun in 33m31s: all 13 stories, 41 UI selectors, 371 core tests, and the App Store renderer passed. The final scheduling candidate redistributes that exact coverage across the same five hosted runners using timings from four expanded-suite samples. | Require the final scheduling candidate to pass normal CI, then run the exact-SHA gate and require 10/10 for every story plus 5/5 complete matrices. Publish its generated stability and timing report. |
 | R1 | Complete: real crop rendering is covered across save, relaunch, undo, and artwork consumers. | None. |
 | R2 | Complete: presentation errors retain their owning domain and actionable copy. | None. |
 | R3 | Complete: search-result identifiers are unique, interpolated, navigable, and source-checked. | None. |
@@ -83,10 +87,10 @@ release pass while its remaining gate is listed as pending.
 | R6 | Complete: permanent Trash deletion is transactional, scoped to the selected book, failure-safe, and covered through production UI. | None. |
 | R7 | Complete: committed-book editing covers every MVP field, lock, validation, cancellation, save, persistence, and undo contract. | None. |
 | R8 | Files, Photos, cover-file selection, and Share Extension transaction boundaries have deterministic unit and E2E coverage. | Complete SI-01 through SI-14 in [SYSTEM_INGRESS_ACCEPTANCE.md](SYSTEM_INGRESS_ACCEPTANCE.md) on one release candidate. |
-| R9 | Portable and settings backups, both export kinds, Files outcomes, durable transactions, error paths, and automatic restore have deterministic production-UI coverage. | Confirm the Files provider transfer and automatic restore on a physical release-candidate device. |
+| R9 | Portable and settings backups, both export kinds, Files outcomes, durable transactions, error paths, and automatic restore have deterministic production-UI coverage. | Confirm physical-device Files-provider export, transfer, restore, and automatic restore on the release candidate. |
 | R10 | Complete: engine events drive live mini-player and Now Playing progress, chapter, time, slider, pause, and restore state. | None. |
 | R11 | Complete: browser and native receiver pairing, upload, retry, cancellation, completion, port continuity, and durable import lifecycle are covered. | None. |
-| R12 | Complete: every recovery choice, fresh-library preservation, storage retry, and support export path is covered. | None. |
+| R12 | Complete: every recovery choice, fresh-library preservation, storage retry, and support export path is covered. | Smoke-test launch recovery and support export on the physical release candidate. |
 | R13 | Complete: every production sort/filter combination, clear path, rapid preference transition, persistence, and result navigation is covered. | None. |
 | R14 | Complete: “Use Library Defaults” clears overrides atomically, updates live behavior, persists across relaunch, and leaves truthful state on failure. | None. |
 | R15 | Now Playing metadata/artwork, command registration, durable position, interruptions, and route loss have deterministic adapter and E2E coverage. | Complete EP-01 through EP-07 in [EXTERNAL_PLAYBACK_ACCEPTANCE.md](EXTERNAL_PLAYBACK_ACCEPTANCE.md) on one release candidate. Apple Watch remains explicit post-MVP scope. |

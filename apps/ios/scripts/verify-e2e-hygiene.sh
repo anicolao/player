@@ -239,6 +239,8 @@ rg -o 'shard: [a-z0-9][a-z0-9-]*' "${workflow}" \
   || fail "CI shard identifiers must be unique"
 [[ "$(rg -c 'run_core: true' "${workflow}")" -eq 1 ]] \
   || fail "core and fixture tests must run in exactly one CI shard"
+[[ "$(rg -c '^      - \.github/workflows/r0-qualification\.yml$' "${workflow}")" -eq 2 ]] \
+  || fail "formal qualification workflow changes must trigger pull-request and main CI"
 [[ "$(rg -c 'PLAYER_E2E_PARALLEL_WORKERS: "1"' "${workflow}")" -eq 1 ]] \
   || fail "CI must keep UI test classes serial within each macOS shard"
 rg -q '^[[:space:]]*PLAYER_E2E_PARALLEL_WORKERS=1' \
@@ -259,6 +261,9 @@ sed -n '/^  matrix-qualification:/,/^  qualification-report:/p' \
 cmp "${temporary_root}/manifest-stories" \
   "${temporary_root}/qualification-matrix-stories" \
   || fail "formal matrix qualification must cover every canonical story exactly once"
+[[ "$(sed -n '/^  matrix-qualification:/,/^  qualification-report:/p' \
+  "${qualification_workflow}" | rg -c '^[[:space:]]+core: true$')" -eq 1 ]] \
+  || fail "core and fixture tests must run in exactly one formal matrix lane"
 for formal_section in story-qualification matrix-qualification; do
   section_end=story-gate
   if [[ "${formal_section}" == matrix-qualification ]]; then
@@ -269,6 +274,21 @@ for formal_section in story-qualification matrix-qualification; do
   [[ "${lane_count}" -eq 5 ]] \
     || fail "${formal_section} must define exactly five hosted lanes"
 done
+
+for core_runner in \
+  "${script_dir}/run-e2e-shard.sh" \
+  "${script_dir}/qualification/run-matrix-lane.sh"; do
+  [[ "$(rg -c 'prepare-core-web-runtime\.sh' "${core_runner}")" -eq 1 ]] \
+    || fail "$(basename "${core_runner}") must prepare each isolated core WebKit runtime once"
+  preparation_line="$(rg -n -m 1 'prepare-core-web-runtime\.sh' "${core_runner}" | cut -d: -f1)"
+  fixture_line="$(rg -n -m 1 'fixtures/verify-generated-fixtures\.sh' "${core_runner}" | cut -d: -f1)"
+  [[ "${preparation_line}" -lt "${fixture_line}" ]] \
+    || fail "$(basename "${core_runner}") must overlap WebKit preparation with fixture work"
+done
+if rg -v '^[[:space:]]*#' "${script_dir}/prepare-core-web-runtime.sh" \
+  | rg -n --pcre2 '\b(?:sleep|usleep)\b|\bretry\b'; then
+  fail "core WebKit preparation must not sleep, poll, or retry"
+fi
 
 if rg -q 'PlayerUITests/[A-Za-z0-9_]+/test[A-Za-z0-9_]+' "${workflow}"; then
   fail "CI must derive selectors from the canonical manifest instead of duplicating them"

@@ -1769,6 +1769,78 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request matrix run rather than a formal repeated qualification attempt, so no consecutive core qualification count existed to reset."
+    },
+    {
+      "signature": "core-test:ComputerReceiverTests.testWebKitBrowserCompletesARealLocalHTTPImport:cold-nonpersistent-webprivacy-bootstrap",
+      "story": "core",
+      "evidence": {
+        "workflowRun": 33272797452,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions lane-3 summary artifact 9721051968 retained Core.xcresult and core-tests.log",
+        "url": "https://github.com/anicolao/player/actions/runs/33272797452/job/99154203648",
+        "commit": "ad013c513a994441b9ac47443016f9eb47cfa8ec",
+        "observation": "All 13 canonical UI stories and 370 of 371 core tests passed. The fresh hosted simulator started WebContent promptly, but its nonpersistent WebPrivacy/RLS client did not establish until about eight seconds after the exact two-second origin deadline. The origin remained nil, the follow-on script consequently executed in a blank document, and no browser request reached the already-ready receiver."
+      },
+      "rootCause": "The isolated core simulator cold-started WebKit's out-of-process privacy service only when the test created its first nonpersistent browser. That unrelated platform bootstrap was not bounded by Bookshelf's two-second event contract, so the synthetic same-origin document was not executable even though the live receiver and import path were ready.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "After booting the isolated core simulator, dispatch one closed-loopback Safari request to start its WebKit service graph, then perform the existing deterministic fixture checks while that platform work proceeds. Keep the browser test's exact two-second document, pairing, transfer, and terminal-state deadlines; add no sleep, poll, test retry, or external network dependency.",
+        "commits": [
+          "d7fa812dd5944759b1b9442dfc741cc3638408da"
+        ],
+        "validation": "Five independently created local iOS 26.5 simulators each passed the exact focused test after one preparation dispatch. Normal hosted run 33275364218 then passed the complete core suite 371/371; the focused WebKit journey passed in 2.324 seconds."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request matrix run rather than a formal repeated qualification attempt, so no consecutive core qualification count existed to reset."
+    },
+    {
+      "signature": "ui-test:OfflineRecoveryUITests.testRecoversStartupAndExportsOnlySanitizedOfflineDiagnostics:support-export-action-not-delivered",
+      "story": "011-offline-recovery",
+      "evidence": {
+        "workflowRun": 33275364218,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 011 artifact 9721599953 and lane-5 summary artifact 9721600526 retained the failed timeline, hierarchy, semantic probes, screenshots, and screen recording",
+        "url": "https://github.com/anicolao/player/actions/runs/33275364218/job/99161002391",
+        "commit": "d7fa812dd5944759b1b9442dfc741cc3638408da",
+        "observation": "XCTest found the recovery diagnostics control and reported a synthesized tap, but startup-recovery-action-state remained idle for the complete two-second deadline. The failure hierarchy still showed the original Library Recovery screen and no deterministic Files boundary, while every other canonical story and all 371 core tests passed."
+      },
+      "rootCause": "The journey treated completion of an element-bound XCTest tap as proof that the SwiftUI recovery action received input. Under hosted accessibility-server load, XCTest synthesized against its element snapshot without delivering the Button action, leaving the production state idle and the support bundle unprepared.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Give the support-export control a contained 44-point target, synthesize one touch at its physical center through the stable application surface, and require the exact awaiting-files semantic event before asserting the Files boundary. Retain save, cancel, preparation-failure, sanitization, and preservation coverage with the unchanged two-second deadlines.",
+        "commits": [
+          "2cb474cbbab4c52a711cd41a9a756c64d570b211"
+        ],
+        "validation": "The complete canonical Story 011 journey passed twice locally on separately created iOS 26.5 simulators in 66.239 and 66.170 seconds. The final non-recording run matched all three reviewed screenshots pixel-exact and matched the walkthrough README exactly. Normal hosted run 33276860019 then passed Story 011 and its complete support-export journey in lane 5."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request matrix run rather than a formal repeated qualification attempt, so no consecutive Story 011 qualification count existed to reset."
+    },
+    {
+      "signature": "ui-test:BookmarkUITests.testBookmarksCaptureOrganizeSearchJumpDeleteAndUndoExactly:empty-field-ax-value-inconsistency",
+      "story": "007-sleep-timer",
+      "evidence": {
+        "workflowRun": 33276860019,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 007 artifact 9722123057 and lane-3 summary artifact 9722123994 retained the failed timeline, text-field snapshots, semantic probes, screen recording, and complete core evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33276860019/job/99164988597",
+        "commit": "2cb474cbbab4c52a711cd41a9a756c64d570b211",
+        "observation": "The production clear action removed the clear button and the captured text field showed the Bookmark label placeholder, but XCTest's value predicate rejected that same snapshot for the full two-second deadline and the assertion's following value query returned nil. The companion Sleep Timer test, Story 002, and all 371 core tests passed."
+      },
+      "rootCause": "The test inferred the model's empty label from XCTest's overloaded text-field value, which can alternate between a placeholder string and nil for an empty SwiftUI TextField even when the accessibility snapshot already reflects the cleared control. That presentation-derived property was not an authoritative clear-action completion event.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Publish an explicit empty value through the existing bookmark label state probe and await that exact production-state event after the real Clear action. Retain the complete edit, validation, save, search, jump, delete, undo, relaunch, screenshot, and Sleep Timer journeys with the unchanged two-second deadline.",
+        "commits": [
+          "33573a0d50805d7e73ef78d86588e598611ca4b1"
+        ],
+        "validation": "The complete canonical Story 007 passed locally in 226.353 seconds: Bookmark and Sleep Timer both passed, all three reviewed screenshots matched pixel-exact, and both walkthrough fragments matched exactly. Normal hosted run 33278492881 then passed the complete Story 007 journey in lane 3."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request matrix run rather than a formal repeated qualification attempt, so no consecutive Story 007 qualification count existed to reset."
     }
   ]
 }

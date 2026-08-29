@@ -1,9 +1,9 @@
 # E2E runtime baseline
 
 **Captured:** 2026-08-27  
-**Purpose:** Establish the pre-R0 runtime baseline for the canonical E2E matrix  
+**Purpose:** Record the pre-remediation baseline, initial parallel result, expanded-suite reference, and final qualification comparison
 **Branch:** `remediation/e2e-stabilization`  
-**Current-main CI commit:** `6349b14f46ad1673a68eb60b8b24ba5207302acd`
+**Pre-remediation CI commit:** `6349b14f46ad1673a68eb60b8b24ba5207302acd`
 
 **Local phase-profile commit:** `36b31cbd26d73f16318c7688539db58f0e0cf392`
 
@@ -40,28 +40,79 @@ started at 03:46:26Z and completed at 04:09:04Z on 2026-08-28.
 | Core gate | included | included | unchanged |
 | Maximum macOS lanes | 5 | 5 | unchanged |
 
-This is the authoritative before/after result for the CI topology change, but
-it is not yet the final R0 reliability distribution. The exact-SHA 10/10 story
-and 5/5 matrix qualification must still pass before R0 is complete.
+This is the authoritative same-coverage before/after result for the initial CI
+topology change: both measurements selected the then-current 26 UI-test
+selectors. It is not the final R0 reliability distribution. R1-R16 expanded
+the suite to 41 selectors, so the exact-SHA 10/10 story and 5/5 matrix
+qualification must use the expanded-suite comparison below.
 
 ### Machine-readable qualification baseline
 
-The qualification regression gate uses
-`apps/ios/scripts/qualification/r0_runtime_baseline.json`, derived from the
-retained evidence in run 33139873579. The checkout tested by the workflow was
-merge commit `3a349369c4020aef8f5034e48ae1a45223df9796` on a `macos-26` runner
-with Xcode 26.6 and iOS 26.5. Its production shared-build critical lane took
-1,195 seconds, which is the comparable logical complete-matrix wall-clock
-baseline; workflow setup and artifact upload are deliberately excluded.
+The qualification regression gate uses the schema-v2
+`apps/ios/scripts/qualification/r0_runtime_baseline.json`. Its
+`preRemediation` record retains run 33139873579 and its 1,195-second logical
+critical lane. Its `qualificationReference` retains the final expanded
+41-selector coverage plus an explicit R1-R16 coverage adjustment. Formal
+qualification compares five logical matrices with that expanded reference,
+fails above a 10% suite regression or 20% per-story regression, and reports
+minimum/median/p95/maximum plus per-phase before/after values. Workflow setup
+and artifact upload remain visible in workflow wall time but are excluded from
+the logical critical-lane threshold.
 
-The same evidence supplies one wall duration for each of the 13 stories and
-aggregate story-phase totals. Core fixture verification, core tests, and the
-production App Store renderer are recorded as additional phases. Qualification
-uses the median of five complete logical matrices, fails above a 10% suite
-regression or 20% per-story regression, and reports minimum/median/p95/maximum
-plus per-phase before/after values.
+## Expanded remediation-suite comparison
 
-## Current-main CI critical path
+R1-R16 intentionally increased canonical coverage from 26 to 41 selectors.
+Run [33265457941](https://github.com/anicolao/player/actions/runs/33265457941)
+is the retained expanded-suite reference: it completed in **40m56s**, with a
+**2,258-second** logical critical lane. The same 41-selector suite then passed
+in [run 33269183195](https://github.com/anicolao/player/actions/runs/33269183195)
+after allocation-only rebalancing.
+
+| Expanded-suite measurement | Reference allocation | Green rebalance | Delta |
+| --- | ---: | ---: | ---: |
+| Workflow wall clock | 40m56s | 35m14s | -5m42s (-13.9%) |
+| Logical critical lane | 2,258s | 1,899s | -359s (-15.9%) |
+| Canonical stories | 13 | 13 | unchanged |
+| UI-test selectors | 41 | 41 | unchanged |
+| Core gate / App Store renderer | included | included | unchanged |
+
+The final normal-CI candidate and formal repeated distribution are recorded
+only after those exact-SHA gates complete; a failed run is never substituted
+with a rerun-to-green.
+
+The repaired predecessor also passed without a rerun in
+[run 33278492881](https://github.com/anicolao/player/actions/runs/33278492881):
+all 13 stories, all 41 UI-test selectors, 371/371 core tests, and the renderer
+completed in **33m31s** workflow wall time. That run proves the fixes before
+the final scheduling-only change; it is not substituted for the candidate's
+own required green timing.
+
+### Robust final lane allocation
+
+The final candidate allocation was selected from the corrected per-story phase
+timings in expanded-suite runs 33265457941, 33269183195, 33270906517, and
+33272797452, rather than fitting one unusually fast run. Every allocation keeps
+all 13 stories exactly once, one core gate, and the App Store renderer in the
+listing lane. Across those four samples, the selected allocation reduces the
+estimated critical compute lane from 1,549s to 1,428s by mean (-7.9%), from
+1,621s to 1,395s by median (-14.0%), and from 1,736s to 1,616s in the worst
+observed sample (-6.9%). Including each physical lane's observed cold-build
+cost lowers the estimated median critical path by 239s (-13.0%).
+
+| Lane | Canonical work |
+| --- | --- |
+| 1 | 004 metadata repair; 012 monetization; core and fixture gates |
+| 2 | 005 play and restore; 011 offline recovery; 003 multifile grouping |
+| 3 | 007 sleep timer; 008 library search |
+| 4 | 001 iOS launch; 002 import and play; 010 library backup |
+| 5 | 006 safe ZIP import; 009 accessible core journeys; 013 App Store listing and renderer |
+
+This is a scheduling-only change. It does not remove a selector, weaken a
+gate, add a test retry, or change the two-second event deadline. The actual
+before/after wall-clock result remains the final green hosted run, not this
+modelled estimate.
+
+## Pre-remediation CI critical path
 
 The successful [GitHub Actions run](https://github.com/anicolao/player/actions/runs/33124661556)
 started at 23:00:08Z and completed at 23:43:38Z. Core tests and the 13 E2E
@@ -85,11 +136,11 @@ one intrinsically 43-minute test. Purely balancing the existing jobs across
 five lanes has a computed longest lane of about 37m16s. Removing repeated
 per-job setup and build work can lower that further.
 
-A typical shard spends about one minute installing Nix and another minute in
-the pinned-environment step before project generation or E2E execution begins.
-Every shard then generates the project once in the workflow and again inside
-`run-e2e.sh`. More matrix entries without a larger runner allowance would add
-this fixed cost and increase queue pressure.
+A typical shard spent about one minute installing Nix and another minute in the
+pinned-environment step before project generation or E2E execution began.
+The current workflow generates the project once per lane and reuses one
+compiled test bundle across that lane. More matrix entries without a larger
+runner allowance would still add fixed setup cost and increase queue pressure.
 
 ## Local phase-profile environment and method
 
@@ -163,8 +214,9 @@ story. Representative isolated measurements on the same workstation were:
 | Remaining process/result overhead | about 3.4s/story | about 40.7s | Residual needed to reconcile the measured wall total. |
 
 These microbenchmarks explain the measured total to within rounding. They are
-diagnostic estimates rather than independent full-suite trials, so R0 should
-instrument phases directly instead of treating every estimate as invariant.
+diagnostic estimates rather than independent full-suite trials. Direct
+monotonic phase timing is now implemented, so qualification evidence does not
+treat these estimates as invariant.
 
 The most expensive individual UI tests were:
 
@@ -189,9 +241,9 @@ IDELaunchParametersSnapshot: The operation couldn’t be completed.
 IDELaunchParametersSnapshot: no debugger version
 ```
 
-R0 should classify that launch warning and determine whether it contributes to
-startup cost or instability; its presence must not simply be labeled harmless
-because this baseline happened to pass.
+The following evidence-based classification determines whether that warning
+contributes to startup cost or instability; its presence is not treated as a
+waiver merely because the baseline passed.
 
 ### Xcode launcher diagnostic classification
 
@@ -224,24 +276,30 @@ not evidence that an application failure shares this launcher's cause.
 
 ## R0 runtime contract
 
-1. Add direct monotonic timing for environment verification, project/receiver
-   generation, simulator lifecycle, build, test, result export, walkthrough
-   materialization, comparison, and total shard wall time.
-2. Preserve story isolation while removing duplicated work. In particular,
-   assess whether local full-suite runs can share a compiled test bundle and
-   whether receiver/project generation can occur once per checkout. CI
-   currently generates the project in the workflow and again inside
-   `run-e2e.sh`; measure and remove that duplication safely.
-3. Design CI around the observed macOS concurrency allowance. With five slots,
-   use balanced lanes or raise runner capacity before adding more jobs. Split
-   the long tests in Stories 005 and 007 across lanes, and decompose Story 008
-   only when its constituent journeys can retain independent setup, artifacts,
-   and failure reporting.
-4. Do not trade runtime for permissive waits. Product-state waits remain event
-   driven and capped at two seconds.
-5. After R0 qualifies at 10/10 per story and 5/5 complete matrices, repeat this
-   measurement on a comparable machine and publish median, minimum, maximum,
-   and p95 total and per-story times.
-6. The median complete-suite runtime may not regress more than 10%, and an
-   individual story may not regress more than 20%, unless added coverage is
-   intentional, separately measured, and approved.
+Implemented:
+
+1. Every shard records direct monotonic timing for environment reuse,
+   project/receiver generation, simulator lifecycle, build and build reuse,
+   target installation, test execution, result export, walkthrough
+   materialization, comparison, and total wall time.
+2. Story isolation is preserved while each lane reuses one generated project
+   and compiled test bundle. Every story still owns a fresh simulator,
+   persistence namespace, result bundle, diagnostics, and artifact manifest.
+3. Normal CI and the five-matrix qualification stage use five measured,
+   coverage-preserving lanes. The ten-attempt story stage has its own balanced
+   allocation because build reuse changes its repeated-run weights.
+4. Product-state waits remain event driven and capped at two seconds; runtime
+   was not traded for permissive waits or retry-to-green.
+5. Schema-v2 evidence retains exact CI provenance, all 13 story times, the
+   complete phase set, core tests, and App Store rendering. Aggregation fails
+   closed on missing, malformed, duplicated, or unattributed evidence.
+
+Pending:
+
+1. On the final exact SHA, require 10/10 for every canonical story and 5/5
+   complete logical matrices.
+2. Publish that run's median, minimum, maximum, p95, per-story, and per-phase
+   distribution against the expanded-suite reference.
+3. Require the median complete-suite runtime to remain within 10% and each
+   individual story within 20%, except for an explicit, measured, approved
+   coverage adjustment.
