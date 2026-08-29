@@ -143,6 +143,27 @@ func resolveAppleIntelligenceNotification(
   file: StaticString = #filePath,
   line: UInt = #line
 ) -> Bool {
+  resolveAppleIntelligenceNotificationState(
+    testCase: testCase,
+    file: file,
+    line: line
+  ).succeeded
+}
+
+private enum AppleIntelligenceNotificationResolution: Equatable {
+  case absent
+  case dismissed
+  case failed
+
+  var succeeded: Bool { self != .failed }
+}
+
+@MainActor
+private func resolveAppleIntelligenceNotificationState(
+  testCase: XCTestCase,
+  file: StaticString,
+  line: UInt
+) -> AppleIntelligenceNotificationResolution {
   let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
   let notificationTitles = springboard.staticTexts.matching(
     NSPredicate(format: "label == %@", "Ready for Apple Intelligence")
@@ -156,7 +177,7 @@ func resolveAppleIntelligenceNotification(
   }
   guard notificationTitles.count > 0 else {
     SystemInterruptionReadiness.appleIntelligenceState = .observedAbsent
-    return true
+    return .absent
   }
   guard notificationTitles.count == 1 else {
     attachSystemInterruptionEvidence(
@@ -169,11 +190,52 @@ func resolveAppleIntelligenceNotification(
       file: file,
       line: line
     )
-    return false
+    return .failed
   }
 
   let notificationTitle = notificationTitles.element
-  notificationTitle.swipeUp()
+  let notificationFrame = notificationTitle.frame
+  let springboardFrame = springboard.frame
+  guard !notificationFrame.isEmpty, !springboardFrame.isEmpty else {
+    let dismissed = waitForNoElements(notificationTitles, deadline: EventDeadline())
+    guard dismissed else {
+      attachSystemInterruptionEvidence(
+        springboard,
+        reason: "Apple Intelligence notification had no dismissible frame",
+        testCase: testCase
+      )
+      XCTFail(
+        "The simulator's Apple Intelligence notification had no dismissible frame; "
+          + "notificationFrame=\(notificationFrame), springboardFrame=\(springboardFrame)",
+        file: file,
+        line: line
+      )
+      return .failed
+    }
+    SystemInterruptionReadiness.appleIntelligenceState = .dismissed
+    return .dismissed
+  }
+
+  // Anchor the drag to SpringBoard, whose frame survives the banner's automatic
+  // dismissal. An element-bound swipe retries against the disappearing title and
+  // can fail after the overlay has already left the screen.
+  let normalizedX = (notificationFrame.midX - springboardFrame.minX) / springboardFrame.width
+  let normalizedStartY =
+    (notificationFrame.midY - springboardFrame.minY) / springboardFrame.height
+  let normalizedEndY = max(
+    0.001,
+    (notificationFrame.minY - springboardFrame.minY - 44) / springboardFrame.height
+  )
+  springboard.coordinate(
+    withNormalizedOffset: CGVector(dx: normalizedX, dy: normalizedStartY)
+  ).press(
+    forDuration: 0.01,
+    thenDragTo: springboard.coordinate(
+      withNormalizedOffset: CGVector(dx: normalizedX, dy: normalizedEndY)
+    ),
+    withVelocity: .fast,
+    thenHoldForDuration: 0
+  )
   let dismissed = waitForNoElements(notificationTitles, deadline: EventDeadline())
   guard dismissed else {
     attachSystemInterruptionEvidence(
@@ -187,10 +249,10 @@ func resolveAppleIntelligenceNotification(
       file: file,
       line: line
     )
-    return false
+    return .failed
   }
   SystemInterruptionReadiness.appleIntelligenceState = .dismissed
-  return true
+  return .dismissed
 }
 
 @MainActor
@@ -762,17 +824,52 @@ final class TestStepHelper {
       guard isReady else {
         throw TestStepError.captureNotReady(captureReadiness.specification)
       }
-      if let takePreparedScreenshot = captureReadiness.preparedScreenshot {
-        preparedScreenshot = takePreparedScreenshot()
-        XCTAssertNotNil(
-          preparedScreenshot,
-          "Capture readiness succeeded without retaining its verified screenshot",
+    }
+
+    // A simulator system banner can arrive while the app-owned capture predicates
+    // are being evaluated. Resolve it again at the capture boundary; if dismissal
+    // changed the composited frame, establish capture readiness again before using
+    // any prepared screenshot.
+    let captureBoundaryResolution = dismissAppleIntelligenceNotificationIfPresent()
+    guard systemOverlayResolved else {
+      throw TestStepError.systemOverlayNotDismissed
+    }
+    if captureBoundaryResolution == .dismissed, let captureReadiness {
+      if let prime = captureReadiness.prime {
+        let isPrimed = prime()
+        XCTAssertTrue(
+          isPrimed,
+          "Capture readiness could not prepare a post-notification observation",
           file: #filePath,
           line: #line
         )
-        guard preparedScreenshot != nil else {
+        guard isPrimed else {
           throw TestStepError.captureNotReady(captureReadiness.specification)
         }
+      }
+      let retryDeadline = EventDeadline()
+      let isReady = waitForCaptureReadiness(captureReadiness, deadline: retryDeadline)
+      XCTAssertTrue(
+        isReady,
+        captureReadiness.specification,
+        file: #filePath,
+        line: #line
+      )
+      guard isReady else {
+        throw TestStepError.captureNotReady(captureReadiness.specification)
+      }
+    }
+
+    if let takePreparedScreenshot = captureReadiness?.preparedScreenshot {
+      preparedScreenshot = takePreparedScreenshot()
+      XCTAssertNotNil(
+        preparedScreenshot,
+        "Capture readiness succeeded without retaining its verified screenshot",
+        file: #filePath,
+        line: #line
+      )
+      guard preparedScreenshot != nil else {
+        throw TestStepError.captureNotReady(captureReadiness?.specification ?? "prepared capture")
       }
     }
 
@@ -834,8 +931,17 @@ final class TestStepHelper {
       """
   }
 
-  private func dismissAppleIntelligenceNotificationIfPresent() {
-    systemOverlayResolved = resolveAppleIntelligenceNotification(testCase: testCase)
+  @discardableResult
+  private func dismissAppleIntelligenceNotificationIfPresent()
+    -> AppleIntelligenceNotificationResolution
+  {
+    let resolution = resolveAppleIntelligenceNotificationState(
+      testCase: testCase,
+      file: #filePath,
+      line: #line
+    )
+    systemOverlayResolved = resolution.succeeded
+    return resolution
   }
 }
 

@@ -268,21 +268,28 @@ if rg -n -U --pcre2 \
 fi
 
 step_helper="${ui_test_root}/TestStepHelper.swift"
-step_dismiss_line="$(rg -n '^[[:space:]]{4}dismissAppleIntelligenceNotificationIfPresent\(\)$' \
+step_dismiss_lines="$(rg -n \
+  '^[[:space:]]{4}(?:let captureBoundaryResolution = )?dismissAppleIntelligenceNotificationIfPresent\(\)$' \
   "${step_helper}" | cut -d: -f1)"
+step_dismiss_line="$(head -n 1 <<<"${step_dismiss_lines}")"
+capture_boundary_dismiss_line="$(tail -n 1 <<<"${step_dismiss_lines}")"
 step_deadline_line="$(rg -n '^[[:space:]]{6}let deadline = EventDeadline\(\)$' \
   "${step_helper}" | cut -d: -f1)"
 step_readiness_line="$(rg -n 'let isReady = waitForCaptureReadiness\(' \
-  "${step_helper}" | cut -d: -f1)"
+  "${step_helper}" | head -n 1 | cut -d: -f1)"
 step_screenshot_line="$(rg -n '^[[:space:]]{4}let screenshot = preparedScreenshot \?\? XCUIScreen\.main\.screenshot\(\)$' \
   "${step_helper}" | cut -d: -f1)"
-[[ -n "${step_dismiss_line}" && -n "${step_deadline_line}" \
+[[ "$(wc -l <<<"${step_dismiss_lines}" | tr -d ' ')" == "2" \
+  && -n "${step_dismiss_line}" && -n "${capture_boundary_dismiss_line}" \
+  && -n "${step_deadline_line}" \
   && -n "${step_readiness_line}" && -n "${step_screenshot_line}" \
   && "${step_dismiss_line}" -lt "${step_deadline_line}" \
   && "${step_deadline_line}" -lt "${step_readiness_line}" \
+  && "${step_readiness_line}" -lt "${capture_boundary_dismiss_line}" \
+  && "${capture_boundary_dismiss_line}" -lt "${step_screenshot_line}" \
   && "${step_readiness_line}" -lt "${step_screenshot_line}" ]] \
-  || fail "capture readiness must use one deadline after system-notification dismissal and immediately before the verified or ordinary screenshot"
-rg -Fq 'if let takePreparedScreenshot = captureReadiness.preparedScreenshot {' \
+  || fail "capture readiness must be bounded between initial and capture-boundary system-notification resolution"
+rg -Fq 'if let takePreparedScreenshot = captureReadiness?.preparedScreenshot {' \
   "${step_helper}" \
   || fail "prepared screenshot capture must distinguish verified evidence from the ordinary path"
 rg -Fq 'guard preparedScreenshot != nil else {' "${step_helper}" \

@@ -127,6 +127,21 @@ rg -Fq 'guard notificationTitles.count == 1 else {' \
   "${ui_test_root}/TestStepHelper.swift"
 rg -Fq 'attachSystemInterruptionEvidence(' \
   "${ui_test_root}/TestStepHelper.swift"
+rg -Fq 'let notificationFrame = notificationTitle.frame' \
+  "${ui_test_root}/TestStepHelper.swift"
+rg -Fq 'springboard.coordinate(' \
+  "${ui_test_root}/TestStepHelper.swift"
+if rg -Fq 'notificationTitle.swipeUp()' \
+  "${ui_test_root}/TestStepHelper.swift"; then
+  echo 'system-overlay hygiene rejected an element-bound swipe on a transient notification' >&2
+  exit 1
+fi
+if [[ "$(rg -c \
+  '^[[:space:]]{4}(?:let captureBoundaryResolution = )?dismissAppleIntelligenceNotificationIfPresent\(\)$' \
+  "${ui_test_root}/TestStepHelper.swift")" != "2" ]]; then
+  echo 'system-overlay hygiene requires resolution before readiness and at capture' >&2
+  exit 1
+fi
 rg -Fq 'let dismissed = waitForNoElements(notificationTitles, deadline: EventDeadline())' \
   "${ui_test_root}/TestStepHelper.swift"
 rg -Fq 'let doneButtons = app.navigationBars.buttons.matching(' \
