@@ -14,6 +14,8 @@ struct StartupRecoveryView: View {
   @State private var localError: PlayerPresentationError?
   @State private var preparedSupportBundle: PreparedSupportBundle?
   @State private var preparedSupportBundleToDiscard: PreparedSupportBundle?
+  @State private var recoveryActionState = "idle"
+  @State private var supportExportMessage: String?
 
   var body: some View {
     NavigationStack {
@@ -59,11 +61,7 @@ struct StartupRecoveryView: View {
           .background(Color(uiColor: .secondarySystemGroupedBackground))
           .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
           Button("Try Opening Again") {
-            Task {
-              isWorking = true
-              await model.retryStartupRestore()
-              isWorking = false
-            }
+            Task { await retryOpeningLibrary() }
           }
           .disabled(isWorking)
           .accessibilityIdentifier("startup-recovery-retry")
@@ -77,11 +75,25 @@ struct StartupRecoveryView: View {
           }
           .disabled(isWorking)
           .accessibilityIdentifier("startup-recovery-fresh")
+          if let supportExportMessage {
+            Label(supportExportMessage, systemImage: "checkmark.circle.fill")
+              .foregroundStyle(.green)
+              .accessibilityIdentifier("startup-recovery-support-export-result")
+          }
           if isWorking {
             ProgressView("Protecting local data…")
               .frame(maxWidth: .infinity, alignment: .leading)
           }
           StateProbe(id: "startup-recovery-probe", value: recoveryProbeValue)
+          StateProbe(id: "startup-recovery-action-state", value: recoveryActionState)
+          #if E2E
+            if E2EOfflineRecoveryBridge.shared.isConfigured {
+              StateProbe(
+                id: "offline-recovery-action-probe",
+                value: E2EOfflineRecoveryBridge.shared.preservationValue
+              )
+            }
+          #endif
         }
         .padding(24)
       }
@@ -104,9 +116,25 @@ struct StartupRecoveryView: View {
         "The unreadable database and unrecognized app-owned files stay quarantined for support recovery."
       )
     }
-    .sheet(item: $preparedSupportBundle, onDismiss: discardPreparedSupportBundle) { bundle in
-      SystemSupportBundleExporter(url: bundle.url)
+    .sheet(item: $preparedSupportBundle, onDismiss: cancelUndeliveredSupportBundle) { bundle in
+      #if E2E
+        if E2EOfflineRecoveryBridge.shared.isConfigured {
+          E2ESupportBundleExporter(
+            bundle: bundle,
+            onOutcome: { finishSupportBundleExport(bundle, outcome: $0) }
+          )
+        } else {
+          SystemSupportBundleExporter(url: bundle.url) {
+            finishSupportBundleExport(bundle, outcome: $0)
+          }
+          .ignoresSafeArea()
+        }
+      #else
+        SystemSupportBundleExporter(url: bundle.url) {
+          finishSupportBundleExport(bundle, outcome: $0)
+        }
         .ignoresSafeArea()
+      #endif
     }
     .alert(
       localError?.title ?? "Couldn’t Restore Library",
@@ -128,13 +156,28 @@ struct StartupRecoveryView: View {
     case .newerLibraryVersion:
       "This catalog was written by a newer Bookshelf version. Reinstall that version or restore a compatible local copy."
     case .storageUnavailable:
-      "Bookshelf could not safely read its local catalog. Try again before choosing a recovery action."
+      "Bookshelf cannot currently reach its protected local storage. This does not mean the catalog is damaged; unlock storage and try again."
     }
   }
 
   private var recoveryProbeValue: String {
     "recovery:\(status.issue.rawValue):valid=\(status.validAutomaticBackupCount):"
       + "invalid=\(status.invalidAutomaticBackupCount):preserved=true"
+  }
+
+  private func retryOpeningLibrary() async {
+    isWorking = true
+    recoveryActionState = "retrying"
+    await model.retryStartupRestore()
+    isWorking = false
+    guard model.startupRecoveryStatus != nil else { return }
+    recoveryActionState = "retry-failed"
+    localError = PlayerPresentationError.presenting(
+      "Bookshelf still cannot open this library. No library files were changed; you can try again, export a support bundle, or choose another recovery option.",
+      in: .recovery,
+      owner: .startupRecovery,
+      recoveryAction: .retry
+    )
   }
 
   private func restoreAutomaticBackup() async {
@@ -149,6 +192,7 @@ struct StartupRecoveryView: View {
 
   private func beginFreshLibrary() async {
     isWorking = true
+    recoveryActionState = "starting-fresh"
     defer { isWorking = false }
     do {
       try await model.beginFreshLibraryAfterRecovery()
@@ -159,12 +203,16 @@ struct StartupRecoveryView: View {
 
   private func prepareSupportBundle() async {
     isWorking = true
+    recoveryActionState = "preparing-support"
+    supportExportMessage = nil
     defer { isWorking = false }
     do {
       let bundle = try await model.prepareSupportBundle()
       preparedSupportBundleToDiscard = bundle
       preparedSupportBundle = bundle
+      recoveryActionState = "awaiting-files"
     } catch {
+      recoveryActionState = "support-preparation-failed"
       localError = PlayerPresentationError.presenting(
         error,
         in: .diagnostics,
@@ -173,10 +221,27 @@ struct StartupRecoveryView: View {
     }
   }
 
-  private func discardPreparedSupportBundle() {
+  private func cancelUndeliveredSupportBundle() {
     guard let bundle = preparedSupportBundleToDiscard else { return }
+    finishSupportBundleExport(bundle, outcome: .cancelled)
+  }
+
+  private func finishSupportBundleExport(
+    _ bundle: PreparedSupportBundle,
+    outcome: SupportBundleExportPickerOutcome
+  ) {
+    guard preparedSupportBundleToDiscard?.url == bundle.url else { return }
     preparedSupportBundleToDiscard = nil
-    Task { await model.discardPreparedSupportBundle(bundle) }
+    preparedSupportBundle = nil
+    recoveryActionState = "finalizing-support"
+    Task {
+      await model.discardPreparedSupportBundle(bundle)
+      #if E2E
+        E2EOfflineRecoveryBridge.shared.recordBoundaryOutcome()
+      #endif
+      recoveryActionState = outcome == .saved ? "support-saved" : "support-cancelled"
+      supportExportMessage = outcome == .saved ? "Support bundle saved to Files." : nil
+    }
   }
 }
 
@@ -246,6 +311,11 @@ struct SupportDiagnosticsView: View {
             value: E2EOfflineRecoveryBridge.shared.diagnosticsValue
           )
           .id(e2eRevision)
+          StateProbe(
+            id: "offline-recovery-action-probe",
+            value: E2EOfflineRecoveryBridge.shared.preservationValue
+          )
+          .id(e2eRevision)
         }
       #endif
     }
@@ -268,9 +338,11 @@ struct SupportDiagnosticsView: View {
         }
       }
     #endif
-    .sheet(item: $preparedSupportBundle, onDismiss: discardPreparedSupportBundle) { bundle in
-      SystemSupportBundleExporter(url: bundle.url)
-        .ignoresSafeArea()
+    .sheet(item: $preparedSupportBundle, onDismiss: cancelUndeliveredSupportBundle) { bundle in
+      SystemSupportBundleExporter(url: bundle.url) {
+        finishSupportBundleExport(bundle, outcome: $0)
+      }
+      .ignoresSafeArea()
     }
     .alert(
       localError?.title ?? "Couldn’t Create Support Bundle",
@@ -302,9 +374,18 @@ struct SupportDiagnosticsView: View {
     }
   }
 
-  private func discardPreparedSupportBundle() {
+  private func cancelUndeliveredSupportBundle() {
     guard let bundle = preparedSupportBundleToDiscard else { return }
+    finishSupportBundleExport(bundle, outcome: .cancelled)
+  }
+
+  private func finishSupportBundleExport(
+    _ bundle: PreparedSupportBundle,
+    outcome: SupportBundleExportPickerOutcome
+  ) {
+    guard preparedSupportBundleToDiscard?.url == bundle.url else { return }
     preparedSupportBundleToDiscard = nil
+    preparedSupportBundle = nil
     Task { await model.discardPreparedSupportBundle(bundle) }
   }
 
@@ -326,15 +407,84 @@ struct SupportDiagnosticsView: View {
   #endif
 }
 
+private enum SupportBundleExportPickerOutcome: Equatable {
+  case saved
+  case cancelled
+}
+
 private struct SystemSupportBundleExporter: UIViewControllerRepresentable {
   let url: URL
+  let onOutcome: @MainActor (SupportBundleExportPickerOutcome) -> Void
 
   func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
-    UIDocumentPickerViewController(forExporting: [url], asCopy: true)
+    let picker = UIDocumentPickerViewController(forExporting: [url], asCopy: true)
+    picker.delegate = context.coordinator
+    return picker
   }
 
   func updateUIViewController(
     _ uiViewController: UIDocumentPickerViewController,
     context: Context
   ) {}
+
+  func makeCoordinator() -> Coordinator { Coordinator(onOutcome: onOutcome) }
+
+  final class Coordinator: NSObject, UIDocumentPickerDelegate {
+    let onOutcome: @MainActor (SupportBundleExportPickerOutcome) -> Void
+
+    init(onOutcome: @escaping @MainActor (SupportBundleExportPickerOutcome) -> Void) {
+      self.onOutcome = onOutcome
+    }
+
+    func documentPicker(
+      _ controller: UIDocumentPickerViewController,
+      didPickDocumentsAt urls: [URL]
+    ) {
+      Task { @MainActor in onOutcome(.saved) }
+    }
+
+    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+      Task { @MainActor in onOutcome(.cancelled) }
+    }
+  }
 }
+
+#if E2E
+  private struct E2ESupportBundleExporter: View {
+    let bundle: PreparedSupportBundle
+    let onOutcome: @MainActor (SupportBundleExportPickerOutcome) -> Void
+
+    var body: some View {
+      NavigationStack {
+        VStack(spacing: 20) {
+          Image(systemName: "folder.badge.plus")
+            .font(.system(size: 44))
+            .foregroundStyle(.tint)
+          Text("Choose a destination in Files")
+            .font(.headline)
+          Text(
+            "This deterministic boundary stands in only for the system Files destination picker."
+          )
+          .font(.footnote)
+          .foregroundStyle(.secondary)
+          .multilineTextAlignment(.center)
+          Button("Save") {
+            do {
+              try E2EOfflineRecoveryBridge.shared.saveSupportBundleToFiles(bundle)
+              onOutcome(.saved)
+            } catch {
+              onOutcome(.cancelled)
+            }
+          }
+          .buttonStyle(.borderedProminent)
+          .accessibilityIdentifier("e2e-files-save-support-bundle")
+          Button("Cancel") { onOutcome(.cancelled) }
+            .accessibilityIdentifier("e2e-files-cancel-support-bundle")
+        }
+        .padding(28)
+        .navigationTitle("Files")
+        .navigationBarTitleDisplayMode(.inline)
+      }
+    }
+  }
+#endif

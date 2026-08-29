@@ -55,7 +55,8 @@ final class OfflineRecoveryUITests: XCTestCase {
       ],
       captureReadiness: offlineCaptureReadiness(
         app: app,
-        specification: "At capture, the exact preserved recovery state is laid out with every recovery choice fully visible and no working indicator or transient presentation",
+        specification:
+          "At capture, the exact preserved recovery state is laid out with every recovery choice fully visible and no working indicator or transient presentation",
         anchor: recoveryProbe
       ) {
         self.hasExactValue(recoveryProbe, expectedRecovery)
@@ -104,7 +105,8 @@ final class OfflineRecoveryUITests: XCTestCase {
       ],
       captureReadiness: offlineCaptureReadiness(
         app: app,
-        specification: "At capture, the exact reconciled offline diagnostics are fully laid out with the quarantined count and export action visible and idle",
+        specification:
+          "At capture, the exact reconciled offline diagnostics are fully laid out with the quarantined count and export action visible and idle",
         anchor: diagnosticsProbe
       ) {
         self.hasExactValue(
@@ -149,7 +151,8 @@ final class OfflineRecoveryUITests: XCTestCase {
       ],
       captureReadiness: offlineCaptureReadiness(
         app: app,
-        specification: "At capture, the verified allowlisted diagnostics remain in the same settled offline layout with no exporter, progress, or system presentation",
+        specification:
+          "At capture, the verified allowlisted diagnostics remain in the same settled offline layout with no exporter, progress, or system presentation",
         anchor: sanitizedProbe
       ) {
         self.hasExactValue(sanitizedProbe, expectedSanitized)
@@ -164,11 +167,233 @@ final class OfflineRecoveryUITests: XCTestCase {
           && app.progressIndicators.count == 0
       }
     )
+
+    XCTAssertTrue(terminateAndWait(app))
+    try proveEveryRecoveryChoice()
     tester.generateDocs()
+  }
+
+  private func proveEveryRecoveryChoice() throws {
+    try proveRetrySuccess(scenario: "retry-succeeds", issue: "unreadable-library")
+    try proveRetrySuccess(scenario: "storage-unavailable", issue: "storage-unavailable")
+    try proveRetryRemainsFailedWithoutMutation()
+    try proveFreshLibraryPreservesRecoveryMaterial()
+    try proveDistinctRecoveryExplanations()
+    try proveLaunchStorageRetry()
+    try proveSupportBundleExportOutcomes()
+  }
+
+  private func proveRetrySuccess(scenario: String, issue: String) throws {
+    let app = launchRecoveryApp(scenario: scenario)
+    let recovery = anyElement(app, "startup-recovery-probe")
+    XCTAssertTrue(
+      recovery.waitForStringValue(
+        "recovery:\(issue):valid=0:invalid=0:preserved=true",
+        timeout: 2
+      )
+    )
+    app.buttons["startup-recovery-retry"].tap()
+    XCTAssertTrue(
+      anyElement(app, "diagnostics-probe").waitForStringValue(
+        "diagnostics:sanitized=true:offline=true:quarantined=3",
+        timeout: 2
+      )
+    )
+    XCTAssertTrue(terminateAndWait(app))
+  }
+
+  private func proveRetryRemainsFailedWithoutMutation() throws {
+    let app = launchRecoveryApp(scenario: "retry-remains-failed")
+    let evidence = anyElement(app, "offline-recovery-action-probe")
+    let expected =
+      "recovery-evidence:primary=corrupt:catalog=0:orphans=0:audio=true:"
+      + "files=0:prepared=0:revision=0"
+    XCTAssertTrue(evidence.waitForStringValue(expected, timeout: 2))
+    app.buttons["startup-recovery-retry"].tap()
+    let action = anyElement(app, "startup-recovery-action-state")
+    XCTAssertTrue(action.waitForStringValue("retry-failed", timeout: 2))
+    let alert = app.alerts["Couldn’t Restore Library"]
+    XCTAssertTrue(alert.waitForExistence(timeout: 2))
+    XCTAssertTrue(
+      exactStaticText(
+        alert,
+        label:
+          "Bookshelf still cannot open this library. No library files were changed; you can try again, export a support bundle, or choose another recovery option."
+      ).exists
+    )
+    alert.buttons["OK"].tap()
+    XCTAssertTrue(evidence.waitForStringValue(expected, timeout: 2))
+    XCTAssertTrue(terminateAndWait(app))
+  }
+
+  private func proveFreshLibraryPreservesRecoveryMaterial() throws {
+    let app = launchRecoveryApp(scenario: "fresh-library")
+    app.buttons["startup-recovery-fresh"].tap()
+    let confirmation = app.buttons["Preserve Old Database and Start Fresh"]
+    XCTAssertTrue(confirmation.waitForExistence(timeout: 2))
+    confirmation.tap()
+    XCTAssertTrue(
+      anyElement(app, "diagnostics-probe").waitForStringValue(
+        "diagnostics:sanitized=true:offline=true:quarantined=4",
+        timeout: 2
+      )
+    )
+    XCTAssertTrue(
+      anyElement(app, "offline-recovery-action-probe").waitForStringValue(
+        "recovery-evidence:primary=readable:catalog=1:orphans=4:audio=true:"
+          + "files=0:prepared=0:revision=0",
+        timeout: 2
+      )
+    )
+    XCTAssertTrue(terminateAndWait(app))
+  }
+
+  private func proveDistinctRecoveryExplanations() throws {
+    let corrupt = launchRecoveryApp(scenario: "retry-remains-failed")
+    XCTAssertTrue(
+      exactStaticText(
+        corrupt,
+        label:
+          "Bookshelf could not validate the local catalog. Your audio and every recovery copy remain untouched."
+      ).waitForExistence(timeout: 2)
+    )
+    XCTAssertTrue(terminateAndWait(corrupt))
+
+    let newer = launchRecoveryApp(scenario: "newer-schema")
+    XCTAssertTrue(
+      exactStaticText(
+        newer,
+        label:
+          "This catalog was written by a newer Bookshelf version. Reinstall that version or restore a compatible local copy."
+      ).waitForExistence(timeout: 2)
+    )
+    XCTAssertTrue(
+      anyElement(newer, "startup-recovery-probe").waitForStringValue(
+        "recovery:newer-library-version:valid=0:invalid=0:preserved=true",
+        timeout: 2
+      )
+    )
+    XCTAssertTrue(terminateAndWait(newer))
+
+    let unavailable = launchRecoveryApp(scenario: "storage-unavailable")
+    XCTAssertTrue(
+      exactStaticText(
+        unavailable,
+        label:
+          "Bookshelf cannot currently reach its protected local storage. This does not mean the catalog is damaged; unlock storage and try again."
+      ).waitForExistence(timeout: 2)
+    )
+    XCTAssertTrue(terminateAndWait(unavailable))
+  }
+
+  private func proveLaunchStorageRetry() throws {
+    let app = launchRecoveryApp(scenario: "launch-storage-retry")
+    XCTAssertTrue(
+      exactStaticText(
+        app,
+        label:
+          "Bookshelf could not reach its private local folder. No library files were changed."
+      ).waitForExistence(timeout: 2)
+    )
+    app.buttons["Try Again"].tap()
+    XCTAssertTrue(
+      anyElement(app, "diagnostics-probe").waitForStringValue(
+        "diagnostics:sanitized=true:offline=true:quarantined=3",
+        timeout: 2
+      )
+    )
+    XCTAssertTrue(terminateAndWait(app))
+  }
+
+  private func proveSupportBundleExportOutcomes() throws {
+    var app = launchRecoveryApp(scenario: "support-export")
+    app.buttons["startup-recovery-diagnostics"].tap()
+    XCTAssertTrue(app.buttons["e2e-files-save-support-bundle"].waitForExistence(timeout: 2))
+    app.buttons["e2e-files-save-support-bundle"].tap()
+    XCTAssertTrue(
+      anyElement(app, "startup-recovery-action-state").waitForStringValue(
+        "support-saved",
+        timeout: 2
+      )
+    )
+    XCTAssertTrue(
+      app.staticTexts["startup-recovery-support-export-result"].waitForExistence(timeout: 2)
+    )
+    XCTAssertTrue(
+      anyElement(app, "offline-recovery-action-probe").waitForStringValue(
+        "recovery-evidence:primary=corrupt:catalog=0:orphans=0:audio=true:"
+          + "files=1:prepared=0:revision=2",
+        timeout: 2
+      )
+    )
+    XCTAssertTrue(terminateAndWait(app))
+
+    app = launchRecoveryApp(scenario: "support-export")
+    app.buttons["startup-recovery-diagnostics"].tap()
+    XCTAssertTrue(app.buttons["e2e-files-cancel-support-bundle"].waitForExistence(timeout: 2))
+    app.buttons["e2e-files-cancel-support-bundle"].tap()
+    XCTAssertTrue(
+      anyElement(app, "startup-recovery-action-state").waitForStringValue(
+        "support-cancelled",
+        timeout: 2
+      )
+    )
+    XCTAssertTrue(
+      anyElement(app, "offline-recovery-action-probe").waitForStringValue(
+        "recovery-evidence:primary=corrupt:catalog=0:orphans=0:audio=true:"
+          + "files=0:prepared=0:revision=1",
+        timeout: 2
+      )
+    )
+    XCTAssertTrue(terminateAndWait(app))
+
+    app = launchRecoveryApp(scenario: "support-preparation-fails")
+    app.buttons["startup-recovery-diagnostics"].tap()
+    let alert = app.alerts["Couldn’t Create Support Bundle"]
+    XCTAssertTrue(alert.waitForExistence(timeout: 2))
+    XCTAssertTrue(
+      exactStaticText(
+        alert,
+        label:
+          "The deterministic support report could not be written to local storage."
+      ).exists
+    )
+    XCTAssertTrue(
+      anyElement(app, "startup-recovery-action-state").waitForStringValue(
+        "support-preparation-failed",
+        timeout: 2
+      )
+    )
+    XCTAssertTrue(terminateAndWait(app))
+  }
+
+  private func launchRecoveryApp(scenario: String) -> XCUIApplication {
+    let app = XCUIApplication()
+    app.launchArguments = [
+      "-e2e", "-e2e-fixture", "offline-recovery", "-e2e-reset",
+      "-e2e-offline-recovery-scenario", scenario,
+      "-e2e-start-section", "settings",
+      "-e2e-start-settings-route", "diagnostics",
+      "-AppleLanguages", "(en)", "-AppleLocale", "en_CA",
+      "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryM",
+      "-NSTreatUnknownArgumentsAsOpen", "NO",
+    ]
+    app.launchEnvironment["TZ"] = "America/Toronto"
+    app.launchEnvironment["PLAYER_E2E_DYNAMIC_TYPE"] = "medium"
+    app.launch()
+    return app
   }
 
   private func anyElement(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {
     uniquelyIdentifiedElement(app, identifier)
+  }
+
+  private func exactStaticText(_ container: XCUIElement, label: String) -> XCUIElement {
+    container.staticTexts.matching(NSPredicate(format: "label == %@", label)).element
+  }
+
+  private func exactStaticText(_ app: XCUIApplication, label: String) -> XCUIElement {
+    app.staticTexts.matching(NSPredicate(format: "label == %@", label)).element
   }
 
   private func offlineCaptureReadiness(

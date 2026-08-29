@@ -3,6 +3,35 @@ import XCTest
 @testable import Player
 
 final class OfflineRecoveryTests: XCTestCase {
+  func testOfflineRecoveryScenarioParserAcceptsEveryValueAndRejectsBadInput() throws {
+    for scenario in E2EOfflineRecoveryScenario.allCases {
+      XCTAssertEqual(
+        try E2EOfflineRecoveryScenario.parse(arguments: [
+          "Player", E2EOfflineRecoveryScenario.argument, scenario.rawValue,
+        ]),
+        scenario
+      )
+    }
+    XCTAssertEqual(try E2EOfflineRecoveryScenario.parse(arguments: ["Player"]), .automaticRestore)
+    XCTAssertThrowsError(
+      try E2EOfflineRecoveryScenario.parse(arguments: [
+        "Player", E2EOfflineRecoveryScenario.argument, "unknown",
+      ]))
+    XCTAssertThrowsError(
+      try E2EOfflineRecoveryScenario.parse(arguments: [
+        "Player", E2EOfflineRecoveryScenario.argument,
+      ]))
+    XCTAssertThrowsError(
+      try E2EOfflineRecoveryScenario.parse(arguments: [
+        "Player", E2EOfflineRecoveryScenario.argument, "-e2e-reset",
+      ]))
+    XCTAssertThrowsError(
+      try E2EOfflineRecoveryScenario.parse(arguments: [
+        "Player", E2EOfflineRecoveryScenario.argument, "fresh-library",
+        E2EOfflineRecoveryScenario.argument, "newer-schema",
+      ]))
+  }
+
   func testCorruptPrimaryRestoresLatestValidCopyWithoutOverwritingEvidence() async throws {
     let root = temporaryDirectory("restore")
     defer { try? FileManager.default.removeItem(at: root) }
@@ -58,6 +87,118 @@ final class OfflineRecoveryTests: XCTestCase {
       includingPropertiesForKeys: nil
     )
     XCTAssertEqual(try Data(contentsOf: try XCTUnwrap(evidence.first)), corruptBytes)
+  }
+
+  func testFreshLibraryThenReconciliationPreservesCatalogManagedAudioAndUnknownOwnedFiles()
+    async throws
+  {
+    let root = temporaryDirectory("fresh-all-evidence")
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let primary = root.appending(path: "Library.json")
+    let corruptBytes = Data("unreadable primary evidence".utf8)
+    try corruptBytes.write(to: primary)
+    let managedBookID = uuid(31)
+    let unknownBookID = uuid(32)
+    let stagingID = uuid(33)
+    let trashID = uuid(34)
+    let evidence: [(String, Data)] = [
+      (
+        "Media/\(managedBookID.uuidString.lowercased())/managed.m4b",
+        Data("managed audio".utf8)
+      ),
+      (
+        "Media/\(unknownBookID.uuidString.lowercased())/unknown.m4b",
+        Data("unknown media".utf8)
+      ),
+      (
+        "Staging/\(stagingID.uuidString.lowercased())/unknown.partial",
+        Data("unknown staging".utf8)
+      ),
+      (
+        "Trash/\(trashID.uuidString.lowercased())/unknown.m4b",
+        Data("unknown trash".utf8)
+      ),
+    ]
+    for (path, data) in evidence {
+      let url = root.appending(path: path)
+      try FileManager.default.createDirectory(
+        at: url.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+      )
+      try data.write(to: url)
+    }
+
+    let store = CodableLibraryStore(fileURL: primary)
+    let fresh = try await store.beginFreshLibraryPreservingPrimary()
+    XCTAssertEqual(fresh, .empty)
+    let reconciliation = try await FileSystemMediaManager(rootURL: root)
+      .reconcileStartupStorage(with: .empty)
+
+    XCTAssertTrue(reconciliation.library.books.isEmpty)
+    XCTAssertTrue(reconciliation.library.importJobs.isEmpty)
+    XCTAssertNil(reconciliation.library.currentBookID)
+    XCTAssertEqual(reconciliation.library.storageManifests.map(\.scope), [.database])
+    XCTAssertEqual(reconciliation.quarantinedManagedBookCount, 2)
+    XCTAssertEqual(reconciliation.quarantinedStagingJobCount, 1)
+    XCTAssertEqual(reconciliation.quarantinedTrashTransactionCount, 1)
+    let catalogEvidence = try FileManager.default.contentsOfDirectory(
+      at: root.appending(path: "Recovery/Quarantine"),
+      includingPropertiesForKeys: nil
+    )
+    XCTAssertEqual(catalogEvidence.count, 1)
+    XCTAssertEqual(try Data(contentsOf: try XCTUnwrap(catalogEvidence.first)), corruptBytes)
+    let orphanRoot = root.appending(path: "Recovery/Orphans")
+    XCTAssertEqual(
+      try Data(
+        contentsOf: orphanRoot.appending(
+          path: "managed-\(managedBookID.uuidString.lowercased())/managed.m4b"
+        )),
+      evidence[0].1
+    )
+    XCTAssertEqual(
+      try Data(
+        contentsOf: orphanRoot.appending(
+          path: "managed-\(unknownBookID.uuidString.lowercased())/unknown.m4b"
+        )),
+      evidence[1].1
+    )
+    XCTAssertEqual(
+      try Data(
+        contentsOf: orphanRoot.appending(
+          path: "staging-\(stagingID.uuidString.lowercased())/unknown.partial"
+        )),
+      evidence[2].1
+    )
+    XCTAssertEqual(
+      try Data(
+        contentsOf: orphanRoot.appending(
+          path: "trash-\(trashID.uuidString.lowercased())/unknown.m4b"
+        )),
+      evidence[3].1
+    )
+  }
+
+  func testFailedRetryClassificationDoesNotMutatePrimaryBytes() async throws {
+    let root = temporaryDirectory("failed-retry")
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let primary = root.appending(path: "Library.json")
+    let bytes = Data("still unreadable".utf8)
+    try bytes.write(to: primary)
+    let store = CodableLibraryStore(fileURL: primary)
+
+    for _ in 0..<2 {
+      do {
+        _ = try await store.load()
+        XCTFail("The unreadable primary unexpectedly loaded.")
+      } catch {
+        let status = await store.startupRecoveryStatus()
+        XCTAssertEqual(status.issue, .unreadableLibrary)
+      }
+      XCTAssertEqual(try Data(contentsOf: primary), bytes)
+    }
+    XCTAssertFalse(FileManager.default.fileExists(atPath: root.appending(path: "Recovery").path))
   }
 
   func testStartupStorageReconciliationUsesOwnedIDsAndQuarantinesOrphans() async throws {
@@ -183,6 +324,9 @@ final class OfflineRecoveryTests: XCTestCase {
     XCTAssertEqual(report.bookmarkCount, 1)
     XCTAssertEqual(report.quarantinedTrashTransactionCount, 3)
     XCTAssertFalse(report.localFeaturesRequireInternet)
+
+    await manager.discardPreparedBundle(prepared)
+    XCTAssertFalse(FileManager.default.fileExists(atPath: prepared.url.path))
   }
 
   private func makeBook(id: UUID, title: String) -> Book {

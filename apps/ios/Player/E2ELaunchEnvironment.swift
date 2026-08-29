@@ -61,6 +61,38 @@ enum E2EFixture: String, CaseIterable {
   case offlineRecovery = "offline-recovery"
 }
 
+#if E2E
+  enum E2EOfflineRecoveryScenario: String, CaseIterable {
+    static let argument = "-e2e-offline-recovery-scenario"
+
+    case automaticRestore = "automatic-restore"
+    case retrySucceeds = "retry-succeeds"
+    case retryRemainsFailed = "retry-remains-failed"
+    case freshLibrary = "fresh-library"
+    case newerSchema = "newer-schema"
+    case storageUnavailable = "storage-unavailable"
+    case launchStorageRetry = "launch-storage-retry"
+    case supportExport = "support-export"
+    case supportPreparationFails = "support-preparation-fails"
+
+    static func parse(arguments: [String]) throws -> Self {
+      let indices = arguments.indices.filter { arguments[$0] == argument }
+      guard indices.count <= 1 else {
+        throw PlayerCoreError.fileOperation("Duplicate Offline Recovery E2E scenario value.")
+      }
+      guard let index = indices.first else { return .automaticRestore }
+      guard arguments.indices.contains(index + 1), !arguments[index + 1].hasPrefix("-") else {
+        throw PlayerCoreError.fileOperation("Missing Offline Recovery E2E scenario value.")
+      }
+      let value = arguments[index + 1]
+      guard let scenario = Self(rawValue: value) else {
+        throw PlayerCoreError.fileOperation("Invalid Offline Recovery E2E scenario: \(value)")
+      }
+      return scenario
+    }
+  }
+#endif
+
 struct E2ELaunchConfiguration: Equatable {
   enum ResetPolicy: Equatable {
     case preserve
@@ -164,6 +196,7 @@ struct E2ELaunchConfiguration: Equatable {
     "-e2e-sleep-timer-namespace",
     "-e2e-smart-rewind-scenario",
     "-e2e-recovery-scenario",
+    "-e2e-offline-recovery-scenario",
     "-e2e-zip-case",
     "-e2e-zip-limits",
     "-e2e-zip-fail-once",
@@ -1009,7 +1042,10 @@ extension PlayerEnvironment {
         case .portableBackup:
           return try portableBackupEnvironment(reset: reset)
         case .offlineRecovery:
-          return try offlineRecoveryEnvironment(reset: reset)
+          return try offlineRecoveryEnvironment(
+            reset: reset,
+            scenario: E2EOfflineRecoveryScenario.parse(arguments: arguments)
+          )
         }
       }
     #endif
@@ -2685,12 +2721,27 @@ extension PlayerEnvironment {
       )
     }
 
-    private static func offlineRecoveryEnvironment(reset: Bool) throws -> PlayerEnvironment {
+    private static func offlineRecoveryEnvironment(
+      reset: Bool,
+      scenario: E2EOfflineRecoveryScenario
+    ) throws -> PlayerEnvironment {
       let root = FileManager.default.temporaryDirectory.appending(
-        path: "PlayerE2EOfflineRecovery",
+        path: "PlayerE2EOfflineRecovery/\(scenario.rawValue)",
         directoryHint: .isDirectory
       )
+      E2EOfflineRecoveryBridge.shared.configure(
+        scenario: scenario,
+        root: root,
+        reset: reset
+      )
       if reset { try resetE2EFixtureRoot(root) }
+      if scenario == .launchStorageRetry,
+        E2EOfflineRecoveryBridge.shared.consumeLaunchStorageFailure()
+      {
+        throw PlayerCoreError.fileOperation(
+          "The deterministic private local folder is temporarily unavailable."
+        )
+      }
       try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
       let date = Date(timeIntervalSince1970: 1_750_000_000)
       let bookID = UUID(uuidString: "d1000000-0000-0000-0000-000000000001")!
@@ -2759,14 +2810,28 @@ extension PlayerEnvironment {
         schemaVersion: CodableLibraryStore.currentSchemaVersion,
         library: snapshot
       )
-      try JSONEncoder.playerEncoder.encode(envelope).write(
-        to: backupDirectory.appending(path: "library-safe-copy.json"),
-        options: .atomic
-      )
-      try Data("corrupt primary with private catalog bytes".utf8).write(
-        to: root.appending(path: "Library.json"),
-        options: .atomic
-      )
+      let validData = try JSONEncoder.playerEncoder.encode(envelope)
+      let libraryURL = root.appending(path: "Library.json")
+      switch scenario {
+      case .automaticRestore:
+        try validData.write(
+          to: backupDirectory.appending(path: "library-safe-copy.json"),
+          options: .atomic
+        )
+        try E2EOfflineRecoveryBridge.corruptPrimaryBytes.write(to: libraryURL, options: .atomic)
+      case .retrySucceeds, .storageUnavailable:
+        try validData.write(to: libraryURL, options: .atomic)
+      case .newerSchema:
+        let newer = E2EOfflineRecoveryEnvelope(
+          schemaVersion: CodableLibraryStore.currentSchemaVersion + 1,
+          library: snapshot
+        )
+        try JSONEncoder.playerEncoder.encode(newer).write(to: libraryURL, options: .atomic)
+      case .retryRemainsFailed, .freshLibrary, .supportExport, .supportPreparationFails:
+        try E2EOfflineRecoveryBridge.corruptPrimaryBytes.write(to: libraryURL, options: .atomic)
+      case .launchStorageRetry:
+        try validData.write(to: libraryURL, options: .atomic)
+      }
       let orphans: [(String, String)] = [
         ("Media/d2000000-0000-0000-0000-000000000001/private-orphan.m4b", "media"),
         ("Staging/d2000000-0000-0000-0000-000000000002/private.partial", "staging"),
@@ -2780,19 +2845,41 @@ extension PlayerEnvironment {
         )
         try Data(contents.utf8).write(to: url)
       }
-      E2EOfflineRecoveryBridge.shared.configure(forbiddenValues: forbidden)
-      return PlayerEnvironment(
-        persistence: CodableLibraryStore(fileURL: root.appending(path: "Library.json")),
-        media: FileSystemMediaManager(rootURL: root),
-        inspector: DeterministicAudioInspector(result: .failure(.unreadableAudio("unused"))),
-        playback: DeterministicPlaybackController(),
-        clock: FixedPlayerClock(value: date),
-        diagnostics: FileSystemSupportDiagnosticsManager(
+      E2EOfflineRecoveryBridge.shared.setForbiddenValues(forbidden)
+      let baseStore = CodableLibraryStore(fileURL: libraryURL)
+      let persistence: any LibraryPersisting
+      switch scenario {
+      case .retrySucceeds:
+        persistence = E2ETransientRecoveryStore(
+          base: baseStore,
+          issue: .unreadableLibrary,
+          failuresBeforeSuccess: 1
+        )
+      case .storageUnavailable:
+        persistence = E2ETransientRecoveryStore(
+          base: baseStore,
+          issue: .storageUnavailable,
+          failuresBeforeSuccess: 1
+        )
+      default:
+        persistence = baseStore
+      }
+      let diagnostics: any SupportDiagnosticsManaging =
+        scenario == .supportPreparationFails
+        ? E2EFailingSupportDiagnosticsManager()
+        : FileSystemSupportDiagnosticsManager(
           rootURL: root,
           clock: FixedPlayerClock(value: date),
           appVersion: "0.1.0",
           appBuild: "17"
         )
+      return PlayerEnvironment(
+        persistence: persistence,
+        media: FileSystemMediaManager(rootURL: root),
+        inspector: DeterministicAudioInspector(result: .failure(.unreadableAudio("unused"))),
+        playback: DeterministicPlaybackController(),
+        clock: FixedPlayerClock(value: date),
+        diagnostics: diagnostics
       )
     }
 
