@@ -967,6 +967,7 @@ private struct CollectionBookPicker: View {
       }
       .playerMiniPlayerScrollRunway()
       .scrollContentBackground(.hidden)
+      StateProbe(id: "collection-book-picker-probe", value: pickerValue)
     }
     .navigationTitle("Add Books")
     .toolbar {
@@ -981,6 +982,13 @@ private struct CollectionBookPicker: View {
       .disabled(selected.isEmpty)
       .accessibilityIdentifier("save-collection-books")
     }
+  }
+
+  private var pickerValue: String {
+    let bookIDs = model.library.books
+      .map { $0.id.uuidString.lowercased() }
+      .joined(separator: ",")
+    return "collection-picker:collection=\(collectionID.uuidString.lowercased()):books=\(bookIDs)"
   }
 }
 

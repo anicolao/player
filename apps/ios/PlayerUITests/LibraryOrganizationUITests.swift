@@ -238,7 +238,13 @@ final class LibraryOrganizationUITests: XCTestCase {
     name.tap()
     name.typeText("Quiet Evenings")
     app.buttons["save-collection"].tap()
+    let emptyCollection =
+      "collection:\(collectionID):name=Quiet Evenings:count=0:order="
+    try requireValue(anyElement(app, "collection-probe"), emptyCollection)
     app.buttons["add-collection-books"].tap()
+    let pickerValue =
+      "collection-picker:collection=\(collectionID):books=\(books.joined(separator: ","))"
+    try requireValue(anyElement(app, "collection-book-picker-probe"), pickerValue)
     app.buttons["collection-select-book-\(books[0])"].tap()
     app.buttons["collection-select-book-\(books[1])"].tap()
     app.buttons["save-collection-books"].tap()
