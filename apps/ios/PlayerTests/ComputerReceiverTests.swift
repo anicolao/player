@@ -813,8 +813,10 @@ final class ComputerReceiverTests: XCTestCase {
       browserWindow.isHidden = true
       withExtendedLifetime(browserHost) {}
     }
-    let pageLoaded = expectation(description: "WebKit prepared the same-origin receiver document")
-    let navigation = ReceiverWebNavigationDelegate(pageLoaded: pageLoaded)
+    let documentCommitted = expectation(
+      description: "WebKit committed the same-origin receiver document"
+    )
+    let navigation = ReceiverWebNavigationDelegate(documentCommitted: documentCommitted)
     defer { withExtendedLifetime(navigation) {} }
     webView.navigationDelegate = navigation
     // testLocalHTTPFlowServesSveltePairsUploadsAndCompletes proves the built
@@ -822,7 +824,7 @@ final class ComputerReceiverTests: XCTestCase {
     // origin API contract, so use a minimal same-origin document rather than
     // coupling its two-second transport deadline to Svelte rendering.
     webView.loadHTMLString("<!doctype html><title>Bookshelf Browser Test</title>", baseURL: pageURL)
-    await fulfillment(of: [pageLoaded], timeout: 2)
+    await fulfillment(of: [documentCommitted], timeout: 2)
 
     let journeyCompleted = expectation(description: "Browser completed the HTTP transfer")
     var browserResult: [String: String]?
@@ -1422,14 +1424,15 @@ private actor ControlledReceiverImportCapture {
 
 @MainActor
 private final class ReceiverWebNavigationDelegate: NSObject, WKNavigationDelegate {
-  private let pageLoaded: XCTestExpectation
+  private let documentCommitted: XCTestExpectation
+  private var didSignal = false
 
-  init(pageLoaded: XCTestExpectation) {
-    self.pageLoaded = pageLoaded
+  init(documentCommitted: XCTestExpectation) {
+    self.documentCommitted = documentCommitted
   }
 
-  func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-    pageLoaded.fulfill()
+  func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+    signalDocumentCommit()
   }
 
   func webView(
@@ -1438,7 +1441,7 @@ private final class ReceiverWebNavigationDelegate: NSObject, WKNavigationDelegat
     withError error: any Error
   ) {
     XCTFail("WebKit failed to load the receiver: \(error)")
-    pageLoaded.fulfill()
+    signalDocumentCommit()
   }
 
   func webView(
@@ -1447,6 +1450,12 @@ private final class ReceiverWebNavigationDelegate: NSObject, WKNavigationDelegat
     withError error: any Error
   ) {
     XCTFail("WebKit failed to begin loading the receiver: \(error)")
-    pageLoaded.fulfill()
+    signalDocumentCommit()
+  }
+
+  private func signalDocumentCommit() {
+    guard !didSignal else { return }
+    didSignal = true
+    documentCommitted.fulfill()
   }
 }
