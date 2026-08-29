@@ -1577,6 +1577,30 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request matrix run rather than a formal repeated qualification attempt, so no consecutive core qualification count existed to reset."
+    },
+    {
+      "signature": "ui-test:BackupUITests.testExportsClearsAndRestoresAVerifiedPortableLibrary:export-action-not-delivered",
+      "story": "010-library-backup",
+      "evidence": {
+        "workflowRun": 33255936556,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions lane-5 job 99109526154 and Story 010 artifact 9716291415 retained the complete failed XCTest timeline and diagnostics",
+        "url": "https://github.com/anicolao/player/actions/runs/33255936556/job/99109526154",
+        "commit": "07f059c52ce7c28dd14ab81d156e6e2d631abdf1",
+        "observation": "XCTest found and enabled backup-export, completed its element-bound tap, and then observed backup-operation-state remain idle for the full two-second event deadline. No alert appeared. The same production Export action succeeded later in the second backup test in that job, while all other Story 010 contracts, the other four UI lanes, and all 371 core tests passed."
+      },
+      "rootCause": "The journey treated completion of an element-bound XCTest tap as proof that the SwiftUI Button received input. Under hosted accessibility-server slowdown, XCTest could synthesize against a stale element snapshot without delivering the action, leaving the production operation state unchanged even though capture readiness had already proven the Export target was visible and enabled.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "For the evidenced Export control only, require a contained 44-point target and synthesize one touch at its physical center through the stable application surface. Retain scroll-aware element delivery for Restore and keep every existing exact two-second semantic state assertion.",
+        "commits": [
+          "cc332bfb1990422ee4139d585c0c085b153c4efe"
+        ],
+        "validation": "Fresh canonical Story 010 output /tmp/player-r0-story010-coordinate-qualified passed both complete backup tests in 84.347 seconds. The portable export-clear-restore journey passed in 36.666 seconds, every Export transition in the cancellation/kind/failure journey passed, all four owned screenshots matched the reviewed baselines, and the walkthrough README matched exactly."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request matrix run rather than a formal repeated qualification attempt, so no consecutive Story 010 qualification count existed to reset."
     }
   ]
 }
