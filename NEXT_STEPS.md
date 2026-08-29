@@ -27,12 +27,13 @@ playback behavior.
 | Sleep-timer fade | No repair commit was justified: the existing five-second stepped fade, exact stop, volume restoration, persistence, and dismissal behavior passed focused tests and Story 007. | Full CI [32929302975](https://github.com/anicolao/player/actions/runs/32929302975) passed, including Story 007. |
 | Backup explanation | Implemented in `71c4566`: listener-first purpose and clear descriptions of With audio, Metadata only, and automatic on-device copies precede the actions. | Full CI [32929302975](https://github.com/anicolao/player/actions/runs/32929302975) passed, including the verified Story 010 round trip. |
 
-The remaining acceptance work requires physical hardware and must be repeated
+The remaining acceptance work requires physical hardware and must be performed
 against the beta containing these commits: the originally affected car and a
 headset/AirPods route; Ellie's phone; the real Photos picker with a local and,
 if available, iCloud-backed image; and audible sleep-timer fading on speaker,
-Bluetooth, and headphones. Simulator and CI evidence cannot substitute for
-those output-route and device-specific checks.
+Bluetooth, and headphones. Record the external playback checks in
+[`EXTERNAL_PLAYBACK_ACCEPTANCE.md`](EXTERNAL_PLAYBACK_ACCEPTANCE.md). Simulator and
+CI evidence cannot substitute for those output-route and device-specific checks.
 
 ## Priority order
 

@@ -388,8 +388,10 @@ Then perform release-specific manual checks on physical devices.
 - [ ] Files, document-open, AirDrop, and share-extension import
 - [ ] Single-file, multifile, and ZIP import
 - [ ] Nearby-computer receiver and local-network permission handling
-- [ ] Background audio, interruptions, Lock Screen, Bluetooth, and headset
-      controls
+- [ ] Complete and review every physical-device row in
+      [`EXTERNAL_PLAYBACK_ACCEPTANCE.md`](EXTERNAL_PLAYBACK_ACCEPTANCE.md) for
+      background audio, interruptions, Lock Screen, Control Center, Bluetooth,
+      vehicle, and headset behavior
 - [ ] Exact playback-position recovery after termination
 - [ ] Search, metadata editing, chapters, bookmarks, sleep timer, and smart
       rewind
