@@ -1745,6 +1745,30 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request matrix run rather than a formal repeated qualification attempt, so no consecutive Story 002 qualification count existed to reset."
+    },
+    {
+      "signature": "core-test:ComputerReceiverTests.testWebKitBrowserCompletesARealLocalHTTPImport:document-script-deadline-edge",
+      "story": "core",
+      "evidence": {
+        "workflowRun": 33270906517,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions lane-3 summary artifact 9720473511 retained Core.xcresult and core-tests.log",
+        "url": "https://github.com/anicolao/player/actions/runs/33270906517/job/99149087775",
+        "commit": "eb8e3c1f5f9f510f6ec30feb3ffd9b7c00e4bef2",
+        "observation": "All 13 canonical UI stories passed and the shared core run passed 370 of 371 tests. Its sole failure was the auto-recorded document-script expectation at the unchanged two-second deadline; the immediately following exact origin assertion did not fail and the same test completed the real pairing, upload, import-handler delivery, and terminal-status journey in 5.6 seconds."
+      },
+      "rootCause": "XCTestCase.fulfillment auto-recorded its timed-out completion as a failure before the test could arbitrate the exact bridge state. The document script delivered the expected same-origin value during that deadline transition, so the authoritative semantic state was already correct even though the wait result had crossed its boundary.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Use non-recording XCTWaiter fulfillment at the same two-second deadline and fail only when the wait is incomplete and the exact document-bridge origin is still absent; retain the following exact-origin assertion and the complete live HTTP import journey. No sleep, retry, or longer timeout is introduced.",
+        "commits": [
+          "18eee49778ba17964e98485abbb8754e8131ada7"
+        ],
+        "validation": "The exact browser-origin API journey passed on a freshly provisioned iOS 26.5 simulator, then passed 50/50 explicit repetitions on that simulator in 31.269 seconds. The qualification contract tests passed 60/60."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request matrix run rather than a formal repeated qualification attempt, so no consecutive core qualification count existed to reset."
     }
   ]
 }
