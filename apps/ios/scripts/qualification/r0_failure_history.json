@@ -81,15 +81,16 @@
         "commit": "0939406eca22ffa1b6b363ed3011d6a6d2502ef7",
         "observation": "The metadata-search capture gate reported a compositor change but could not observe an identical follow-up frame; the failed gate did not retain the two internal frame samples."
       },
-      "rootCause": "Supported implementation-defect hypothesis: ConsecutiveScreenObservation compared PNG-encoded Data, whose representation can differ even when the decoded pixel buffers are identical.",
-      "diagnosisStatus": "supported-hypothesis",
+      "rootCause": "The first full-screen acquisition can itself advance the simulator compositor. The original gate began acquiring inside an already-running two-second predicate deadline, so after absorbing that first changed frame XCTest's one-second polling cadence left no opportunity to observe the later identical frame. A focused reproduction of the same metadata-search boundary retained three immediate observations and independently confirmed this sequence: the first frame differed while frames two and three had the identical SHA-256.",
+      "diagnosisStatus": "confirmed",
       "fix": {
         "status": "verified",
-        "summary": "Compare CGImage pixel-buffer metadata and bytes rather than PNG representations.",
+        "summary": "Compare decoded CGImage pixel buffers, then acquire two immediate observations after semantic and geometric readiness before starting the bounded capture predicate so the compositor kick is absorbed outside its deadline.",
         "commits": [
-          "fe608daec98237267d04a119ff0b6084d68d7f4c"
+          "fe608daec98237267d04a119ff0b6084d68d7f4c",
+          "a753c0054644bc5cd7a5b6082de7673e6c2157fd"
         ],
-        "validation": "Fresh-build artifact `/tmp/player-story008-fixed2.1787922357` and no-build repeat `/tmp/player-story008-repeat.1787922600`, both at f575fd9fffff0635cfc9bf529b63acb1b7fa9b01 and containing fe608da, each passed UI 1/1, matched all 10 canonical screenshots exactly, matched the reviewed README exactly, and produced valid evidence. The original diagnosis remains a supported hypothesis because its failed gate did not retain the two internal frame samples."
+        "validation": "Focused diagnostic artifact `/tmp/player-r0-story008-prime-search.Q28W9V/run` retained three observations at the same metadata-search capture boundary: the first differed and the second and third shared SHA-256 `f916eec9bd7310ea7a4aa290d32b336ddedf0a05c292c6b007d9a83f433b83c3`, confirming the compositor-kick sequence independently of the original missing samples. Exact artifact `/tmp/player-r0-story008-double-prime.kNeXFr/run` then passed UI 1/1, matched all 10 canonical screenshots pixel-exact, matched the reviewed README exactly, and produced a valid EvidenceManifest after two-observation priming."
       },
       "qualificationResetCount": 1,
       "resetEvidence": "Reliability attempt 1 failed at exact SHA 0939406eca22ffa1b6b363ed3011d6a6d2502ef7, resetting Story 008's consecutive qualification count to zero."
