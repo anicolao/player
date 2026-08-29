@@ -723,6 +723,7 @@ enum PositionEventReason: String, Codable, Equatable, Sendable {
   case background
   case interruption
   case routeChange
+  case completion
   case preResumeRewind
   case resumeRewind
   case undoResumeRewind
@@ -733,6 +734,11 @@ enum AudioSessionEvent: Equatable, Sendable {
   case interruptionBegan
   case interruptionEnded(shouldResume: Bool)
   case oldDeviceUnavailable
+}
+
+enum PlaybackEngineEvent: Equatable, Sendable {
+  case progress(seconds: Double)
+  case reachedEnd
 }
 
 enum RemotePlaybackCommand: Equatable, Sendable {

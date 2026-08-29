@@ -253,9 +253,16 @@ actor DeterministicAudioInspector: AudioInspecting {
 
 @MainActor
 final class AVPlayerPlaybackController: AudioPlaybackControlling {
+  private static let progressInterval = CMTime(seconds: 0.25, preferredTimescale: 1_000)
+
   private var player: AVPlayer?
   private(set) var state: PlaybackState = .unloaded
   private(set) var playbackRate = 1.0
+  private var eventHandler: (@MainActor @Sendable (PlaybackEngineEvent) async -> Void)?
+  private var eventDeliveryTask: Task<Void, Never>?
+  private var observerGeneration = 0
+  private var periodicTimeObserver: Any?
+  private var endObserver: NSObjectProtocol?
   private var sleepFadeTask: Task<Void, Never>?
   private var sleepFadeOriginalVolume: Float?
 
@@ -270,8 +277,15 @@ final class AVPlayerPlaybackController: AudioPlaybackControlling {
     state.status == .playing && player?.timeControlStatus == .playing
   }
 
+  func installEventHandler(
+    _ handler: @escaping @MainActor @Sendable (PlaybackEngineEvent) async -> Void
+  ) {
+    eventHandler = handler
+  }
+
   func load(url: URL, bookID: UUID, at seconds: Double = 0) async throws {
     cancelSleepFade()
+    removePlaybackObservers()
     let asset = AVURLAsset(url: url)
     guard try await asset.load(.isPlayable) else {
       throw PlayerCoreError.unreadableAudio(url.lastPathComponent)
@@ -284,10 +298,12 @@ final class AVPlayerPlaybackController: AudioPlaybackControlling {
     }
     self.player = player
     state = PlaybackState(status: .paused, loadedBookID: bookID, elapsedSeconds: seconds)
+    installPlaybackObservers(for: player, item: item)
   }
 
   func unload() {
     cancelSleepFade()
+    removePlaybackObservers()
     player?.pause()
     player?.replaceCurrentItem(with: nil)
     player = nil
@@ -363,6 +379,60 @@ final class AVPlayerPlaybackController: AudioPlaybackControlling {
     }
     sleepFadeOriginalVolume = nil
   }
+
+  private func installPlaybackObservers(for player: AVPlayer, item: AVPlayerItem) {
+    let generation = observerGeneration
+    periodicTimeObserver = player.addPeriodicTimeObserver(
+      forInterval: Self.progressInterval,
+      queue: .main
+    ) { [weak self, weak player] time in
+      let seconds = time.seconds
+      MainActor.assumeIsolated {
+        guard let self, self.player === player, self.state.status == .playing else { return }
+        guard seconds.isFinite else { return }
+        self.state.elapsedSeconds = max(0, seconds)
+        self.enqueueEvent(
+          .progress(seconds: self.state.elapsedSeconds),
+          generation: generation
+        )
+      }
+    }
+    endObserver = NotificationCenter.default.addObserver(
+      forName: .AVPlayerItemDidPlayToEndTime,
+      object: item,
+      queue: .main
+    ) { [weak self, weak item] _ in
+      MainActor.assumeIsolated {
+        guard let self,
+          self.player?.currentItem === item
+        else { return }
+        self.state.status = .paused
+        self.enqueueEvent(.reachedEnd, generation: generation)
+      }
+    }
+  }
+
+  private func enqueueEvent(_ event: PlaybackEngineEvent, generation: Int) {
+    let predecessor = eventDeliveryTask
+    let handler = eventHandler
+    eventDeliveryTask = Task { @MainActor [weak self] in
+      await predecessor?.value
+      guard let self, self.observerGeneration == generation else { return }
+      await handler?(event)
+    }
+  }
+
+  private func removePlaybackObservers() {
+    observerGeneration += 1
+    if let periodicTimeObserver, let player {
+      player.removeTimeObserver(periodicTimeObserver)
+    }
+    periodicTimeObserver = nil
+    if let endObserver {
+      NotificationCenter.default.removeObserver(endObserver)
+    }
+    endObserver = nil
+  }
 }
 
 @MainActor
@@ -370,12 +440,19 @@ final class DeterministicPlaybackController: AudioPlaybackControlling {
   private(set) var state: PlaybackState
   private(set) var loadedURL: URL?
   private(set) var playbackRate = 1.0
+  private var eventHandler: (@MainActor @Sendable (PlaybackEngineEvent) async -> Void)?
 
   init(state: PlaybackState = .unloaded) {
     self.state = state
   }
 
   var currentPositionSeconds: Double { state.elapsedSeconds }
+
+  func installEventHandler(
+    _ handler: @escaping @MainActor @Sendable (PlaybackEngineEvent) async -> Void
+  ) {
+    eventHandler = handler
+  }
 
   func load(url: URL, bookID: UUID, at seconds: Double) async throws {
     loadedURL = url
@@ -405,6 +482,18 @@ final class DeterministicPlaybackController: AudioPlaybackControlling {
   func pause() {
     guard state.loadedBookID != nil else { return }
     state.status = .paused
+  }
+
+  func send(_ event: PlaybackEngineEvent) async {
+    guard state.loadedBookID != nil else { return }
+    switch event {
+    case .progress(let seconds):
+      guard state.status == .playing, seconds.isFinite else { return }
+      state.elapsedSeconds = max(0, seconds)
+    case .reachedEnd:
+      state.status = .paused
+    }
+    await eventHandler?(event)
   }
 }
 

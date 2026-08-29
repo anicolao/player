@@ -199,6 +199,9 @@ protocol AudioPlaybackControlling: AnyObject {
   var currentPositionSeconds: Double { get }
   var playbackRate: Double { get }
   var isPlaybackAdvancing: Bool { get }
+  func installEventHandler(
+    _ handler: @escaping @MainActor @Sendable (PlaybackEngineEvent) async -> Void
+  )
   func load(url: URL, bookID: UUID, at seconds: Double) async throws
   func unload()
   func seek(to seconds: Double) async
@@ -212,6 +215,10 @@ protocol AudioPlaybackControlling: AnyObject {
 
 @MainActor
 extension AudioPlaybackControlling {
+  func installEventHandler(
+    _ handler: @escaping @MainActor @Sendable (PlaybackEngineEvent) async -> Void
+  ) {}
+
   func unload() { pause() }
 
   var playbackRate: Double { 1 }

@@ -1,6 +1,5 @@
 import CryptoKit
 import MediaPlayer
-import Observation
 import XCTest
 @testable import Player
 
@@ -1823,28 +1822,107 @@ final class PlayerCoreTests: XCTestCase {
     XCTAssertEqual(paused.playbackRate, 0)
   }
 
-  func testLiveEngineProgressSynchronizesObservablePlayheadWithoutCreatingJournalNoise() async throws {
+  func testLiveEngineProgressEventSynchronizesEveryPlaybackProjectionWithoutJournalNoise() async throws {
     let harness = makeBackgroundPlaybackHarness()
     await harness.model.restore()
     harness.model.configurePlaybackIntegrations()
     await harness.model.play(bookID: harness.book.id)
     let journalCount = harness.model.library.positionJournal.count
 
-    let progressChanged = expectation(
-      description: "The automatic playback monitor publishes the live engine position"
-    )
-    let progressObservation = PlaybackProgressExpectation(
-      model: harness.model,
-      target: 7.5,
-      expectation: progressChanged
-    )
-    progressObservation.beginObserving()
-    await harness.playback.seek(to: 7.5)
-    await fulfillment(of: [progressChanged], timeout: 2)
-    withExtendedLifetime(progressObservation) {}
+    await harness.playback.send(.progress(seconds: 42.25))
 
-    XCTAssertEqual(harness.model.playbackState.elapsedSeconds, 7.5, accuracy: 0.001)
+    XCTAssertEqual(harness.model.playbackState.elapsedSeconds, 42.25, accuracy: 0.001)
+    XCTAssertEqual(
+      try XCTUnwrap(harness.nowPlaying.latest?.elapsedSeconds),
+      42.25,
+      accuracy: 0.001
+    )
+    XCTAssertEqual(harness.nowPlaying.latest?.chapterTitle, "Middle")
     XCTAssertEqual(harness.model.library.positionJournal.count, journalCount)
+  }
+
+  func testPausedEngineIgnoresProgressAndDoesNotCreateJournalNoise() async {
+    let harness = makeBackgroundPlaybackHarness()
+    await harness.model.restore()
+    harness.model.configurePlaybackIntegrations()
+    await harness.model.play(bookID: harness.book.id)
+    await harness.playback.send(.progress(seconds: 24))
+    await harness.model.pause()
+    let pausedPosition = harness.model.playbackState.elapsedSeconds
+    let journal = harness.model.library.positionJournal
+
+    await harness.playback.send(.progress(seconds: 75))
+
+    XCTAssertEqual(harness.model.playbackState.elapsedSeconds, pausedPosition)
+    XCTAssertEqual(harness.model.library.positionJournal, journal)
+  }
+
+  func testEngineEndCompletesTheBookWithOneDurableCheckpoint() async throws {
+    let harness = makeBackgroundPlaybackHarness()
+    await harness.model.restore()
+    harness.model.configurePlaybackIntegrations()
+    await harness.model.play(bookID: harness.book.id)
+
+    await harness.playback.send(.progress(seconds: 120))
+    await harness.playback.send(.reachedEnd)
+
+    XCTAssertEqual(harness.model.playbackState.status, .paused)
+    XCTAssertEqual(harness.model.playbackState.elapsedSeconds, 120)
+    XCTAssertEqual(harness.model.library.positionJournal.map(\.reason), [.play, .completion])
+    XCTAssertEqual(harness.model.library.playbackPosition?.positionMilliseconds, 120_000)
+    let completedBook = try XCTUnwrap(
+      harness.model.library.books.first(where: { $0.id == harness.book.id })
+    )
+    XCTAssertEqual(completedBook.listeningState.status, .finished)
+    XCTAssertEqual(completedBook.listeningState.positionMilliseconds, 120_000)
+    XCTAssertEqual(harness.nowPlaying.latest?.elapsedSeconds, 120)
+    XCTAssertEqual(harness.nowPlaying.latest?.playbackRate, 0)
+  }
+
+  func testEngineEndLoadsTheNextAssetAndContinuesFromItsBookBoundary() async throws {
+    var book = makeBackgroundPlaybackHarness().book
+    let firstAssetID = UUID(uuidString: "90000000-0000-0000-0000-000000000011")!
+    let secondAssetID = UUID(uuidString: "90000000-0000-0000-0000-000000000012")!
+    book.assets = [
+      AudioAsset(
+        id: firstAssetID,
+        originalFilename: "background-01.m4b",
+        managedRelativePath: "Media/background-01.m4b",
+        checksumSHA256: "fixture-1",
+        byteCount: 1,
+        durationSeconds: 60,
+        container: "M4B",
+        timelineStartSeconds: 0,
+        importOrder: 0
+      ),
+      AudioAsset(
+        id: secondAssetID,
+        originalFilename: "background-02.m4b",
+        managedRelativePath: "Media/background-02.m4b",
+        checksumSHA256: "fixture-2",
+        byteCount: 1,
+        durationSeconds: 60,
+        container: "M4B",
+        timelineStartSeconds: 60,
+        importOrder: 1
+      ),
+    ]
+    let harness = makeBackgroundPlaybackHarness(book: book)
+    await harness.model.restore()
+    harness.model.configurePlaybackIntegrations()
+    await harness.model.play(bookID: book.id)
+    let journal = harness.model.library.positionJournal
+
+    await harness.playback.send(.reachedEnd)
+
+    XCTAssertEqual(harness.model.playbackState.status, .playing)
+    XCTAssertEqual(harness.model.playbackState.elapsedSeconds, 60)
+    XCTAssertEqual(harness.playback.loadedURL, URL(filePath: "/tmp/Media/background-02.m4b"))
+    XCTAssertEqual(harness.model.library.positionJournal, journal)
+
+    await harness.playback.send(.progress(seconds: 5))
+    XCTAssertEqual(harness.model.playbackState.elapsedSeconds, 65)
+    XCTAssertEqual(harness.nowPlaying.latest?.elapsedSeconds, 65)
   }
 
   func testAudioSessionConfigurationAndActivationFailuresAreObservable() async throws {
@@ -2585,6 +2663,10 @@ final class PlayerCoreTests: XCTestCase {
         ),
       ]
     )
+    return makeBackgroundPlaybackHarness(book: book)
+  }
+
+  private func makeBackgroundPlaybackHarness(book: Book) -> BackgroundPlaybackHarness {
     let store = InMemoryLibraryStore(
       snapshot: LibrarySnapshot(books: [book], importJobs: [], currentBookID: book.id)
     )
@@ -2617,32 +2699,6 @@ final class PlayerCoreTests: XCTestCase {
       remoteCommands: remoteCommands,
       nowPlaying: nowPlaying
     )
-  }
-}
-
-private final class PlaybackProgressExpectation: @unchecked Sendable {
-  private weak var model: PlayerModel?
-  private let target: Double
-  private let expectation: XCTestExpectation
-
-  init(model: PlayerModel, target: Double, expectation: XCTestExpectation) {
-    self.model = model
-    self.target = target
-    self.expectation = expectation
-  }
-
-  @MainActor
-  func beginObserving() {
-    guard let model else { return }
-    guard model.playbackState.elapsedSeconds < target else {
-      expectation.fulfill()
-      return
-    }
-    withObservationTracking {
-      _ = model.playbackState.elapsedSeconds
-    } onChange: { [self] in
-      Task { @MainActor in self.beginObserving() }
-    }
   }
 }
 
