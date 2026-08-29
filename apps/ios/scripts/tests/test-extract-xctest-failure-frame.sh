@@ -31,7 +31,7 @@ mkdir -p "${valid}/Attachments" "${valid}/Diagnostics"
 swift "${fixture}" generate "${valid}/Attachments/older.mp4"
 : > "${valid}/Attachments/newer-empty.mp4"
 make_manifest "${valid}/Attachments" older.mp4 100 \
-  '[{"exportedFileName":"newer-empty.mp4","suggestedHumanReadableName":"Screen Recording empty.mp4","timestamp":200}]'
+  '[{"exportedFileName":"issue.txt","suggestedHumanReadableName":"Complete Issue Description.txt"},{"exportedFileName":"newer-empty.mp4","suggestedHumanReadableName":"Screen Recording empty.mp4","timestamp":200}]'
 
 hung_xcrun="${test_root}/hung-xcrun"
 printf '%s\n' '#!/bin/sh' 'trap "" TERM' 'while :; do :; done' > "${hung_xcrun}"
@@ -91,6 +91,20 @@ if swift "${extractor}" "${unsafe}/Attachments" \
   "${unsafe}/Diagnostics/failure-screen.png" \
   "${unsafe}/Diagnostics/failure-screen-source.json"; then
   echo "Unsafe attachment paths must fail closed." >&2
+  exit 1
+fi
+
+missing_timestamp="${test_root}/missing-timestamp"
+mkdir -p "${missing_timestamp}/Attachments" "${missing_timestamp}/Diagnostics"
+cp "${valid}/Attachments/older.mp4" "${missing_timestamp}/Attachments/older.mp4"
+jq -n '[{testIdentifier: "PlayerUITests/Failure/testExample()",
+  attachments: [{exportedFileName: "older.mp4",
+    suggestedHumanReadableName: "Screen Recording fixture.mp4"}]}]' \
+  > "${missing_timestamp}/Attachments/manifest.json"
+if swift "${extractor}" "${missing_timestamp}/Attachments" \
+  "${missing_timestamp}/Diagnostics/failure-screen.png" \
+  "${missing_timestamp}/Diagnostics/failure-screen-source.json"; then
+  echo "A screen recording without a provenance timestamp must fail closed." >&2
   exit 1
 fi
 

@@ -329,6 +329,21 @@ class QualificationAggregatorTests(unittest.TestCase):
             self.failure_signature(retained, 65),
             "ui-test:AlphaUITests.testFirstFailure+ZebraUITests.testSecondFailure:exit-65")
 
+    def test_failure_signature_separates_xcode_launch_infrastructure(self):
+        retained = self.root / "xcode-launch-timeout"
+        write_json(retained / "Diagnostics/FailureEvidence.json", {"testExitCode": 65})
+        (retained / "Logs").mkdir(parents=True)
+        (retained / "Logs/test.log").write_text(
+            "MultifileGroupingUITests.swift:33: error: Failed to launch app via Xcode: "
+            "Timed out while launching application via Xcode.\n"
+            "Test Case '-[PlayerUITests.MultifileGroupingUITests "
+            "testRepairsMessyMultifileGroupingAndCommitsOneBookAtomically]' failed (74 seconds).\n",
+            encoding="utf-8")
+        self.assertEqual(
+            self.failure_signature(retained, 65),
+            "infrastructure:xcode-application-launch-timeout:"
+            "MultifileGroupingUITests.testRepairsMessyMultifileGroupingAndCommitsOneBookAtomically:exit-65")
+
     def test_failure_signature_prefers_xcresult_failed_tests(self):
         retained = self.root / "xcresult-failed-ui-test"
         write_json(retained / "Diagnostics/FailureEvidence.json", {"testExitCode": 65})

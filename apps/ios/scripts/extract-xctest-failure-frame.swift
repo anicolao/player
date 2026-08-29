@@ -14,11 +14,12 @@ private struct AttachmentGroup: Decodable {
 private struct ExportedAttachment: Decodable {
   let exportedFileName: String
   let suggestedHumanReadableName: String
-  let timestamp: Double
+  let timestamp: Double?
 }
 
 private struct Candidate {
   let attachment: ExportedAttachment
+  let attachmentTimestamp: Double
   let testIdentifier: String
   let url: URL
 }
@@ -154,10 +155,12 @@ private func loadCandidate(from attachmentsURL: URL) throws -> Candidate {
       guard attachment.suggestedHumanReadableName.hasPrefix("Screen Recording "),
         attachment.suggestedHumanReadableName.hasSuffix(".mp4")
       else { continue }
+      guard let timestamp = attachment.timestamp, timestamp.isFinite else {
+        throw ExtractionError.malformedManifest
+      }
       guard !name.isEmpty, name == URL(filePath: name).lastPathComponent,
         !name.contains("/"), !name.contains("\\"), name.lowercased().hasSuffix(".mp4")
       else { throw ExtractionError.unsafePath(name) }
-      guard attachment.timestamp.isFinite else { throw ExtractionError.malformedManifest }
 
       let url = attachmentsURL.appending(path: name)
       guard let values = try? regularFileValues(url), values.isRegularFile == true,
@@ -165,15 +168,16 @@ private func loadCandidate(from attachmentsURL: URL) throws -> Candidate {
       else { continue }
       candidates.append(Candidate(
         attachment: attachment,
+        attachmentTimestamp: timestamp,
         testIdentifier: group.testIdentifier,
         url: url
       ))
     }
   }
-  guard let newestTimestamp = candidates.map(\.attachment.timestamp).max() else {
+  guard let newestTimestamp = candidates.map(\.attachmentTimestamp).max() else {
     throw ExtractionError.noRecording
   }
-  let newest = candidates.filter { $0.attachment.timestamp == newestTimestamp }
+  let newest = candidates.filter { $0.attachmentTimestamp == newestTimestamp }
   guard newest.count == 1, let candidate = newest.first else {
     throw ExtractionError.ambiguousNewestRecording
   }
@@ -288,7 +292,7 @@ private func extract() async throws {
   let provenance = FailureScreenSource(
     attachment: "Attachments/\(candidate.attachment.exportedFileName)",
     testIdentifier: candidate.testIdentifier,
-    attachmentTimestamp: candidate.attachment.timestamp,
+    attachmentTimestamp: candidate.attachmentTimestamp,
     requestedTimeSeconds: requestedSeconds,
     actualTimeSeconds: actualSeconds,
     pixelWidth: image.width,
