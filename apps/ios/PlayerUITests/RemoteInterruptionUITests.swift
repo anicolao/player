@@ -158,9 +158,18 @@ final class RemoteInterruptionUITests: XCTestCase {
     )
 
     XCUIDevice.shared.press(.home)
-    XCTAssertTrue(
-      app.wait(for: .runningBackground, timeout: 2),
-      "The app must report its background lifecycle transition before reactivation"
+    let backgroundState = XCTNSPredicateExpectation(
+      predicate: NSPredicate { object, _ in
+        guard let application = object as? XCUIApplication else { return false }
+        return application.state == .runningBackground
+          || application.state == .runningBackgroundSuspended
+      },
+      object: app
+    )
+    XCTAssertEqual(
+      XCTWaiter.wait(for: [backgroundState], timeout: 2),
+      .completed,
+      "The app must enter a running or suspended background state before reactivation"
     )
     app.activate()
     XCTAssertTrue(
