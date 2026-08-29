@@ -164,10 +164,20 @@ final class MetadataRepairUITests: XCTestCase {
     let cropArtwork = anyElement(app, "metadata-crop-preview-artwork")
     XCTAssertTrue(cropZoom.waitForExistence(timeout: 2))
     XCTAssertTrue(cropHorizontal.waitForExistence(timeout: 2))
-    cropZoom.adjust(toNormalizedSliderPosition: 1)
-    cropHorizontal.adjust(toNormalizedSliderPosition: 1)
+    let zoomedCrop = "preview=x:0.250:y:0.250:width:0.500:height:0.500:rotation:0.0"
+    try adjust(
+      cropZoom,
+      toNormalizedPosition: 1,
+      until: cropPreview,
+      hasValue: zoomedCrop
+    )
     let expectedCrop = "x:0.500:y:0.250:width:0.500:height:0.500:rotation:0.0"
-    try requireValue(cropPreview, "preview=\(expectedCrop)")
+    try adjust(
+      cropHorizontal,
+      toNormalizedPosition: 1,
+      until: cropPreview,
+      hasValue: "preview=\(expectedCrop)"
+    )
 
     try tester.step(
       "cropped-cover-preview",
@@ -454,6 +464,26 @@ final class MetadataRepairUITests: XCTestCase {
       )
       throw MetadataRepairTestError.semanticStateUnavailable
     }
+  }
+
+  private func adjust(
+    _ slider: XCUIElement,
+    toNormalizedPosition position: CGFloat,
+    until state: XCUIElement,
+    hasValue expected: String
+  ) throws {
+    let deadline = EventDeadline()
+    repeat {
+      slider.adjust(toNormalizedSliderPosition: position)
+      if state.waitForStringValue(expected, timeout: min(0.25, deadline.remaining)) {
+        return
+      }
+    } while deadline.remaining > 0
+
+    XCTFail(
+      "The crop slider did not publish its required semantic state; expected=\(expected) actual=\(String(describing: state.value))"
+    )
+    throw MetadataRepairTestError.semanticStateUnavailable
   }
 }
 
