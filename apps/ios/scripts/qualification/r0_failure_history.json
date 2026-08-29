@@ -1457,6 +1457,30 @@
       },
       "qualificationResetCount": 1,
       "resetEvidence": "Story 008 attempt 01 passed at the formal exact SHA, then attempt 02 failed and reset its one-result consecutive count to zero. Attempts 03 and 04 failed while the count was already zero, so they do not add further resets; no later pass in the same run restores a formal 10/10 qualification."
+    },
+    {
+      "signature": "ui-test:BookmarkUITests.testBookmarksCaptureOrganizeSearchJumpDeleteAndUndoExactly:result-probe-contract",
+      "story": "007-sleep-timer",
+      "evidence": {
+        "workflowRun": 33247697251,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions lane-1 job 99089759775 retained the complete XCTest timeline and diagnostics",
+        "url": "https://github.com/anicolao/player/actions/runs/33247697251/job/99089759775",
+        "commit": "f3d8b10ee69a4107fd913fdc3a5f6c19557cd2fe",
+        "observation": "The bookmark journey received the exact expected query result and order, but BookmarkUITests.swift:617 rejected actual Optional(query=cafe clue:count=1:sort=title:direction=ascending:status=any:formats=any:missing=false:empty=none:order=53000000-0000-0000-0000-000000000001) because its parser required the separate search revision and indexed fields."
+      },
+      "rootCause": "R13 added a result-only library-search-results-probe for control-transition coverage while retaining library-search-probe as the indexed, revision-bearing semantic contract. The older bookmark journey was integrated against the new result-only identifier but continued parsing it with the indexed-probe grammar, making a correct result deterministically fail.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Read library-search-probe in the bookmark journey so the asserted value and parser share the indexed semantic contract; retain the result-only probe for the control-transition suite that owns it.",
+        "commits": [
+          "b541350ea167ebb7e677a57fc930d7f847d10f48"
+        ],
+        "validation": "The exact BookmarkUITests selector passed locally in 74.148 seconds, including the indexed search result assertion, and its 002-bookmarks-list.png capture matched the reviewed baseline pixel-exact. The focused invocation intentionally omitted the two SleepTimerUITests captures and therefore correctly failed only the story-level aggregate comparison for those absent artifacts."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request matrix run rather than a formal repeated qualification attempt, so no consecutive Story 007 qualification count existed to reset."
     }
   ]
 }
