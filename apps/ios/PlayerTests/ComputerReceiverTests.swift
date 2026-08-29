@@ -1,4 +1,5 @@
 import Network
+import UIKit
 import WebKit
 import XCTest
 
@@ -802,7 +803,16 @@ final class ComputerReceiverTests: XCTestCase {
     // HTTP server without depending on simulator permission state.
     pageComponents.host = "127.0.0.1"
     let pageURL = try XCTUnwrap(pageComponents.url)
-    let webView = WKWebView(frame: .zero)
+    let webView = WKWebView(frame: UIScreen.main.bounds)
+    let browserHost = UIViewController()
+    browserHost.view = webView
+    let browserWindow = UIWindow(frame: UIScreen.main.bounds)
+    browserWindow.rootViewController = browserHost
+    browserWindow.makeKeyAndVisible()
+    defer {
+      browserWindow.isHidden = true
+      withExtendedLifetime(browserHost) {}
+    }
     let pageLoaded = expectation(description: "WebKit loaded the production receiver page")
     let navigation = ReceiverWebNavigationDelegate(pageLoaded: pageLoaded)
     defer { withExtendedLifetime(navigation) {} }
