@@ -1136,12 +1136,12 @@
       "rootCause": "The dismissal gesture was bound to the transient notification-title element. Automatic banner dismissal could invalidate that element between the unique query and gesture synthesis, so XCTest converted a successfully vanished overlay into an unbounded internal retry and UI-test failure.",
       "diagnosisStatus": "confirmed",
       "fix": {
-        "status": "pending-focused-validation",
+        "status": "verified",
         "summary": "Calculate the banner gesture from its observed frame but anchor input to stable SpringBoard coordinates, then require the title query to become empty within the existing two-second event deadline.",
         "commits": [
           "47bde226adb8a3bf57b0385508931d0a5e25cf8a"
         ],
-        "validation": "The exact fix commit passed focused Story 005 UI 5/5, all four screenshots pixel-exact, and the reviewed README exactly; the intermittent system banner did not appear locally, so a hosted repeat that exercises the banner must still verify the repaired disappearance race."
+        "validation": "The exact fix commit passed focused Story 005 UI 5/5 with all four screenshots pixel-exact. Normal hosted workflow 33245228601 then passed lane 2 at corrected boundary c5cd74786b31f1e75faa0e159d965a225691bcf3, including the complete Story 005 walkthrough and its capture-boundary overlay handling."
       },
       "qualificationResetCount": 1,
       "resetEvidence": "Formal exact-SHA workflow 33235409727 attempt 1 failed Story 005 qualification attempt 05 at 2dac4cafdd0667f85fb7f3950cc4adf81b8f47d5, resetting Story 005's consecutive qualification count to zero."
@@ -1160,12 +1160,12 @@
       "rootCause": "System-overlay resolution occurred before app-owned capture readiness. A notification that arrived while readiness predicates were evaluated therefore bypassed the only dismissal check and was attached as canonical walkthrough evidence.",
       "diagnosisStatus": "confirmed",
       "fix": {
-        "status": "pending-focused-validation",
+        "status": "verified",
         "summary": "Resolve system overlays again at the capture boundary and, when dismissal changes the composited frame, re-establish the same semantic and prepared-screenshot readiness before attaching evidence.",
         "commits": [
           "47bde226adb8a3bf57b0385508931d0a5e25cf8a"
         ],
-        "validation": "A source-equivalent focused local build passed Story 001 UI 5/5, all six screenshots pixel-exact, and the reviewed README exactly; the intermittent late system banner did not appear locally, so an exact-SHA hosted repeat must still verify capture-boundary dismissal."
+        "validation": "A source-equivalent focused local build passed Story 001 UI 5/5 with all six screenshots pixel-exact. Normal hosted workflow 33245228601 then passed lane 4 at corrected boundary c5cd74786b31f1e75faa0e159d965a225691bcf3, including the complete Story 001 walkthrough and the capture-boundary system-overlay resolution."
       },
       "qualificationResetCount": 1,
       "resetEvidence": "Formal exact-SHA workflow 33235409727 attempt 1 failed Story 001 qualification attempt 05 at 2dac4cafdd0667f85fb7f3950cc4adf81b8f47d5, resetting Story 001's consecutive qualification count to zero."
@@ -1208,12 +1208,12 @@
       "rootCause": "R7 strengthened the production search readiness contract with a library revision and indexing state, but this cross-story consumer continued comparing the obsolete whole value. The assertion therefore rejected the new truthful prefix instead of parsing and validating it.",
       "diagnosisStatus": "confirmed",
       "fix": {
-        "status": "pending-focused-validation",
+        "status": "verified",
         "summary": "Parse the probe into its four contract fields, require a 64-character revision and indexed=true, and compare the complete result suffix under the existing event-driven two-second deadline.",
         "commits": [
           "3e4e862482e5eeed024a0a0ae740d6157e9fc11b"
         ],
-        "validation": "The focused source diff and JSON contract pass repository checks. A local test build was attempted but excluded when the host exhausted disk during the linker; exact hosted validation remains required before this entry can be marked verified."
+        "validation": "The focused source and indexed-search contract passed repository checks. Normal hosted workflow 33245228601 then passed lane 1 at corrected boundary c5cd74786b31f1e75faa0e159d965a225691bcf3, including the complete Bookmark journey in Story 007."
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was the normal R7 pull-request matrix rather than a formal repeated qualification attempt, so no consecutive Story 007 qualification count existed to reset."
@@ -1303,12 +1303,12 @@
       "rootCause": "The deterministic receiver binding's activate method launched its production HTTP scenario in an unstructured Task and returned immediately. The application could therefore report an intermediate paired-client event while the UI test began its terminal paused-state deadline, with no activation completion edge ordering the remaining manifest and interrupted-upload events before observation.",
       "diagnosisStatus": "confirmed",
       "fix": {
-        "status": "pending-focused-validation",
+        "status": "verified",
         "summary": "Make deterministic binding activation await its production HTTP scenario, and require the core regression test to observe the complete paused event sequence immediately when ComputerReceiverServer.start returns.",
         "commits": [
           "38b1572b4a6ce77ee7e931d1509519740119faec"
         ],
-        "validation": "The focused core regression passed on the exact fix source and proves server start returns with the 734,003-of-1,468,006 paused event already published. Full Story 001 validation could not complete because the constrained local simulator volume independently launched the third app into Local Storage Unavailable; screenshots 000 through 002 remained pixel-exact. A normal hosted Story 001 repeat must verify the full journey."
+        "validation": "The focused core regression proved server start returns with the 734,003-of-1,468,006 paused event already published. Normal hosted workflow 33245228601 then passed lane 4 at corrected boundary c5cd74786b31f1e75faa0e159d965a225691bcf3, including the complete Story 001 receiver pause/resume journey and all canonical captures."
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This local focused diagnostic was not an accepted formal exact-SHA qualification attempt, so it did not reset Story 001's formal consecutive qualification count."
@@ -1351,12 +1351,12 @@
       "rootCause": "R7 strengthened the production search readiness contract, but this second cross-story consumer still used exact whole-string comparisons at assertions, capture readiness, navigation returns, preference persistence, and the empty-results state.",
       "diagnosisStatus": "confirmed",
       "fix": {
-        "status": "pending-focused-validation",
+        "status": "verified",
         "summary": "Parse and validate the revision and indexed fields at every Library Organization search boundary while retaining exact comparison of the complete result suffix and all existing screenshots and navigation assertions.",
         "commits": [
           "05fe24f6d7524790b9f5df0e88be7aa0104320ca"
         ],
-        "validation": "Swift parsing, E2E hygiene, and all 63 capture-readiness contracts pass. Exact hosted Story 008 validation is required on the corrected boundary."
+        "validation": "Swift parsing, E2E hygiene, and all 63 capture-readiness contracts passed locally. Normal hosted workflow 33245228601 then passed lane 3 at corrected boundary c5cd74786b31f1e75faa0e159d965a225691bcf3, including the complete indexed-search Story 008 walkthrough."
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was the normal R7 pull-request matrix rather than a formal repeated qualification attempt, so no consecutive Story 008 qualification count existed to reset."
@@ -1375,12 +1375,12 @@
       "rootCause": "The test treated completion of an element-bound XCTest tap as proof that the fixed tab action received input. Under the hosted accessibility-server slowdown, XCTest synthesized against its element snapshot without delivering the Add selection to SwiftUI, and the test had no stable physical input anchor tied to the visible tab-item frame.",
       "diagnosisStatus": "confirmed",
       "fix": {
-        "status": "pending-focused-validation",
+        "status": "verified",
         "summary": "Require a visible 44-point target contained by the physical tab bar, synthesize one touch at that target through the stable application surface, and require the receiver presentation as the event-driven action postcondition within two seconds.",
         "commits": [
           "30b8e96dd715b3e952eb00d6443d26db2f02355c"
         ],
-        "validation": "The integrated fix passes deterministic E2E source hygiene. Focused Story 008 and hosted validation remain pending."
+        "validation": "The integrated fix passed deterministic E2E source hygiene. Normal hosted workflow 33245228601 then passed lane 3 at corrected boundary c5cd74786b31f1e75faa0e159d965a225691bcf3, including the complete Story 008 Add Audiobook presentation journey."
       },
       "qualificationResetCount": 1,
       "resetEvidence": "Formal exact-SHA workflow 33235409727 attempt 1 failed Story 008 qualification attempt 03 at 2dac4cafdd0667f85fb7f3950cc4adf81b8f47d5, resetting Story 008's consecutive qualification count to zero."
@@ -1399,12 +1399,12 @@
       "rootCause": "The pre-action contract used XCTest's transient isHittable result as the sole truth for a fixed, visibly framed tab action. The hosted accessibility server could report that derived property false while the physical target remained present and unobscured, converting accessibility-query degradation into a false product failure.",
       "diagnosisStatus": "confirmed",
       "fix": {
-        "status": "pending-focused-validation",
+        "status": "verified",
         "summary": "Verify the fixed action through its independently observable tab-contained 44-point geometry and the real receiver-presentation result instead of accepting or rejecting it from the transient isHittable property.",
         "commits": [
           "30b8e96dd715b3e952eb00d6443d26db2f02355c"
         ],
-        "validation": "The integrated fix passes deterministic E2E source hygiene. Focused Story 008 and hosted validation remain pending."
+        "validation": "The integrated fix passed deterministic E2E source hygiene. Normal hosted workflow 33245228601 then passed lane 3 at corrected boundary c5cd74786b31f1e75faa0e159d965a225691bcf3, exercising the physical Add action target and completing the full Story 008 receiver presentation journey."
       },
       "qualificationResetCount": 1,
       "resetEvidence": "Formal exact-SHA workflow 33235409727 attempt 1 failed Story 008 qualification attempt 05 at 2dac4cafdd0667f85fb7f3950cc4adf81b8f47d5, resetting Story 008's consecutive qualification count to zero."
