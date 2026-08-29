@@ -18,7 +18,7 @@
         "status": "pending-focused-validation",
         "summary": "Drive each slider independently to its semantic endpoint, retrying only while a shared event deadline remains, and require the exact zoom state before moving the horizontal focal point.",
         "commits": [
-          "71945c83784922177074f47c08c38fbf8dc29471"
+          "eb5d204763888c9a7b364d773affc43909583677"
         ],
         "validation": "Source hygiene and qualification aggregation contracts pass. Focused Story 004 validation is pending the shared simulator lease."
       },
@@ -1138,7 +1138,7 @@
         "status": "pending-focused-validation",
         "summary": "Calculate the banner gesture from its observed frame but anchor input to stable SpringBoard coordinates, then require the title query to become empty within the existing two-second event deadline.",
         "commits": [
-          "fa7a534604ec58bc8ddfa5420cca80596485d3ae"
+          "47bde226adb8a3bf57b0385508931d0a5e25cf8a"
         ],
         "validation": "The exact fix commit passed focused Story 005 UI 5/5, all four screenshots pixel-exact, and the reviewed README exactly; the intermittent system banner did not appear locally, so a hosted repeat that exercises the banner must still verify the repaired disappearance race."
       },
@@ -1162,7 +1162,7 @@
         "status": "pending-focused-validation",
         "summary": "Resolve system overlays again at the capture boundary and, when dismissal changes the composited frame, re-establish the same semantic and prepared-screenshot readiness before attaching evidence.",
         "commits": [
-          "fa7a534604ec58bc8ddfa5420cca80596485d3ae"
+          "47bde226adb8a3bf57b0385508931d0a5e25cf8a"
         ],
         "validation": "A source-equivalent focused local build passed Story 001 UI 5/5, all six screenshots pixel-exact, and the reviewed README exactly; the intermittent late system banner did not appear locally, so an exact-SHA hosted repeat must still verify capture-boundary dismissal."
       },
@@ -1186,7 +1186,7 @@
         "status": "verified",
         "summary": "Wait with an event-driven predicate for either runningBackground or runningBackgroundSuspended, bounded to two seconds, then retain the existing production-journal assertion after reactivation as proof that the background callback acknowledged and persisted the position.",
         "commits": [
-          "fff8b5589ca7e9fc39f15f7aa0fa0ba919c3064d"
+          "42ea9d50526f35db7a5030a024944b80abd0d5c6"
         ],
         "validation": "Focused validation only: the exact R0 source plus fff8b55 built successfully with Xcode 26.6, and the isolated RemoteInterruptionUITests journey passed four consecutive iOS 26.5 simulator executions. A fifth invocation was excluded because the host exhausted disk space before Simulator could install the test runner; it did not execute the test."
       },
@@ -1234,8 +1234,8 @@
         "status": "verified",
         "summary": "Require the exact revision-0 production order probe within two seconds before asserting the natural-order identifier is unique. Also acknowledge each subsequent selection before invoking its dependent mutation, retaining every ordering, correction, and atomic-commit assertion without retries.",
         "commits": [
-          "764692087e7ddfbdd3109d4bad497772b2a0ef5b",
-          "6b07eb8b8334522a6b5e0f90ddcf8ff81ea44e73"
+          "011da1084274348d0bf957bef46299633509fcea",
+          "56738eb9961e11ac802a41209b49ffeb8a7e77ed"
         ],
         "validation": "At the exact R0 source plus these fixes, the focused Story 003 target built successfully and the complete MultifileGroupingUITests journey passed ten consecutive iOS 26.5 executions. Every semantic wait remains event driven and independently capped at two seconds."
       },
@@ -1259,7 +1259,7 @@
         "status": "verified",
         "summary": "Classify the exact Xcode launcher diagnostic as infrastructure before generic failed-test classification, fail closed without retrying, and retain provenance-bound screen evidence so a new formal qualification can restart from zero with the cause accurately accounted for.",
         "commits": [
-          "f30d5f4d015f64de9f401336fb913dd8528537d0"
+          "2a48809e4bf1e72fdb229b6e16d8e70e79231f8d"
         ],
         "validation": "The qualification contract test proves the same failed method is classified as infrastructure only when the exact Xcode launcher diagnostic is present; all 21 aggregation tests pass. The ordinary assertion fixture remains classified as ui-test, so product failures are not waived."
       },
@@ -1283,7 +1283,7 @@
         "status": "verified",
         "summary": "Allow timestamps to be absent on unrelated attachments while continuing to reject a Screen Recording that lacks a finite timestamp; select the uniquely newest nonempty recording and bind the extracted PNG to its exact manifest provenance.",
         "commits": [
-          "f30d5f4d015f64de9f401336fb913dd8528537d0"
+          "2a48809e4bf1e72fdb229b6e16d8e70e79231f8d"
         ],
         "validation": "The extractor contract passes all positive and fail-closed cases. Against the actual retained attempt-06 manifest and MP4, the fixed extractor produced a valid 1206x2622 PNG and source JSON bound to timestamp 1787991028.405; a recording missing its own timestamp is still rejected."
       },
