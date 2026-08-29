@@ -180,14 +180,18 @@ final class MultifileGroupingUITests: XCTestCase {
       }
     )
 
-    app.buttons["order-select-\(b4)"].tap()
+    let selectB4 = app.buttons["order-select-\(b4)"]
+    selectB4.tap()
+    try requireLabel(selectB4, "Deselect track")
     app.buttons["order-move-to-\(proposalA)"].tap()
     try requireValue(
       orderProbe,
       "order|revision|1|a|a1,a2,a10,ap,b4|b|b3,b5,b6"
     )
 
-    app.buttons["order-select-\(prelude)"].tap()
+    let selectPrelude = app.buttons["order-select-\(prelude)"]
+    selectPrelude.tap()
+    try requireLabel(selectPrelude, "Deselect track")
     app.buttons["order-move-up-\(prelude)"].tap()
     try requireValue(
       orderProbe,
@@ -204,7 +208,9 @@ final class MultifileGroupingUITests: XCTestCase {
       "order|revision|4|a|ap,a1,a2,a10,b4|b|b3,b5,b6"
     )
 
-    app.buttons["order-select-\(b3)"].tap()
+    let selectB3 = app.buttons["order-select-\(b3)"]
+    selectB3.tap()
+    try requireLabel(selectB3, "Deselect track")
     app.buttons["split-selected-tracks"].tap()
     try requireValue(
       orderProbe,
@@ -213,7 +219,9 @@ final class MultifileGroupingUITests: XCTestCase {
 
     anyElement(app, "order-proposal-\(proposalB)").tap()
     anyElement(app, "order-proposal-\(proposalC)").tap()
-    app.buttons["merge-proposals"].tap()
+    let mergeProposals = app.buttons["merge-proposals"]
+    try requireExistence(mergeProposals)
+    mergeProposals.tap()
     try requireValue(
       orderProbe,
       "order|revision|6|a|ap,a1,a2,a10,b4|b|b5,b6,b3"
@@ -221,7 +229,8 @@ final class MultifileGroupingUITests: XCTestCase {
 
     anyElement(app, "order-proposal-\(proposalA)").tap()
     anyElement(app, "order-proposal-\(proposalB)").tap()
-    app.buttons["merge-proposals"].tap()
+    try requireExistence(mergeProposals)
+    mergeProposals.tap()
 
     try tester.step(
       "corrected-one-book",
@@ -362,6 +371,26 @@ final class MultifileGroupingUITests: XCTestCase {
       XCTFail(
         "The multifile journey expected \(expected), latest=\(String(describing: element.value))"
       )
+      throw MultifileGroupingTestError.semanticStateUnavailable
+    }
+  }
+
+  private func requireLabel(_ element: XCUIElement, _ expected: String) throws {
+    let expectation = XCTNSPredicateExpectation(
+      predicate: NSPredicate(format: "exists == true AND label == %@", expected),
+      object: element
+    )
+    guard XCTWaiter.wait(for: [expectation], timeout: 2) == .completed else {
+      XCTFail(
+        "The multifile journey expected label \(expected), latest=\(element.label)"
+      )
+      throw MultifileGroupingTestError.semanticStateUnavailable
+    }
+  }
+
+  private func requireExistence(_ element: XCUIElement) throws {
+    guard element.waitForExistence(timeout: 2) else {
+      XCTFail("The multifile journey expected \(element.identifier) to exist")
       throw MultifileGroupingTestError.semanticStateUnavailable
     }
   }
