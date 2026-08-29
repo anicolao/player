@@ -1529,6 +1529,30 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request matrix run rather than a formal repeated qualification attempt, so no consecutive core qualification count existed to reset."
+    },
+    {
+      "signature": "ui-test:MultifileGroupingUITests.testRepairsMessyMultifileGroupingAndCommitsExactlyOneBook:review-order-navigation-not-delivered",
+      "story": "003-multifile-grouping",
+      "evidence": {
+        "workflowRun": 33249644840,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions lane-4 job 99093005341 retained the Story 003 XCTest timeline and final accessibility hierarchy",
+        "url": "https://github.com/anicolao/player/actions/runs/33249644840/job/99093005341",
+        "commit": "f6df9be857468b4225274de68587ecca6e9e8a65",
+        "observation": "XCTest found the visible review-order-button, completed an element-bound tap, and then observed no order-probe for the full two-second destination deadline. The retained hierarchy remained on Review Import with the same unobscured Review Order link and unchanged warning proposal."
+      },
+      "rootCause": "The journey treated completion of an element-bound XCTest tap as proof that the SwiftUI NavigationLink received input. Under hosted accessibility-server slowdown, XCTest synthesized against its stale element snapshot without delivering the navigation action, even though capture readiness had independently proven a visible physical target.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Require the visible action to retain a contained 44-point frame, synthesize one touch at that frame through the stable application surface, and keep the existing exact order-probe destination assertion bounded to two seconds.",
+        "commits": [
+          "54ca57e87411a96874c382306c9ac61ba592c46b"
+        ],
+        "validation": "Fresh canonical Story 003 run apps/ios/DerivedData/E2E/003-multifile-grouping.run.melyOc passed the complete UI test in 32.324 seconds, matched all four screenshots pixel-exact, and matched the reviewed walkthrough README exactly. An independent focused run on the reusable development simulator also passed the complete test in 32.126 seconds."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request matrix run rather than a formal repeated qualification attempt, so no consecutive Story 003 qualification count existed to reset."
     }
   ]
 }
