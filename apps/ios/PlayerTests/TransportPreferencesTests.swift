@@ -144,6 +144,142 @@ final class TransportPreferencesTests: XCTestCase {
     XCTAssertEqual(restoredPlayback.currentPositionSeconds, 30, accuracy: 0.001)
   }
 
+  func testClearingOverrideAtomicallyAppliesCurrentLibraryDefaultsToEveryTransportSurface()
+    async throws
+  {
+    let harness = makeHarness()
+    await harness.model.restore()
+    harness.model.configurePlaybackIntegrations()
+    let originalGlobal = TransportPreferences(
+      playbackRate: 1.1,
+      backwardSkipSeconds: 20,
+      forwardSkipSeconds: 45,
+      seekContext: .wholeBook
+    )
+    let override = TransportPreferenceOverride(
+      playbackRate: 1.25,
+      backwardSkipSeconds: 10,
+      forwardSkipSeconds: 30,
+      seekContext: .chapter
+    )
+    let savedOriginalGlobal = await harness.model.setGlobalTransportPreferences(originalGlobal)
+    let savedOverride = await harness.model.setTransportPreferenceOverride(
+      override,
+      for: harness.book.id
+    )
+    XCTAssertTrue(savedOriginalGlobal)
+    XCTAssertTrue(savedOverride)
+    await harness.model.play(bookID: harness.book.id, at: 45)
+    XCTAssertEqual(harness.playback.playbackRate, 1.25)
+    XCTAssertEqual(harness.remote.transportPreferences, override.resolved(over: originalGlobal))
+
+    let currentGlobal = TransportPreferences(
+      playbackRate: 1.5,
+      backwardSkipSeconds: 15,
+      forwardSkipSeconds: 45,
+      seekContext: .wholeBook
+    )
+    let savedCurrentGlobal = await harness.model.setGlobalTransportPreferences(currentGlobal)
+    XCTAssertTrue(savedCurrentGlobal)
+    XCTAssertEqual(
+      harness.model.transportPreferences(for: harness.book.id),
+      override.resolved(over: currentGlobal),
+      "Changing library defaults must not alter a durable per-book override"
+    )
+
+    let clearedOverride = await harness.model.clearTransportPreferenceOverride(for: harness.book.id)
+    XCTAssertTrue(clearedOverride)
+    XCTAssertNil(harness.model.library.books.first?.transportPreferenceOverride)
+    XCTAssertEqual(harness.model.currentTransportPreferences, currentGlobal)
+    XCTAssertEqual(harness.playback.playbackRate, currentGlobal.playbackRate)
+    XCTAssertEqual(harness.remote.transportPreferences, currentGlobal)
+
+    await harness.model.skipForward()
+    XCTAssertEqual(harness.model.playbackState.elapsedSeconds, 90, accuracy: 0.001)
+    await harness.remote.send(.skipBackward(seconds: currentGlobal.backwardSkipSeconds))
+    XCTAssertEqual(harness.model.playbackState.elapsedSeconds, 75, accuracy: 0.001)
+    await harness.model.seek(to: 10, context: harness.model.currentTransportPreferences.seekContext)
+    XCTAssertEqual(
+      harness.model.playbackState.elapsedSeconds,
+      10,
+      accuracy: 0.001,
+      "The active scrubber must switch from chapter-relative to whole-book seeking"
+    )
+
+    let durable = await harness.store.load()
+    XCTAssertNil(durable.books.first?.transportPreferenceOverride)
+    XCTAssertEqual(durable.globalTransportPreferences, currentGlobal)
+
+    let restoredPlayback = DeterministicPlaybackController()
+    let restoredRemote = DeterministicRemoteCommandController()
+    let restoredModel = PlayerModel(environment: PlayerEnvironment(
+      persistence: harness.store,
+      media: TransportMediaManager(),
+      inspector: DeterministicAudioInspector(result: .failure(.unreadableAudio("unused"))),
+      playback: restoredPlayback,
+      remoteCommands: restoredRemote,
+      ids: DeterministicPlayerIDGenerator(values: [])
+    ))
+    await restoredModel.restore()
+    restoredModel.configurePlaybackIntegrations()
+    XCTAssertNil(restoredModel.library.books.first?.transportPreferenceOverride)
+    XCTAssertEqual(restoredModel.currentTransportPreferences, currentGlobal)
+    XCTAssertEqual(restoredPlayback.playbackRate, currentGlobal.playbackRate)
+    XCTAssertEqual(restoredRemote.transportPreferences, currentGlobal)
+  }
+
+  func testFailedOverrideClearKeepsPublishedDurableAndExternalConfigurationCoherent()
+    async throws
+  {
+    var book = makeBook()
+    let global = TransportPreferences(
+      playbackRate: 1.5,
+      backwardSkipSeconds: 15,
+      forwardSkipSeconds: 45,
+      seekContext: .wholeBook
+    )
+    let override = TransportPreferenceOverride(
+      playbackRate: 1.25,
+      backwardSkipSeconds: 10,
+      forwardSkipSeconds: 30,
+      seekContext: .chapter
+    )
+    book.transportPreferenceOverride = override
+    let seed = LibrarySnapshot(
+      books: [book],
+      importJobs: [],
+      currentBookID: book.id,
+      globalTransportPreferences: global
+    )
+    let store = FailingTransportPreferenceStore(snapshot: seed)
+    let playback = DeterministicPlaybackController()
+    let remote = DeterministicRemoteCommandController()
+    let model = PlayerModel(environment: PlayerEnvironment(
+      persistence: store,
+      media: TransportMediaManager(),
+      inspector: DeterministicAudioInspector(result: .failure(.unreadableAudio("unused"))),
+      playback: playback,
+      remoteCommands: remote,
+      ids: DeterministicPlayerIDGenerator(values: [])
+    ))
+    await model.restore()
+    model.configurePlaybackIntegrations()
+    XCTAssertEqual(playback.playbackRate, 1.25)
+    XCTAssertEqual(remote.transportPreferences, override.resolved(over: global))
+
+    let clearedOverride = await model.clearTransportPreferenceOverride(for: book.id)
+    let durable = await store.load()
+    XCTAssertFalse(clearedOverride)
+    XCTAssertEqual(model.library, seed)
+    XCTAssertEqual(durable, seed)
+    XCTAssertEqual(model.currentTransportPreferences, override.resolved(over: global))
+    XCTAssertEqual(playback.playbackRate, 1.25)
+    XCTAssertEqual(remote.transportPreferences, override.resolved(over: global))
+    let error = model.presentationError(in: .transportPreferences)
+    XCTAssertEqual(error?.title, "Couldn’t Save Playback Settings")
+    XCTAssertTrue(error?.message.contains("Your current settings are unchanged") == true)
+  }
+
   func testRemoteCommandsUseConfiguredSkipsChaptersRateAndDurableSeekPaths() async throws {
     let harness = makeHarness()
     await harness.model.restore()
@@ -547,6 +683,27 @@ private struct TransportHarness {
   var playback: DeterministicPlaybackController
   var remote: DeterministicRemoteCommandController
   var model: PlayerModel
+}
+
+private actor FailingTransportPreferenceStore: LibraryPersisting {
+  private var snapshot: LibrarySnapshot
+
+  init(snapshot: LibrarySnapshot) {
+    self.snapshot = snapshot
+  }
+
+  func load() -> LibrarySnapshot {
+    snapshot
+  }
+
+  func save(_ candidate: LibrarySnapshot) throws {
+    let hadOverride = snapshot.books.first?.transportPreferenceOverride != nil
+    let clearsOverride = candidate.books.first?.transportPreferenceOverride == nil
+    if hadOverride && clearsOverride {
+      throw CocoaError(.fileWriteUnknown)
+    }
+    snapshot = candidate
+  }
 }
 
 private actor TransportMediaManager: MediaManaging {

@@ -3,6 +3,7 @@ import Foundation
 enum PlayerErrorDomain: String, Equatable, Sendable {
   case importFlow
   case playback
+  case transportPreferences
   case metadata
   case bookmark
   case storage
@@ -25,6 +26,7 @@ enum PlayerErrorRecoveryAction: String, Equatable, Sendable {
 
 enum PlayerErrorPresentationOwner: String, Equatable, Sendable {
   case root
+  case transportPreferences
   case computerReceiver
   case metadataEditor
   case sleepTimer
@@ -97,6 +99,12 @@ struct PlayerPresentationError: Identifiable, Equatable, Sendable {
       return
         "Bookshelf couldn’t configure audio playback. Restart the app; if this continues, export Support Diagnostics and contact support."
     }
+    if domain == .transportPreferences,
+      nsError.domain == NSCocoaErrorDomain || nsError.domain == NSPOSIXErrorDomain
+    {
+      return
+        "Bookshelf couldn’t save these playback settings. Check that your device has free space, then try again. Your current settings are unchanged."
+    }
     if nsError.domain == NSCocoaErrorDomain || nsError.domain == NSPOSIXErrorDomain {
       return
         "Bookshelf couldn’t access a required file. Check that it is still available and that your device has free space, then try again."
@@ -164,6 +172,7 @@ extension PlayerErrorDomain {
     switch self {
     case .importFlow: "Couldn’t Import Audiobook"
     case .playback: "Playback Isn’t Available"
+    case .transportPreferences: "Couldn’t Save Playback Settings"
     case .metadata: "Couldn’t Save Details"
     case .bookmark: "Couldn’t Update Bookmark"
     case .storage: "Couldn’t Update Storage"
@@ -180,13 +189,14 @@ extension PlayerErrorDomain {
   fileprivate var defaultRecoveryAction: PlayerErrorRecoveryAction {
     switch self {
     case .importFlow: .reviewInbox
-    case .playback, .metadata, .bookmark, .storage, .backup, .recovery, .sleepTimer,
+    case .playback, .transportPreferences, .metadata, .bookmark, .storage, .backup, .recovery, .sleepTimer,
       .smartRewind, .monetization, .library, .diagnostics: .retry
     }
   }
 
   fileprivate var defaultOwner: PlayerErrorPresentationOwner {
     switch self {
+    case .transportPreferences: .transportPreferences
     case .metadata: .metadataEditor
     case .sleepTimer: .sleepTimer
     case .backup: .backupSettings

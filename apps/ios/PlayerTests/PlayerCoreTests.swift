@@ -1998,8 +1998,8 @@ final class PlayerCoreTests: XCTestCase {
     let first = try XCTUnwrap(harness.model.presentationErrors.first)
     let second = try XCTUnwrap(harness.model.presentationErrors.last)
     XCTAssertNotEqual(first.id, second.id)
-    XCTAssertEqual(first.domain, .playback)
-    XCTAssertEqual(second.domain, .playback)
+    XCTAssertEqual(first.domain, .transportPreferences)
+    XCTAssertEqual(second.domain, .transportPreferences)
 
     harness.model.clearPresentedError(id: first.id)
 

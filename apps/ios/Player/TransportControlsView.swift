@@ -10,13 +10,14 @@ struct TransportPreferencesEditor: View {
   @State private var backwardSkipSeconds: Double
   @State private var forwardSkipSeconds: Double
   @State private var seekContext: PlaybackSeekContext
+  @State private var isPersisting = false
 
   init(model: PlayerModel, book: Book? = nil) {
     self.model = model
     self.book = book
     let preferences = book.map { model.transportPreferences(for: $0.id) }
       ?? model.library.globalTransportPreferences
-    _usesBookOverride = State(initialValue: book != nil)
+    _usesBookOverride = State(initialValue: book?.transportPreferenceOverride != nil)
     _playbackRate = State(initialValue: preferences.playbackRate)
     _backwardSkipSeconds = State(initialValue: preferences.backwardSkipSeconds)
     _forwardSkipSeconds = State(initialValue: preferences.forwardSkipSeconds)
@@ -25,10 +26,11 @@ struct TransportPreferencesEditor: View {
 
   var body: some View {
     Form {
-      if book != nil {
+      if book != nil, usesBookOverride {
         Section {
           Button("Use Library Defaults") { clearBookOverride() }
             .accessibilityIdentifier("transport-use-library-defaults")
+            .disabled(isPersisting)
         } footer: {
           Text("This book keeps its own settings until you switch it back to the library defaults.")
         }
@@ -41,6 +43,7 @@ struct TransportPreferencesEditor: View {
           }
         }
         .accessibilityIdentifier("transport-rate-picker")
+        .onChange(of: playbackRate) { _, _ in usesBookOverride = book != nil }
 
         Picker("Skip backward", selection: $backwardSkipSeconds) {
           ForEach(Self.skipIntervals, id: \.self) { seconds in
@@ -48,6 +51,7 @@ struct TransportPreferencesEditor: View {
           }
         }
         .accessibilityIdentifier("transport-backward-picker")
+        .onChange(of: backwardSkipSeconds) { _, _ in usesBookOverride = book != nil }
 
         Picker("Skip forward", selection: $forwardSkipSeconds) {
           ForEach(Self.skipIntervals, id: \.self) { seconds in
@@ -55,6 +59,7 @@ struct TransportPreferencesEditor: View {
           }
         }
         .accessibilityIdentifier("transport-forward-picker")
+        .onChange(of: forwardSkipSeconds) { _, _ in usesBookOverride = book != nil }
 
         Picker("Scrubber", selection: $seekContext) {
           Text("Current chapter").tag(PlaybackSeekContext.chapter)
@@ -62,6 +67,7 @@ struct TransportPreferencesEditor: View {
         }
         .pickerStyle(.segmented)
         .accessibilityIdentifier("transport-seek-context")
+        .onChange(of: seekContext) { _, _ in usesBookOverride = book != nil }
       }
 
       Section {
@@ -76,10 +82,12 @@ struct TransportPreferencesEditor: View {
     .toolbar {
       ToolbarItem(placement: .cancellationAction) {
         Button("Cancel") { dismiss() }
+          .disabled(isPersisting)
       }
       ToolbarItem(placement: .confirmationAction) {
         Button("Save") { save() }
           .accessibilityIdentifier("save-transport-preferences")
+          .disabled(isPersisting)
       }
     }
     .accessibilityIdentifier("transport-preferences-screen")
@@ -89,6 +97,27 @@ struct TransportPreferencesEditor: View {
       containerID: "transport-preferences-screen",
       axis: .vertical
     )
+    .alert(
+      editorError?.title ?? "Couldn’t Save Playback Settings",
+      isPresented: Binding(
+        get: { editorError != nil },
+        set: { isPresented in
+          if !isPresented, let id = editorError?.id {
+            model.clearPresentedError(id: id)
+          }
+        }
+      )
+    ) {
+      Button("OK") {
+        if let id = editorError?.id { model.clearPresentedError(id: id) }
+      }
+    } message: {
+      Text(editorError?.message ?? "Bookshelf couldn’t save these playback settings.")
+    }
+  }
+
+  private var editorError: PlayerPresentationError? {
+    model.presentationError(in: .transportPreferences, owner: .transportPreferences)
   }
 
   private var preferencesValue: String {
@@ -103,33 +132,50 @@ struct TransportPreferencesEditor: View {
       forwardSkipSeconds: forwardSkipSeconds,
       seekContext: seekContext
     )
+    guard !isPersisting else { return }
+    isPersisting = true
     Task {
+      let persisted: Bool
       if let book {
         if usesBookOverride {
-          _ = await model.setTransportPreferenceOverride(
+          persisted = await model.setTransportPreferenceOverride(
             TransportPreferenceOverride(
               playbackRate: preferences.playbackRate,
               backwardSkipSeconds: preferences.backwardSkipSeconds,
               forwardSkipSeconds: preferences.forwardSkipSeconds,
               seekContext: preferences.seekContext
             ),
-            for: book.id
+            for: book.id,
+            errorOwner: .transportPreferences
           )
         } else {
-          _ = await model.clearTransportPreferenceOverride(for: book.id)
+          persisted = await model.clearTransportPreferenceOverride(
+            for: book.id,
+            errorOwner: .transportPreferences
+          )
         }
       } else {
-        _ = await model.setGlobalTransportPreferences(preferences)
+        persisted = await model.setGlobalTransportPreferences(
+          preferences,
+          errorOwner: .transportPreferences
+        )
       }
-      dismiss()
+      isPersisting = false
+      if persisted { dismiss() }
     }
   }
 
   private func clearBookOverride() {
     guard let book else { return }
+    guard !isPersisting else { return }
+    isPersisting = true
     Task {
-      _ = await model.clearTransportPreferenceOverride(for: book.id)
-      dismiss()
+      let persisted = await model.clearTransportPreferenceOverride(
+        for: book.id,
+        errorOwner: .transportPreferences
+      )
+      isPersisting = false
+      if persisted { dismiss() }
     }
   }
 

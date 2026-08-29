@@ -2236,16 +2236,23 @@ final class PlayerModel {
   }
 
   @discardableResult
-  func setGlobalTransportPreferences(_ preferences: TransportPreferences) async -> Bool {
+  func setGlobalTransportPreferences(
+    _ preferences: TransportPreferences,
+    errorOwner: PlayerErrorPresentationOwner? = nil
+  ) async -> Bool {
     guard preferences.isValid else {
       present(
         TransportPreferencesError.invalidPreferences,
-        in: .playback,
+        in: .transportPreferences,
+        owner: errorOwner,
         recoveryAction: .openSettings
       )
       return false
     }
-    let changed = await applyLibraryOrganizationMutation(in: .playback) { candidate in
+    let changed = await applyLibraryOrganizationMutation(
+      in: .transportPreferences,
+      owner: errorOwner
+    ) { candidate in
       candidate.globalTransportPreferences = preferences
     }
     if changed { applyCurrentTransportConfiguration() }
@@ -2276,17 +2283,22 @@ final class PlayerModel {
   @discardableResult
   func setTransportPreferenceOverride(
     _ preferenceOverride: TransportPreferenceOverride,
-    for bookID: UUID
+    for bookID: UUID,
+    errorOwner: PlayerErrorPresentationOwner? = nil
   ) async -> Bool {
     guard preferenceOverride.isValid else {
       present(
         TransportPreferencesError.invalidPreferences,
-        in: .playback,
+        in: .transportPreferences,
+        owner: errorOwner,
         recoveryAction: .openSettings
       )
       return false
     }
-    let changed = await applyLibraryOrganizationMutation(in: .playback) { candidate in
+    let changed = await applyLibraryOrganizationMutation(
+      in: .transportPreferences,
+      owner: errorOwner
+    ) { candidate in
       guard let index = candidate.books.firstIndex(where: { $0.id == bookID }) else {
         throw PlayerCoreError.missingBook(bookID)
       }
@@ -2298,8 +2310,11 @@ final class PlayerModel {
   }
 
   @discardableResult
-  func clearTransportPreferenceOverride(for bookID: UUID) async -> Bool {
-    await setTransportPreferenceOverride(.empty, for: bookID)
+  func clearTransportPreferenceOverride(
+    for bookID: UUID,
+    errorOwner: PlayerErrorPresentationOwner? = nil
+  ) async -> Bool {
+    await setTransportPreferenceOverride(.empty, for: bookID, errorOwner: errorOwner)
   }
 
   @discardableResult
@@ -3955,6 +3970,7 @@ final class PlayerModel {
 
   private func applyLibraryOrganizationMutation(
     in domain: PlayerErrorDomain = .library,
+    owner: PlayerErrorPresentationOwner? = nil,
     _ mutation: (inout LibrarySnapshot) throws -> Void
   ) async -> Bool {
     var candidate = library
@@ -3964,7 +3980,7 @@ final class PlayerModel {
       library = candidate
       return true
     } catch {
-      present(error, in: domain)
+      present(error, in: domain, owner: owner)
       return false
     }
   }
