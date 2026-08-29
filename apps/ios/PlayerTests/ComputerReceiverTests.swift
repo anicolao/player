@@ -799,6 +799,7 @@ final class ComputerReceiverTests: XCTestCase {
     let webView = WKWebView(frame: .zero)
     let pageLoaded = expectation(description: "WebKit loaded the production receiver page")
     let navigation = ReceiverWebNavigationDelegate(pageLoaded: pageLoaded)
+    defer { withExtendedLifetime(navigation) {} }
     webView.navigationDelegate = navigation
     webView.load(URLRequest(url: pageURL))
     await fulfillment(of: [pageLoaded], timeout: 2)
