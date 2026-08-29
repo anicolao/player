@@ -1,0 +1,14 @@
+{
+  "qualifiedSystemRegions": {
+    "002-large-text-book-detail.png": [
+      {
+        "height": 303,
+        "reason": "The iOS 26 tab-bar material is rendered by UIKit and alternates between two translucent compositor cache states while its app-owned controls and geometry remain semantically verified.",
+        "width": 1206,
+        "x": 0,
+        "y": 2319
+      }
+    ]
+  },
+  "schemaVersion": 1
+}

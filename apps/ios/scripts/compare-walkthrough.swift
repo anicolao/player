@@ -11,6 +11,7 @@ enum ComparisonError: LocalizedError {
   case imageUnreadable(String)
   case dimensionDifference(String, expected: CGSize, actual: CGSize)
   case pixelDifference(String, pixelCount: Int)
+  case invalidPolicy(String)
   case comparisonsFailed(Int)
 
   var errorDescription: String? {
@@ -29,6 +30,8 @@ enum ComparisonError: LocalizedError {
       "Screenshot \(name) dimensions differ: expected \(expected), received \(actual)."
     case .pixelDifference(let name, let pixelCount):
       "Screenshot \(name) differs by \(pixelCount) pixels beyond the 8/255 channel allowance."
+    case .invalidPolicy(let reason):
+      "Screenshot comparison policy is invalid: \(reason)"
     case .comparisonsFailed(let count):
       "\(count) screenshot comparison(s) failed."
     }
@@ -66,7 +69,8 @@ func writePNG(_ image: CanonicalImage, to url: URL) throws {
 func differenceImage(
   expected: CanonicalImage,
   actual: CanonicalImage,
-  allowedChannelDelta: UInt8
+  allowedChannelDelta: UInt8,
+  qualifiedRegions: [QualifiedSystemRegion]
 ) -> CanonicalImage {
   var output = Data(count: expected.pixels.count)
   expected.pixels.withUnsafeBytes { expectedBytes in
@@ -89,9 +93,13 @@ func differenceImage(
             maximumDelta = max(maximumDelta, delta)
           }
           if maximumDelta > allowedChannelDelta {
-            outputBase[offset] = 255
-            outputBase[offset + 1] = 0
-            outputBase[offset + 2] = 0
+            let pixel = offset / 4
+            let x = pixel % expected.width
+            let y = pixel / expected.width
+            let isQualified = qualifiedRegions.contains { $0.contains(x: x, y: y) }
+            outputBase[offset] = isQualified ? 35 : 255
+            outputBase[offset + 1] = isQualified ? 120 : 0
+            outputBase[offset + 2] = isQualified ? 255 : 0
           } else {
             let luminance =
               UInt16(expectedBase[offset]) + UInt16(expectedBase[offset + 1])
@@ -171,15 +179,58 @@ func canonicalImage(at url: URL) throws -> CanonicalImage {
 struct PixelDifference {
   let count: Int
   let toleratedCount: Int
+  let qualifiedSystemPixelCount: Int
   let bounds: CGRect?
   let maximumChannelDelta: UInt8
+}
+
+struct QualifiedSystemRegion: Codable {
+  let x: Int
+  let y: Int
+  let width: Int
+  let height: Int
+  let reason: String
+
+  func contains(x candidateX: Int, y candidateY: Int) -> Bool {
+    candidateX >= x && candidateX < x + width
+      && candidateY >= y && candidateY < y + height
+  }
+}
+
+struct ComparisonPolicy: Codable {
+  let schemaVersion: Int
+  let qualifiedSystemRegions: [String: [QualifiedSystemRegion]]
+
+  static let exact = ComparisonPolicy(schemaVersion: 1, qualifiedSystemRegions: [:])
+}
+
+func comparisonPolicy(in baselineDirectory: URL) throws -> ComparisonPolicy {
+  let policyURL = baselineDirectory.appending(path: "comparison-policy.json")
+  guard FileManager.default.fileExists(atPath: policyURL.path) else { return .exact }
+  do {
+    let policy = try JSONDecoder().decode(
+      ComparisonPolicy.self,
+      from: Data(contentsOf: policyURL)
+    )
+    guard policy.schemaVersion == 1 else {
+      throw ComparisonError.invalidPolicy(
+        "unsupported schemaVersion \(policy.schemaVersion) in \(policyURL.path)"
+      )
+    }
+    return policy
+  } catch let error as ComparisonError {
+    throw error
+  } catch {
+    throw ComparisonError.invalidPolicy("could not decode \(policyURL.path): \(error)")
+  }
 }
 
 func pixelDifference(
   _ expected: Data,
   _ actual: Data,
   width: Int,
-  allowedChannelDelta: UInt8
+  allowedChannelDelta: UInt8,
+  qualifiedRegions: [QualifiedSystemRegion]
 ) -> PixelDifference {
   expected.withUnsafeBytes { expectedBytes in
     actual.withUnsafeBytes { actualBytes in
@@ -188,11 +239,13 @@ func pixelDifference(
         let actualBase = actualBytes.bindMemory(to: UInt8.self).baseAddress
       else {
         return PixelDifference(
-          count: 0, toleratedCount: 0, bounds: nil, maximumChannelDelta: 0)
+          count: 0, toleratedCount: 0, qualifiedSystemPixelCount: 0,
+          bounds: nil, maximumChannelDelta: 0)
       }
 
       var count = 0
       var toleratedCount = 0
+      var qualifiedSystemPixelCount = 0
       var minimumX = width
       var minimumY = expected.count / 4 / width
       var maximumX = -1
@@ -212,10 +265,14 @@ func pixelDifference(
         maximumChannelDelta = max(maximumChannelDelta, pixelMaximumChannelDelta)
 
         if pixelMaximumChannelDelta > allowedChannelDelta {
-          count += 1
           let pixel = offset / 4
           let x = pixel % width
           let y = pixel / width
+          if qualifiedRegions.contains(where: { $0.contains(x: x, y: y) }) {
+            qualifiedSystemPixelCount += 1
+            continue
+          }
+          count += 1
           minimumX = min(minimumX, x)
           minimumY = min(minimumY, y)
           maximumX = max(maximumX, x)
@@ -236,6 +293,7 @@ func pixelDifference(
       return PixelDifference(
         count: count,
         toleratedCount: toleratedCount,
+        qualifiedSystemPixelCount: qualifiedSystemPixelCount,
         bounds: bounds,
         maximumChannelDelta: maximumChannelDelta
       )
@@ -271,6 +329,13 @@ func compareWalkthrough() throws {
   let actualNames = try pngNames(in: actualDirectory)
   guard !baselineNames.isEmpty else {
     throw ComparisonError.noImages(baselineDirectory.path)
+  }
+  let policy = try comparisonPolicy(in: baselineDirectory)
+  let unknownPolicyNames = Set(policy.qualifiedSystemRegions.keys).subtracting(baselineNames)
+  guard unknownPolicyNames.isEmpty else {
+    throw ComparisonError.invalidPolicy(
+      "qualified regions name screenshots outside the reviewed baseline: \(unknownPolicyNames.sorted())"
+    )
   }
 
   let allowedChannelDelta: UInt8 = 8
@@ -432,11 +497,26 @@ func compareWalkthrough() throws {
       continue
     }
 
+    let qualifiedRegions = policy.qualifiedSystemRegions[name] ?? []
+    for region in qualifiedRegions {
+      guard
+        region.x >= 0, region.y >= 0, region.width > 0, region.height > 0,
+        region.x + region.width <= expected.width,
+        region.y + region.height <= expected.height,
+        !region.reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      else {
+        throw ComparisonError.invalidPolicy(
+          "\(name) has an empty, out-of-bounds, or unexplained qualified system region"
+        )
+      }
+    }
+
     let difference = pixelDifference(
       expected.pixels,
       actual.pixels,
       width: expected.width,
-      allowedChannelDelta: allowedChannelDelta
+      allowedChannelDelta: allowedChannelDelta,
+      qualifiedRegions: qualifiedRegions
     )
     if difference.count > 0 {
       failureCount += 1
@@ -450,6 +530,7 @@ func compareWalkthrough() throws {
         "result": "pixel-difference",
         "pixelCount": difference.count,
         "toleratedPixelCount": difference.toleratedCount,
+        "qualifiedSystemPixelCount": difference.qualifiedSystemPixelCount,
         "bounds": boundsDescription,
         "maximumChannelDelta": difference.maximumChannelDelta,
       ]
@@ -469,7 +550,8 @@ func compareWalkthrough() throws {
           differenceImage(
             expected: expected,
             actual: actual,
-            allowedChannelDelta: allowedChannelDelta
+            allowedChannelDelta: allowedChannelDelta,
+            qualifiedRegions: qualifiedRegions
           ),
           to: diagnosticsDirectory.appending(path: diffName)
         )
@@ -483,8 +565,10 @@ func compareWalkthrough() throws {
 
     var summary: [String: Any] = [
       "name": name,
-      "result": difference.toleratedCount == 0 ? "exact" : "canonical",
+      "result": difference.toleratedCount == 0 && difference.qualifiedSystemPixelCount == 0
+        ? "exact" : "canonical",
       "toleratedPixelCount": difference.toleratedCount,
+      "qualifiedSystemPixelCount": difference.qualifiedSystemPixelCount,
       "maximumChannelDelta": difference.maximumChannelDelta,
     ]
     if retainAllEvidence, let diagnosticsDirectory {
@@ -503,12 +587,13 @@ func compareWalkthrough() throws {
       summary["diffArtifact"] = "not-required"
     }
     summaries.append(summary)
-    if difference.toleratedCount == 0 {
+    if difference.toleratedCount == 0 && difference.qualifiedSystemPixelCount == 0 {
       print("Exact pixel match: \(name)")
     } else {
       print(
         "Canonical pixel match: \(name) "
-          + "(\(difference.toleratedCount) pixels within 8/255 channel allowance)"
+          + "(\(difference.toleratedCount) pixels within 8/255 channel allowance, "
+          + "\(difference.qualifiedSystemPixelCount) pixels confined to reviewed system regions)"
       )
     }
   }

@@ -412,9 +412,12 @@ final class MetadataRepairUITests: XCTestCase {
   ) throws {
     let existingValue = try XCTUnwrap(field.value as? String)
     field.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
-    let focus = app.descendants(matching: .any)["metadata-title-focus-state"]
     XCTAssertTrue(
-      focus.waitForStringValue("focused", timeout: 2),
+      waitForPredicate(
+        NSPredicate(format: "exists == true AND hittable == true AND hasKeyboardFocus == true"),
+        on: field,
+        timeout: EventDeadline().remaining
+      ),
       "The metadata title must acquire focus before replacement text is entered"
     )
     XCTAssertTrue(

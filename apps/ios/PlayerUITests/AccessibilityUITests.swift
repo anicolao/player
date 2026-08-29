@@ -453,7 +453,8 @@ final class AccessibilityUITests: XCTestCase {
       gesture: .accessibilitySettingsLongForm,
       captureFraming: AccessibilityCaptureFraming(
         anchor: { app.staticTexts["Reduce Motion"] },
-        targetMinY: 150
+        targetMinY: 150,
+        tolerance: 0.2
       )
     )
     let activeSettings = app.staticTexts["Active iPhone settings"]
@@ -490,6 +491,7 @@ final class AccessibilityUITests: XCTestCase {
           && self.isFramed(
             app.staticTexts["Reduce Motion"],
             targetMinY: 150,
+            tolerance: 0.2,
             in: app
           )
           && activeSettings.exists
@@ -729,10 +731,11 @@ final class AccessibilityUITests: XCTestCase {
   private func isFramed(
     _ element: XCUIElement,
     targetMinY: CGFloat,
+    tolerance: CGFloat = 1,
     in app: XCUIApplication
   ) -> Bool {
     guard let screenY = anchorScreenY(element, in: app) else { return false }
-    return abs(screenY - targetMinY) <= 1
+    return abs(screenY - targetMinY) <= tolerance
   }
 
   private func anchorScreenY(
@@ -967,7 +970,7 @@ final class AccessibilityUITests: XCTestCase {
           deadline: framingDeadline
         ),
         "Expected \(captureFraming.anchor().identifier) to settle at screen y "
-          + "\(captureFraming.targetMinY) ± 1"
+          + "\(captureFraming.targetMinY) ± \(captureFraming.tolerance)"
       )
     }
     return target()
@@ -976,6 +979,7 @@ final class AccessibilityUITests: XCTestCase {
   private struct AccessibilityCaptureFraming {
     let anchor: @MainActor () -> XCUIElement
     let targetMinY: CGFloat
+    var tolerance: CGFloat = 1
   }
 
   private enum AccessibilityRevealTargetMode {
@@ -1047,7 +1051,7 @@ final class AccessibilityUITests: XCTestCase {
         return false
       }
       let displacement = screenY - framing.targetMinY
-      if abs(displacement) <= 1 { return true }
+      if abs(displacement) <= framing.tolerance { return true }
       let direction: ScrollProbeDirection
       if displacement > 0 {
         if before.atBottom {
@@ -1055,7 +1059,7 @@ final class AccessibilityUITests: XCTestCase {
             framing,
             windowMinY: windowMinY,
             deadline: deadline,
-            matching: { abs($0 - framing.targetMinY) <= 1 },
+            matching: { abs($0 - framing.targetMinY) <= framing.tolerance },
             failureReason: "the scroll probe reported its bottom endpoint"
           ) != nil
         }
@@ -1066,7 +1070,7 @@ final class AccessibilityUITests: XCTestCase {
             framing,
             windowMinY: windowMinY,
             deadline: deadline,
-            matching: { abs($0 - framing.targetMinY) <= 1 },
+            matching: { abs($0 - framing.targetMinY) <= framing.tolerance },
             failureReason: "the scroll probe reported its top endpoint"
           ) != nil
         }
@@ -1094,7 +1098,7 @@ final class AccessibilityUITests: XCTestCase {
       )
       guard settled, settledState != nil else { return false }
       let anchorProgressed: (CGFloat) -> Bool = { updatedY in
-        if abs(updatedY - framing.targetMinY) <= 1 { return true }
+        if abs(updatedY - framing.targetMinY) <= framing.tolerance { return true }
         switch direction {
         case .towardEnd: return updatedY < screenY - 0.5
         case .towardStart: return updatedY > screenY + 0.5
@@ -1107,7 +1111,7 @@ final class AccessibilityUITests: XCTestCase {
         matching: anchorProgressed,
         failureReason: "the settled scroll geometry did not reach the accessibility tree"
       ) else { return false }
-      if abs(updatedY - framing.targetMinY) <= 1 {
+      if abs(updatedY - framing.targetMinY) <= framing.tolerance {
         return true
       }
     }

@@ -236,6 +236,55 @@ jq -e '
   && -f "${pixel_root}/diagnostics/000-screen-diff.png" ]] \
   || fail "pixel-difference diagnostics omitted expected, actual, or diff images"
 
+qualified_root="${temporary_root}/qualified-system-region"
+mkdir -p "${qualified_root}/expected" "${qualified_root}/actual"
+cp "${reference_screenshot}" "${qualified_root}/expected/000-screen.png"
+cp "${different_screenshot}" "${qualified_root}/actual/000-screen.png"
+cp \
+  "${repository_root}/tests/e2e/009-accessible-core-journeys/screenshots/ios/comparison-policy.json" \
+  "${qualified_root}/expected/comparison-policy-source.json"
+sed \
+  -e 's/002-large-text-book-detail.png/000-screen.png/' \
+  -e 's/"height": 303/"height": 2622/' \
+  -e 's/"y": 2319/"y": 0/' \
+  "${qualified_root}/expected/comparison-policy-source.json" \
+  > "${qualified_root}/expected/comparison-policy.json"
+rm "${qualified_root}/expected/comparison-policy-source.json"
+"${comparison_binary}" \
+  "${qualified_root}/expected" "${qualified_root}/actual" \
+  "${qualified_root}/diagnostics" \
+  >"${qualified_root}/comparison.log" 2>&1 \
+  || fail "a difference confined to a reviewed system-owned region was rejected"
+jq -e '
+  .failureCount == 0
+  and .images[0].result == "canonical"
+  and .images[0].qualifiedSystemPixelCount > 0
+' "${qualified_root}/diagnostics/summary.json" >/dev/null \
+  || fail "qualified system-region diagnostics did not identify the confined pixels"
+
+outside_root="${temporary_root}/outside-qualified-region"
+mkdir -p "${outside_root}/expected" "${outside_root}/actual"
+cp "${reference_screenshot}" "${outside_root}/expected/000-screen.png"
+cp "${different_screenshot}" "${outside_root}/actual/000-screen.png"
+sed \
+  -e 's/002-large-text-book-detail.png/000-screen.png/' \
+  -e 's/"height": 303/"height": 1/' \
+  -e 's/"width": 1206/"width": 1/' \
+  -e 's/"y": 2319/"y": 0/' \
+  "${repository_root}/tests/e2e/009-accessible-core-journeys/screenshots/ios/comparison-policy.json" \
+  > "${outside_root}/expected/comparison-policy.json"
+if "${comparison_binary}" \
+  "${outside_root}/expected" "${outside_root}/actual" "${outside_root}/diagnostics" \
+  >"${outside_root}/comparison.log" 2>&1; then
+  fail "a pixel difference outside a reviewed system-owned region was accepted"
+fi
+jq -e '
+  .failureCount == 1
+  and .images[0].result == "pixel-difference"
+  and .images[0].pixelCount > 0
+' "${outside_root}/diagnostics/summary.json" >/dev/null \
+  || fail "outside-region diagnostics did not retain the unqualified pixel failure"
+
 file_set_root="${temporary_root}/file-set"
 mkdir -p "${file_set_root}/expected" "${file_set_root}/actual"
 cp "${reference_screenshot}" "${file_set_root}/expected/000-expected-only.png"
