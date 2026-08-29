@@ -1174,22 +1174,23 @@
       "signature": "ui-test:RemoteInterruptionUITests.testRemoteInterruptionAndBackgroundEventsJournalAcknowledgedPositions:exit-65",
       "story": "005-play-and-restore",
       "evidence": {
-        "workflowRun": 33235409727,
+        "workflowRun": 33245535699,
         "workflowAttempt": 1,
-        "artifact": "GitHub Actions job 99055474035 retained the complete Story 005 attempt-08 result bundle and direct test log",
-        "url": "https://github.com/anicolao/player/actions/runs/33235409727/job/99055474035",
-        "commit": "2dac4cafdd0667f85fb7f3950cc4adf81b8f47d5",
-        "observation": "After the Home event, XCTest waited for only runningBackground. On attempt 08 the app advanced to the equally valid runningBackgroundSuspended state before XCTest observed that transient state, so the state assertion failed even though attempts 01...07, 09, and 10 observed the background transition and passed."
+        "artifact": "Normal hosted workflow job 99082228976 retained the complete lane-2 test log and Story 005 diagnostics",
+        "url": "https://github.com/anicolao/player/actions/runs/33245535699/job/99082228976",
+        "commit": "92f86f9ff02c38db5f2c7d6d109f0fcc415b2aba",
+        "observation": "The synchronous Home press completed at test time 30.78s. XCTest's process-state predicate then sampled at 32.28s and 33.27s but observed neither runningBackground nor runningBackgroundSuspended before the two-second deadline, so the test aborted before reactivation and before its independently observable production-journal assertion. The immediately preceding corrected-boundary workflow passed the identical journey, while formal attempt 08 at the earlier SHA had already shown that XCTest can miss runningBackground when the process advances to suspension."
       },
-      "rootCause": "The test encoded one transient execution state as the background lifecycle contract. The E2E playback adapter does not guarantee continuing process execution after scene backgrounding, so iOS may suspend it before XCTest samples runningBackground; suspension is a valid completed background transition, not a product failure.",
+      "rootCause": "The test treated XCUIApplication's sampled execution state as the lifecycle contract even though that state is only a transient proxy. After the synchronous Home event, iOS may advance through runningBackground to suspension between XCTest's one-second predicate samples, or XCUIApplication may not publish either sampled state before the deadline. The actual listener-visible contract is the production scene-background callback acknowledging and persisting playback, which the test already observes directly after reactivation.",
       "diagnosisStatus": "confirmed",
       "fix": {
         "status": "verified",
-        "summary": "Wait with an event-driven predicate for either runningBackground or runningBackgroundSuspended, bounded to two seconds, then retain the existing production-journal assertion after reactivation as proof that the background callback acknowledged and persisted the position.",
+        "summary": "Treat the synchronous Home event as the system transition edge, reactivate the app, and require the production playback journal's exact background acknowledgement and persisted position within two seconds. Remove the redundant process-state proxy from both Home journeys without removing their post-reactivation product assertions.",
         "commits": [
-          "42ea9d50526f35db7a5030a024944b80abd0d5c6"
+          "42ea9d50526f35db7a5030a024944b80abd0d5c6",
+          "dc8dcd92875ed86239228ef518bc0c3a9ac07111"
         ],
-        "validation": "Focused validation only: the exact R0 source plus fff8b55 built successfully with Xcode 26.6, and the isolated RemoteInterruptionUITests journey passed four consecutive iOS 26.5 simulator executions. A fifth invocation was excluded because the host exhausted disk space before Simulator could install the test runner; it did not execute the test."
+        "validation": "Exact local artifact `apps/ios/DerivedData/E2E/005-play-and-restore.run.XvnMLn` passed the complete canonical Story 005 journey 8/8 with one simulator worker. Both Home journeys reactivated successfully; RemoteInterruptionUITests independently observed the exact production `background` journal acknowledgement and persisted position. All four canonical screenshots matched pixel-exact, the reviewed README matched exactly, and the evidence manifest is valid. Deterministic E2E hygiene also passes."
       },
       "qualificationResetCount": 1,
       "resetEvidence": "Formal exact-SHA qualification run 33235409727 passed Story 005 attempts 01...07, then attempt 08 failed this UI assertion, resetting Story 005's consecutive qualification count to zero."
