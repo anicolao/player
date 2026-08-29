@@ -780,7 +780,7 @@ final class ComputerReceiverTests: XCTestCase {
     XCTAssertEqual(status.fileOffsets, [Int64(audio.count)])
   }
 
-  func testWebKitBrowserLoadsReceiverAndCompletesARealLocalHTTPImport() async throws {
+  func testWebKitBrowserCompletesARealLocalHTTPImport() async throws {
     let root = temporaryRoot()
     let importReceived = expectation(
       description: "Browser upload reached the app import handler"
@@ -813,11 +813,15 @@ final class ComputerReceiverTests: XCTestCase {
       browserWindow.isHidden = true
       withExtendedLifetime(browserHost) {}
     }
-    let pageLoaded = expectation(description: "WebKit loaded the production receiver page")
+    let pageLoaded = expectation(description: "WebKit prepared the same-origin receiver document")
     let navigation = ReceiverWebNavigationDelegate(pageLoaded: pageLoaded)
     defer { withExtendedLifetime(navigation) {} }
     webView.navigationDelegate = navigation
-    webView.load(URLRequest(url: pageURL))
+    // testLocalHTTPFlowServesSveltePairsUploadsAndCompletes proves the built
+    // receiver document and asset route. This test owns the distinct browser-
+    // origin API contract, so use a minimal same-origin document rather than
+    // coupling its two-second transport deadline to Svelte rendering.
+    webView.loadHTMLString("<!doctype html><title>Bookshelf Browser Test</title>", baseURL: pageURL)
     await fulfillment(of: [pageLoaded], timeout: 2)
 
     let journeyCompleted = expectation(description: "Browser completed the HTTP transfer")
