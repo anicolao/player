@@ -1168,6 +1168,54 @@
       },
       "qualificationResetCount": 1,
       "resetEvidence": "Formal exact-SHA workflow 33235409727 attempt 1 failed Story 001 qualification attempt 05 at 2dac4cafdd0667f85fb7f3950cc4adf81b8f47d5, resetting Story 001's consecutive qualification count to zero."
+    },
+    {
+      "signature": "ui-test:RemoteInterruptionUITests.testRemoteInterruptionAndBackgroundEventsJournalAcknowledgedPositions:exit-65",
+      "story": "005-play-and-restore",
+      "evidence": {
+        "workflowRun": 33235409727,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions job 99055474035 retained the complete Story 005 attempt-08 result bundle and direct test log",
+        "url": "https://github.com/anicolao/player/actions/runs/33235409727/job/99055474035",
+        "commit": "2dac4cafdd0667f85fb7f3950cc4adf81b8f47d5",
+        "observation": "After the Home event, XCTest waited for only runningBackground. On attempt 08 the app advanced to the equally valid runningBackgroundSuspended state before XCTest observed that transient state, so the state assertion failed even though attempts 01...07, 09, and 10 observed the background transition and passed."
+      },
+      "rootCause": "The test encoded one transient execution state as the background lifecycle contract. The E2E playback adapter does not guarantee continuing process execution after scene backgrounding, so iOS may suspend it before XCTest samples runningBackground; suspension is a valid completed background transition, not a product failure.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Wait with an event-driven predicate for either runningBackground or runningBackgroundSuspended, bounded to two seconds, then retain the existing production-journal assertion after reactivation as proof that the background callback acknowledged and persisted the position.",
+        "commits": [
+          "fff8b5589ca7e9fc39f15f7aa0fa0ba919c3064d"
+        ],
+        "validation": "Focused validation only: the exact R0 source plus fff8b55 built successfully with Xcode 26.6, and the isolated RemoteInterruptionUITests journey passed four consecutive iOS 26.5 simulator executions. A fifth invocation was excluded because the host exhausted disk space before Simulator could install the test runner; it did not execute the test."
+      },
+      "qualificationResetCount": 1,
+      "resetEvidence": "Formal exact-SHA qualification run 33235409727 passed Story 005 attempts 01...07, then attempt 08 failed this UI assertion, resetting Story 005's consecutive qualification count to zero."
+    },
+    {
+      "signature": "ui-test:BookmarkUITests.testBookmarksCaptureOrganizeSearchJumpDeleteAndUndoExactly:exit-65",
+      "story": "007-sleep-timer",
+      "evidence": {
+        "workflowRun": 33238071790,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions job 99062477483 retained the Story 007 result bundle, semantic probes, and direct test log",
+        "url": "https://github.com/anicolao/player/actions/runs/33238071790/job/99062477483",
+        "commit": "78be46c54c7e332717d1ca0fb99357758ea0b530",
+        "observation": "The search probe truthfully published search:revision=<digest>:indexed=true before its result fields, but the bookmark journey still required the pre-revision exact string. The observed result fields were otherwise exactly the expected one-book cafe clue result."
+      },
+      "rootCause": "R7 strengthened the production search readiness contract with a library revision and indexing state, but this cross-story consumer continued comparing the obsolete whole value. The assertion therefore rejected the new truthful prefix instead of parsing and validating it.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "pending-focused-validation",
+        "summary": "Parse the probe into its four contract fields, require a 64-character revision and indexed=true, and compare the complete result suffix under the existing event-driven two-second deadline.",
+        "commits": [
+          "3e4e862482e5eeed024a0a0ae740d6157e9fc11b"
+        ],
+        "validation": "The focused source diff and JSON contract pass repository checks. A local test build was attempted but excluded when the host exhausted disk during the linker; exact hosted validation remains required before this entry can be marked verified."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was the normal R7 pull-request matrix rather than a formal repeated qualification attempt, so no consecutive Story 007 qualification count existed to reset."
     }
   ]
 }
