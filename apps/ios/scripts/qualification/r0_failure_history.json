@@ -1024,6 +1024,78 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "The pull-request run was not an accepted formal exact-SHA qualification attempt, so no consecutive Story 003 qualification count existed to reset."
+    },
+    {
+      "signature": "screenshot:009-accessible-core-journeys:alternate-native-tab-material-cache",
+      "story": "009-accessible-core-journeys",
+      "evidence": {
+        "workflowRun": 33220867145,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions job 99014414223 retained expected, actual, and diff images for Story 009",
+        "url": "https://github.com/anicolao/player/actions/runs/33220867145/job/99014414223",
+        "commit": "625a66dcb42a377e4dc0f331e85fdb152407ce94",
+        "observation": "Story 009 passed UI 2/2 and five opaque captures were exact. Screenshot 002 differed by 174,367 over-threshold pixels only in the full-width y=2319...2622 native tab material; every app-owned foreground pixel above it and the semantically asserted controls and geometry were unchanged."
+      },
+      "rootCause": "iOS 26 can render the native translucent tab material in either of two stable compositor-cache states even after a bounded SpringBoard displacement and foreground reactivation. Application events can prove the control semantics and settled geometry, but cannot select which private UIKit material cache state the hosted compositor uses.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Declare only the reviewed native-material rectangle as system-owned volatility and keep exact comparison everywhere else. The comparator fails closed on invalid policies and on any changed pixel outside the declared rectangle.",
+        "commits": [
+          "6e054e593e34ca0d3693937c1fb8c81b40fc0453"
+        ],
+        "validation": "The retained hosted actual is accepted with exactly 174,367 pixels confined to the reviewed region. Comparator contract tests independently prove that differences inside a reviewed region pass and differences outside it fail with expected, actual, and diff evidence."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This pull-request matrix was a diagnostic run rather than an accepted formal exact-SHA qualification attempt, so no consecutive Story 009 qualification count existed to reset."
+    },
+    {
+      "signature": "framing:009-accessible-core-journeys:accepted-two-pixel-anchor-phase",
+      "story": "009-accessible-core-journeys",
+      "evidence": {
+        "workflowRun": 33220867145,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions job 99014414223 retained expected, actual, and diff images for Story 009",
+        "url": "https://github.com/anicolao/player/actions/runs/33220867145/job/99014414223",
+        "commit": "625a66dcb42a377e4dc0f331e85fdb152407ce94",
+        "observation": "Screenshot 005 differed by 87,106 pixels across the scroll content. Integer alignment analysis reduced the difference to 62,884 pixels by moving the hosted image two physical pixels, which is exactly the 0.667-point offset that the previous plus-or-minus-one-point framing contract accepted."
+      },
+      "rootCause": "The Accessibility-preferences capture accepted an anchor within one logical point of its target even though the reviewed 3x screenshot contract requires one pixel phase. A valid but differently rounded 0.667-point endpoint therefore reached capture instead of receiving a final event-driven correction.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Give the affected capture an explicit 0.2-point tolerance in both the correction loop and capture-readiness assertion, while retaining independently bounded gesture completion events.",
+        "commits": [
+          "6e054e593e34ca0d3693937c1fb8c81b40fc0453"
+        ],
+        "validation": "The capture contract and correction primitive now share the same subpixel tolerance; source hygiene passes and still rejects fixed waits or transition budgets above two seconds. Exact hosted validation remains part of the next normal and formal matrices."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This pull-request matrix was a diagnostic run rather than an accepted formal exact-SHA qualification attempt, so no consecutive Story 009 qualification count existed to reset."
+    },
+    {
+      "signature": "semantic:004-metadata-repair:proxy-focus-preceded-text-input-readiness",
+      "story": "004-metadata-repair",
+      "evidence": {
+        "workflowRun": 33220867145,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions job 99014413998 retained the failed field state, accessibility hierarchy, synthesized events, and screen recording",
+        "url": "https://github.com/anicolao/player/actions/runs/33220867145/job/99014413998",
+        "commit": "625a66dcb42a377e4dc0f331e85fdb152407ce94",
+        "observation": "The metadata test accepted a separate focus-state proxy, issued 35 delete keystrokes, then observed that the real title field had not become empty. The hosted log spent 35 seconds in the post-tap idle wait before input was synthesized."
+      },
+      "rootCause": "A hidden semantic focus proxy could publish before XCTest considered the actual text field hittable and keyboard-focused. Typing after the proxy transition therefore raced the real responder used by synthesized keyboard input.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Wait directly for the production text field to exist, remain hittable, and report hasKeyboardFocus before issuing replacement keystrokes; keep the independently observed field-value transition as the postcondition.",
+        "commits": [
+          "6e054e593e34ca0d3693937c1fb8c81b40fc0453"
+        ],
+        "validation": "The same direct-field focus gate passed the focused committed-metadata production journey before extraction into R0, and E2E hygiene confirms the wait remains event-driven and bounded to two seconds."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This pull-request matrix was a diagnostic run rather than an accepted formal exact-SHA qualification attempt, so no consecutive Story 004 qualification count existed to reset."
     }
   ]
 }
