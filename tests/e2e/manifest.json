@@ -2,6 +2,10 @@
   {"story":"001-ios-launch","tests":[
     "PlayerUITests/LaunchUITests/testLaunchesIntoEmptyLibrary",
     "PlayerUITests/LaunchUITests/testAudioSessionConfigurationWarningDoesNotPresentImportAlertAtStartup",
+    "PlayerUITests/LaunchUITests/testComputerReceiverVisibleActionsDriveProductionState",
+    "PlayerUITests/LaunchUITests/testComputerReceiverCloseWhileActiveConfirmsCleanup",
+    "PlayerUITests/LaunchUITests/testComputerReceiverRetriesListenerAndImportFailures",
+    "PlayerUITests/LaunchUITests/testComputerReceiverRoutesTerminalOutcomes",
     "PlayerUITests/LaunchUITests/testRejectsInvalidNavigationBeforeConstructingTheFixtureEnvironment",
     "PlayerUITests/LaunchUITests/testRejectsUnknownDynamicTypeConfigurationInsteadOfUsingMedium",
     "PlayerUITests/LaunchUITests/testRejectsUnknownFixtureWithoutFallingBackToProduction"

@@ -24,6 +24,9 @@ struct E2EComputerReceiverLaunchConfiguration: Equatable {
       case ready
       case dropProgress = "drop-progress"
       case completed
+      case failed
+      case listenerFailure = "listener-failure"
+      case needsReview = "needs-review"
       case paused
     }
 
@@ -36,6 +39,9 @@ struct E2EComputerReceiverLaunchConfiguration: Equatable {
     static let readyArgument = "-e2e-computer-receiver-ready"
     static let dropProgressArgument = "-e2e-mirroring-drop-progress"
     static let completedArgument = "-e2e-computer-receiver-completed"
+    static let failedArgument = "-e2e-computer-receiver-failed"
+    static let listenerFailureArgument = "-e2e-computer-receiver-listener-failure"
+    static let needsReviewArgument = "-e2e-computer-receiver-needs-review"
     static let pausedArgument = "-e2e-computer-receiver-paused"
     static let showMirroringTipArgument = "-e2e-show-mirroring-tip"
     static let hideMirroringTipArgument = "-e2e-hide-mirroring-tip"
@@ -78,6 +84,9 @@ struct E2EComputerReceiverLaunchConfiguration: Equatable {
         readyArgument,
         dropProgressArgument,
         completedArgument,
+        failedArgument,
+        listenerFailureArgument,
+        needsReviewArgument,
         pausedArgument,
         showMirroringTipArgument,
         hideMirroringTipArgument,
@@ -100,6 +109,9 @@ struct E2EComputerReceiverLaunchConfiguration: Equatable {
       let phases: [(argument: String, scenario: Scenario)] = [
         (dropProgressArgument, .dropProgress),
         (completedArgument, .completed),
+        (failedArgument, .failed),
+        (listenerFailureArgument, .listenerFailure),
+        (needsReviewArgument, .needsReview),
         (pausedArgument, .paused),
       ]
       let selectedPhases = phases.filter { arguments.contains($0.argument) }
@@ -270,6 +282,18 @@ final class ComputerReceiverController {
   }
 
   func stop() {
+    prepareToStop()
+    Task { await server.stop() }
+    phase = .idle
+  }
+
+  func stopAndWait() async {
+    prepareToStop()
+    await server.stop()
+    phase = .idle
+  }
+
+  private func prepareToStop() {
     startTask?.cancel()
     startTask = nil
     dropTask?.cancel()
@@ -278,8 +302,6 @@ final class ComputerReceiverController {
     dropOperation = nil
     activeDropSession = nil
     receiverIsRunning = false
-    Task { await server.stop() }
-    phase = .idle
   }
 
   func retry(model: PlayerModel) {
@@ -508,6 +530,7 @@ struct ComputerReceiverView: View {
   @State private var controller: ComputerReceiverController
   @State private var showStopConfirmation = false
   @State private var isDropTargeted = false
+  @State private var copiedAddress = false
   let launchConfiguration: E2EComputerReceiverLaunchConfiguration
   let chooseFromFiles: () -> Void
   let didFinish: (_ needsInbox: Bool) -> Void
@@ -573,14 +596,15 @@ struct ComputerReceiverView: View {
           controller.importDroppedSession(session, model: model)
         }
       }
-      .confirmationDialog(
+      .alert(
         "Stop receiving from this computer?",
-        isPresented: $showStopConfirmation,
-        titleVisibility: .visible
+        isPresented: $showStopConfirmation
       ) {
         Button("Stop and Clean Up", role: .destructive) {
-          controller.stop()
-          dismiss()
+          Task {
+            await controller.stopAndWait()
+            dismiss()
+          }
         }
         Button("Keep Receiving", role: .cancel) {}
       } message: {
@@ -705,8 +729,11 @@ struct ComputerReceiverView: View {
           .tint(PlayerColor.accent)
           .accessibilityIdentifier("receive-another-audiobook")
         Button("Done") {
-          didFinish(false)
-          dismiss()
+          Task {
+            await controller.stopAndWait()
+            didFinish(false)
+            dismiss()
+          }
         }
         .buttonStyle(.bordered)
         .tint(PlayerColor.accent)
@@ -719,8 +746,11 @@ struct ComputerReceiverView: View {
           .multilineTextAlignment(.center)
           .foregroundStyle(PlayerColor.ink)
         Button("Open Inbox") {
-          didFinish(true)
-          dismiss()
+          Task {
+            await controller.stopAndWait()
+            didFinish(true)
+            dismiss()
+          }
         }
         .buttonStyle(.borderedProminent)
         .tint(PlayerColor.accent)
@@ -737,6 +767,10 @@ struct ComputerReceiverView: View {
         }
         .buttonStyle(.borderedProminent)
         .tint(PlayerColor.accent)
+        .accessibilityIdentifier(
+          controller.receiverIsRunning
+            ? "retry-computer-receiver-upload" : "restart-computer-receiver"
+        )
       }
       .padding(.vertical, 32)
     }
@@ -752,10 +786,19 @@ struct ComputerReceiverView: View {
           .textSelection(.enabled)
           .multilineTextAlignment(.center)
           .accessibilityIdentifier("computer-receiver-address")
-        Button("Copy Address") { UIPasteboard.general.string = controller.address }
-          .buttonStyle(.bordered)
-          .tint(PlayerColor.accent)
-          .accessibilityIdentifier("copy-computer-receiver-address")
+        Button("Copy Address") {
+          UIPasteboard.general.string = controller.address
+          copiedAddress = true
+        }
+        .buttonStyle(.bordered)
+        .tint(PlayerColor.accent)
+        .accessibilityIdentifier("copy-computer-receiver-address")
+        if copiedAddress {
+          Label("Address copied", systemImage: "checkmark")
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(Color.green)
+            .accessibilityIdentifier("computer-receiver-address-copied")
+        }
       }
 
       Divider()
@@ -799,7 +842,12 @@ struct ComputerReceiverView: View {
         .accessibilityIdentifier("mirroring-import-tip")
       }
 
-      Button("Choose from Files", systemImage: "folder") { chooseFromFiles() }
+      Button("Choose from Files", systemImage: "folder") {
+        Task {
+          await controller.stopAndWait()
+          chooseFromFiles()
+        }
+      }
         .buttonStyle(.bordered)
         .controlSize(.large)
         .tint(PlayerColor.accent)
@@ -889,8 +937,10 @@ struct ComputerReceiverView: View {
   private func requestStop() {
     if controller.phase.isActivelyReceiving { showStopConfirmation = true }
     else {
-      controller.stop()
-      dismiss()
+      Task {
+        await controller.stopAndWait()
+        dismiss()
+      }
     }
   }
 }

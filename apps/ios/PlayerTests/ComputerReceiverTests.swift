@@ -1,5 +1,7 @@
-import XCTest
 import Network
+import WebKit
+import XCTest
+
 @testable import Player
 
 @MainActor
@@ -20,6 +22,9 @@ final class ComputerReceiverTests: XCTestCase {
     let phases: [(String, E2EComputerReceiverLaunchConfiguration.Scenario)] = [
       ("-e2e-mirroring-drop-progress", .dropProgress),
       ("-e2e-computer-receiver-completed", .completed),
+      ("-e2e-computer-receiver-failed", .failed),
+      ("-e2e-computer-receiver-listener-failure", .listenerFailure),
+      ("-e2e-computer-receiver-needs-review", .needsReview),
       ("-e2e-computer-receiver-paused", .paused),
     ]
     for (argument, scenario) in phases {
@@ -41,6 +46,12 @@ final class ComputerReceiverTests: XCTestCase {
       ["-e2e-computer-receiver-ready"],
       ["-e2e-mirroring-drop-progress", "-e2e-mirroring-drop-progress"],
       ["-e2e-computer-receiver-completed", "-e2e-computer-receiver-completed"],
+      ["-e2e-computer-receiver-failed", "-e2e-computer-receiver-failed"],
+      [
+        "-e2e-computer-receiver-listener-failure",
+        "-e2e-computer-receiver-listener-failure",
+      ],
+      ["-e2e-computer-receiver-needs-review", "-e2e-computer-receiver-needs-review"],
       ["-e2e-computer-receiver-paused", "-e2e-computer-receiver-paused"],
       ["-e2e-mirroring-drop-progress", "-e2e-computer-receiver-completed"],
       ["-e2e-mirroring-drop-progress", "-e2e-computer-receiver-paused"],
@@ -63,6 +74,9 @@ final class ComputerReceiverTests: XCTestCase {
     for phase in [
       "-e2e-mirroring-drop-progress",
       "-e2e-computer-receiver-completed",
+      "-e2e-computer-receiver-failed",
+      "-e2e-computer-receiver-listener-failure",
+      "-e2e-computer-receiver-needs-review",
       "-e2e-computer-receiver-paused",
     ] {
       XCTAssertThrowsError(
@@ -150,6 +164,43 @@ final class ComputerReceiverTests: XCTestCase {
     )
     XCTAssertTrue(FileManager.default.fileExists(atPath: controller.transportRootURL.path))
     XCTAssertEqual(try Data(contentsOf: sentinel), sentinelData)
+  }
+
+  func testProductionReceiverCleansRelaunchDebrisOnceAndPreservesAcceptedScreenReopenFiles() throws
+  {
+    let sandbox = temporaryRoot()
+    defer { try? FileManager.default.removeItem(at: sandbox) }
+    let support = sandbox.appending(path: "ApplicationSupport", directoryHint: .isDirectory)
+    let temporary = sandbox.appending(path: "Temporary", directoryHint: .isDirectory)
+    let receiverRoot = support
+      .appending(path: "Player", directoryHint: .isDirectory)
+      .appending(path: "ComputerReceiver", directoryHint: .isDirectory)
+    let stalePartial = receiverRoot
+      .appending(path: "stale-session", directoryHint: .isDirectory)
+      .appending(path: "Chapter.partial")
+    try FileManager.default.createDirectory(
+      at: stalePartial.deletingLastPathComponent(),
+      withIntermediateDirectories: true
+    )
+    try Data("incomplete transfer".utf8).write(to: stalePartial)
+
+    _ = ComputerReceiverController(
+      launchConfiguration: .production,
+      applicationSupportURL: support,
+      temporaryDirectory: temporary
+    )
+    XCTAssertFalse(FileManager.default.fileExists(atPath: stalePartial.path))
+
+    let accepted = receiverRoot.appending(path: "accepted-import.m4b")
+    let acceptedBytes = Data("accepted import".utf8)
+    try acceptedBytes.write(to: accepted)
+    _ = ComputerReceiverController(
+      launchConfiguration: .production,
+      applicationSupportURL: support,
+      temporaryDirectory: temporary
+    )
+
+    XCTAssertEqual(try Data(contentsOf: accepted), acceptedBytes)
   }
 
   func testInvalidReceiverConfigurationCannotMutateFixtureOrProductionReceiverRoots() throws {
@@ -499,6 +550,50 @@ final class ComputerReceiverTests: XCTestCase {
     XCTAssertFalse(FileManager.default.fileExists(atPath: secondTarget.partialURL.path))
   }
 
+  func testCancelCannotRemoveASealedOrAcceptedImport() async throws {
+    let root = temporaryRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = ComputerImportStore(rootURL: root)
+    let payload = Data("accepted audiobook".utf8)
+    let created = try await store.create(.init(
+      entries: [.init(path: "Book.m4b", byteCount: Int64(payload.count))],
+      selectionKind: "files",
+      selectionName: "Book"
+    ))
+    let target = try await store.writeTarget(sessionID: created.id, index: 0)
+    try payload.write(to: target.partialURL)
+    try await store.finishWrite(
+      sessionID: created.id,
+      index: 0,
+      finalBytes: Int64(payload.count)
+    )
+    _ = try await store.seal(sessionID: created.id)
+
+    do {
+      try await store.cancel(sessionID: created.id)
+      XCTFail("A sealed import must not be cancelled")
+    } catch {
+      // Expected.
+    }
+    XCTAssertEqual(try Data(contentsOf: target.finalURL), payload)
+
+    await store.finish(sessionID: created.id, outcome: DirectImportOutcome(
+      state: .completed,
+      message: "Book added",
+      addedBookCount: 1,
+      cleanupIncomingFiles: false
+    ))
+    do {
+      try await store.cancel(sessionID: created.id)
+      XCTFail("An accepted import must not be cancelled")
+    } catch {
+      // Expected.
+    }
+    XCTAssertEqual(try Data(contentsOf: target.finalURL), payload)
+    let status = try await store.status(sessionID: created.id)
+    XCTAssertEqual(status.state, "completed")
+  }
+
   func testReopeningReceiverDoesNotDeleteAnAcceptedImport() async throws {
     let root = temporaryRoot()
     defer { try? FileManager.default.removeItem(at: root) }
@@ -684,6 +779,113 @@ final class ComputerReceiverTests: XCTestCase {
     XCTAssertEqual(status.fileOffsets, [Int64(audio.count)])
   }
 
+  func testWebKitBrowserLoadsReceiverAndCompletesARealLocalHTTPImport() async throws {
+    let root = temporaryRoot()
+    let importReceived = expectation(
+      description: "Browser upload reached the app import handler"
+    )
+    let capture = ReceiverImportCapture(receivedSignal: importReceived)
+    let server = ComputerReceiverServer(
+      rootURL: root,
+      bundle: .main,
+      portPreference: try isolatedPortPreference()
+    )
+    registerCleanup(for: server, root: root)
+    let ready = try await server.start(
+      importHandler: { urls in await capture.importURLs(urls) },
+      eventHandler: { _ in }
+    )
+    let pageURL = try XCTUnwrap(URL(string: ready.address))
+    let webView = WKWebView(frame: .zero)
+    let pageLoaded = expectation(description: "WebKit loaded the production receiver page")
+    let navigation = ReceiverWebNavigationDelegate(pageLoaded: pageLoaded)
+    webView.navigationDelegate = navigation
+    webView.load(URLRequest(url: pageURL))
+    await fulfillment(of: [pageLoaded], timeout: 2)
+
+    let journeyCompleted = expectation(description: "Browser completed the HTTP transfer")
+    var browserResult: [String: String]?
+    let script = """
+        const pairResponse = await fetch('/api/pair', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json', 'X-Player-Client-Name': 'WebKit Test'},
+          body: JSON.stringify({code: '\(ready.pairingCode)'})
+        });
+        const pair = await pairResponse.json();
+        if (!pairResponse.ok) throw new Error(pair.message);
+        const bytes = new TextEncoder().encode('synthetic direct receiver audio');
+        const auth = {'Authorization': `Bearer ${pair.token}`};
+        const createResponse = await fetch('/api/imports', {
+          method: 'POST',
+          headers: {...auth, 'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            entries: [{path: 'Chapter 01.mp3', byteCount: bytes.byteLength}],
+            selectionKind: 'folder',
+            selectionName: 'HTTP Test Book'
+          })
+        });
+        const created = await createResponse.json();
+        if (!createResponse.ok) throw new Error(created.message);
+        const uploadResponse = await fetch(`/api/imports/${created.id}/files/0`, {
+          method: 'PUT',
+          headers: {
+            ...auth,
+            'Content-Type': 'application/octet-stream',
+            'X-Player-Upload-Offset': '0'
+          },
+          body: bytes
+        });
+        if (!uploadResponse.ok) throw new Error((await uploadResponse.json()).message);
+        const completeResponse = await fetch(`/api/imports/${created.id}/complete`, {
+          method: 'POST', headers: auth
+        });
+        if (!completeResponse.ok) throw new Error((await completeResponse.json()).message);
+        return {id: created.id, token: pair.token};
+      """
+    webView.callAsyncJavaScript(
+      script,
+      arguments: [:],
+      in: nil,
+      in: .page
+    ) { result in
+      switch result {
+      case .success(let value): browserResult = value as? [String: String]
+      case .failure(let error): XCTFail("Browser journey failed: \(error)")
+      }
+      journeyCompleted.fulfill()
+    }
+    await fulfillment(of: [journeyCompleted, importReceived], timeout: 2)
+    let result = try XCTUnwrap(browserResult)
+
+    let statusLoaded = expectation(description: "Browser observed the app completion state")
+    var terminalState: String?
+    webView.callAsyncJavaScript(
+      """
+        const cancellation = await fetch('/api/imports/\(result["id"] ?? "")', {
+          method: 'DELETE',
+          headers: {'Authorization': 'Bearer \(result["token"] ?? "")'}
+        });
+        const response = await fetch('/api/imports/\(result["id"] ?? "")', {
+          headers: {'Authorization': 'Bearer \(result["token"] ?? "")'}
+        });
+        return `${cancellation.status}:${(await response.json()).state}`;
+        """,
+      arguments: [:],
+      in: nil,
+      in: .page
+    ) { result in
+      switch result {
+      case .success(let value): terminalState = value as? String
+      case .failure(let error): XCTFail("Browser status request failed: \(error)")
+      }
+      statusLoaded.fulfill()
+    }
+    await fulfillment(of: [statusLoaded], timeout: 2)
+    XCTAssertEqual(terminalState, "409:completed")
+    let receivedData = await capture.receivedData
+    XCTAssertEqual(receivedData, Data("synthetic direct receiver audio".utf8))
+  }
+
   func testReceiverReusesItsLastBoundPortWhenAvailable() async throws {
     let suiteName = "ComputerReceiverPortPreference-\(UUID().uuidString)"
     let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
@@ -714,6 +916,16 @@ final class ComputerReceiverTests: XCTestCase {
       eventHandler: { _ in }
     )
     let firstPort = try XCTUnwrap(URL(string: firstReady.address)?.port)
+    let firstCode = firstReady.pairingCode
+    let firstBaseURL = try XCTUnwrap(URL(string: "http://127.0.0.1:\(firstPort)"))
+    let (firstPairData, firstPairResponse) = try await request(
+      firstBaseURL.appending(path: "api/pair"),
+      method: "POST",
+      body: try JSONEncoder().encode(["code": firstCode]),
+      headers: ["Content-Type": "application/json"]
+    )
+    XCTAssertEqual(firstPairResponse.statusCode, 200)
+    let firstPair = try JSONDecoder().decode(PairResponse.self, from: firstPairData)
     await firstServer.stop()
 
     let secondServer = ComputerReceiverServer(
@@ -734,9 +946,28 @@ final class ComputerReceiverTests: XCTestCase {
       eventHandler: { _ in }
     )
     let secondPort = try XCTUnwrap(URL(string: secondReady.address)?.port)
-    await secondServer.stop()
+    let secondCode = secondReady.pairingCode
 
     XCTAssertEqual(secondPort, firstPort)
+    XCTAssertNotEqual(secondCode, firstCode)
+    let secondBaseURL = try XCTUnwrap(URL(string: "http://127.0.0.1:\(secondPort)"))
+    let (_, expiredResponse) = try await request(
+      secondBaseURL.appending(
+        path: "api/imports/00000000-0000-0000-0000-000000000001"
+      ),
+      method: "GET",
+      body: nil,
+      headers: ["Authorization": "Bearer \(firstPair.token)"]
+    )
+    XCTAssertEqual(expiredResponse.statusCode, 401)
+    let (_, secondPairResponse) = try await request(
+      secondBaseURL.appending(path: "api/pair"),
+      method: "POST",
+      body: try JSONEncoder().encode(["code": secondCode]),
+      headers: ["Content-Type": "application/json"]
+    )
+    XCTAssertEqual(secondPairResponse.statusCode, 200)
+    await secondServer.stop()
   }
 
   func testReceiverFallsBackFromAnUnavailablePreferredPortAndPersistsTheReplacement() async throws {
@@ -1165,5 +1396,27 @@ private actor ControlledReceiverImportCapture {
     await withCheckedContinuation { continuation in
       releaseContinuation = continuation
     }
+  }
+}
+
+@MainActor
+private final class ReceiverWebNavigationDelegate: NSObject, WKNavigationDelegate {
+  private let pageLoaded: XCTestExpectation
+
+  init(pageLoaded: XCTestExpectation) {
+    self.pageLoaded = pageLoaded
+  }
+
+  func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+    pageLoaded.fulfill()
+  }
+
+  func webView(
+    _ webView: WKWebView,
+    didFail navigation: WKNavigation!,
+    withError error: any Error
+  ) {
+    XCTFail("WebKit failed to load the receiver: \(error)")
+    pageLoaded.fulfill()
   }
 }

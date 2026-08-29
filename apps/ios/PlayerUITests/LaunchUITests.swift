@@ -54,6 +54,106 @@ final class LaunchUITests: XCTestCase {
     XCTAssertFalse(app.descendants(matching: .any)["library-screen"].exists)
   }
 
+  func testComputerReceiverVisibleActionsDriveProductionState() throws {
+    continueAfterFailure = false
+
+    let app = makeApplication()
+    app.launch()
+    app.buttons["receive-from-computer-empty-library"].tap()
+    let receiver = app.scrollViews["computer-receiver-screen"]
+    XCTAssertTrue(receiver.waitForStringValue("receiver:ready", timeout: 2))
+
+    app.buttons["copy-computer-receiver-address"].tap()
+    XCTAssertTrue(
+      app.descendants(matching: .any)["computer-receiver-address-copied"]
+        .waitForExistence(timeout: 2)
+    )
+
+    app.buttons["stop-computer-receiver"].tap()
+    let stopSheet = app.alerts["Stop receiving from this computer?"]
+    XCTAssertTrue(stopSheet.waitForExistence(timeout: 2))
+    app.buttons["Keep Receiving"].tap()
+    XCTAssertTrue(receiver.waitForStringValue("receiver:ready", timeout: 2))
+    app.buttons["stop-computer-receiver"].tap()
+    XCTAssertTrue(stopSheet.waitForExistence(timeout: 2))
+    app.buttons["Stop and Clean Up"].tap()
+    XCTAssertTrue(app.otherElements["library-screen"].waitForExistence(timeout: 2))
+    XCTAssertTrue(terminateAndWait(app))
+  }
+
+  func testComputerReceiverCloseWhileActiveConfirmsCleanup() {
+    continueAfterFailure = false
+
+    let app = makeApplication(additionalArguments: ["-e2e-computer-receiver-paused"])
+    app.launch()
+    app.buttons["receive-from-computer-empty-library"].tap()
+    let activeReceiver = app.scrollViews["computer-receiver-screen"]
+    XCTAssertTrue(activeReceiver.waitForStringValue("receiver:paused", timeout: 2))
+    app.buttons["Close"].tap()
+    let activeCloseSheet = app.alerts["Stop receiving from this computer?"]
+    XCTAssertTrue(activeCloseSheet.waitForExistence(timeout: 2))
+    app.buttons["Keep Receiving"].tap()
+    XCTAssertTrue(activeReceiver.waitForStringValue("receiver:paused", timeout: 2))
+    app.buttons["Close"].tap()
+    XCTAssertTrue(activeCloseSheet.waitForExistence(timeout: 2))
+    app.buttons["Stop and Clean Up"].tap()
+    XCTAssertTrue(app.otherElements["library-screen"].waitForExistence(timeout: 2))
+    XCTAssertTrue(terminateAndWait(app))
+  }
+
+  func testComputerReceiverRetriesListenerAndImportFailures() {
+    continueAfterFailure = false
+
+    var app = makeApplication(additionalArguments: ["-e2e-computer-receiver-listener-failure"])
+    app.launch()
+    app.buttons["receive-from-computer-empty-library"].tap()
+    let failedStart = app.scrollViews["computer-receiver-screen"]
+    XCTAssertTrue(failedStart.waitForStringValue("receiver:failed", timeout: 2))
+    app.buttons["restart-computer-receiver"].tap()
+    XCTAssertTrue(failedStart.waitForStringValue("receiver:ready", timeout: 2))
+    XCTAssertTrue(terminateAndWait(app))
+
+    app = makeApplication(additionalArguments: ["-e2e-computer-receiver-failed"])
+    app.launch()
+    app.buttons["receive-from-computer-empty-library"].tap()
+    let failedImport = app.scrollViews["computer-receiver-screen"]
+    XCTAssertTrue(failedImport.waitForStringValue("receiver:failed", timeout: 2))
+    app.buttons["retry-computer-receiver-upload"].tap()
+    XCTAssertTrue(failedImport.waitForStringValue("receiver:ready", timeout: 2))
+    XCTAssertTrue(terminateAndWait(app))
+  }
+
+  func testComputerReceiverRoutesTerminalOutcomes() {
+    continueAfterFailure = false
+
+    var app = makeApplication(
+      fixture: "receiver-completion-baseline",
+      additionalArguments: ["-e2e-computer-receiver-needs-review"]
+    )
+    app.launch()
+    app.tabBars.buttons["Add"].tap()
+    let reviewReceiver = app.scrollViews["computer-receiver-screen"]
+    XCTAssertTrue(reviewReceiver.waitForStringValue("receiver:needs-review", timeout: 2))
+    app.buttons["open-received-import-inbox"].tap()
+    XCTAssertTrue(app.tabBars.buttons["Inbox"].waitForExistence(timeout: 2))
+    XCTAssertTrue(app.tabBars.buttons["Inbox"].isSelected)
+    XCTAssertTrue(terminateAndWait(app))
+
+    app = makeApplication(
+      fixture: "receiver-completion-baseline",
+      additionalArguments: ["-e2e-computer-receiver-completed"]
+    )
+    app.launch()
+    app.tabBars.buttons["Add"].tap()
+    let completedReceiver = app.scrollViews["computer-receiver-screen"]
+    XCTAssertTrue(completedReceiver.waitForStringValue("receiver:completed:1", timeout: 2))
+    app.buttons["finish-computer-receiver"].tap()
+    XCTAssertTrue(
+      app.otherElements["library-screen"].waitForStringValue("ready:library-2-books", timeout: 2)
+    )
+    XCTAssertTrue(terminateAndWait(app))
+  }
+
   func testRejectsUnknownFixtureWithoutFallingBackToProduction() {
     continueAfterFailure = false
     let app = XCUIApplication()

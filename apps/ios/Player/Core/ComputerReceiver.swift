@@ -96,6 +96,19 @@ final class ComputerReceiverPortPreference: @unchecked Sendable {
     defer { lock.unlock() }
     userDefaults.set(Int(port), forKey: key)
   }
+
+  func nextPairingCode() -> String {
+    lock.lock()
+    defer { lock.unlock() }
+    let pairingCodeKey = "\(key).lastPairingCode"
+    let previous = userDefaults.string(forKey: pairingCodeKey)
+    var next = ""
+    repeat {
+      next = String(format: "%06d", Int.random(in: 0...999_999))
+    } while next == previous
+    userDefaults.set(next, forKey: pairingCodeKey)
+    return next
+  }
 }
 
 actor ComputerImportStore {
@@ -411,7 +424,9 @@ actor ComputerImportStore {
 
   func cancel(sessionID: UUID) throws {
     guard let session = sessions[sessionID] else { throw ComputerReceiverError.importNotFound }
-    guard session.state != "importing" else { throw ComputerReceiverError.importAlreadySealed }
+    guard session.state == "receiving" || session.state == "failed" else {
+      throw ComputerReceiverError.importAlreadySealed
+    }
     sessions[sessionID] = nil
     activeWrites = activeWrites.filter { !$0.hasPrefix(sessionID.uuidString.lowercased() + ":") }
     try? fileManager.removeItem(at: session.rootURL)
@@ -512,9 +527,16 @@ actor ComputerReceiverServer {
     isRunning = true
     self.importHandler = importHandler
     self.eventHandler = eventHandler
-    pairingCode = injectedCredentials?.pairingCode
-      ?? String(format: "%06d", Int.random(in: 0...999_999))
-    bearerToken = injectedCredentials?.bearerToken ?? Self.randomToken()
+    if let injectedCredentials {
+      pairingCode = injectedCredentials.pairingCode
+      bearerToken = injectedCredentials.bearerToken
+    } else {
+      pairingCode = portPreference.nextPairingCode()
+      let previousBearerToken = bearerToken
+      repeat {
+        bearerToken = Self.randomToken()
+      } while bearerToken == previousBearerToken
+    }
     failedPairingAttempts = 0
 
     do {
@@ -1089,6 +1111,7 @@ private final class NWComputerReceiverConnection: ComputerReceiverConnection, @u
     private var connections: [E2ERawHTTPConnection] = []
     private var connectionHandler: ConnectionHandler?
     private var isActive = false
+    private var remainingStartFailures: Int
 
     init(
       scenario: Scenario = .ready,
@@ -1096,12 +1119,17 @@ private final class NWComputerReceiverConnection: ComputerReceiverConnection, @u
     ) {
       self.scenario = scenario
       self.scenarioFinished = scenarioFinished
+      remainingStartFailures = scenario == .listenerFailure ? 1 : 0
     }
 
     func start(connectionHandler: @escaping ConnectionHandler) async throws
       -> ComputerReceiverBoundEndpoint
     {
       guard !isActive else { throw ComputerReceiverError.alreadyRunning }
+      if remainingStartFailures > 0 {
+        remainingStartFailures -= 1
+        throw ComputerReceiverError.listenerFailed("The test listener could not start.")
+      }
       isActive = true
       self.connectionHandler = connectionHandler
       return ComputerReceiverBoundEndpoint(host: "192.168.1.42", port: 49_152)
@@ -1135,16 +1163,27 @@ private final class NWComputerReceiverConnection: ComputerReceiverConnection, @u
       _ = await perform(Self.request(method: "GET", path: "/"))
       guard isActive else { return }
       switch scenario {
-      case .ready, .dropProgress:
+      case .ready, .dropProgress, .listenerFailure:
         return
       case .paused:
-        await runUpload(completes: false)
+        await runUpload(mode: .paused)
       case .completed:
-        await runUpload(completes: true)
+        await runUpload(mode: .completed)
+      case .failed:
+        await runUpload(mode: .failed)
+      case .needsReview:
+        await runUpload(mode: .needsReview)
       }
     }
 
-    private func runUpload(completes: Bool) async {
+    private enum UploadMode {
+      case completed
+      case failed
+      case needsReview
+      case paused
+    }
+
+    private func runUpload(mode: UploadMode) async {
       let pairBody = Data(#"{"code":"482731"}"#.utf8)
       _ = await perform(Self.request(
         method: "POST",
@@ -1154,11 +1193,19 @@ private final class NWComputerReceiverConnection: ComputerReceiverConnection, @u
       ))
       guard isActive else { return }
 
+      let completes = mode != .paused
       let totalBytes = completes ? 32 : 1_468_006
+      let entries: String
+      if mode == .needsReview {
+        entries = "[{\"path\":\"Alpha.m4a\",\"byteCount\":16},"
+          + "{\"path\":\"Beta.m4a\",\"byteCount\":16}]"
+      } else {
+        entries = "[{\"path\":\"Project Hail Mary.m4a\",\"byteCount\":\(totalBytes)}]"
+      }
       let createBody = Data(
-        "{\"entries\":[{\"path\":\"Project Hail Mary.m4a\",\"byteCount\":\(totalBytes)}],"
+        "{\"entries\":\(entries),\"selectionKind\":\"files\","
           .utf8
-      ) + Data(#""selectionKind":"files","selectionName":"Project Hail Mary"}"#.utf8)
+      ) + Data(#""selectionName":"Project Hail Mary"}"#.utf8)
       guard let response = await perform(Self.request(
         method: "POST",
         path: "/api/imports",
@@ -1166,20 +1213,20 @@ private final class NWComputerReceiverConnection: ComputerReceiverConnection, @u
         body: createBody
       )), let sessionID = Self.sessionID(from: response), isActive else { return }
 
-      let body = Data(
-        repeating: 0x50,
-        count: completes ? totalBytes : totalBytes / 2
-      )
-      _ = await perform(Self.request(
-        method: "PUT",
-        path: "/api/imports/\(sessionID)/files/0",
-        headers: Self.authorizationHeaders.merging([
-          "Content-Type": "application/octet-stream",
-          "X-Player-Upload-Offset": "0",
-        ]) { _, new in new },
-        body: body,
-        advertisedContentLength: totalBytes
-      ))
+      let uploadSizes = mode == .needsReview
+        ? [16, 16] : [completes ? totalBytes : totalBytes / 2]
+      for (index, byteCount) in uploadSizes.enumerated() {
+        _ = await perform(Self.request(
+          method: "PUT",
+          path: "/api/imports/\(sessionID)/files/\(index)",
+          headers: Self.authorizationHeaders.merging([
+            "Content-Type": "application/octet-stream",
+            "X-Player-Upload-Offset": "0",
+          ]) { _, new in new },
+          body: Data(repeating: 0x50 + UInt8(index), count: byteCount),
+          advertisedContentLength: mode == .paused ? totalBytes : byteCount
+        ))
+      }
       guard completes, isActive else { return }
       _ = await perform(Self.request(
         method: "POST",

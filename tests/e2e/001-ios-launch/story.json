@@ -4,6 +4,10 @@
   "test": "PlayerUITests/LaunchUITests/testLaunchesIntoEmptyLibrary",
   "nonvisualTests": [
     "PlayerUITests/LaunchUITests/testAudioSessionConfigurationWarningDoesNotPresentImportAlertAtStartup",
+    "PlayerUITests/LaunchUITests/testComputerReceiverVisibleActionsDriveProductionState",
+    "PlayerUITests/LaunchUITests/testComputerReceiverCloseWhileActiveConfirmsCleanup",
+    "PlayerUITests/LaunchUITests/testComputerReceiverRetriesListenerAndImportFailures",
+    "PlayerUITests/LaunchUITests/testComputerReceiverRoutesTerminalOutcomes",
     "PlayerUITests/LaunchUITests/testRejectsInvalidNavigationBeforeConstructingTheFixtureEnvironment",
     "PlayerUITests/LaunchUITests/testRejectsUnknownDynamicTypeConfigurationInsteadOfUsingMedium",
     "PlayerUITests/LaunchUITests/testRejectsUnknownFixtureWithoutFallingBackToProduction"
