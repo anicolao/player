@@ -2625,6 +2625,7 @@ func compactPlaybackTime(_ seconds: Double) -> String {
     var body: some View {
       VStack(alignment: .leading, spacing: 4) {
         probe
+        transportConfigurationProbe
         control("Play", identifier: "e2e-remote-play") {
           E2EPlaybackEventBridge.shared.sendRemote(.play)
         }
@@ -2661,6 +2662,35 @@ func compactPlaybackTime(_ seconds: Double) -> String {
         .accessibilityLabel("Playback event probe")
         .accessibilityIdentifier("e2e-playback-probe")
         .accessibilityValue(probeValue)
+    }
+
+    private var transportConfigurationProbe: some View {
+      let preferences = model.currentTransportPreferences
+      let bridge = E2EPlaybackEventBridge.shared
+      let remoteBack = bridge.preferredRemoteIntervals[.skipBackward]?.first ?? -1
+      let remoteForward = bridge.preferredRemoteIntervals[.skipForward]?.first ?? -1
+      let engineRate = bridge.playbackRate ?? -1
+      let currentBook = model.library.currentBookID.flatMap { bookID in
+        model.library.books.first(where: { $0.id == bookID })
+      }
+      let source = currentBook?.transportPreferenceOverride == nil ? "global" : "book"
+      let seek = preferences.seekContext == .chapter ? "chapter" : "whole-book"
+      return Color.clear
+        .frame(width: 1, height: 1)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Transport configuration probe")
+        .accessibilityIdentifier("e2e-transport-configuration-probe")
+        .accessibilityValue([
+          "transport",
+          "rate=\(TransportPreferencesEditor.rateToken(preferences.playbackRate))",
+          "engine=\(TransportPreferencesEditor.rateToken(engineRate))",
+          "back=\(Int(preferences.backwardSkipSeconds))",
+          "forward=\(Int(preferences.forwardSkipSeconds))",
+          "remote-back=\(Int(remoteBack))",
+          "remote-forward=\(Int(remoteForward))",
+          "seek=\(seek)",
+          "source=\(source)",
+        ].joined(separator: "|"))
     }
 
     private func control(

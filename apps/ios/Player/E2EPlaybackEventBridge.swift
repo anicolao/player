@@ -34,6 +34,7 @@
     private(set) var audioActivationCount = 0
     private(set) var latestPostedAudioEvent = "none"
     private(set) var beganReceivingRemoteControlEvents = false
+    private(set) var preferredRemoteIntervals: [RemoteCommandRegistration: [Double]] = [:]
 
     var hasPlaybackController: Bool { playbackController != nil }
 
@@ -48,6 +49,7 @@
       audioActivationCount = 0
       latestPostedAudioEvent = "none"
       beganReceivingRemoteControlEvents = false
+      preferredRemoteIntervals = [:]
       playbackController = nil
     }
 
@@ -112,8 +114,14 @@
       registeredCommands.remove(command.rawValue)
     }
 
-    func setPreferredIntervals(_ intervals: [Double], for command: RemoteCommandRegistration) {}
+    func setPreferredIntervals(_ intervals: [Double], for command: RemoteCommandRegistration) {
+      preferredRemoteIntervals[command] = intervals
+    }
     func setSupportedPlaybackRates(_ rates: [Double]) {}
+
+    var playbackRate: Double? {
+      playbackController?.playbackRate
+    }
 
     @discardableResult
     func sendRemote(

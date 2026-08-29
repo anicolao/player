@@ -29,6 +29,8 @@
     "PlayerUITests/PositionRestoreUITests/testLiveProgressUpdatesMiniAndFullPlayerAcrossLifecycle",
     "PlayerUITests/RemoteInterruptionUITests/testRemoteInterruptionAndBackgroundEventsJournalAcknowledgedPositions",
     "PlayerUITests/TransportControlsUITests/testCustomizesAndRestoresListeningControls",
+    "PlayerUITests/TransportControlsUITests/testUsesCurrentLibraryDefaultsAcrossPlaybackRemoteControlsAndRelaunch",
+    "PlayerUITests/TransportControlsUITests/testFailedLibraryDefaultsClearKeepsEditorAndOverrideTruthful",
     "PlayerUITests/SmartRewindUITests/testSmartRewindAdaptsClampsPersistsAndUndoesExactly",
     "PlayerUITests/SmartRewindUITests/testSmartRewindNoticeDismissesAfterFiveSecondsOfPlaybackProgress"
   ]},

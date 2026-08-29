@@ -179,6 +179,7 @@ struct E2ELaunchConfiguration: Equatable {
     resetArgument,
     "-e2e-event-controls",
     "-e2e-rewind-expiry-control",
+    "-e2e-transport-clear-failure",
     "-e2e-computer-receiver-ready",
     "-e2e-mirroring-drop-progress",
     "-e2e-computer-receiver-completed",
@@ -984,6 +985,14 @@ extension PlayerEnvironment {
       if let launch = e2eLaunchConfiguration {
         let fixture = launch.fixture
         let reset = launch.consumeReset()
+        let failsTransportOverrideClear = arguments.contains(
+          "-e2e-transport-clear-failure"
+        )
+        guard !failsTransportOverrideClear || fixture == .metadataRichBook else {
+          throw PlayerCoreError.fileOperation(
+            "The transport-clear persistence failure requires the metadata-rich-book fixture."
+          )
+        }
         switch fixture {
         case .emptyLibrary:
           return try emptyLibraryEnvironment(reset: reset, playbackControls: playbackControls)
@@ -1004,7 +1013,8 @@ extension PlayerEnvironment {
           return try metadataRichBookEnvironment(
             reset: reset,
             namespace: E2EMetadataRichBookNamespace.parse(arguments: arguments),
-            playbackControls: playbackControls
+            playbackControls: playbackControls,
+            failsTransportOverrideClear: failsTransportOverrideClear
           )
         case .messyMultifileUnicode:
           return try messyMultifileEnvironment(reset: reset)
@@ -1920,6 +1930,7 @@ extension PlayerEnvironment {
       reset: Bool,
       namespace: String,
       playbackControls: E2EPlaybackControlConfiguration = .disabled,
+      failsTransportOverrideClear: Bool = false,
       root overrideRoot: URL? = nil
     ) throws -> PlayerEnvironment {
       let artworkOverride = try E2EMetadataRichCoverPayload.parseOverride(
@@ -2017,11 +2028,15 @@ extension PlayerEnvironment {
         playbackEventBridge.reset()
         playbackEventBridge.connect(playbackController: playback)
       }
-      return PlayerEnvironment(
-        persistence: E2ESeededLibraryStore(
+      let seededStore = E2ESeededLibraryStore(
           base: CodableLibraryStore(fileURL: libraryURL),
           seed: seed
-        ),
+        )
+      let persistence: any LibraryPersisting = failsTransportOverrideClear
+        ? E2ETransportOverrideClearFailingStore(base: seededStore)
+        : seededStore
+      return PlayerEnvironment(
+        persistence: persistence,
         media: FileSystemMediaManager(rootURL: root),
         inspector: DeterministicAudioInspector(result: .failure(.unreadableAudio("unused"))),
         playback: playback,
@@ -4386,6 +4401,31 @@ extension PlayerEnvironment {
 
     func save(_ snapshot: LibrarySnapshot) async throws {
       try await base.save(snapshot)
+    }
+  }
+
+  private actor E2ETransportOverrideClearFailingStore: LibraryPersisting {
+    let base: any LibraryPersisting
+
+    init(base: any LibraryPersisting) {
+      self.base = base
+    }
+
+    func load() async throws -> LibrarySnapshot {
+      try await base.load()
+    }
+
+    func save(_ candidate: LibrarySnapshot) async throws {
+      let current = try await base.load()
+      let clearsOverride = current.books.contains { currentBook in
+        currentBook.transportPreferenceOverride != nil
+          && candidate.books.first(where: { $0.id == currentBook.id })?
+            .transportPreferenceOverride == nil
+      }
+      guard !clearsOverride else {
+        throw CocoaError(.fileWriteUnknown)
+      }
+      try await base.save(candidate)
     }
   }
 

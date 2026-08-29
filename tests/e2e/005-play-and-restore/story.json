@@ -9,6 +9,8 @@
   "nonvisualTests": [
     "PlayerUITests/PositionRestoreUITests/testLiveProgressUpdatesMiniAndFullPlayerAcrossLifecycle",
     "PlayerUITests/RemoteInterruptionUITests/testRemoteInterruptionAndBackgroundEventsJournalAcknowledgedPositions",
+    "PlayerUITests/TransportControlsUITests/testUsesCurrentLibraryDefaultsAcrossPlaybackRemoteControlsAndRelaunch",
+    "PlayerUITests/TransportControlsUITests/testFailedLibraryDefaultsClearKeepsEditorAndOverrideTruthful",
     "PlayerUITests/SmartRewindUITests/testSmartRewindNoticeDismissesAfterFiveSecondsOfPlaybackProgress"
   ],
   "fixture": "committed-current-book",

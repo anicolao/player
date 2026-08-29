@@ -154,6 +154,24 @@ The final configured skip must be durably acknowledged as book position
 the final stable paused state is captured as
 `002-transport-controls.png`; all setup and moving states are assertion-only.
 
+`testUsesCurrentLibraryDefaultsAcrossPlaybackRemoteControlsAndRelaunch` first
+creates a complete per-book override through the production editor. In a later
+process it changes the library defaults to 1.50× speed, 15-second backward skip,
+45-second forward skip, and whole-book scrubbing, then clears the still-durable
+book override through **Use Library Defaults**. The visible labels, deterministic
+playback adapter, production remote-command adapter, local skip buttons,
+whole-book slider seek, and injected car/headset track buttons must all change
+to those current defaults before the action is considered complete. A final
+relaunch must report `source=global`, preserve the resulting position, and no
+longer offer **Use Library Defaults** for that book.
+
+`testFailedLibraryDefaultsClearKeepsEditorAndOverrideTruthful` injects a save
+failure only at the persistence boundary when an existing override would be
+removed. The production editor must remain presented with `scope=book`, report
+the storage error, and keep both the visible and relaunched transport state on
+the original override. These two checks are semantic-only and create no new
+screenshot or hierarchy attachments.
+
 ## Smart Rewind, durable explanation, and exact Undo
 
 `SmartRewindUITests` launches the `smart-rewind` fixture with an injected fixed
