@@ -854,7 +854,12 @@ final class ComputerReceiverTests: XCTestCase {
       """,
       baseURL: pageURL
     )
-    await fulfillment(of: [documentReady], timeout: 2)
+    // XCTWaiter lets the exact bridge state arbitrate a deadline-edge delivery
+    // instead of recording an unconditional timeout before that state is read.
+    let documentWait = await XCTWaiter.fulfillment(of: [documentReady], timeout: 2)
+    if documentWait != .completed, documentBridge.origin == nil {
+      XCTFail("WebKit did not execute the same-origin receiver document within two seconds")
+    }
     XCTAssertEqual(documentBridge.origin, expectedOrigin)
 
     let journeyCompleted = expectation(description: "Browser completed the HTTP transfer")
