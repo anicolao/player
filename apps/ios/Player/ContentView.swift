@@ -80,6 +80,7 @@ struct E2ELaunchNavigationConfiguration: Equatable {
 
 struct ContentView: View {
   @Environment(\.scenePhase) private var scenePhase
+  @Environment(\.dynamicTypeSize) private var dynamicTypeSize
   @Bindable var model: PlayerModel
   @State private var selection: AppSection = .library
   @State private var isImporting = false
@@ -183,6 +184,7 @@ struct ContentView: View {
       ) { needsInbox in
         selection = needsInbox ? .inbox : .library
       }
+      .dynamicTypeSize(dynamicTypeSize)
     }
     .fullScreenCover(item: $presentedPlayerBook) { book in
       NowPlayingView(
@@ -190,6 +192,7 @@ struct ContentView: View {
         book: book,
         showsRewindExpiryControl: playbackControls.rewindExpiryControl
       )
+      .dynamicTypeSize(dynamicTypeSize)
     }
     .sheet(isPresented: $model.isFullUnlockPresented) {
       NavigationStack {
@@ -200,6 +203,7 @@ struct ContentView: View {
             }
           }
       }
+      .dynamicTypeSize(dynamicTypeSize)
     }
     #if E2E
       .overlay(alignment: .topLeading) {
