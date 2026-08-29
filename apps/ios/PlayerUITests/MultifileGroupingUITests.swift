@@ -126,6 +126,10 @@ final class MultifileGroupingUITests: XCTestCase {
     let orderScreen = anyElement(app, "review-order-screen")
     let orderProbe = anyElement(app, "order-probe")
     let orderingEvidence = anyElement(app, "ordering-evidence-natural-numeric")
+    try requireValue(
+      orderProbe,
+      "order|revision|0|a|a1,a2,a10,ap|b|b3,b4,b5,b6"
+    )
     XCTAssertEqual(
       app.descendants(matching: .any)
         .matching(identifier: "ordering-evidence-natural-numeric").count,
