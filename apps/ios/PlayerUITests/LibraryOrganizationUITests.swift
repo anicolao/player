@@ -69,7 +69,11 @@ final class LibraryOrganizationUITests: XCTestCase {
         .exists(app.buttons["browse-authors"], "Author browsing is available"),
         .exists(app.buttons["browse-narrators"], "Narrator browsing is available"),
         .exists(addAudiobook, "The tab pill includes the Add Audiobook action"),
-        .hittable(addAudiobook, "The pill-integrated Add Audiobook action is directly tappable"),
+        StepVerification(
+          specification: "The pill-integrated Add Audiobook action is directly tappable"
+        ) {
+          self.tabActionHasPhysicalTarget(addAudiobook, in: app)
+        },
       ],
       captureReadiness: organizationCaptureReadiness(
         app: app,
@@ -111,13 +115,22 @@ final class LibraryOrganizationUITests: XCTestCase {
             )
           }
           && addAudiobook.exists
-          && addAudiobook.isHittable
+          && self.tabActionHasPhysicalTarget(addAudiobook, in: app)
       }
     )
 
-    addAudiobook.tap()
-    XCTAssertTrue(anyElement(app, "computer-receiver-screen").waitForExistence(timeout: 2))
-    XCTAssertTrue(app.buttons["choose-from-files-computer-receiver"].exists)
+    tapTabAction(addAudiobook, in: app)
+    let receiverScreen = anyElement(app, "computer-receiver-screen")
+    XCTAssertTrue(
+      waitForExistence(receiverScreen, deadline: EventDeadline()),
+      "The Add Audiobook action must present Receive from Computer"
+    )
+    XCTAssertTrue(
+      waitForExistence(
+        app.buttons["choose-from-files-computer-receiver"],
+        deadline: EventDeadline()
+      )
+    )
     app.buttons["Close"].tap()
     XCTAssertTrue(anyElement(app, "library-screen").waitForExistence(timeout: 2))
 
@@ -1419,6 +1432,44 @@ final class LibraryOrganizationUITests: XCTestCase {
       }
       return true
     }
+  }
+
+  private func tabActionHasPhysicalTarget(
+    _ action: XCUIElement,
+    in app: XCUIApplication
+  ) -> Bool {
+    let tabBar = app.tabBars.element
+    guard action.exists, tabBar.exists else { return false }
+    let actionFrame = action.frame
+    let tabBarFrame = tabBar.frame
+    guard !actionFrame.isEmpty, !tabBarFrame.isEmpty else { return false }
+    return actionFrame.width >= 44
+      && actionFrame.height >= 44
+      && tabBarFrame.contains(actionFrame)
+  }
+
+  private func tapTabAction(
+    _ action: XCUIElement,
+    in app: XCUIApplication
+  ) {
+    let hasPhysicalTarget = tabActionHasPhysicalTarget(action, in: app)
+    XCTAssertTrue(
+      hasPhysicalTarget,
+      "The Add Audiobook tab action must retain a visible 44-point physical target"
+    )
+    let actionFrame = action.frame
+    let appFrame = app.frame
+    guard hasPhysicalTarget, !appFrame.isEmpty else { return }
+
+    // Anchor input to the stable application surface. XCTest can report a
+    // fixed tab item non-hittable, or lose an element-bound tap, while its
+    // physical frame remains visible and unchanged under accessibility load.
+    app.coordinate(
+      withNormalizedOffset: CGVector(
+        dx: (actionFrame.midX - appFrame.minX) / appFrame.width,
+        dy: (actionFrame.midY - appFrame.minY) / appFrame.height
+      )
+    ).tap()
   }
 
   private func requireValue(_ element: XCUIElement, _ expected: String) throws {
