@@ -795,7 +795,13 @@ final class ComputerReceiverTests: XCTestCase {
       importHandler: { urls in await capture.importURLs(urls) },
       eventHandler: { _ in }
     )
-    let pageURL = try XCTUnwrap(URL(string: ready.address))
+    var pageComponents = try XCTUnwrap(URLComponents(string: ready.address))
+    // This browser is running inside the same process as the receiver. Using the
+    // advertised LAN address makes a fresh simulator gate the navigation on the
+    // local-network privacy prompt, while loopback exercises the identical live
+    // HTTP server without depending on simulator permission state.
+    pageComponents.host = "127.0.0.1"
+    let pageURL = try XCTUnwrap(pageComponents.url)
     let webView = WKWebView(frame: .zero)
     let pageLoaded = expectation(description: "WebKit loaded the production receiver page")
     let navigation = ReceiverWebNavigationDelegate(pageLoaded: pageLoaded)
@@ -1418,6 +1424,15 @@ private final class ReceiverWebNavigationDelegate: NSObject, WKNavigationDelegat
     withError error: any Error
   ) {
     XCTFail("WebKit failed to load the receiver: \(error)")
+    pageLoaded.fulfill()
+  }
+
+  func webView(
+    _ webView: WKWebView,
+    didFailProvisionalNavigation navigation: WKNavigation!,
+    withError error: any Error
+  ) {
+    XCTFail("WebKit failed to begin loading the receiver: \(error)")
     pageLoaded.fulfill()
   }
 }
