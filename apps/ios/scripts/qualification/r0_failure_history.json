@@ -1649,6 +1649,30 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request matrix run rather than a formal repeated qualification attempt, so no consecutive core qualification count existed to reset."
+    },
+    {
+      "signature": "ui-test:CommittedMetadataEditingUITests.testPersistsCommittedMetadataUpdatesIndexesAndUndoesAtomically:search-deadline-edge",
+      "story": "004-metadata-repair",
+      "evidence": {
+        "workflowRun": 33260693814,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 004 artifact 9717517423 and lane-2 summary artifact 9717518166 retained the failed XCTest timeline, final semantic probe, and diagnostics",
+        "url": "https://github.com/anicolao/player/actions/runs/33260693814/job/99122003492",
+        "commit": "e3063e8e18c4080c9e80241d8e6296b2fc3278dc",
+        "observation": "The two-second predicate wait reported timeout for the cancelled-draft search, but the failure's immediately read semantic probe was already the exact valid indexed result: normalized query cancelled draft, count zero, empty reason query, and order none. Every other lane passed, and the companion Story 004 crop journey passed."
+      },
+      "rootCause": "The search helper treated XCTWaiter's completion result as authoritative without re-evaluating the same semantic predicate at the deadline edge. When the accessibility snapshot became current during the waiter's timeout transition, the helper rejected a state that its own final diagnostic proved already satisfied every requested search invariant.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Evaluate the exact indexed search predicate before waiting, wait on that predicate within one unchanged two-second EventDeadline, and evaluate it once more at the same deadline edge before failing. No sleep, retry, or longer timeout is introduced.",
+        "commits": [
+          "f6b3d72bd566cd372b0df49b38275b3f9cd28281"
+        ],
+        "validation": "The complete committed-metadata journey passed 20/20 consecutive local repetitions with zero failures in 1,708.296 seconds, covering cancellation, zero-result and positive-result search, metadata commit, index updates, relaunch, and atomic undo on every attempt."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request matrix run rather than a formal repeated qualification attempt, so no consecutive Story 004 qualification count existed to reset."
     }
   ]
 }
