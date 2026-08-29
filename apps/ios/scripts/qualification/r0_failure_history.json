@@ -2,6 +2,30 @@
   "schemaVersion": 1,
   "entries": [
     {
+      "signature": "ui-test:MetadataRepairUITests.testRepairsLocksCommitsAndUndoesMetadataWithoutChangingAudio:crop-slider-endpoint",
+      "story": "004-metadata-repair",
+      "evidence": {
+        "workflowRun": 33235409727,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions job 99055473998 retained the failed crop state, accessibility hierarchy, and screen recording from formal attempt 9",
+        "url": "https://github.com/anicolao/player/actions/runs/33235409727/job/99055473998",
+        "commit": "2dac4caf1e974fd28c6e5634fc3c2d0fcaf622f4",
+        "observation": "After XCTest adjusted both crop sliders to their maximum normalized positions, the semantic preview reported x:0.365:y:0.182:width:0.635:height:0.635 instead of the required x:0.500:y:0.250:width:0.500:height:0.500."
+      },
+      "rootCause": "XCUIElement slider adjustment can return before SwiftUI has consumed the requested endpoint, and the journey issued the second adjustment without first observing the zoom endpoint. The two unobserved interactions compounded into a valid but partial crop.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "pending-focused-validation",
+        "summary": "Drive each slider independently to its semantic endpoint, retrying only while a shared event deadline remains, and require the exact zoom state before moving the horizontal focal point.",
+        "commits": [
+          "71945c83784922177074f47c08c38fbf8dc29471"
+        ],
+        "validation": "Source hygiene and qualification aggregation contracts pass. Focused Story 004 validation is pending the shared simulator lease."
+      },
+      "qualificationResetCount": 1,
+      "resetEvidence": "Formal exact-SHA qualification run 33235409727 failed Story 004 attempt 9, resetting the consecutive qualification count."
+    },
+    {
       "signature": "screenshot:pixel-difference:003-smart-rewind-applied.png",
       "story": "005-play-and-restore",
       "evidence": {
