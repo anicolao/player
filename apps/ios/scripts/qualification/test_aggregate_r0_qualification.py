@@ -45,6 +45,11 @@ def write_png(path, width=1, height=1):
     path.write_bytes(payload)
 
 
+def png_chunk(name, data):
+    checksum = zlib.crc32(name + data) & 0xffffffff
+    return struct.pack(">I", len(data)) + name + data + struct.pack(">I", checksum)
+
+
 def write_integrity_manifest(root):
     paths = sorted(path for path in root.rglob("*")
                    if path.is_file() and path.name != "EvidenceManifest.sha256")
@@ -456,6 +461,32 @@ class QualificationAggregatorTests(unittest.TestCase):
         errors = json.loads((self.root / "report/QualificationSummary.json").read_text())["errors"]
         self.assertTrue(any("incomplete PNG" in error for error in errors))
 
+    def test_rejects_renderer_png_without_decodable_pixels(self):
+        renderer_root = self.matrix_root / "artifact-5/Matrices/matrix-01/AppStoreListing"
+        image = renderer_root / "screenshots/1.png"
+        header = struct.pack(">IIBBBBB", 1320, 2868, 8, 2, 0, 0, 0)
+        for image_data in (None, b"not-zlib"):
+            image.write_bytes(
+                b"\x89PNG\r\n\x1a\n" + png_chunk(b"IHDR", header)
+                + (png_chunk(b"IDAT", image_data) if image_data is not None else b"")
+                + png_chunk(b"IEND", b""))
+            write_integrity_manifest(renderer_root)
+            self.assertEqual(self.run_aggregate(), 1)
+            errors = json.loads(
+                (self.root / "report/QualificationSummary.json").read_text())["errors"]
+            self.assertTrue(any("renderer has invalid 1.png" in error for error in errors))
+
+    def test_failure_evidence_png_requires_decodable_pixels(self):
+        image = self.root / "failure-screen.png"
+        header = struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0)
+        image.write_bytes(b"\x89PNG\r\n\x1a\n" + png_chunk(b"IHDR", header)
+                          + png_chunk(b"IEND", b""))
+        self.assertIsNone(evidence_module.png_dimensions(image))
+        image.write_bytes(b"\x89PNG\r\n\x1a\n" + png_chunk(b"IHDR", header)
+                          + png_chunk(b"IDAT", zlib.compress(b"\0\0\0\0"))
+                          + png_chunk(b"IEND", b""))
+        self.assertEqual(evidence_module.png_dimensions(image), (1, 1))
+
     def test_rejects_malformed_story_and_lane_durations_without_crashing(self):
         story = json.loads(self.story_summary().read_text())
         story["stories"][0]["attempts"][0]["durationSeconds"] = -1
@@ -677,6 +708,24 @@ class QualificationAggregatorTests(unittest.TestCase):
              "qualification-log-failure-test", str(support), str(commands), str(scripts[0])],
             check=True, capture_output=True, text=True)
         self.assertTrue(log_failure.stdout.endswith("status=1\n"))
+
+        fake_bin = commands / "fake-bin"
+        fake_bin.mkdir()
+        fake_tee = fake_bin / "tee"
+        fake_tee.write_text("#!/usr/bin/env bash\n/bin/cat\nexit 9\n", encoding="utf-8")
+        fake_tee.chmod(0o755)
+        tee_failure = subprocess.run(
+            ["bash", "-c",
+             'set +e; PATH="$2:$PATH"; . "$1"; '
+             'qualification_run_logged_commands "$3" "$4"; status=$?; set -e; '
+             'printf "status=%s command=%s log=%s failed=%s\\n" "$status" '
+             '"$QUALIFICATION_COMMAND_EXIT_CODE" "$QUALIFICATION_LOG_EXIT_CODE" '
+             '"$QUALIFICATION_FAILED_COMMAND"',
+             "qualification-tee-failure-test", str(support), str(fake_bin),
+             str(commands / "tee-failure.log"), str(scripts[0])],
+            check=True, capture_output=True, text=True)
+        self.assertTrue(tee_failure.stdout.endswith(
+            "status=9 command=0 log=9 failed=\n"))
 
     def test_shell_integrity_manifest_attests_the_exact_file_set(self):
         retained = self.root / "shell-integrity"

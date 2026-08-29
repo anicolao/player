@@ -162,7 +162,9 @@ def png_dimensions(path: Path):
     payload = path.read_bytes()
     if not payload.startswith(b"\x89PNG\r\n\x1a\n"):
         raise ValueError("invalid PNG signature")
-    offset, dimensions, ended = 8, None, False
+    offset, dimensions, header = 8, None, None
+    ended, saw_idat = False, False
+    compressed = bytearray()
     while offset + 12 <= len(payload):
         length = struct.unpack(">I", payload[offset:offset + 4])[0]
         chunk_type = payload[offset + 4:offset + 8]
@@ -177,14 +179,49 @@ def png_dimensions(path: Path):
             if chunk_type != b"IHDR" or length != 13:
                 raise ValueError("missing PNG IHDR")
             dimensions = struct.unpack(">II", chunk_data[:8])
+            header = struct.unpack(">IIBBBBB", chunk_data)
+        elif chunk_type == b"IHDR":
+            raise ValueError("duplicate PNG IHDR")
+        if chunk_type == b"IDAT":
+            saw_idat = True
+            compressed.extend(chunk_data)
         if chunk_type == b"IEND":
+            if length != 0:
+                raise ValueError("invalid PNG IEND")
             ended = True
             if end != len(payload):
                 raise ValueError("data follows PNG IEND")
             break
         offset = end
-    if not ended or dimensions is None or min(dimensions) <= 0:
+    if not ended or dimensions is None or header is None or min(dimensions) <= 0:
         raise ValueError("incomplete PNG")
+    if not saw_idat:
+        raise ValueError("missing PNG image data")
+    width, height, bit_depth, color_type, compression, filtering, interlace = header
+    legal_depths = {0: {1, 2, 4, 8, 16}, 2: {8, 16}, 3: {1, 2, 4, 8},
+                    4: {8, 16}, 6: {8, 16}}
+    channels = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}
+    if bit_depth not in legal_depths.get(color_type, set()) \
+            or compression != 0 or filtering != 0 or interlace not in (0, 1):
+        raise ValueError("unsupported PNG header")
+    bits_per_pixel = bit_depth * channels[color_type]
+    if interlace == 0:
+        expected_bytes = height * (1 + (width * bits_per_pixel + 7) // 8)
+    else:
+        expected_bytes = 0
+        for x_start, y_start, x_step, y_step in (
+                (0, 0, 8, 8), (4, 0, 8, 8), (0, 4, 4, 8), (2, 0, 4, 4),
+                (0, 2, 2, 4), (1, 0, 2, 2), (0, 1, 1, 2)):
+            pass_width = max(0, (width - x_start + x_step - 1) // x_step)
+            pass_height = max(0, (height - y_start + y_step - 1) // y_step)
+            if pass_width and pass_height:
+                expected_bytes += pass_height * (1 + (pass_width * bits_per_pixel + 7) // 8)
+    try:
+        pixels = zlib.decompress(bytes(compressed))
+    except zlib.error as error:
+        raise ValueError(f"invalid PNG image data: {error}") from error
+    if len(pixels) != expected_bytes:
+        raise ValueError("PNG image data has an invalid decoded size")
     return dimensions
 
 

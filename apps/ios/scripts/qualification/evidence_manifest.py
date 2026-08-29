@@ -11,6 +11,7 @@ import stat
 import struct
 import sys
 import tempfile
+import zlib
 from pathlib import Path, PurePosixPath
 
 
@@ -174,15 +175,63 @@ def png_dimensions(path: Path):
     try:
         if not path.is_file() or path.is_symlink():
             return None
-        with path.open("rb") as handle:
-            header = handle.read(24)
+        payload = path.read_bytes()
     except OSError:
         return None
-    if len(header) != 24 or header[:8] != b"\x89PNG\r\n\x1a\n" \
-            or header[8:12] != b"\x00\x00\x00\r" or header[12:16] != b"IHDR":
+    try:
+        if not payload.startswith(b"\x89PNG\r\n\x1a\n"):
+            return None
+        offset, header, ended, saw_idat = 8, None, False, False
+        compressed = bytearray()
+        while offset + 12 <= len(payload):
+            length = struct.unpack(">I", payload[offset:offset + 4])[0]
+            chunk_type = payload[offset + 4:offset + 8]
+            end = offset + 12 + length
+            if end > len(payload):
+                return None
+            data = payload[offset + 8:offset + 8 + length]
+            checksum = struct.unpack(">I", payload[offset + 8 + length:end])[0]
+            if zlib.crc32(chunk_type + data) & 0xffffffff != checksum:
+                return None
+            if offset == 8:
+                if chunk_type != b"IHDR" or length != 13:
+                    return None
+                header = struct.unpack(">IIBBBBB", data)
+            elif chunk_type == b"IHDR":
+                return None
+            if chunk_type == b"IDAT":
+                saw_idat = True
+                compressed.extend(data)
+            if chunk_type == b"IEND":
+                if length != 0 or end != len(payload):
+                    return None
+                ended = True
+                break
+            offset = end
+        if not ended or not saw_idat or header is None:
+            return None
+        width, height, bit_depth, color_type, compression, filtering, interlace = header
+        legal_depths = {0: {1, 2, 4, 8, 16}, 2: {8, 16}, 3: {1, 2, 4, 8},
+                        4: {8, 16}, 6: {8, 16}}
+        channels = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}
+        if width <= 0 or height <= 0 or bit_depth not in legal_depths.get(color_type, set()) \
+                or compression != 0 or filtering != 0 or interlace not in (0, 1):
+            return None
+        bits_per_pixel = bit_depth * channels[color_type]
+        if interlace == 0:
+            expected_bytes = height * (1 + (width * bits_per_pixel + 7) // 8)
+        else:
+            expected_bytes = 0
+            for x_start, y_start, x_step, y_step in (
+                    (0, 0, 8, 8), (4, 0, 8, 8), (0, 4, 4, 8), (2, 0, 4, 4),
+                    (0, 2, 2, 4), (1, 0, 2, 2), (0, 1, 1, 2)):
+                pass_width = max(0, (width - x_start + x_step - 1) // x_step)
+                pass_height = max(0, (height - y_start + y_step - 1) // y_step)
+                if pass_width and pass_height:
+                    expected_bytes += pass_height * (1 + (pass_width * bits_per_pixel + 7) // 8)
+        return (width, height) if len(zlib.decompress(bytes(compressed))) == expected_bytes else None
+    except (struct.error, zlib.error):
         return None
-    width, height = struct.unpack(">II", header[16:24])
-    return (width, height) if width > 0 and height > 0 else None
 
 
 def screen_recording_candidates(root: Path, attachments, errors):

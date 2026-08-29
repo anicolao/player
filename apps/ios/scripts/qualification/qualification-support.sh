@@ -45,7 +45,9 @@ qualification_run_logged_commands() {
     command_status="${pipeline_statuses[0]}"
     log_status="${pipeline_statuses[1]}"
     if [[ "${command_status}" -ne 0 || "${log_status}" -ne 0 ]]; then
-      QUALIFICATION_FAILED_COMMAND="$(basename "${command}")"
+      if [[ "${command_status}" -ne 0 ]]; then
+        QUALIFICATION_FAILED_COMMAND="$(basename "${command}")"
+      fi
       QUALIFICATION_COMMAND_EXIT_CODE="${command_status}"
       QUALIFICATION_LOG_EXIT_CODE="${log_status}"
       if [[ "${command_status}" -ne 0 ]]; then return "${command_status}"; fi
