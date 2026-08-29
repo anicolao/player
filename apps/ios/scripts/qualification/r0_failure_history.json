@@ -1697,6 +1697,54 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request matrix run rather than a formal repeated qualification attempt, so no consecutive core qualification count existed to reset."
+    },
+    {
+      "signature": "ui-test:CommittedMetadataEditingUITests.testPersistsCommittedMetadataUpdatesIndexesAndUndoesAtomically:stale-editor-absence-proxy",
+      "story": "004-metadata-repair",
+      "evidence": {
+        "workflowRun": 33267261199,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 004 artifact 9719397851 and lane-2 summary artifact 9719398314 retained the failed XCTest timeline and failure screen",
+        "url": "https://github.com/anicolao/player/actions/runs/33267261199/job/99139427020",
+        "commit": "8084661f8d8fe0d5d39d00af79859ab1541dd644",
+        "observation": "After Save, the two-second absence query still reported metadata-editor-screen, but the failure screenshot already showed Book Detail with every edited field and Undo Edit. The exact committed-metadata integrity probe was the next assertion and represented the completed transaction directly."
+      },
+      "rootCause": "The journey used disappearance of the source editor accessibility node as a proxy for Save completion. XCTest retained a stale source-node query after SwiftUI had already presented the committed Book Detail destination, so the proxy failed despite the requested model transition being complete.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Await the exact committed metadata integrity probe immediately after Save; subsequent detail, index, relaunch, and undo assertions retain all behavioral coverage without relying on stale source-node disappearance.",
+        "commits": [
+          "15f694c428c3488bb13d7b0ae80db0d142c653c0"
+        ],
+        "validation": "The complete canonical Story 004 passed locally: both committed metadata editing and the companion real crop/render/persistence journey passed in 132.645 seconds, all four owned screenshots matched, and the walkthrough remained exact."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request matrix run rather than a formal repeated qualification attempt, so no consecutive Story 004 qualification count existed to reset."
+    },
+    {
+      "signature": "ui-test:ImportIngressResilienceUITests.testConsumesAndDeduplicatesShareExtensionAppGroupHandoff:value-deadline-edge",
+      "story": "002-import-and-play",
+      "evidence": {
+        "workflowRun": 33267261199,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 002 artifact 9719410211 and lane-5 summary artifact 9719411283 retained the failed XCTest timeline and semantic value diagnostic",
+        "url": "https://github.com/anicolao/player/actions/runs/33267261199/job/99139426980",
+        "commit": "8084661f8d8fe0d5d39d00af79859ab1541dd644",
+        "observation": "The exact-value wait returned false at the two-second deadline, while its immediately printed actual share-handoff-probe value was byte-for-byte identical to the expected consumed, deduplicated, source-unchanged state."
+      },
+      "rootCause": "The exact-value helper waited on one combined predicate but, after a deadline-edge wakeup, performed separate exists and value accessibility queries. Those non-atomic queries could reject the transition even though the single semantic snapshot available at the deadline already matched exactly.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Evaluate the same combined exists-and-exact-value predicate before and after the unchanged two-second waiter, eliminating the split final queries without adding a retry, sleep, or longer timeout.",
+        "commits": [
+          "5efd39b6ed7c83aa37ced7f465710fa34aec85f5"
+        ],
+        "validation": "The complete canonical Story 002 passed all seven tests locally in 96.645 seconds, including Share Extension consumption and deduplication, document-open restart recovery, import/playback, duration-unavailable playback, chapter progression, six reviewed screenshots, and the exact walkthrough."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request matrix run rather than a formal repeated qualification attempt, so no consecutive Story 002 qualification count existed to reset."
     }
   ]
 }
