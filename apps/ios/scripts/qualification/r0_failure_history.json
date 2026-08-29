@@ -1555,25 +1555,25 @@
       "resetEvidence": "This was a normal pull-request matrix run rather than a formal repeated qualification attempt, so no consecutive Story 003 qualification count existed to reset."
     },
     {
-      "signature": "core-test:ComputerReceiverTests.testWebKitBrowserLoadsReceiverAndCompletesARealLocalHTTPImport:detached-browser-scheduling",
+      "signature": "core-test:ComputerReceiverTests.testWebKitBrowserLoadsReceiverAndCompletesARealLocalHTTPImport:browser-render-contract-coupling",
       "story": "core",
       "evidence": {
-        "workflowRun": 33251344130,
+        "workflowRun": 33253993929,
         "workflowAttempt": 1,
-        "artifact": "GitHub Actions lane-5 summary artifact 9715165083 retained Core.xcresult and core-tests.log",
-        "url": "https://github.com/anicolao/player/actions/runs/33251344130/job/99097440838",
-        "commit": "2c9a74fa28b6011df5f5efb3471efde42c59e7fa",
-        "observation": "All 13 canonical UI stories passed and the shared core run passed 370 of 371 tests. After the delegate had been retained and the URL changed to loopback, the real WebKit test still emitted neither a completion nor a provisional-failure event for two seconds. JavaScript then ran in the unchanged blank document, reported an invalid relative URL, and no upload reached the import handler."
+        "artifact": "GitHub Actions lane-5 summary artifact 9715719712 retained Core.xcresult and core-tests.log",
+        "url": "https://github.com/anicolao/player/actions/runs/33253993929/job/99104431668",
+        "commit": "117bc0d8f518c8bfd4c135cabf5efa59b1bac93f",
+        "observation": "All 13 canonical UI stories passed and the shared core run passed 370 of 371 tests. Even after the WebKit view was nonzero and visibly hosted, the test's production Svelte document and external assets did not finish rendering within two seconds on the loaded host. The custom API script consequently ran in the prior blank document, where its relative URL was invalid, so no upload reached the import handler."
       },
-      "rootCause": "The integration test created a zero-sized WKWebView without a view controller or window, then treated it like a visible browser. WebKit does not promise prompt navigation scheduling for a non-renderable detached view; under hosted load it could leave that navigation idle without a success or failure callback. The recurrence after both delegate retention and loopback routing isolated detached browser scheduling from those earlier environmental dependencies.",
+      "rootCause": "One test coupled two independently owned contracts: the production Svelte document/static-asset route and the browser-origin receiver API transfer. The former is already covered by the real local HTTP flow and receiver web suite, while this test's unique browser-to-app assertions begin with pairing. Requiring full Svelte rendering before injecting the API journey made unrelated WebKit rendering and asset scheduling part of the transport deadline and obscured which contract failed.",
       "diagnosisStatus": "confirmed",
       "fix": {
         "status": "verified",
-        "summary": "Host a nonzero WKWebView in a visible UIWindow for the real browser journey, while retaining loopback isolation, production HTML, live HTTP, JavaScript upload, explicit navigation failures, and the same two-second completion bound.",
+        "summary": "Rename the test to its actual browser-API contract, prepare a minimal same-origin WebKit document, and retain the real live-server pairing, upload, import-handler delivery, terminal status, explicit navigation failures, and two-second event bounds. Keep production document/static serving in its existing focused HTTP and web-suite coverage.",
         "commits": [
-          "38137f0969b6c03dbc7deb87dbcfb16215166428"
+          "1f04175c990fcb70afaeeb6b83dfa4266e2d41ec"
         ],
-        "validation": "The exact visible-browser journey passed 20 repetitions on the existing simulator and 20 repetitions on a newly created permission-clean iOS 26.5 simulator. The complete 371-test core suite also passed 371/371. Every browser repetition retained production HTML navigation, JavaScript pairing, upload through fetch, app import-handler delivery, and terminal HTTP-state coverage."
+        "validation": "The exact browser-origin API journey passed 50 repetitions on the existing simulator and 50 repetitions on a newly created permission-clean iOS 26.5 simulator. The complete 371-test core suite also passed 371/371. The adjacent real HTTP test still proves the built Svelte page, pairing, upload, and completion, while the receiver web suite remains 9/9 green."
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request matrix run rather than a formal repeated qualification attempt, so no consecutive core qualification count existed to reset."
