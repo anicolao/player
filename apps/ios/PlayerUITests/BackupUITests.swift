@@ -435,7 +435,26 @@ final class BackupUITests: XCTestCase {
       waitForPredicate(NSPredicate(format: "enabled == true"), on: button),
       "Expected production action \(identifier) to become enabled"
     )
-    button.tap()
+    guard identifier == "backup-export" else {
+      button.tap()
+      return
+    }
+    let buttonFrame = button.frame
+    let appFrame = app.frame
+    guard buttonFrame.width >= 44,
+      buttonFrame.height >= 44,
+      !appFrame.isEmpty,
+      appFrame.contains(buttonFrame)
+    else {
+      XCTFail("Expected production action \(identifier) to be a visible 44-point target")
+      return
+    }
+    app.coordinate(
+      withNormalizedOffset: CGVector(
+        dx: (buttonFrame.midX - appFrame.minX) / appFrame.width,
+        dy: (buttonFrame.midY - appFrame.minY) / appFrame.height
+      )
+    ).tap()
   }
 
   private func requireOperation(_ expected: String, in app: XCUIApplication) throws {
