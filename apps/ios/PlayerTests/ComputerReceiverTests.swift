@@ -7,14 +7,14 @@ import XCTest
 
 @MainActor
 final class ComputerReceiverTests: XCTestCase {
-  private static let webRuntimePrimer = ReceiverWebRuntimePrimer()
+  fileprivate static let webRuntimePrimer = ReceiverWebRuntimePrimer()
 
   nonisolated override class func setUp() {
     super.setUp()
     // Retain one in-process, nonpersistent WebKit context from the beginning of
-    // this suite. The real browser journey is alphabetically last, so its
-    // two-second document contract no longer includes cold creation of Apple's
-    // out-of-process WebContent/WebPrivacy graph.
+    // this early suite. The dedicated WebKit suite runs near the end of the
+    // bundle, so useful core tests overlap cold creation of Apple's out-of-process
+    // WebContent/WebPrivacy graph without extending any event deadline.
     MainActor.assumeIsolated { _ = webRuntimePrimer }
   }
 
@@ -791,179 +791,6 @@ final class ComputerReceiverTests: XCTestCase {
     XCTAssertEqual(status.fileOffsets, [Int64(audio.count)])
   }
 
-  func testWebKitBrowserCompletesARealLocalHTTPImport() async throws {
-    let runtimePrimer = Self.webRuntimePrimer
-    let runtimeReady = runtimePrimer.expectation(in: self)
-    let runtimeWait = await XCTWaiter.fulfillment(of: [runtimeReady], timeout: 2)
-    guard runtimeWait == .completed, runtimePrimer.isReady else {
-      XCTFail("The retained in-process WebKit runtime did not become ready within two seconds")
-      return
-    }
-    runtimePrimer.releaseForJourney()
-
-    let root = temporaryRoot()
-    let importReceived = expectation(
-      description: "Browser upload reached the app import handler"
-    )
-    let capture = ReceiverImportCapture(receivedSignal: importReceived)
-    let server = ComputerReceiverServer(
-      rootURL: root,
-      bundle: .main,
-      portPreference: try isolatedPortPreference()
-    )
-    registerCleanup(for: server, root: root)
-    let ready = try await server.start(
-      importHandler: { urls in await capture.importURLs(urls) },
-      eventHandler: { _ in }
-    )
-    var pageComponents = try XCTUnwrap(URLComponents(string: ready.address))
-    // This browser is running inside the same process as the receiver. Using the
-    // advertised LAN address makes a fresh simulator gate the navigation on the
-    // local-network privacy prompt, while loopback exercises the identical live
-    // HTTP server without depending on simulator permission state.
-    pageComponents.host = "127.0.0.1"
-    let pageURL = try XCTUnwrap(pageComponents.url)
-    let expectedOrigin = [
-      try XCTUnwrap(pageURL.scheme),
-      "://",
-      try XCTUnwrap(pageURL.host),
-      ":",
-      String(try XCTUnwrap(pageURL.port)),
-    ].joined()
-    let documentReady = expectation(
-      description: "WebKit executed the same-origin receiver document"
-    )
-    let documentBridge = ReceiverWebDocumentBridge(documentReady: documentReady)
-    let webConfiguration = WKWebViewConfiguration()
-    webConfiguration.websiteDataStore = .nonPersistent()
-    webConfiguration.userContentController.add(
-      documentBridge,
-      name: ReceiverWebDocumentBridge.messageName
-    )
-    let webView = WKWebView(
-      frame: UIScreen.main.bounds,
-      configuration: webConfiguration
-    )
-    let browserHost = UIViewController()
-    browserHost.view = webView
-    let browserWindow = UIWindow(frame: UIScreen.main.bounds)
-    browserWindow.rootViewController = browserHost
-    browserWindow.makeKeyAndVisible()
-    defer {
-      browserWindow.isHidden = true
-      webConfiguration.userContentController.removeScriptMessageHandler(
-        forName: ReceiverWebDocumentBridge.messageName
-      )
-      webView.navigationDelegate = nil
-      withExtendedLifetime(browserHost) {}
-      withExtendedLifetime(documentBridge) {}
-    }
-    webView.navigationDelegate = documentBridge
-    // testLocalHTTPFlowServesSveltePairsUploadsAndCompletes proves the built
-    // receiver document and asset route. This test owns the distinct browser-
-    // origin API contract, so use a minimal same-origin document rather than
-    // coupling its two-second transport deadline to Svelte rendering.
-    webView.loadHTMLString(
-      """
-      <!doctype html><title>Bookshelf Browser Test</title><script>
-      window.webkit.messageHandlers.\(ReceiverWebDocumentBridge.messageName)
-        .postMessage(location.origin);
-      </script>
-      """,
-      baseURL: pageURL
-    )
-    // XCTWaiter lets the exact bridge state arbitrate a deadline-edge delivery
-    // instead of recording an unconditional timeout before that state is read.
-    let documentWait = await XCTWaiter.fulfillment(of: [documentReady], timeout: 2)
-    guard documentWait == .completed, let observedOrigin = documentBridge.origin else {
-      XCTFail("WebKit did not execute the same-origin receiver document within two seconds")
-      return
-    }
-    XCTAssertEqual(observedOrigin, expectedOrigin)
-
-    let journeyCompleted = expectation(description: "Browser completed the HTTP transfer")
-    var browserResult: [String: String]?
-    let script = """
-        const pairResponse = await fetch('/api/pair', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json', 'X-Player-Client-Name': 'WebKit Test'},
-          body: JSON.stringify({code: '\(ready.pairingCode)'})
-        });
-        const pair = await pairResponse.json();
-        if (!pairResponse.ok) throw new Error(pair.message);
-        const bytes = new TextEncoder().encode('synthetic direct receiver audio');
-        const auth = {'Authorization': `Bearer ${pair.token}`};
-        const createResponse = await fetch('/api/imports', {
-          method: 'POST',
-          headers: {...auth, 'Content-Type': 'application/json'},
-          body: JSON.stringify({
-            entries: [{path: 'Chapter 01.mp3', byteCount: bytes.byteLength}],
-            selectionKind: 'folder',
-            selectionName: 'HTTP Test Book'
-          })
-        });
-        const created = await createResponse.json();
-        if (!createResponse.ok) throw new Error(created.message);
-        const uploadResponse = await fetch(`/api/imports/${created.id}/files/0`, {
-          method: 'PUT',
-          headers: {
-            ...auth,
-            'Content-Type': 'application/octet-stream',
-            'X-Player-Upload-Offset': '0'
-          },
-          body: bytes
-        });
-        if (!uploadResponse.ok) throw new Error((await uploadResponse.json()).message);
-        const completeResponse = await fetch(`/api/imports/${created.id}/complete`, {
-          method: 'POST', headers: auth
-        });
-        if (!completeResponse.ok) throw new Error((await completeResponse.json()).message);
-        return {id: created.id, token: pair.token};
-      """
-    webView.callAsyncJavaScript(
-      script,
-      arguments: [:],
-      in: nil,
-      in: .page
-    ) { result in
-      switch result {
-      case .success(let value): browserResult = value as? [String: String]
-      case .failure(let error): XCTFail("Browser journey failed: \(error)")
-      }
-      journeyCompleted.fulfill()
-    }
-    await fulfillment(of: [journeyCompleted, importReceived], timeout: 2)
-    let result = try XCTUnwrap(browserResult)
-
-    let statusLoaded = expectation(description: "Browser observed the app completion state")
-    var terminalState: String?
-    webView.callAsyncJavaScript(
-      """
-        const cancellation = await fetch('/api/imports/\(result["id"] ?? "")', {
-          method: 'DELETE',
-          headers: {'Authorization': 'Bearer \(result["token"] ?? "")'}
-        });
-        const response = await fetch('/api/imports/\(result["id"] ?? "")', {
-          headers: {'Authorization': 'Bearer \(result["token"] ?? "")'}
-        });
-        return `${cancellation.status}:${(await response.json()).state}`;
-        """,
-      arguments: [:],
-      in: nil,
-      in: .page
-    ) { result in
-      switch result {
-      case .success(let value): terminalState = value as? String
-      case .failure(let error): XCTFail("Browser status request failed: \(error)")
-      }
-      statusLoaded.fulfill()
-    }
-    await fulfillment(of: [statusLoaded], timeout: 2)
-    XCTAssertEqual(terminalState, "409:completed")
-    let receivedData = await capture.receivedData
-    XCTAssertEqual(receivedData, Data("synthetic direct receiver audio".utf8))
-  }
-
   func testReceiverReusesItsLastBoundPortWhenAvailable() async throws {
     let suiteName = "ComputerReceiverPortPreference-\(UUID().uuidString)"
     let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
@@ -1400,6 +1227,206 @@ final class ComputerReceiverTests: XCTestCase {
       })
     }
     connection.cancel()
+  }
+}
+
+@MainActor
+final class WebKitComputerReceiverTests: XCTestCase {
+  func testWebKitBrowserCompletesARealLocalHTTPImport() async throws {
+    let runtimePrimer = ComputerReceiverTests.webRuntimePrimer
+    let runtimeReady = runtimePrimer.expectation(in: self)
+    let runtimeWait = await XCTWaiter.fulfillment(of: [runtimeReady], timeout: 2)
+    guard runtimeWait == .completed, runtimePrimer.isReady else {
+      XCTFail("The retained in-process WebKit runtime did not become ready within two seconds")
+      return
+    }
+    runtimePrimer.releaseForJourney()
+
+    let root = temporaryRoot()
+    let importReceived = expectation(
+      description: "Browser upload reached the app import handler"
+    )
+    let capture = ReceiverImportCapture(receivedSignal: importReceived)
+    let server = ComputerReceiverServer(
+      rootURL: root,
+      bundle: .main,
+      portPreference: try isolatedPortPreference()
+    )
+    registerCleanup(for: server, root: root)
+    let ready = try await server.start(
+      importHandler: { urls in await capture.importURLs(urls) },
+      eventHandler: { _ in }
+    )
+    var pageComponents = try XCTUnwrap(URLComponents(string: ready.address))
+    // This browser is running inside the same process as the receiver. Using the
+    // advertised LAN address makes a fresh simulator gate the navigation on the
+    // local-network privacy prompt, while loopback exercises the identical live
+    // HTTP server without depending on simulator permission state.
+    pageComponents.host = "127.0.0.1"
+    let pageURL = try XCTUnwrap(pageComponents.url)
+    let expectedOrigin = [
+      try XCTUnwrap(pageURL.scheme),
+      "://",
+      try XCTUnwrap(pageURL.host),
+      ":",
+      String(try XCTUnwrap(pageURL.port)),
+    ].joined()
+    let documentReady = expectation(
+      description: "WebKit executed the same-origin receiver document"
+    )
+    let documentBridge = ReceiverWebDocumentBridge(documentReady: documentReady)
+    let webConfiguration = WKWebViewConfiguration()
+    webConfiguration.websiteDataStore = .nonPersistent()
+    webConfiguration.userContentController.add(
+      documentBridge,
+      name: ReceiverWebDocumentBridge.messageName
+    )
+    let webView = WKWebView(
+      frame: UIScreen.main.bounds,
+      configuration: webConfiguration
+    )
+    let browserHost = UIViewController()
+    browserHost.view = webView
+    let browserWindow = UIWindow(frame: UIScreen.main.bounds)
+    browserWindow.rootViewController = browserHost
+    browserWindow.makeKeyAndVisible()
+    defer {
+      browserWindow.isHidden = true
+      webConfiguration.userContentController.removeScriptMessageHandler(
+        forName: ReceiverWebDocumentBridge.messageName
+      )
+      webView.navigationDelegate = nil
+      withExtendedLifetime(browserHost) {}
+      withExtendedLifetime(documentBridge) {}
+    }
+    webView.navigationDelegate = documentBridge
+    // ComputerReceiverTests proves the built receiver document and asset route.
+    // This test owns the distinct browser-origin API contract, so use a minimal
+    // same-origin document rather than coupling its transport deadline to Svelte.
+    webView.loadHTMLString(
+      """
+      <!doctype html><title>Bookshelf Browser Test</title><script>
+      window.webkit.messageHandlers.\(ReceiverWebDocumentBridge.messageName)
+        .postMessage(location.origin);
+      </script>
+      """,
+      baseURL: pageURL
+    )
+    // XCTWaiter lets the exact bridge state arbitrate a deadline-edge delivery
+    // instead of recording an unconditional timeout before that state is read.
+    let documentWait = await XCTWaiter.fulfillment(of: [documentReady], timeout: 2)
+    guard documentWait == .completed, let observedOrigin = documentBridge.origin else {
+      XCTFail("WebKit did not execute the same-origin receiver document within two seconds")
+      return
+    }
+    XCTAssertEqual(observedOrigin, expectedOrigin)
+
+    let journeyCompleted = expectation(description: "Browser completed the HTTP transfer")
+    var browserResult: [String: String]?
+    let script = """
+        const pairResponse = await fetch('/api/pair', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json', 'X-Player-Client-Name': 'WebKit Test'},
+          body: JSON.stringify({code: '\(ready.pairingCode)'})
+        });
+        const pair = await pairResponse.json();
+        if (!pairResponse.ok) throw new Error(pair.message);
+        const bytes = new TextEncoder().encode('synthetic direct receiver audio');
+        const auth = {'Authorization': `Bearer ${pair.token}`};
+        const createResponse = await fetch('/api/imports', {
+          method: 'POST',
+          headers: {...auth, 'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            entries: [{path: 'Chapter 01.mp3', byteCount: bytes.byteLength}],
+            selectionKind: 'folder',
+            selectionName: 'HTTP Test Book'
+          })
+        });
+        const created = await createResponse.json();
+        if (!createResponse.ok) throw new Error(created.message);
+        const uploadResponse = await fetch(`/api/imports/${created.id}/files/0`, {
+          method: 'PUT',
+          headers: {
+            ...auth,
+            'Content-Type': 'application/octet-stream',
+            'X-Player-Upload-Offset': '0'
+          },
+          body: bytes
+        });
+        if (!uploadResponse.ok) throw new Error((await uploadResponse.json()).message);
+        const completeResponse = await fetch(`/api/imports/${created.id}/complete`, {
+          method: 'POST', headers: auth
+        });
+        if (!completeResponse.ok) throw new Error((await completeResponse.json()).message);
+        return {id: created.id, token: pair.token};
+      """
+    webView.callAsyncJavaScript(
+      script,
+      arguments: [:],
+      in: nil,
+      in: .page
+    ) { result in
+      switch result {
+      case .success(let value): browserResult = value as? [String: String]
+      case .failure(let error): XCTFail("Browser journey failed: \(error)")
+      }
+      journeyCompleted.fulfill()
+    }
+    await fulfillment(of: [journeyCompleted, importReceived], timeout: 2)
+    let result = try XCTUnwrap(browserResult)
+
+    let statusLoaded = expectation(description: "Browser observed the app completion state")
+    var terminalState: String?
+    webView.callAsyncJavaScript(
+      """
+        const cancellation = await fetch('/api/imports/\(result["id"] ?? "")', {
+          method: 'DELETE',
+          headers: {'Authorization': 'Bearer \(result["token"] ?? "")'}
+        });
+        const response = await fetch('/api/imports/\(result["id"] ?? "")', {
+          headers: {'Authorization': 'Bearer \(result["token"] ?? "")'}
+        });
+        return `${cancellation.status}:${(await response.json()).state}`;
+        """,
+      arguments: [:],
+      in: nil,
+      in: .page
+    ) { result in
+      switch result {
+      case .success(let value): terminalState = value as? String
+      case .failure(let error): XCTFail("Browser status request failed: \(error)")
+      }
+      statusLoaded.fulfill()
+    }
+    await fulfillment(of: [statusLoaded], timeout: 2)
+    XCTAssertEqual(terminalState, "409:completed")
+    let receivedData = await capture.receivedData
+    XCTAssertEqual(receivedData, Data("synthetic direct receiver audio".utf8))
+  }
+
+  private func temporaryRoot() -> URL {
+    FileManager.default.temporaryDirectory.appending(
+      path: "WebKitComputerReceiverTests-\(UUID().uuidString)",
+      directoryHint: .isDirectory
+    )
+  }
+
+  private func isolatedPortPreference() throws -> ComputerReceiverPortPreference {
+    let suiteName = "WebKitComputerReceiverPortPreference-\(UUID().uuidString)"
+    let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+    addTeardownBlock { defaults.removePersistentDomain(forName: suiteName) }
+    return ComputerReceiverPortPreference(
+      userDefaults: defaults,
+      key: "preferredPort",
+      defaultPort: nil
+    )
+  }
+
+  private func registerCleanup(for server: ComputerReceiverServer, root: URL) {
+    addTeardownBlock {
+      await server.stop()
+      try? FileManager.default.removeItem(at: root)
+    }
   }
 }
 

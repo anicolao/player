@@ -204,6 +204,26 @@ rg -Fq 'waitForPredicate(selected, on: action, timeout: selectionDeadline.remain
 rg -Fq 'let orderScroll = app.collectionViews.firstMatch' "${multifile_grouping}"
 rg -Fq 'let revealPredicate = NSPredicate' "${multifile_grouping}"
 rg -Fq 'timeout: min(0.35, revealDeadline.remaining)' "${multifile_grouping}"
+computer_receiver_tests="${ui_test_root}/../PlayerTests/ComputerReceiverTests.swift"
+rg -Fq 'fileprivate static let webRuntimePrimer = ReceiverWebRuntimePrimer()' \
+  "${computer_receiver_tests}"
+rg -Fq 'MainActor.assumeIsolated { _ = webRuntimePrimer }' \
+  "${computer_receiver_tests}"
+rg -Fq 'final class WebKitComputerReceiverTests: XCTestCase {' \
+  "${computer_receiver_tests}"
+[[ "$(rg -c 'func testWebKitBrowserCompletesARealLocalHTTPImport\(\)' \
+  "${computer_receiver_tests}")" == "1" ]] || {
+  echo 'WebKit receiver hygiene requires exactly one late browser journey' >&2
+  exit 1
+}
+receiver_suite_line="$(rg -n '^final class ComputerReceiverTests: XCTestCase' \
+  "${computer_receiver_tests}" | cut -d: -f1)"
+webkit_suite_line="$(rg -n '^final class WebKitComputerReceiverTests: XCTestCase' \
+  "${computer_receiver_tests}" | cut -d: -f1)"
+[[ "${receiver_suite_line}" -lt "${webkit_suite_line}" ]] || {
+  echo 'WebKit receiver hygiene requires the primer suite before the browser journey' >&2
+  exit 1
+}
 scroll_helper="${ui_test_root}/TestStepHelper.swift"
 scroll_start="$(rg -n '^func scrollUntil\(' "${scroll_helper}" | cut -d: -f1)"
 scroll_end="$(rg -n '^func challengeSettledEnd\(' "${scroll_helper}" | cut -d: -f1)"
