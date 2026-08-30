@@ -2267,6 +2267,54 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run, not a formal exact-SHA qualification attempt, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "ui-test:SleepTimerUITests.testSleepTimerPersistsFadesStopsAndResumesWithContextExactly:exit-65",
+      "story": "007-sleep-timer",
+      "evidence": {
+        "workflowRun": 33318614812,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions story-lane-3 artifact 9735844656 and job 99276622699 retain all ten Story 007 attempts, the exact XCTest result, hierarchy, logs, recording-derived failure screen, screenshot comparison, and lane attribution",
+        "url": "https://github.com/anicolao/player/actions/runs/33318614812/job/99276622699",
+        "commit": "6ba1252bf4491cfcc53c967bbb39812a31e1c457",
+        "observation": "Story 007 passed attempts 1 through 9. On attempt 10, both Recent history rows were fully visible at the bottom of the Sleep Timer screen, but XCTest reported that the read-only Replaced value had an invalid activation point and no suggested hit points while the assertion evaluated isHittable. The exact value was present; no product state or scrolling failure occurred."
+      },
+      "rootCause": "The read-only history assertion reused a scroll helper predicate intended for controls and asked XCTest to calculate tappability. XCUIElement.isHittable may emit an XCTest issue while deriving an activation point for a static text element even when its frame is fully visible and its exact semantic value is available.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Gate scrolling on bounded full-frame visibility with requiresHittable false, then retain the exact semantic-value assertion. This preserves the production scroll probe, terminal bottom handling, and two-second event deadline without inventing a tap requirement for read-only text.",
+        "commits": [
+          "a0786ee52f9546aa356f7c9e7d429a1d345252ba"
+        ],
+        "validation": "A fresh local canonical Story 007 run passed both UI selectors in 188.178 seconds. All three screenshots were pixel-exact, the reviewed walkthrough README matched exactly, the evidence manifest passed, and the complete story command exited zero. Aggregation and full E2E hygiene tests pass."
+      },
+      "qualificationResetCount": 1,
+      "resetEvidence": "Formal exact-SHA qualification run 33318614812 failed Story 007 attempt 10, resetting the consecutive qualification count."
+    },
+    {
+      "signature": "evidence:007-sleep-timer:xctest-failure-screen-exported-jpeg",
+      "story": "007-sleep-timer",
+      "evidence": {
+        "workflowRun": 33318614812,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions story-lane-3 artifact 9735844656 retains the JPEG XCTest exported for the nominal PNG attachment, the valid recording fallback and source manifest, and the fail-closed invalid evidence verdict",
+        "url": "https://github.com/anicolao/player/actions/runs/33318614812/job/99276622699",
+        "commit": "6ba1252bf4491cfcc53c967bbb39812a31e1c457",
+        "observation": "The retained attachment's suggested name ended in .png, but XCTest exported UUID-named JPEG bytes. Direct failure-screen extraction correctly rejected the unsafe name and wrong encoding. A valid final frame was independently extracted from the retained screen recording, but the evidence manifest remained invalid because recording fallback cannot waive a failed direct attachment contract."
+      },
+      "rootCause": "XCTAttachment(screenshot:) lets XCTest choose the exported representation independently of the suggested attachment name. On this hosted attempt XCTest encoded JPEG, so naming the attachment as PNG did not establish either PNG bytes or a safe canonical export path.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Capture XCUIScreenshot.pngRepresentation explicitly and construct the retained attachment from those bytes with the PNG uniform type identifier. Keep the existing canonical attachment name and lifetime. Regression tests prove a JPEG direct export fails closed even when a valid recording fallback exists, and source hygiene rejects the representation-ambiguous screenshot initializer.",
+        "commits": [
+          "8396932857dedcd6cc59a868c42dcdafbcfea90e"
+        ],
+        "validation": "The E2E target builds with the explicit PNG attachment. All 18 evidence-manifest tests, failure-frame extraction tests, run-support tests, capture-readiness hygiene, and the complete E2E hygiene check pass."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This infrastructure-invalid evidence occurred in the same formal run already counted by the Story 007 test failure, so it adds no second reset for that single qualification dispatch."
     }
   ]
 }

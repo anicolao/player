@@ -314,8 +314,10 @@ Implemented:
    and compiled test bundle. Every story still owns a fresh simulator,
    persistence namespace, result bundle, diagnostics, and artifact manifest.
 3. Normal CI and the five-matrix qualification stage use five measured,
-   coverage-preserving lanes. The ten-attempt story stage has its own balanced
-   allocation because build reuse changes its repeated-run weights.
+   coverage-preserving lanes. The ten-attempt story stage exposes each of the
+   13 canonical stories as an independently scheduled job, so GitHub can keep
+   every available macOS slot occupied without coupling a short story to the
+   tail of a longer static bundle. Coverage remains 130 isolated story attempts.
 4. Product-state waits remain event driven and capped at two seconds; runtime
    was not traded for permissive waits or retry-to-green.
 5. Schema-v2 evidence retains exact CI provenance, all 13 story times, the
