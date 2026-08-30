@@ -53,7 +53,7 @@ xcodebuild build \
   -project "${ios_dir}/Player.xcodeproj" \
   -scheme Player \
   -configuration Debug \
-  -destination "platform=iOS Simulator,id=${simulator_id}" \
+  -destination "platform=iOS Simulator,arch=arm64,id=${simulator_id}" \
   -derivedDataPath "${derived_data}" \
   CODE_SIGNING_ALLOWED=NO
 

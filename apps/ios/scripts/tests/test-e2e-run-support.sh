@@ -364,6 +364,55 @@ test_phase_line="$(rg -n -m 1 'run_logged_phase test xcodebuild test-without-bui
   || fail "the exact target application is not installed before XCTest launch"
 rg -Fq 'target_application="${build_data}/Build/Products/E2E-iphonesimulator/Player.app"' "${run_e2e}" \
   || fail "target preinstallation is not bound to the exact E2E build product"
+reset_line="$(rg -n -m 1 'run_logged_phase simulator-control-plane-reset' "${run_e2e}" | cut -d: -f1)"
+lease_line="$(rg -n -F -m 1 'simulator_lease="${simulator_lease_root}/story-' "${run_e2e}" | cut -d: -f1)"
+[[ -n "${reset_line}" && -n "${lease_line}" && "${reset_line}" -lt "${lease_line}" ]] \
+  || fail "the hosted simulator control plane is not reset before the next exact lease"
+control_plane_reset="${ios_scripts}/reset-hosted-simulator-control-plane.sh"
+rg -Fq "alarm shift; exec @ARGV or exit 127' 2" "${control_plane_reset}" \
+  || fail "hosted simulator control-plane events are not hard-capped at two seconds"
+if rg -n '(^|[^[:alpha:]])(sleep|usleep)[[:space:](]' "${control_plane_reset}" >/dev/null; then
+  fail "hosted simulator reset contains a fixed wait"
+fi
+control_plane_fake_bin="${temporary_root}/control-plane-bin"
+control_plane_log="${temporary_root}/control-plane.log"
+mkdir -p "${control_plane_fake_bin}"
+cat > "${control_plane_fake_bin}/launchctl" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'launchctl\t%s\n' "$*" >> "${PLAYER_CONTROL_PLANE_LOG}"
+[[ "$*" == "kickstart -k user/$(id -u)/com.apple.CoreSimulator.CoreSimulatorService" ]]
+EOF
+cat > "${control_plane_fake_bin}/xcrun" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'xcrun\t%s\n' "$*" >> "${PLAYER_CONTROL_PLANE_LOG}"
+[[ "$*" == "simctl list devices --json" ]]
+[[ "$(sed -n '1p' "${PLAYER_CONTROL_PLANE_LOG}")" == $'launchctl\tkickstart -k user/'* ]]
+EOF
+chmod +x "${control_plane_fake_bin}/launchctl" "${control_plane_fake_bin}/xcrun"
+if env PATH="${control_plane_fake_bin}:${PATH}" \
+  PLAYER_CONTROL_PLANE_LOG="${control_plane_log}" \
+  GITHUB_ACTIONS=false "${control_plane_reset}" >/dev/null 2>&1; then
+  fail "simulator control-plane reset ran outside an isolated hosted job"
+fi
+env PATH="${control_plane_fake_bin}:${PATH}" \
+  PLAYER_CONTROL_PLANE_LOG="${control_plane_log}" \
+  GITHUB_ACTIONS=true "${control_plane_reset}"
+[[ "$(wc -l < "${control_plane_log}" | tr -d ' ')" == 2 ]] \
+  || fail "hosted simulator reset did not perform exactly one restart and readiness event"
+[[ "$(sed -n '2p' "${control_plane_log}")" == $'xcrun\tsimctl list devices --json' ]] \
+  || fail "hosted simulator reset did not finish with the simctl readiness event"
+for destination_source in \
+  "${run_e2e}" \
+  "${ios_scripts}/run-e2e-shard.sh" \
+  "${ios_scripts}/qualification/run-matrix-lane.sh" \
+  "${ios_scripts}/launch-simulator.sh" \
+  "${ios_scripts}/run-complete-suite.sh"; do
+  if rg -n -F 'platform=iOS Simulator,id=' "${destination_source}" >/dev/null; then
+    fail "a simulator destination remains architecture-ambiguous in ${destination_source}"
+  fi
+done
 rg -Fq 'log_started_at="${run_started_at/T/ }"' "${run_e2e}" \
   && rg -Fq 'log_started_at="${log_started_at%Z}"' "${run_e2e}" \
   || fail "failure logging does not convert the retained ISO instant for log show"

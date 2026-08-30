@@ -112,7 +112,7 @@ run_core_gate() {
     set +e
     xcodebuild -quiet \
       -project "${worktree_ios}/Player.xcodeproj" -scheme Player -configuration E2E \
-      -destination "platform=iOS Simulator,id=${core_simulator_id}" \
+      -destination "platform=iOS Simulator,arch=arm64,id=${core_simulator_id}" \
       -derivedDataPath "${shared_build}" -parallel-testing-enabled NO \
       -only-testing:PlayerTests \
       -resultBundlePath "${matrix_root}/Core/Results/Core.xcresult" \

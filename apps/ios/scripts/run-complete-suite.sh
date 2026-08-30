@@ -5,7 +5,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ios_dir="$(cd "${script_dir}/.." && pwd)"
 repository_root="$(cd "${ios_dir}/../.." && pwd)"
 story_manifest="${repository_root}/tests/e2e/manifest.json"
-destination="${PLAYER_COMPLETE_SUITE_DESTINATION:-platform=iOS Simulator,name=iPhone 17,OS=26.5}"
+destination="${PLAYER_COMPLETE_SUITE_DESTINATION:-platform=iOS Simulator,arch=arm64,name=iPhone 17,OS=26.5}"
 core_build_data="${ios_dir}/DerivedData/CompleteSuiteCore"
 
 cd "${repository_root}"

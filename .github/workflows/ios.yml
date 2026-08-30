@@ -122,6 +122,7 @@ jobs:
       PLAYER_SKIP_SIMULATOR_LAUNCH: "1"
       PLAYER_SKIP_PROJECT_GENERATION: "1"
       PLAYER_E2E_PARALLEL_WORKERS: "1"
+      PLAYER_RESET_HOSTED_SIMULATOR_CONTROL_PLANE: "1"
 
     steps:
       - name: Checkout repository

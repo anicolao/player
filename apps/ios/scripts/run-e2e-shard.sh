@@ -163,7 +163,7 @@ run_core_tests() {
     -project "${ios_dir}/Player.xcodeproj" \
     -scheme Player \
     -configuration E2E \
-    -destination "platform=iOS Simulator,id=${core_simulator_id}" \
+    -destination "platform=iOS Simulator,arch=arm64,id=${core_simulator_id}" \
     -derivedDataPath "${shared_build_data}" \
     -parallel-testing-enabled NO \
     -only-testing:PlayerTests \

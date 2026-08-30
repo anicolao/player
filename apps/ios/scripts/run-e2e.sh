@@ -149,6 +149,13 @@ baseline_story="${repository_root}/tests/e2e/${story_id}"
 simulator_name="Player E2E ${story_id} $$"
 failure_screen="${story_output}/Diagnostics/failure-screen.png"
 failure_screen_source="${story_output}/Diagnostics/failure-screen-source.json"
+reset_hosted_simulator_control_plane="${PLAYER_RESET_HOSTED_SIMULATOR_CONTROL_PLANE:-0}"
+
+if [[ "${reset_hosted_simulator_control_plane}" != "0" \
+  && "${reset_hosted_simulator_control_plane}" != "1" ]]; then
+  echo "PLAYER_RESET_HOSTED_SIMULATOR_CONTROL_PLANE must be 0 or 1." >&2
+  exit 2
+fi
 
 if [[ ! -d "${baseline_story}" ]]; then
   echo "Story directory is missing: ${baseline_story}" >&2
@@ -374,6 +381,13 @@ else
 fi
 
 simulator_phase_start="${SECONDS}"
+if [[ "${reset_hosted_simulator_control_plane}" == "1" ]]; then
+  if ! run_logged_phase simulator-control-plane-reset \
+    "${script_dir}/reset-hosted-simulator-control-plane.sh"; then
+    echo "Could not restart and observe the hosted CoreSimulator control plane." >&2
+    exit 1
+  fi
+fi
 simulator_lease="${simulator_lease_root}/story-${story_id}-$$.json"
 simulator_id="$("${script_dir}/simulator-lease.sh" acquire \
   "${simulator_lease}" "${simulator_name}" "${device_type}" "${runtime}" "$$")"
@@ -422,7 +436,7 @@ else
     -project "${ios_dir}/Player.xcodeproj" \
     -scheme Player \
     -configuration E2E \
-    -destination "platform=iOS Simulator,id=${simulator_id}" \
+    -destination "platform=iOS Simulator,arch=arm64,id=${simulator_id}" \
     -derivedDataPath "${build_data}" \
     CODE_SIGNING_ALLOWED=NO; then
     echo "UI-test build failed; retained diagnostics in ${story_output}" >&2
@@ -467,7 +481,7 @@ run_logged_phase test xcodebuild test-without-building \
   -project "${ios_dir}/Player.xcodeproj" \
   -scheme Player \
   -configuration E2E \
-  -destination "platform=iOS Simulator,id=${simulator_id}" \
+  -destination "platform=iOS Simulator,arch=arm64,id=${simulator_id}" \
   -derivedDataPath "${build_data}" \
   -parallel-testing-enabled "${parallel_testing}" \
   -maximum-parallel-testing-workers "${parallel_workers}" \
