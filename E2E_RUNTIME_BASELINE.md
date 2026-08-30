@@ -88,6 +88,16 @@ The exact story artifacts also retain the aggregate runner work below. These
 phase totals are summed across five concurrent lanes, so they explain where
 runner time went but must not be added to obtain workflow wall time.
 
+The final control-plane correction was validated without a rerun by
+[run 33333159502](https://github.com/anicolao/player/actions/runs/33333159502):
+all five lanes passed, with a 1,697-second logical critical lane. The workflow
+was created while superseded jobs still occupied the hosted pool, so its 36m26s
+created-to-complete wall clock includes roughly four minutes of visible queue
+contention. From first runner admission to the final shard completion was
+32m51s, and the logical critical lane improved by 85 seconds (-4.8%) versus the
+1,782-second accepted scheduling run. This validates the correction but does
+not replace the clean 32m32s no-queue measurement above.
+
 | Retained phase | Expanded reference | Final exact-SHA run | Delta |
 | --- | ---: | ---: | ---: |
 | Simulator create/boot/configure | 1,843s | 1,671s | -172s |

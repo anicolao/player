@@ -2339,6 +2339,129 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run, not a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "ui-test:OfflineRecoveryUITests.testRecoversStartupAndExportsOnlySanitizedOfflineDiagnostics:restore-application-coordinate-missed-visible-target",
+      "story": "011-offline-recovery",
+      "evidence": {
+        "workflowRun": 33328578179,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 011 artifact 9737328979 and lane-2 summary 9737331965 retain the exact XCTest result, event trace, failure screen, hierarchy, semantic probes, screenshot comparison, and lane attribution",
+        "url": "https://github.com/anicolao/player/actions/runs/33328578179/job/99302968236",
+        "commit": "43685cddb03b02e3b2efb5135ab0de306aae21b3",
+        "observation": "The startup recovery screen and enabled Restore action were visible. The helper separately sampled the action and application frames, converted the action center to application-normalized (0.50,0.49), and synthesized that point. The retained screen placed Restore near normalized y=0.38; the tap missed it, the recovery screen remained unchanged, and the exact diagnostics destination never appeared."
+      },
+      "rootCause": "The helper converted separately sampled accessibility frames into an application-relative coordinate, then XCTest resolved that ratio against a later application snapshot. The two-snapshot coordinate transform was not atomic with event synthesis, so valid preflight geometry did not bind the touch to the visible control.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Retain the enabled, in-bounds, 44-point target checks and skip only unrelated post-event quiescence, but synthesize the target element's own normalized center so XCTest resolves target geometry atomically. Keep the existing exact two-second recovery completion event; add no retry, sleep, or timeout increase.",
+        "commits": [
+          "022ba4ff7603f187eb5f6c31223edba8154b1f50"
+        ],
+        "validation": "Fresh canonical artifact /tmp/player-story011-action-coordinate passed the complete Story 011 selector in 66.659 seconds. All three screenshots matched pixel-exact, the reviewed walkthrough README matched exactly, the evidence manifest passed, and every recovery/support-export call site completed through the same helper. Exact-commit hosted run 33330232587 subsequently passed lane 2, including complete Stories 005, 011, and 003, without a rerun; its sole independent failure was Story 008 in lane 3."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run, not a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "infrastructure:xcode-application-launch-timeout:MultifileGroupingUITests.testRepairsMessyMultifileGroupingAndCommitsExactlyOneBook:exit-65",
+      "story": "003-multifile-grouping",
+      "evidence": {
+        "workflowRun": 33328578179,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 003 artifact 9737331738 and lane-2 summary 9737331965 retain the exact XCTest result, session diagnostics, failure screen, empty product output, screenshot comparison, and lane attribution",
+        "url": "https://github.com/anicolao/player/actions/runs/33328578179/job/99302968236",
+        "commit": "43685cddb03b02e3b2efb5135ab0de306aae21b3",
+        "observation": "The UI runner sent its launch request at 19:03:31.703, but the reused hosted xcodebuild control channel did not receive it until 19:04:19.812 and replied only after XCTest's 60-second internal launcher deadline. Bookshelf never existed as a process, produced no stdout or unified-log rows, and the retained failure screen remained SpringBoard. Accessibility setup had already consumed 32.892 seconds amid extreme system-process churn on lane 2's third fresh simulator."
+      },
+      "rootCause": "Each story owned and deleted a fresh simulator, but sequential stories reused the hosted job's per-user CoreSimulator/Xcode service state. That launch control plane was not healthy merely because bootstatus returned; its delayed UI-runner-to-xcodebuild RPC exhausted XCTest's private launcher timeout before product execution. This is the same infrastructure class previously seen after repeated formal attempts, now attached to the renamed exact selector.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "On isolated GitHub macOS jobs only, asynchronously terminate the current user's stale CoreSimulator service before each next exact simulator lease. Hard-cap the termination at two seconds and use successful lease acquisition as the readiness receipt; add no sleep or retry, never prelaunch Bookshelf, and pin every simulator destination to arm64.",
+        "commits": [
+          "3e1825133a42733cb23c758aea7579ec41d69f0a",
+          "a8bdf1c70b64cd2841b9a2ee81b051adcb0ea309",
+          "71b95211b406cd7a7c2bf9c5884116a803dff862"
+        ],
+        "validation": "The fail-closed helper contract proves the hosted-only guard, exact per-user service target, one asynchronous termination followed immediately by exact lease acquisition, a two-second hard bound, no fixed wait, and no product launch. A real local service termination returned in 0.01 seconds; the subsequent exact simulator lease returned immediately and was released cleanly. Exact-tip hosted run 33333159502 passed lane 2 in 1,588 logical seconds, including complete Stories 005, 011, and the formerly stalled Story 003, and all five normal lanes passed without a rerun."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run and no product or test-body behavior began, so it reset no accepted formal qualification count."
+    },
+    {
+      "signature": "evidence:003-multifile-grouping:iso-log-start-rejected-attempt-wide-unified-evidence",
+      "story": "003-multifile-grouping",
+      "evidence": {
+        "workflowRun": 33328578179,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 003 artifact 9737331738 retains all three rejected unified-log queries, the complete xcresult diagnostics export, and the otherwise valid failure-screen provenance",
+        "url": "https://github.com/anicolao/player/actions/runs/33328578179/job/99302968236",
+        "commit": "43685cddb03b02e3b2efb5135ab0de306aae21b3",
+        "observation": "Diagnostics/player.log, simulator-system.log, and coresimulator-host.log each contained only 'Failed conversion' because run-e2e passed the Run.json instant 2026-08-30T19:00:22Z directly to log show --start. The xcresult diagnostics happened to preserve enough independent session evidence to diagnose this attempt, but the promised attempt-wide unified logs were absent."
+      },
+      "rootCause": "Run.json correctly retained an ISO-8601 UTC timestamp, but Apple's log command expects its start argument in a space-separated date-time form and rejects the T/Z representation. One serialization was incorrectly reused for two interfaces with different accepted syntax.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Keep the canonical ISO instant in Run.json, derive the equivalent space-separated UTC value once for log show, and require all simulator, product, and host queries to use that accepted value from the beginning of the same attempt.",
+        "commits": [
+          "0e47bcf94b568da79e735c1430ce586916abcf05"
+        ],
+        "validation": "The run-support regression requires the exact ISO-to-log conversion and all three attempt-wide queries to use it. The complete run-support suite and full E2E hygiene pass; the transformation maps the rejected sample to 2026-08-30 19:00:22 without changing its instant."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This evidence defect occurred in a normal pull-request run and did not add a second test failure or formal qualification reset."
+    },
+    {
+      "signature": "ui-test:008-library-search:add-application-coordinate-unacknowledged",
+      "story": "008-library-search",
+      "evidence": {
+        "workflowRun": 33330232587,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 008 artifact 9737698244 and lane-3 summary 9737698397 retain the exact XCTest result, synthesized-event trace, failure screen, hierarchy, screenshot comparison, and lane attribution",
+        "url": "https://github.com/anicolao/player/actions/runs/33330232587/job/99307383378",
+        "commit": "022ba4ff7603f187eb5f6c31223edba8154b1f50",
+        "observation": "The populated Library capture was canonical and the Add action retained its exact visible tab-contained target. XCTest synthesized one application-coordinate touch at normalized (0.82,0.94), the correct visible Add center, but no computer-receiver-screen appeared within the two-second postcondition and the retained failure screen remained on Library. The other two Story 008 selectors passed."
+      },
+      "rootCause": "The earlier correction made the physical target independent of transient isHittable state, but still assumed one synthesized application-coordinate touch was delivered. Under hosted accessibility load XCTest completed synthesis without publishing the SwiftUI action, and the helper neither skipped its unrelated post-event quiescence nor correlated physical delivery with the receiver presentation event.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Keep the exact visible 44-point tab geometry and stable application coordinate, synthesize without unrelated post-event quiescence, and require the receiver destination as the delivery receipt. Permit another physical synthesis only while the exact source action remains and the receiver is absent, all within one unchanged two-second deadline; add no test rerun, sleep, or timeout increase.",
+        "commits": [
+          "66d6520e3e424d800408985a27ab579500ae4041"
+        ],
+        "validation": "Fresh canonical artifact /tmp/player-story008-add-delivery-2 passed all three Story 008 selectors on clean parallel simulator clones. The organization selector completed Add-to-receiver delivery and the full journey; all ten screenshots matched pixel-exact, the reviewed walkthrough README matched exactly, the evidence manifest passed, and the story exited zero in 261 seconds. Full E2E hygiene passes."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run, not a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "infrastructure:012-monetization:hosted-control-plane-kickstart-deadline-exit-142",
+      "story": "012-monetization",
+      "evidence": {
+        "workflowRun": 33330908421,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 012 artifact 9738081827 and lane-1 summary 9738082242 retain the bounded reset log, phase timing, simulator inventory, empty product diagnostics, and lane attribution",
+        "url": "https://github.com/anicolao/player/actions/runs/33330908421/job/99309173528",
+        "commit": "3e1825133a42733cb23c758aea7579ec41d69f0a",
+        "observation": "Story 004 passed in 841 seconds, then all core fixtures and 372 core tests passed. Story 012 exited before acquiring a simulator or launching Bookshelf because launchctl kickstart exceeded its explicit two-second caller deadline and returned 142; the reset phase was the story's only non-reuse phase."
+      },
+      "rootCause": "The preventive reset treated completion of launchctl kickstart as the readiness event. Launchd can accept and continue a service restart after the bounded caller is terminated, so the helper converted a deliberately bounded maintenance command into an immediate story failure without observing the independently defined simctl readiness event.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Replace blocking kickstart with one asynchronously accepted launchd termination hard-capped at two seconds, then use the immediately following exact simulator lease acquisition as the readiness receipt. There is no sleep, retry, product prelaunch, timeout increase, or coverage reduction.",
+        "commits": [
+          "a8bdf1c70b64cd2841b9a2ee81b051adcb0ea309",
+          "71b95211b406cd7a7c2bf9c5884116a803dff862"
+        ],
+        "validation": "The run-support regression requires one exact asynchronous termination, prohibits additional control-plane actions, and proves exact lease acquisition follows immediately as the readiness event. A real local termination returned in 0.01 seconds; the subsequent exact simulator lease returned immediately and was released cleanly. Exact-tip hosted run 33333159502 passed lane 1: Story 004, all 372 core tests and fixture gates, and Story 012 completed in 1,518 logical seconds; all five normal lanes passed without a rerun."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run and no product or test-body behavior began, so it reset no accepted formal qualification count."
     }
   ]
 }
