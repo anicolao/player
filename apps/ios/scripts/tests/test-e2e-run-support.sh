@@ -364,7 +364,10 @@ test_phase_line="$(rg -n -m 1 'run_logged_phase test xcodebuild test-without-bui
   || fail "the exact target application is not installed before XCTest launch"
 rg -Fq 'target_application="${build_data}/Build/Products/E2E-iphonesimulator/Player.app"' "${run_e2e}" \
   || fail "target preinstallation is not bound to the exact E2E build product"
-rg -Fq -- '--start "${run_started_at}" --style compact --info --debug' "${run_e2e}" \
+rg -Fq 'log_started_at="${run_started_at/T/ }"' "${run_e2e}" \
+  && rg -Fq 'log_started_at="${log_started_at%Z}"' "${run_e2e}" \
+  || fail "failure logging does not convert the retained ISO instant for log show"
+rg -Fq -- '--start "${log_started_at}" --style compact --info --debug' "${run_e2e}" \
   || fail "failure logging does not cover the complete attempt"
 for retained_log in player.log simulator-system.log coresimulator-host.log semantic-probes.log; do
   rg -Fq "${retained_log}" "${run_e2e}" \

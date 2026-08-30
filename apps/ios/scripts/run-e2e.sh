@@ -158,6 +158,11 @@ fi
 mkdir -p "${story_output}/Results" "${story_output}/Logs" "${story_output}/Diagnostics"
 echo "E2E output: ${story_output}"
 run_started_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+# `log show --start` does not accept the ISO-8601 `T`/`Z` form retained in
+# Run.json. Keep one instant, but render it in the command's accepted syntax so
+# launch failures preserve the attempt-wide simulator and host evidence.
+log_started_at="${run_started_at/T/ }"
+log_started_at="${log_started_at%Z}"
 run_commit="$(git -C "${repository_root}" rev-parse HEAD)"
 jq -n \
   --arg story "${story_id}" \
@@ -248,11 +253,11 @@ capture_failure_diagnostics() {
   capture_failure_screen >/dev/null 2>&1 || true
   if [[ -n "${simulator_id}" ]]; then
     xcrun simctl spawn "${simulator_id}" log show \
-      --start "${run_started_at}" --style compact --info --debug \
+      --start "${log_started_at}" --style compact --info --debug \
       --predicate 'process == "Player" OR process CONTAINS[c] "PlayerUITests" OR process CONTAINS[c] "ShareExtension"' \
       > "${story_output}/Diagnostics/player.log" 2>&1 || true
     xcrun simctl spawn "${simulator_id}" log show \
-      --start "${run_started_at}" --style compact --info --debug \
+      --start "${log_started_at}" --style compact --info --debug \
       --predicate 'process == "SpringBoard" OR process == "backboardd" OR process == "runningboardd" OR process == "launchd_sim" OR subsystem BEGINSWITH "com.apple.FrontBoard" OR subsystem BEGINSWITH "com.apple.CoreSimulator"' \
       > "${story_output}/Diagnostics/simulator-system.log" 2>&1 || true
   else
@@ -262,7 +267,7 @@ capture_failure_diagnostics() {
       > "${story_output}/Diagnostics/simulator-system.log"
   fi
   /usr/bin/log show \
-    --start "${run_started_at}" --style compact --info --debug \
+    --start "${log_started_at}" --style compact --info --debug \
     --predicate 'process == "CoreSimulatorService" OR process == "CoreSimulatorBridge" OR process == "SimulatorTrampoline"' \
     > "${story_output}/Diagnostics/coresimulator-host.log" 2>&1 || true
   xcrun simctl list devices --json > "${story_output}/Diagnostics/simulators.json" 2>&1 || true
