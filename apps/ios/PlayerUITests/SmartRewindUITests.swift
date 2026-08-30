@@ -1,7 +1,7 @@
 import XCTest
 
 @MainActor
-final class SmartRewindUITests: XCTestCase {
+final class SmartRewindUITests: PlayerUITestCase {
   private let bookID = "51000000-0000-0000-0000-000000000001"
   private let preEventID = "51000000-0000-0000-0000-000000000101"
   private let rewindEventID = "51000000-0000-0000-0000-000000000102"

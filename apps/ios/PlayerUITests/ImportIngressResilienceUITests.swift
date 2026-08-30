@@ -1,7 +1,7 @@
 import XCTest
 
 @MainActor
-final class ImportIngressResilienceUITests: XCTestCase {
+final class ImportIngressResilienceUITests: PlayerUITestCase {
   private let documentJobID = "70000000-0000-0000-0000-000000000001"
   private let handoffID = "70000000-0000-0000-0000-000000000101"
   private let shareJobID = "70000000-0000-0000-0000-000000000102"

@@ -1,7 +1,7 @@
 import XCTest
 
 @MainActor
-final class BackupUITests: XCTestCase {
+final class BackupUITests: PlayerUITestCase {
   func testExportsClearsAndRestoresAVerifiedPortableLibrary() throws {
     continueAfterFailure = false
     XCUIDevice.shared.orientation = .portrait

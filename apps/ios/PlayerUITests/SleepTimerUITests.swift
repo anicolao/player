@@ -1,7 +1,7 @@
 import XCTest
 
 @MainActor
-final class SleepTimerUITests: XCTestCase {
+final class SleepTimerUITests: PlayerUITestCase {
   private let bookID = "52000000-0000-0000-0000-000000000001"
   private let timer101 = "52000000-0000-0000-0000-000000000101"
 

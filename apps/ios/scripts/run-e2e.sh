@@ -190,10 +190,23 @@ capture_failure_screen() {
   local dimensions
   local pixel_width
   local pixel_height
+  local retained_screenshot_status=0
 
   if [[ -s "${failure_screen}" && -s "${failure_screen_source}" ]]; then return 0; fi
   rm -f "${failure_screen}" "${failure_screen_source}" \
     "${temporary_screen}" "${temporary_source}"
+
+  if [[ -s "${attachments}/manifest.json" ]]; then
+    if swift "${script_dir}/extract-xctest-failure-frame.swift" \
+      --failure-screenshot-only \
+      "${attachments}" "${failure_screen}" "${failure_screen_source}"; then
+      return 0
+    else
+      retained_screenshot_status="$?"
+      if [[ "${retained_screenshot_status}" -eq 2 ]]; then retained_screenshot_status=0; fi
+    fi
+  fi
+  rm -f "${failure_screen}" "${failure_screen_source}"
 
   if [[ -n "${simulator_id}" ]] \
     && swift "${script_dir}/extract-xctest-failure-frame.swift" \
@@ -212,14 +225,22 @@ capture_failure_screen() {
           simulatorId: $simulatorId, pixelWidth: $pixelWidth, pixelHeight: $pixelHeight}' \
         > "${temporary_source}"
       mv "${temporary_source}" "${failure_screen_source}"
-      if mv "${temporary_screen}" "${failure_screen}"; then return 0; fi
+      if mv "${temporary_screen}" "${failure_screen}"; then
+        return "${retained_screenshot_status}"
+      fi
       rm -f "${failure_screen}" "${failure_screen_source}"
     fi
   fi
   rm -f "${temporary_screen}" "${temporary_source}"
 
-  swift "${script_dir}/extract-xctest-failure-frame.swift" \
-    "${attachments}" "${failure_screen}" "${failure_screen_source}"
+  if [[ -s "${attachments}/manifest.json" ]] \
+    && swift "${script_dir}/extract-xctest-failure-frame.swift" \
+      --recording-only \
+      "${attachments}" "${failure_screen}" "${failure_screen_source}"; then
+    return "${retained_screenshot_status}"
+  fi
+  if [[ "${retained_screenshot_status}" -ne 0 ]]; then return "${retained_screenshot_status}"; fi
+  return 1
 }
 
 capture_failure_diagnostics() {

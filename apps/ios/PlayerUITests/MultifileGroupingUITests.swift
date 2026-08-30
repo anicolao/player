@@ -1,7 +1,7 @@
 import XCTest
 
 @MainActor
-final class MultifileGroupingUITests: XCTestCase {
+final class MultifileGroupingUITests: PlayerUITestCase {
   private let jobID = "30000000-0000-0000-0000-000000000001"
   private let proposalA = "30000000-0000-0000-0000-000000000010"
   private let proposalB = "30000000-0000-0000-0000-000000000020"

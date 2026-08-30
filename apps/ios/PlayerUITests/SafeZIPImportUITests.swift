@@ -1,7 +1,7 @@
 import XCTest
 
 @MainActor
-final class SafeZIPImportUITests: XCTestCase {
+final class SafeZIPImportUITests: PlayerUITestCase {
   private let jobID = "60000000-0000-0000-0000-000000000001"
 
   func testRejectsHostileZIPsThenCancelsAndRetriesAValidArchive() throws {

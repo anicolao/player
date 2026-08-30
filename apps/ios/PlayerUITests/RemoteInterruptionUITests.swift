@@ -1,7 +1,7 @@
 import XCTest
 
 @MainActor
-final class RemoteInterruptionUITests: XCTestCase {
+final class RemoteInterruptionUITests: PlayerUITestCase {
   private let fixtureBookID = "20000000-0000-0000-0000-000000000001"
   private let registeredCommands: Set<String> = [
     "change-position", "change-rate", "next-track-skip-forward", "pause", "play",

@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 import base64
 import json
+import struct
 import tempfile
 import unittest
+import zlib
 from pathlib import Path
 
 import evidence_manifest as evidence
@@ -336,6 +338,77 @@ class EvidenceManifestTests(unittest.TestCase):
             "exportedFileName": "corrupt-newer.mp4",
             "suggestedHumanReadableName": "Screen Recording 2026-08-28.mp4",
             "timestamp": 300.0,
+        })
+        write_json(attempt / "Attachments/manifest.json", attachments)
+        self.assertFalse(evidence.build_manifest(
+            attempt, self.story, STORY
+        )["validation"]["valid"])
+
+    def test_failure_screenshot_provenance_requires_unique_newest_png_attachment(self):
+        attempt = self.make_attempt(failed_test=True)
+        attachment = attempt / "Attachments/failure.png"
+        attachment.write_bytes(PNG_1X1)
+        attachments = [{
+            "testIdentifier": "PlayerUITests/Failure/testExample()",
+            "attachments": [{
+                "exportedFileName": "failure.png",
+                "suggestedHumanReadableName": "xctest-failure-screen_0_66A67D4C-8F3E-4D49-96B7-BBF13DCF045F.png",
+                "timestamp": 200.0,
+            }],
+        }]
+        write_json(attempt / "Attachments/manifest.json", attachments)
+        self.assertFalse(evidence.build_manifest(
+            attempt, self.story, STORY
+        )["validation"]["valid"])
+        source = {
+            "schemaVersion": 1,
+            "artifact": "Diagnostics/failure-screen.png",
+            "source": "xctest-failure-screenshot",
+            "attachment": "Attachments/failure.png",
+            "testIdentifier": "PlayerUITests/Failure/testExample()",
+            "attachmentTimestamp": 200.0,
+            "pixelWidth": 1,
+            "pixelHeight": 1,
+        }
+        write_json(attempt / "Diagnostics/failure-screen-source.json", source)
+        failure_path = attempt / "Diagnostics/FailureEvidence.json"
+        failure = json.loads(failure_path.read_text())
+        failure["failureScreen"] = source
+        write_json(failure_path, failure)
+        manifest, errors = self.write_and_validate(attempt)
+        self.assertTrue(manifest["validation"]["valid"])
+        self.assertEqual(errors, [])
+
+        text_payload = b"Comment\x00content mismatch"
+        text_chunk = (
+            struct.pack(">I", len(text_payload)) + b"tEXt" + text_payload
+            + struct.pack(">I", zlib.crc32(b"tEXt" + text_payload) & 0xffffffff)
+        )
+        failure_screen = attempt / "Diagnostics/failure-screen.png"
+        failure_screen.write_bytes(PNG_1X1[:-12] + text_chunk + PNG_1X1[-12:])
+        self.assertFalse(evidence.build_manifest(
+            attempt, self.story, STORY
+        )["validation"]["valid"])
+        failure_screen.write_bytes(PNG_1X1)
+
+        near_miss = attempt / "Attachments/near-miss.png"
+        near_miss.write_bytes(PNG_1X1)
+        attachments[0]["attachments"].append({
+            "exportedFileName": "near-miss.png",
+            "suggestedHumanReadableName": "xctest-failure-screen_unrelated.png",
+            "timestamp": 300.0,
+        })
+        write_json(attempt / "Attachments/manifest.json", attachments)
+        self.assertTrue(evidence.build_manifest(
+            attempt, self.story, STORY
+        )["validation"]["valid"])
+
+        duplicate = attempt / "Attachments/duplicate.png"
+        duplicate.write_bytes(PNG_1X1)
+        attachments[0]["attachments"].append({
+            "exportedFileName": "duplicate.png",
+            "suggestedHumanReadableName": "xctest-failure-screen_0_1A111111-1111-1111-1111-111111111111.png",
+            "timestamp": 200.0,
         })
         write_json(attempt / "Attachments/manifest.json", attachments)
         self.assertFalse(evidence.build_manifest(

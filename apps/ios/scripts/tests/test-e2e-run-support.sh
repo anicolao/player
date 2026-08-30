@@ -385,10 +385,19 @@ test_exit_line="$(rg -n -F -m 1 'exit "${test_status}"' "${run_e2e}" | cut -d: -
 rg -Fq 'extract-xctest-failure-frame.swift' "${run_e2e}" \
   || fail "UI-test failures cannot fall back to an exported XCTest recording"
 bounded_live_line="$(rg -n -F -m 1 -- '--capture-live "${simulator_id}"' "${run_e2e}" | cut -d: -f1)"
-recording_fallback_line="$(rg -n -F -m 1 '"${attachments}" "${failure_screen}"' "${run_e2e}" | cut -d: -f1)"
-[[ -n "${bounded_live_line}" && -n "${recording_fallback_line}" \
+retained_xctest_line="$(rg -n -F -m 1 -- '--failure-screenshot-only' "${run_e2e}" | cut -d: -f1)"
+recording_fallback_line="$(rg -n -F -m 1 -- '--recording-only' "${run_e2e}" | cut -d: -f1)"
+[[ -n "${bounded_live_line}" && -n "${retained_xctest_line}" \
+  && -n "${recording_fallback_line}" \
+  && "${retained_xctest_line}" -lt "${bounded_live_line}" \
   && "${bounded_live_line}" -lt "${recording_fallback_line}" ]] \
-  || fail "the bounded live screenshot does not precede the recording fallback"
+  || fail "failure capture is not ordered retained screenshot, bounded live image, then recording"
+rg -Fq 'if [[ "${retained_screenshot_status}" -eq 2 ]]; then retained_screenshot_status=0; fi' \
+  "${run_e2e}" \
+  || fail "only an absent retained failure screenshot permits a successful fallback"
+if [[ "$(rg -F -c 'return "${retained_screenshot_status}"' "${run_e2e}")" != "3" ]]; then
+  fail "fallback images do not preserve malformed or ambiguous screenshot failure status"
+fi
 if rg -Fq 'xcrun simctl io "${simulator_id}" screenshot' "${run_e2e}"; then
   fail "run-e2e can still block directly on a live simulator screenshot"
 fi

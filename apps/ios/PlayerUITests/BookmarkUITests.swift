@@ -1,7 +1,7 @@
 import XCTest
 
 @MainActor
-final class BookmarkUITests: XCTestCase {
+final class BookmarkUITests: PlayerUITestCase {
   private let bookID = "53000000-0000-0000-0000-000000000001"
   private let firstAssetID = "53000000-0000-0000-0000-000000000002"
   private let secondAssetID = "53000000-0000-0000-0000-000000000003"

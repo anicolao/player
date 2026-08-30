@@ -36,6 +36,11 @@ FAILURE_DIAGNOSTICS = (
     "Diagnostics/xcresult-diagnostics-export.log",
 )
 PASSING_COMPARISON_RESULTS = {"exact", "canonical"}
+FAILURE_SCREENSHOT_NAME = re.compile(
+    r"xctest-failure-screen_[0-9]+_"
+    r"[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-"
+    r"[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\.png"
+)
 
 
 def load_json(path: Path):
@@ -275,6 +280,44 @@ def screen_recording_candidates(root: Path, attachments, errors):
     return candidates
 
 
+def failure_screenshot_candidates(root: Path, attachments, errors):
+    candidates = []
+    if not isinstance(attachments, list):
+        return candidates
+    for group in attachments:
+        if not isinstance(group, dict):
+            continue
+        test_identifier = group.get("testIdentifier")
+        for attachment in group.get("attachments", []):
+            if not isinstance(attachment, dict):
+                continue
+            suggested_name = attachment.get("suggestedHumanReadableName")
+            if not isinstance(suggested_name, str) or not (
+                    suggested_name == "xctest-failure-screen.png"
+                    or FAILURE_SCREENSHOT_NAME.fullmatch(suggested_name)):
+                continue
+            name = attachment.get("exportedFileName")
+            timestamp = attachment.get("timestamp")
+            if not safe_relative_path(name) or PurePosixPath(name).name != name \
+                    or not name.lower().endswith(".png"):
+                errors.append("XCTest failure screenshot has an unsafe exported filename")
+                continue
+            if not isinstance(timestamp, (int, float)) or isinstance(timestamp, bool) \
+                    or not math.isfinite(timestamp):
+                errors.append("XCTest failure screenshot has an invalid timestamp")
+                continue
+            path = root / "Attachments" / name
+            if path.is_file() and not path.is_symlink() and path.stat().st_size > 0:
+                candidates.append({
+                    "attachment": f"Attachments/{name}",
+                    "testIdentifier": test_identifier,
+                    "attachmentTimestamp": timestamp,
+                    "dimensions": png_dimensions(path),
+                    "sha256": sha256(path),
+                })
+    return candidates
+
+
 def validate_failure_screen(root: Path, failure, attachments, errors):
     png_path = root / "Diagnostics" / "failure-screen.png"
     dimensions = png_dimensions(png_path)
@@ -291,6 +334,11 @@ def validate_failure_screen(root: Path, failure, attachments, errors):
     if not isinstance(failure, dict) or failure.get("failureScreen") != source:
         errors.append("FailureEvidence.json does not exactly bind failure-screen provenance")
     common = {"schemaVersion", "artifact", "source", "pixelWidth", "pixelHeight"}
+    retained_screenshots = failure_screenshot_candidates(root, attachments, errors)
+    if source.get("source") != "xctest-failure-screenshot" and retained_screenshots:
+        errors.append(
+            "failure-screen provenance ignored an available retained XCTest failure screenshot"
+        )
     if source.get("schemaVersion") != 1 \
             or source.get("artifact") != "Diagnostics/failure-screen.png":
         errors.append("failure-screen provenance has an invalid schema or artifact")
@@ -309,6 +357,50 @@ def validate_failure_screen(root: Path, failure, attachments, errors):
             simulator_id,
         ) is None:
             errors.append("live-simulator failure-screen provenance has an invalid simulator UDID")
+        return
+
+    if source.get("source") == "xctest-failure-screenshot":
+        screenshot_fields = {"attachment", "testIdentifier", "attachmentTimestamp"}
+        if set(source) != common | screenshot_fields:
+            errors.append("XCTest failure-screenshot provenance has unexpected fields")
+        attachment = source.get("attachment")
+        test_identifier = source.get("testIdentifier")
+        timestamp = source.get("attachmentTimestamp")
+        if not safe_relative_path(attachment) or not attachment.startswith("Attachments/") \
+                or PurePosixPath(attachment).parent != PurePosixPath("Attachments"):
+            errors.append("failure-screen provenance has an unsafe attachment path")
+        if not isinstance(test_identifier, str) or not test_identifier:
+            errors.append("failure-screen provenance has an invalid test identifier")
+        if not isinstance(timestamp, (int, float)) or isinstance(timestamp, bool) \
+                or not math.isfinite(timestamp):
+            errors.append("failure-screen provenance has an invalid attachment timestamp")
+        candidates = retained_screenshots
+        if not candidates:
+            errors.append("failure-screen provenance has no nonempty XCTest failure screenshot")
+            return
+        newest_timestamp = max(item["attachmentTimestamp"] for item in candidates)
+        newest = [
+            item for item in candidates if item["attachmentTimestamp"] == newest_timestamp
+        ]
+        selected = {
+            "attachment": attachment,
+            "testIdentifier": test_identifier,
+            "attachmentTimestamp": timestamp,
+        }
+        if len(newest) != 1 or {
+            key: newest[0].get(key) for key in selected
+        } != selected:
+            errors.append(
+                "failure-screen provenance is not the unique newest nonempty XCTest failure screenshot"
+            )
+        elif newest[0].get("dimensions") != dimensions:
+            errors.append(
+                "failure-screen provenance references a corrupt or dimension-mismatched XCTest screenshot"
+            )
+        elif newest[0].get("sha256") != sha256(png_path):
+            errors.append(
+                "failure-screen provenance does not retain the exact XCTest screenshot bytes"
+            )
         return
 
     if source.get("source") != "xctest-screen-recording":

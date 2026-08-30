@@ -1,7 +1,7 @@
 import XCTest
 
 @MainActor
-final class PositionRestoreUITests: XCTestCase {
+final class PositionRestoreUITests: PlayerUITestCase {
   private let fixtureBookID = "20000000-0000-0000-0000-000000000001"
   private let initialPositionMilliseconds = 12_000
   private let seekPositionMilliseconds = 60_000

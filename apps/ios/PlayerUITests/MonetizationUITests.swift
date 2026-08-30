@@ -1,7 +1,7 @@
 import XCTest
 
 @MainActor
-final class MonetizationUITests: XCTestCase {
+final class MonetizationUITests: PlayerUITestCase {
   func testExplainsExhaustionAndCompletesAOneTimeUnlock() throws {
     continueAfterFailure = false
     XCUIDevice.shared.orientation = .portrait

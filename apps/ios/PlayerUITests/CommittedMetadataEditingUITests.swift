@@ -1,7 +1,7 @@
 import XCTest
 
 @MainActor
-final class CommittedMetadataEditingUITests: XCTestCase {
+final class CommittedMetadataEditingUITests: PlayerUITestCase {
   private enum ID {
     static let targetBook = "a7000000-0000-0000-0000-000000000001"
     static let atlasBook = "a7000000-0000-0000-0000-000000000002"

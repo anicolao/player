@@ -37,13 +37,32 @@ private struct FailureScreenSource: Encodable {
   let pixelHeight: Int
 }
 
+private struct FailureScreenshotSource: Encodable {
+  let schemaVersion = 1
+  let artifact = "Diagnostics/failure-screen.png"
+  let source = "xctest-failure-screenshot"
+  let attachment: String
+  let testIdentifier: String
+  let attachmentTimestamp: Double
+  let pixelWidth: Int
+  let pixelHeight: Int
+}
+
+private enum ExtractionMode {
+  case preferred
+  case failureScreenshotOnly
+  case recordingOnly
+}
+
 private enum ExtractionError: LocalizedError {
   case usage
   case unsafePath(String)
   case outputExists(String)
   case malformedManifest
   case noRecording
+  case noFailureScreenshot
   case ambiguousNewestRecording
+  case ambiguousNewestFailureScreenshot
   case invalidRecording(String)
   case invalidCaptureCommand
   case liveCaptureFailed(Int32)
@@ -53,17 +72,25 @@ private enum ExtractionError: LocalizedError {
     switch self {
     case .usage:
       "usage: extract-xctest-failure-frame.swift <attachments> <output.png> <source.json>\n"
+        + "       extract-xctest-failure-frame.swift --failure-screenshot-only "
+        + "<attachments> <output.png> <source.json>\n"
+        + "       extract-xctest-failure-frame.swift --recording-only "
+        + "<attachments> <output.png> <source.json>\n"
         + "       extract-xctest-failure-frame.swift --capture-live <simulator-udid> <output.png>"
     case .unsafePath(let path):
-      "The XCTest attachment manifest contains an unsafe recording path: \(path)"
+      "The XCTest attachment manifest contains an unsafe attachment path: \(path)"
     case .outputExists(let path):
       "Refusing to overwrite existing failure evidence: \(path)"
     case .malformedManifest:
       "The XCTest attachment manifest is missing, linked, or malformed."
     case .noRecording:
       "No nonempty exported XCTest Screen Recording is available."
+    case .noFailureScreenshot:
+      "No retained XCTest failure screenshot is available."
     case .ambiguousNewestRecording:
       "The newest nonempty XCTest Screen Recording is ambiguous."
+    case .ambiguousNewestFailureScreenshot:
+      "The newest nonempty XCTest failure screenshot is ambiguous."
     case .invalidRecording(let message):
       "The newest nonempty XCTest Screen Recording is invalid: \(message)"
     case .invalidCaptureCommand:
@@ -71,9 +98,25 @@ private enum ExtractionError: LocalizedError {
     case .liveCaptureFailed(let status):
       "The live simulator screenshot did not complete within two seconds (status \(status))."
     case .imageDestination:
-      "The final XCTest recording frame could not be encoded as PNG."
+      "The XCTest failure image could not be encoded as PNG."
     }
   }
+}
+
+private func isFailureScreenshotName(_ name: String) -> Bool {
+  if name == "xctest-failure-screen.png" { return true }
+  let prefix = "xctest-failure-screen_"
+  let suffix = ".png"
+  guard name.hasPrefix(prefix), name.hasSuffix(suffix) else { return false }
+  let start = name.index(name.startIndex, offsetBy: prefix.count)
+  let end = name.index(name.endIndex, offsetBy: -suffix.count)
+  let exportedToken = name[start..<end]
+  guard let separator = exportedToken.firstIndex(of: "_") else { return false }
+  let index = exportedToken[..<separator]
+  let uuidStart = exportedToken.index(after: separator)
+  let uuid = exportedToken[uuidStart...]
+  return !index.isEmpty && index.allSatisfy { $0.isASCII && $0.isNumber }
+    && UUID(uuidString: String(uuid)) != nil
 }
 
 private func captureLiveSimulatorScreen() throws {
@@ -184,6 +227,49 @@ private func loadCandidate(from attachmentsURL: URL) throws -> Candidate {
   return candidate
 }
 
+private func loadFailureScreenshotCandidate(from attachmentsURL: URL) throws -> Candidate? {
+  let manifestURL = attachmentsURL.appending(path: "manifest.json")
+  _ = try requireRegularFile(manifestURL)
+  let groups: [AttachmentGroup]
+  do {
+    groups = try JSONDecoder().decode([AttachmentGroup].self, from: Data(contentsOf: manifestURL))
+  } catch {
+    throw ExtractionError.malformedManifest
+  }
+
+  var candidates: [Candidate] = []
+  for group in groups {
+    for attachment in group.attachments {
+      guard isFailureScreenshotName(attachment.suggestedHumanReadableName) else {
+        continue
+      }
+      guard let timestamp = attachment.timestamp, timestamp.isFinite else {
+        throw ExtractionError.malformedManifest
+      }
+      let name = attachment.exportedFileName
+      guard !name.isEmpty, name == URL(filePath: name).lastPathComponent,
+        !name.contains("/"), !name.contains("\\"), name.lowercased().hasSuffix(".png")
+      else { throw ExtractionError.unsafePath(name) }
+      let url = attachmentsURL.appending(path: name)
+      guard let values = try? regularFileValues(url), values.isRegularFile == true,
+        values.isSymbolicLink != true, (values.fileSize ?? 0) > 0
+      else { continue }
+      candidates.append(Candidate(
+        attachment: attachment,
+        attachmentTimestamp: timestamp,
+        testIdentifier: group.testIdentifier,
+        url: url
+      ))
+    }
+  }
+  guard let newestTimestamp = candidates.map(\.attachmentTimestamp).max() else { return nil }
+  let newest = candidates.filter { $0.attachmentTimestamp == newestTimestamp }
+  guard newest.count == 1, let candidate = newest.first else {
+    throw ExtractionError.ambiguousNewestFailureScreenshot
+  }
+  return candidate
+}
+
 private func writePNG(_ image: CGImage, to url: URL) throws {
   guard let destination = CGImageDestinationCreateWithURL(
     url as CFURL,
@@ -205,12 +291,15 @@ private func writePNG(_ image: CGImage, to url: URL) throws {
   else { throw ExtractionError.imageDestination }
 }
 
-private func extract() async throws {
-  guard CommandLine.arguments.count == 4 else { throw ExtractionError.usage }
-  let attachmentsURL = URL(filePath: CommandLine.arguments[1], directoryHint: .isDirectory)
+private func extract(mode: ExtractionMode, argumentOffset: Int) async throws {
+  guard CommandLine.arguments.count == 4 + argumentOffset else { throw ExtractionError.usage }
+  let attachmentsURL = URL(
+    filePath: CommandLine.arguments[1 + argumentOffset],
+    directoryHint: .isDirectory
+  )
     .standardizedFileURL
-  let outputURL = URL(filePath: CommandLine.arguments[2]).standardizedFileURL
-  let sourceURL = URL(filePath: CommandLine.arguments[3]).standardizedFileURL
+  let outputURL = URL(filePath: CommandLine.arguments[2 + argumentOffset]).standardizedFileURL
+  let sourceURL = URL(filePath: CommandLine.arguments[3 + argumentOffset]).standardizedFileURL
   guard outputURL.pathExtension.lowercased() == "png",
     sourceURL.pathExtension.lowercased() == "json",
     outputURL.deletingLastPathComponent() == sourceURL.deletingLastPathComponent()
@@ -218,6 +307,53 @@ private func extract() async throws {
   for url in [outputURL, sourceURL] where FileManager.default.fileExists(atPath: url.path) {
     throw ExtractionError.outputExists(url.path)
   }
+
+  let outputParent = outputURL.deletingLastPathComponent()
+  try FileManager.default.createDirectory(at: outputParent, withIntermediateDirectories: true)
+  let token = UUID().uuidString.lowercased()
+  let temporaryPNG = outputParent.appending(path: ".failure-screen-\(token).png")
+  let temporarySource = outputParent.appending(path: ".failure-screen-\(token).json")
+  defer {
+    try? FileManager.default.removeItem(at: temporaryPNG)
+    try? FileManager.default.removeItem(at: temporarySource)
+  }
+
+  if mode != .recordingOnly,
+    let screenshot = try loadFailureScreenshotCandidate(from: attachmentsURL)
+  {
+    guard let source = CGImageSourceCreateWithURL(screenshot.url as CFURL, nil),
+      let sourceType = CGImageSourceGetType(source),
+      String(sourceType) == UTType.png.identifier,
+      CGImageSourceGetCount(source) == 1,
+      let image = CGImageSourceCreateImageAtIndex(source, 0, nil),
+      image.width > 0, image.height > 0
+    else { throw ExtractionError.imageDestination }
+    try FileManager.default.copyItem(at: screenshot.url, to: temporaryPNG)
+    let provenance = FailureScreenshotSource(
+      attachment: "Attachments/\(screenshot.attachment.exportedFileName)",
+      testIdentifier: screenshot.testIdentifier,
+      attachmentTimestamp: screenshot.attachmentTimestamp,
+      pixelWidth: image.width,
+      pixelHeight: image.height
+    )
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+    try encoder.encode(provenance).write(to: temporarySource, options: .atomic)
+    do {
+      try FileManager.default.moveItem(at: temporarySource, to: sourceURL)
+      try FileManager.default.moveItem(at: temporaryPNG, to: outputURL)
+    } catch {
+      try? FileManager.default.removeItem(at: sourceURL)
+      try? FileManager.default.removeItem(at: outputURL)
+      throw error
+    }
+    print(
+      "Retained XCTest failure screenshot from \(screenshot.attachment.exportedFileName) "
+        + "(\(image.width)x\(image.height))."
+    )
+    return
+  }
+  if mode == .failureScreenshotOnly { throw ExtractionError.noFailureScreenshot }
 
   let candidate = try loadCandidate(from: attachmentsURL)
   let asset = AVURLAsset(url: candidate.url)
@@ -278,16 +414,6 @@ private func extract() async throws {
     actualSeconds <= requestedSeconds, image.width > 0, image.height > 0
   else { throw ExtractionError.invalidRecording("the final frame has invalid timing or dimensions") }
 
-  let outputParent = outputURL.deletingLastPathComponent()
-  try FileManager.default.createDirectory(at: outputParent, withIntermediateDirectories: true)
-  let token = UUID().uuidString.lowercased()
-  let temporaryPNG = outputParent.appending(path: ".failure-screen-\(token).png")
-  let temporarySource = outputParent.appending(path: ".failure-screen-\(token).json")
-  defer {
-    try? FileManager.default.removeItem(at: temporaryPNG)
-    try? FileManager.default.removeItem(at: temporarySource)
-  }
-
   try writePNG(image, to: temporaryPNG)
   let provenance = FailureScreenSource(
     attachment: "Attachments/\(candidate.attachment.exportedFileName)",
@@ -320,9 +446,19 @@ private func extract() async throws {
 do {
   if CommandLine.arguments.count > 1, CommandLine.arguments[1] == "--capture-live" {
     try captureLiveSimulatorScreen()
+  } else if CommandLine.arguments.count > 1,
+    CommandLine.arguments[1] == "--failure-screenshot-only"
+  {
+    try await extract(mode: .failureScreenshotOnly, argumentOffset: 1)
+  } else if CommandLine.arguments.count > 1,
+    CommandLine.arguments[1] == "--recording-only"
+  {
+    try await extract(mode: .recordingOnly, argumentOffset: 1)
   } else {
-    try await extract()
+    try await extract(mode: .preferred, argumentOffset: 0)
   }
+} catch ExtractionError.noFailureScreenshot {
+  exit(2)
 } catch {
   fputs("Failure-frame extraction failed: \(error.localizedDescription)\n", stderr)
   exit(1)

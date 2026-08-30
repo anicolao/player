@@ -1,7 +1,7 @@
 import XCTest
 
 @MainActor
-final class AccessibilityUITests: XCTestCase {
+final class AccessibilityUITests: PlayerUITestCase {
   private let secondBookID = "90000000-0000-0000-0000-000000000002"
 
   func testAccessibilityPreferenceTogglesUpdateAndPersist() throws {

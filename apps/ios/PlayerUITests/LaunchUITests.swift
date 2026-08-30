@@ -1,7 +1,7 @@
 import XCTest
 
 @MainActor
-final class LaunchUITests: XCTestCase {
+final class LaunchUITests: PlayerUITestCase {
   func testAudioSessionConfigurationWarningDoesNotPresentImportAlertAtStartup() {
     continueAfterFailure = false
     let app = makeApplication(additionalArguments: [

@@ -1,7 +1,7 @@
 import XCTest
 
 @MainActor
-final class AppStoreListingUITests: XCTestCase {
+final class AppStoreListingUITests: PlayerUITestCase {
   func testCapturesCanonicalMarketingSurfaces() throws {
     continueAfterFailure = false
     XCUIDevice.shared.orientation = .portrait

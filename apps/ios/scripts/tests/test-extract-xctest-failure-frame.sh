@@ -33,6 +33,15 @@ swift "${fixture}" generate "${valid}/Attachments/older.mp4"
 make_manifest "${valid}/Attachments" older.mp4 100 \
   '[{"exportedFileName":"issue.txt","suggestedHumanReadableName":"Complete Issue Description.txt"},{"exportedFileName":"newer-empty.mp4","suggestedHumanReadableName":"Screen Recording empty.mp4","timestamp":200}]'
 
+missing_screenshot_status=0
+swift "${extractor}" --failure-screenshot-only "${valid}/Attachments" \
+  "${valid}/Diagnostics/missing-screenshot.png" \
+  "${valid}/Diagnostics/missing-screenshot-source.json" \
+  || missing_screenshot_status="$?"
+[[ "${missing_screenshot_status}" == "2" ]]
+[[ ! -e "${valid}/Diagnostics/missing-screenshot.png" ]]
+[[ ! -e "${valid}/Diagnostics/missing-screenshot-source.json" ]]
+
 hung_xcrun="${test_root}/hung-xcrun"
 printf '%s\n' '#!/bin/sh' 'trap "" TERM' 'while :; do :; done' > "${hung_xcrun}"
 chmod +x "${hung_xcrun}"
@@ -45,8 +54,10 @@ if PLAYER_FAILURE_SCREEN_XCRUN="${hung_xcrun}" "${extractor_binary}" \
 fi
 capture_ended_ns="$(python3 -c 'import time; print(time.time_ns())')"
 capture_milliseconds="$(( (capture_ended_ns - capture_started_ns) / 1000000 ))"
-if (( capture_milliseconds < 1900 || capture_milliseconds > 2300 )); then
-  echo "Live screenshot deadline escaped its two-second bound (${capture_milliseconds}ms)." >&2
+# The extractor fires SIGKILL at exactly two seconds; this wall measurement also
+# includes the host scheduler delivering the signal and reaping the process.
+if (( capture_milliseconds < 1900 || capture_milliseconds > 2750 )); then
+  echo "Live screenshot deadline or process-reap allowance escaped its bound (${capture_milliseconds}ms)." >&2
   exit 1
 fi
 [[ ! -e "${valid}/Diagnostics/live-attempt.png" ]]
@@ -67,6 +78,94 @@ jq -e '
   and .actualTimeSeconds <= .requestedTimeSeconds
   and .pixelWidth == 16 and .pixelHeight == 16
 ' "${valid}/Diagnostics/failure-screen-source.json" >/dev/null
+
+direct="${test_root}/direct-screenshot"
+mkdir -p "${direct}/Attachments" "${direct}/Diagnostics"
+cp "${valid}/Diagnostics/failure-screen.png" "${direct}/Attachments/failure.png"
+cp "${valid}/Attachments/older.mp4" "${direct}/Attachments/older.mp4"
+jq -n '[{testIdentifier: "PlayerUITests/Failure/testExample()",
+  attachments: [
+    {exportedFileName: "older.mp4",
+      suggestedHumanReadableName: "Screen Recording fixture.mp4", timestamp: 300},
+    {exportedFileName: "failure.png",
+      suggestedHumanReadableName: "xctest-failure-screen_0_66A67D4C-8F3E-4D49-96B7-BBF13DCF045F.png", timestamp: 200}
+  ]}]' > "${direct}/Attachments/manifest.json"
+swift "${extractor}" "${direct}/Attachments" \
+  "${direct}/Diagnostics/failure-screen.png" \
+  "${direct}/Diagnostics/failure-screen-source.json"
+swift "${fixture}" verify-blue "${direct}/Diagnostics/failure-screen.png"
+jq -e '
+  .schemaVersion == 1
+  and .artifact == "Diagnostics/failure-screen.png"
+  and .source == "xctest-failure-screenshot"
+  and .attachment == "Attachments/failure.png"
+  and .testIdentifier == "PlayerUITests/Failure/testExample()"
+  and .attachmentTimestamp == 200
+  and .pixelWidth == 16 and .pixelHeight == 16
+' "${direct}/Diagnostics/failure-screen-source.json" >/dev/null
+
+recording_only="${test_root}/recording-only"
+mkdir -p "${recording_only}/Diagnostics"
+swift "${extractor}" --recording-only "${direct}/Attachments" \
+  "${recording_only}/Diagnostics/failure-screen.png" \
+  "${recording_only}/Diagnostics/failure-screen-source.json"
+jq -e '
+  .source == "xctest-screen-recording"
+  and .attachment == "Attachments/older.mp4"
+' "${recording_only}/Diagnostics/failure-screen-source.json" >/dev/null
+
+near_miss="${test_root}/near-miss-screenshot"
+mkdir -p "${near_miss}/Attachments" "${near_miss}/Diagnostics"
+cp "${valid}/Diagnostics/failure-screen.png" "${near_miss}/Attachments/near-miss.png"
+jq -n '[{testIdentifier: "PlayerUITests/Failure/testExample()",
+  attachments: [{exportedFileName: "near-miss.png",
+    suggestedHumanReadableName: "xctest-failure-screen_unrelated.png", timestamp: 200}]}]' \
+  > "${near_miss}/Attachments/manifest.json"
+near_miss_status=0
+swift "${extractor}" --failure-screenshot-only "${near_miss}/Attachments" \
+  "${near_miss}/Diagnostics/failure-screen.png" \
+  "${near_miss}/Diagnostics/failure-screen-source.json" \
+  || near_miss_status="$?"
+[[ "${near_miss_status}" == "2" ]]
+
+wrong_format="${test_root}/wrong-format-screenshot"
+mkdir -p "${wrong_format}/Attachments" "${wrong_format}/Diagnostics"
+sips -s format jpeg "${valid}/Diagnostics/failure-screen.png" \
+  --out "${wrong_format}/Attachments/failure.png" >/dev/null 2>&1
+jq -n '[{testIdentifier: "PlayerUITests/Failure/testExample()",
+  attachments: [{exportedFileName: "failure.png",
+    suggestedHumanReadableName: "xctest-failure-screen_0_33333333-3333-3333-3333-333333333333.png",
+    timestamp: 200}]}]' > "${wrong_format}/Attachments/manifest.json"
+wrong_format_status=0
+swift "${extractor}" --failure-screenshot-only "${wrong_format}/Attachments" \
+  "${wrong_format}/Diagnostics/failure-screen.png" \
+  "${wrong_format}/Diagnostics/failure-screen-source.json" \
+  || wrong_format_status="$?"
+[[ "${wrong_format_status}" == "1" ]]
+[[ ! -e "${wrong_format}/Diagnostics/failure-screen.png" ]]
+[[ ! -e "${wrong_format}/Diagnostics/failure-screen-source.json" ]]
+
+ambiguous_direct="${test_root}/ambiguous-direct-screenshot"
+mkdir -p "${ambiguous_direct}/Attachments" "${ambiguous_direct}/Diagnostics"
+cp "${valid}/Diagnostics/failure-screen.png" "${ambiguous_direct}/Attachments/first.png"
+cp "${valid}/Diagnostics/failure-screen.png" "${ambiguous_direct}/Attachments/second.png"
+jq -n '[{testIdentifier: "PlayerUITests/Failure/testExample()",
+  attachments: [
+    {exportedFileName: "first.png",
+      suggestedHumanReadableName: "xctest-failure-screen_0_11111111-1111-1111-1111-111111111111.png",
+      timestamp: 200},
+    {exportedFileName: "second.png",
+      suggestedHumanReadableName: "xctest-failure-screen_0_22222222-2222-2222-2222-222222222222.png",
+      timestamp: 200}
+  ]}]' > "${ambiguous_direct}/Attachments/manifest.json"
+if swift "${extractor}" "${ambiguous_direct}/Attachments" \
+  "${ambiguous_direct}/Diagnostics/failure-screen.png" \
+  "${ambiguous_direct}/Diagnostics/failure-screen-source.json"; then
+  echo "Ambiguous newest XCTest failure screenshots must fail closed." >&2
+  exit 1
+fi
+[[ ! -e "${ambiguous_direct}/Diagnostics/failure-screen.png" ]]
+[[ ! -e "${ambiguous_direct}/Diagnostics/failure-screen-source.json" ]]
 
 corrupt="${test_root}/corrupt"
 mkdir -p "${corrupt}/Attachments" "${corrupt}/Diagnostics"

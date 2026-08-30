@@ -1,7 +1,7 @@
 import XCTest
 
 @MainActor
-final class TransportControlsUITests: XCTestCase {
+final class TransportControlsUITests: PlayerUITestCase {
   private let bookID = "30000000-0000-0000-0000-000000000001"
 
   func testCustomizesAndRestoresListeningControls() throws {

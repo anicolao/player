@@ -64,6 +64,27 @@ rg -q 'MissingCaptureUITests.swift:3: tester.step screenshot is missing top-leve
 rg -q 'Capture readiness hygiene passed for [1-9][0-9]* tester.step calls' \
   "${temporary_root}/current.log"
 
+if rg -n --regexp 'class [A-Za-z0-9]+UITests: ' \
+  "${ui_test_root}" --glob '*UITests.swift' \
+  | rg -v ': PlayerUITestCase \{' \
+  > "${temporary_root}/failure-screen-superclass.log"; then
+  cat "${temporary_root}/failure-screen-superclass.log" >&2
+  echo 'failure-evidence hygiene requires every UI-test class to retain a failure screenshot' >&2
+  exit 1
+fi
+for retained_failure_pattern in \
+  'class PlayerUITestCase: XCTestCase' \
+  'override func record(_ issue: XCTIssue)' \
+  'attachment.name = "xctest-failure-screen.png"' \
+  'attachment.lifetime = .keepAlways' \
+  'add(attachment)' \
+  'super.record(issue)'; do
+  rg -Fq "${retained_failure_pattern}" "${ui_test_root}/TestStepHelper.swift" || {
+    echo "failure-evidence hygiene is missing: ${retained_failure_pattern}" >&2
+    exit 1
+  }
+done
+
 selector_sources=(
   "${ui_test_root}/AccessibilityUITests.swift"
   "${ui_test_root}/AppStoreListingUITests.swift"

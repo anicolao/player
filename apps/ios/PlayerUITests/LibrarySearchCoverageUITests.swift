@@ -1,7 +1,7 @@
 import XCTest
 
 @MainActor
-final class LibrarySearchCoverageUITests: XCTestCase {
+final class LibrarySearchCoverageUITests: PlayerUITestCase {
   private let books = (1...5).map {
     String(format: "90000000-0000-0000-0000-%012d", $0)
   }

@@ -1,5 +1,21 @@
 import XCTest
 
+@MainActor
+class PlayerUITestCase: XCTestCase {
+  private var retainedFailureScreen = false
+
+  override func record(_ issue: XCTIssue) {
+    if !retainedFailureScreen {
+      retainedFailureScreen = true
+      let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+      attachment.name = "xctest-failure-screen.png"
+      attachment.lifetime = .keepAlways
+      add(attachment)
+    }
+    super.record(issue)
+  }
+}
+
 enum E2EScrollAxis: String, Equatable {
   case horizontal
   case vertical

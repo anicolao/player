@@ -1,7 +1,7 @@
 import XCTest
 
 @MainActor
-final class MetadataRepairUITests: XCTestCase {
+final class MetadataRepairUITests: PlayerUITestCase {
   private let jobID = "80000000-0000-0000-0000-000000000001"
   private let audioChecksum = "6c5a700ee340ace483b4cd45188403ca9a77fd60d94ba248063ee2c7fc6366f7"
 

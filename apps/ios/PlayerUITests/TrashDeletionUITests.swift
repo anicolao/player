@@ -1,7 +1,7 @@
 import XCTest
 
 @MainActor
-final class TrashDeletionUITests: XCTestCase {
+final class TrashDeletionUITests: PlayerUITestCase {
   private let bookID = "90000000-0000-0000-0000-000000000001"
   private let siblingBookID = "90000000-0000-0000-0000-000000000005"
   private let siblingTransactionID = "90000000-0000-0000-0000-000000000601"

@@ -1,7 +1,7 @@
 import XCTest
 
 @MainActor
-final class ImportRecoveryStorageUITests: XCTestCase {
+final class ImportRecoveryStorageUITests: PlayerUITestCase {
   private let lowSpaceJobID = "61000000-0000-0000-0000-000000000001"
   private let mixedJobID = "61000000-0000-0000-0000-000000000002"
   private let stagingJobID = "61000000-0000-0000-0000-000000000003"

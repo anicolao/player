@@ -1,7 +1,7 @@
 import XCTest
 
 @MainActor
-final class OfflineRecoveryUITests: XCTestCase {
+final class OfflineRecoveryUITests: PlayerUITestCase {
   func testRecoversStartupAndExportsOnlySanitizedOfflineDiagnostics() throws {
     continueAfterFailure = false
     XCUIDevice.shared.orientation = .portrait
