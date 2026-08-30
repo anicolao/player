@@ -119,7 +119,7 @@ qualification_failure_signature() {
     local failed_tests
     failed_tests="$(qualification_failed_ui_tests "${retained}" | sed '/^$/d' | paste -sd+ -)"
     if [[ -f "${test_log}" ]] \
-      && rg -Fq 'via Xcode: Timed out while launching application via Xcode.' "${test_log}"; then
+      && grep -Fq 'via Xcode: Timed out while launching application via Xcode.' "${test_log}"; then
       echo "infrastructure:xcode-application-launch-timeout:${failed_tests:-unidentified}:exit-$(jq -r '.testExitCode' "${failure_evidence}")"
     else
       echo "ui-test:${failed_tests:-unidentified}:exit-$(jq -r '.testExitCode' "${failure_evidence}")"

@@ -610,8 +610,13 @@ class QualificationAggregatorTests(unittest.TestCase):
             "Test Case '-[PlayerUITests.MultifileGroupingUITests "
             "testRepairsMessyMultifileGroupingAndCommitsOneBookAtomically]' failed (74 seconds).\n",
             encoding="utf-8")
+        fake_bin = self.root / "ripgrep-unavailable"
+        fake_bin.mkdir()
+        fake_rg = fake_bin / "rg"
+        fake_rg.write_text("#!/bin/sh\nexit 127\n", encoding="utf-8")
+        fake_rg.chmod(0o755)
         self.assertEqual(
-            self.failure_signature(retained, 65),
+            self.failure_signature(retained, 65, extra_path=fake_bin),
             "infrastructure:xcode-application-launch-timeout:"
             "MultifileGroupingUITests.testRepairsMessyMultifileGroupingAndCommitsOneBookAtomically:exit-65")
 
