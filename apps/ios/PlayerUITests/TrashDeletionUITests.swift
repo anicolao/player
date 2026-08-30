@@ -179,23 +179,25 @@ final class TrashDeletionUITests: PlayerUITestCase {
     trashTransactionCount: Int,
     audioByteCount: Int
   ) throws {
+    let deadline = EventDeadline()
+    func matches() -> Bool {
+      guard let value = element.value.map(String.init(describing:)),
+        let evidence = PurgeEvidence(value)
+      else { return false }
+      return evidence.matches(
+        status: status,
+        targetFileCount: targetFileCount,
+        trashTransactionCount: trashTransactionCount,
+        audioByteCount: audioByteCount
+      )
+    }
+    if matches() { return }
     let expectation = XCTNSPredicateExpectation(
-      predicate: NSPredicate { _, _ in
-        guard element.exists,
-          let value = element.value.map(String.init(describing:)),
-          let evidence = PurgeEvidence(value)
-        else { return false }
-        return evidence.matches(
-          status: status,
-          targetFileCount: targetFileCount,
-          trashTransactionCount: trashTransactionCount,
-          audioByteCount: audioByteCount
-        )
-      },
-      object: nil
+      predicate: NSPredicate { _, _ in matches() },
+      object: element
     )
-    guard XCTWaiter.wait(for: [expectation], timeout: EventDeadline().remaining) == .completed
-    else {
+    _ = XCTWaiter.wait(for: [expectation], timeout: deadline.remaining)
+    guard matches() else {
       XCTFail("Permanent-deletion evidence did not settle: \(String(describing: element.value))")
       throw TrashDeletionTestError.semanticStateUnavailable
     }
