@@ -1,4 +1,5 @@
 import XCTest
+import UniformTypeIdentifiers
 
 @MainActor
 class PlayerUITestCase: XCTestCase {
@@ -7,7 +8,11 @@ class PlayerUITestCase: XCTestCase {
   override func record(_ issue: XCTIssue) {
     if !retainedFailureScreen {
       retainedFailureScreen = true
-      let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+      let screenshot = XCUIScreen.main.screenshot()
+      let attachment = XCTAttachment(
+        data: screenshot.pngRepresentation,
+        uniformTypeIdentifier: UTType.png.identifier
+      )
       attachment.name = "xctest-failure-screen.png"
       attachment.lifetime = .keepAlways
       add(attachment)

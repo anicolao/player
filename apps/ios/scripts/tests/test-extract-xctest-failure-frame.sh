@@ -145,6 +145,37 @@ swift "${extractor}" --failure-screenshot-only "${wrong_format}/Attachments" \
 [[ ! -e "${wrong_format}/Diagnostics/failure-screen.png" ]]
 [[ ! -e "${wrong_format}/Diagnostics/failure-screen-source.json" ]]
 
+jpeg_export="${test_root}/jpeg-exported-screenshot"
+mkdir -p "${jpeg_export}/Attachments" "${jpeg_export}/Diagnostics"
+cp "${valid}/Attachments/older.mp4" "${jpeg_export}/Attachments/older.mp4"
+jpeg_name="33333333-4444-5555-6666-777777777777.jpeg"
+sips -s format jpeg "${valid}/Diagnostics/failure-screen.png" \
+  --out "${jpeg_export}/Attachments/${jpeg_name}" >/dev/null 2>&1
+jq -n --arg jpeg "${jpeg_name}" '[{testIdentifier: "PlayerUITests/Failure/testExample()",
+  attachments: [
+    {exportedFileName: "older.mp4",
+      suggestedHumanReadableName: "Screen Recording fixture.mp4", timestamp: 300},
+    {exportedFileName: $jpeg,
+      suggestedHumanReadableName: "xctest-failure-screen_0_33333333-3333-3333-3333-333333333333.png",
+      timestamp: 200}
+  ]}]' > "${jpeg_export}/Attachments/manifest.json"
+jpeg_export_status=0
+swift "${extractor}" --failure-screenshot-only "${jpeg_export}/Attachments" \
+  "${jpeg_export}/Diagnostics/failure-screen.png" \
+  "${jpeg_export}/Diagnostics/failure-screen-source.json" \
+  || jpeg_export_status="$?"
+[[ "${jpeg_export_status}" == "1" ]]
+[[ ! -e "${jpeg_export}/Diagnostics/failure-screen.png" ]]
+[[ ! -e "${jpeg_export}/Diagnostics/failure-screen-source.json" ]]
+swift "${extractor}" --recording-only "${jpeg_export}/Attachments" \
+  "${jpeg_export}/Diagnostics/recording-fallback.png" \
+  "${jpeg_export}/Diagnostics/recording-fallback-source.json"
+swift "${fixture}" verify-blue "${jpeg_export}/Diagnostics/recording-fallback.png"
+jq -e '
+  .source == "xctest-screen-recording"
+  and .attachment == "Attachments/older.mp4"
+' "${jpeg_export}/Diagnostics/recording-fallback-source.json" >/dev/null
+
 ambiguous_direct="${test_root}/ambiguous-direct-screenshot"
 mkdir -p "${ambiguous_direct}/Attachments" "${ambiguous_direct}/Diagnostics"
 cp "${valid}/Diagnostics/failure-screen.png" "${ambiguous_direct}/Attachments/first.png"

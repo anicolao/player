@@ -75,6 +75,8 @@ fi
 for retained_failure_pattern in \
   'class PlayerUITestCase: XCTestCase' \
   'override func record(_ issue: XCTIssue)' \
+  'data: screenshot.pngRepresentation' \
+  'uniformTypeIdentifier: UTType.png.identifier' \
   'attachment.name = "xctest-failure-screen.png"' \
   'attachment.lifetime = .keepAlways' \
   'add(attachment)' \
@@ -84,6 +86,14 @@ for retained_failure_pattern in \
     exit 1
   }
 done
+player_ui_test_case="$({
+  sed -n '/^class PlayerUITestCase: XCTestCase {/,/^}/p' \
+    "${ui_test_root}/TestStepHelper.swift"
+})"
+if rg -Fq 'XCTAttachment(screenshot:' <<< "${player_ui_test_case}"; then
+  echo 'failure-evidence hygiene rejected an attachment whose encoded type XCTest may change' >&2
+  exit 1
+fi
 
 selector_sources=(
   "${ui_test_root}/AccessibilityUITests.swift"

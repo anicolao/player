@@ -415,6 +415,53 @@ class EvidenceManifestTests(unittest.TestCase):
             attempt, self.story, STORY
         )["validation"]["valid"])
 
+    def test_jpeg_exported_as_failure_screenshot_cannot_be_waived_by_recording_fallback(self):
+        attempt = self.make_attempt(failed_test=True)
+        recording = attempt / "Attachments/recording.mp4"
+        recording.write_bytes(b"\x00\x00\x00\x14ftypqt  \x00\x00\x00\x00")
+        jpeg = attempt / "Attachments/33333333-4444-5555-6666-777777777777.jpeg"
+        jpeg.write_bytes(b"\xff\xd8\xff\xd9")
+        attachments = [{
+            "testIdentifier": "PlayerUITests/Failure/testExample()",
+            "attachments": [{
+                "exportedFileName": "recording.mp4",
+                "suggestedHumanReadableName": "Screen Recording fixture.mp4",
+                "timestamp": 300.0,
+            }, {
+                "exportedFileName": jpeg.name,
+                "suggestedHumanReadableName": (
+                    "xctest-failure-screen_0_"
+                    "33333333-3333-3333-3333-333333333333.png"
+                ),
+                "timestamp": 200.0,
+            }],
+        }]
+        write_json(attempt / "Attachments/manifest.json", attachments)
+        source = {
+            "schemaVersion": 1,
+            "artifact": "Diagnostics/failure-screen.png",
+            "source": "xctest-screen-recording",
+            "attachment": "Attachments/recording.mp4",
+            "testIdentifier": "PlayerUITests/Failure/testExample()",
+            "attachmentTimestamp": 300.0,
+            "requestedTimeSeconds": 2.0,
+            "actualTimeSeconds": 1.0,
+            "pixelWidth": 1,
+            "pixelHeight": 1,
+        }
+        write_json(attempt / "Diagnostics/failure-screen-source.json", source)
+        failure_path = attempt / "Diagnostics/FailureEvidence.json"
+        failure = json.loads(failure_path.read_text())
+        failure["failureScreenExitCode"] = 1
+        failure["failureScreen"] = source
+        write_json(failure_path, failure)
+        manifest = evidence.build_manifest(attempt, self.story, STORY)
+        self.assertFalse(manifest["validation"]["valid"])
+        self.assertTrue(any(
+            "XCTest failure screenshot has an unsafe exported filename" in error
+            for error in manifest["validation"]["errors"]
+        ))
+
     def test_failed_test_accepts_canonical_actual_subset_and_truthful_partial_walkthrough(self):
         attempt = self.make_attempt(failed_test=True)
         (attempt / "ActualWalkthrough/README.md").unlink()
