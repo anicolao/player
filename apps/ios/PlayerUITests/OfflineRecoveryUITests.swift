@@ -81,12 +81,17 @@ final class OfflineRecoveryUITests: PlayerUITestCase {
       }
     )
 
-    app.buttons["startup-recovery-restore"].tap()
     let diagnosticsProbe = anyElement(app, "diagnostics-probe")
+    try tapRecoveryAction("startup-recovery-restore", in: app)
+    let restoreDeadline = EventDeadline()
     XCTAssertTrue(
-      diagnosticsProbe.waitForStringValue(
-        "diagnostics:sanitized=true:offline=true:quarantined=3",
-        timeout: 2
+      waitForPredicate(
+        NSPredicate(
+          format: "exists == true AND value == %@",
+          "diagnostics:sanitized=true:offline=true:quarantined=3"
+        ),
+        on: diagnosticsProbe,
+        timeout: restoreDeadline.remaining
       )
     )
     try tester.step(
@@ -396,12 +401,19 @@ final class OfflineRecoveryUITests: PlayerUITestCase {
       XCTFail("Expected recovery action \(identifier) to be an enabled 44-point target")
       throw OfflineRecoveryTestError.semanticStateUnavailable
     }
-    app.coordinate(
+    let coordinate = app.coordinate(
       withNormalizedOffset: CGVector(
         dx: (actionFrame.midX - appFrame.minX) / appFrame.width,
         dy: (actionFrame.midY - appFrame.minY) / appFrame.height
       )
-    ).tap()
+    )
+    guard performPhysicalInteractionWithoutPostEventQuiescence(
+      in: app,
+      { coordinate.tap() }
+    ) else {
+      XCTFail("The pinned XCTest runtime did not expose bounded recovery-action synthesis")
+      throw OfflineRecoveryTestError.semanticStateUnavailable
+    }
   }
 
   private func launchRecoveryApp(scenario: String) -> XCUIApplication {

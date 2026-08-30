@@ -204,6 +204,14 @@ rg -Fq 'waitForPredicate(selected, on: action, timeout: selectionDeadline.remain
 rg -Fq 'let orderScroll = app.collectionViews.firstMatch' "${multifile_grouping}"
 rg -Fq 'let revealPredicate = NSPredicate' "${multifile_grouping}"
 rg -Fq 'timeout: min(0.35, revealDeadline.remaining)' "${multifile_grouping}"
+offline_recovery="${ui_test_root}/OfflineRecoveryUITests.swift"
+if rg -Fq 'app.buttons["startup-recovery-restore"].tap()' "${offline_recovery}"; then
+  echo 'Offline recovery hygiene rejects element-bound durable restore taps' >&2
+  exit 1
+fi
+rg -Fq 'try tapRecoveryAction("startup-recovery-restore", in: app)' "${offline_recovery}"
+rg -Fq 'let restoreDeadline = EventDeadline()' "${offline_recovery}"
+rg -Fq 'performPhysicalInteractionWithoutPostEventQuiescence(' "${offline_recovery}"
 computer_receiver_tests="${ui_test_root}/../PlayerTests/ComputerReceiverTests.swift"
 rg -Fq 'fileprivate static let webRuntimePrimer = ReceiverWebRuntimePrimer()' \
   "${computer_receiver_tests}"
