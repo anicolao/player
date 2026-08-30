@@ -229,6 +229,16 @@ fi
 rg -Fq 'try tapRecoveryAction("startup-recovery-restore", in: app)' "${offline_recovery}"
 rg -Fq 'let restoreDeadline = EventDeadline()' "${offline_recovery}"
 rg -Fq 'performPhysicalInteractionWithoutPostEventQuiescence(' "${offline_recovery}"
+library_organization="${ui_test_root}/LibraryOrganizationUITests.swift"
+rg -Fq 'presentTabAction(addAudiobook, destination: receiverScreen, in: app)' \
+  "${library_organization}"
+rg -Fq 'let deliveryDeadline = EventDeadline()' "${library_organization}"
+rg -Fq 'performPhysicalInteractionWithoutPostEventQuiescence(' "${library_organization}"
+rg -Fq 'timeout: min(0.25, deliveryDeadline.remaining)' "${library_organization}"
+if rg -Fq 'tapTabAction(addAudiobook, in: app)' "${library_organization}"; then
+  echo 'Library organization hygiene rejects an unacknowledged Add action tap' >&2
+  exit 1
+fi
 computer_receiver_tests="${ui_test_root}/../PlayerTests/ComputerReceiverTests.swift"
 rg -Fq 'fileprivate static let webRuntimePrimer = ReceiverWebRuntimePrimer()' \
   "${computer_receiver_tests}"

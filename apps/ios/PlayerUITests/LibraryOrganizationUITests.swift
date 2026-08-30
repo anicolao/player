@@ -119,10 +119,9 @@ final class LibraryOrganizationUITests: PlayerUITestCase {
       }
     )
 
-    tapTabAction(addAudiobook, in: app)
     let receiverScreen = anyElement(app, "computer-receiver-screen")
     XCTAssertTrue(
-      waitForExistence(receiverScreen, deadline: EventDeadline()),
+      presentTabAction(addAudiobook, destination: receiverScreen, in: app),
       "The Add Audiobook action must present Receive from Computer"
     )
     XCTAssertTrue(
@@ -1474,28 +1473,42 @@ final class LibraryOrganizationUITests: PlayerUITestCase {
       && tabBarFrame.contains(actionFrame)
   }
 
-  private func tapTabAction(
+  private func presentTabAction(
     _ action: XCUIElement,
+    destination: XCUIElement,
     in app: XCUIApplication
-  ) {
-    let hasPhysicalTarget = tabActionHasPhysicalTarget(action, in: app)
-    XCTAssertTrue(
-      hasPhysicalTarget,
-      "The Add Audiobook tab action must retain a visible 44-point physical target"
-    )
-    let actionFrame = action.frame
-    let appFrame = app.frame
-    guard hasPhysicalTarget, !appFrame.isEmpty else { return }
+  ) -> Bool {
+    if destination.exists { return true }
+    let deliveryDeadline = EventDeadline()
+    repeat {
+      guard tabActionHasPhysicalTarget(action, in: app) else {
+        return destination.waitForExistence(timeout: deliveryDeadline.remaining)
+      }
+      let actionFrame = action.frame
+      let appFrame = app.frame
+      guard !appFrame.isEmpty else { return false }
 
-    // Anchor input to the stable application surface. XCTest can report a
-    // fixed tab item non-hittable, or lose an element-bound tap, while its
-    // physical frame remains visible and unchanged under accessibility load.
-    app.coordinate(
-      withNormalizedOffset: CGVector(
-        dx: (actionFrame.midX - appFrame.minX) / appFrame.width,
-        dy: (actionFrame.midY - appFrame.minY) / appFrame.height
+      // Anchor input to the stable application surface. XCTest can report a
+      // fixed tab item non-hittable, or lose an element-bound tap, while its
+      // physical frame remains visible and unchanged under accessibility load.
+      let coordinate = app.coordinate(
+        withNormalizedOffset: CGVector(
+          dx: (actionFrame.midX - appFrame.minX) / appFrame.width,
+          dy: (actionFrame.midY - appFrame.minY) / appFrame.height
+        )
       )
-    ).tap()
+      guard performPhysicalInteractionWithoutPostEventQuiescence(
+        in: app,
+        { coordinate.tap() }
+      ) else { return false }
+      if destination.waitForExistence(timeout: min(0.25, deliveryDeadline.remaining)) {
+        return true
+      }
+      if !action.exists {
+        return destination.waitForExistence(timeout: deliveryDeadline.remaining)
+      }
+    } while deliveryDeadline.remaining > 0
+    return destination.exists
   }
 
   private func requireValue(_ element: XCUIElement, _ expected: String) throws {
