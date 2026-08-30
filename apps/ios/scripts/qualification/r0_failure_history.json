@@ -2315,6 +2315,30 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This infrastructure-invalid evidence occurred in the same formal run already counted by the Story 007 test failure, so it adds no second reset for that single qualification dispatch."
+    },
+    {
+      "signature": "ui-test:TrashDeletionUITests.testPermanentlyDeletesOnlyTheConfirmedCurrentBook:matching-purge-evidence-missed-at-deadline-edge",
+      "story": "008-library-search",
+      "evidence": {
+        "workflowRun": 33325350089,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 008 artifact 9736615089 and lane-3 summary 9736615354 retain the exact XCTest result, semantic purge value, failure screen, hierarchy, logs, screenshot comparison, and lane attribution",
+        "url": "https://github.com/anicolao/player/actions/runs/33325350089/job/99294387527",
+        "commit": "a0786ee52f9546aa356f7c9e7d429a1d345252ba",
+        "observation": "Four hosted lanes passed. Story 007 and Story 008's organization and search selectors also passed. After permanent deletion, the waiter timed out, but its immediately retained diagnostic value already satisfied every asserted invariant: target transaction purged with zero files, sibling recoverable with one 8,461-byte audiobook, three other managed files totaling 25,383 bytes, persisted summaries equal to disk, two sibling Trash files totaling 8,806 bytes, no pending deletion, and every checksum and manifest agreement true."
+      },
+      "rootCause": "The custom semantic waiter performed separate expensive XCUIElement.exists and value accessibility round trips inside its predicate, bound that predicate to nil rather than the element, and trusted only XCTWaiter's deadline-edge result. Its failure diagnostic then fetched the value again and proved the exact condition had settled, but the helper never re-evaluated that same fail-closed parser after the bounded waiter woke.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Create one EventDeadline, evaluate the exact PurgeEvidence parser directly without a redundant existence query, bind the predicate expectation to the XCUIElement for the remaining deadline, and perform one final exact semantic evaluation after the bounded waiter wakes. Preserve every storage, checksum, manifest, sibling, and source invariant; add no sleep, retry, timeout increase, product change, or coverage reduction.",
+        "commits": [
+          "43685cddb03b02e3b2efb5135ab0de306aae21b3"
+        ],
+        "validation": "The exact Trash selector passed independently in 15.878 seconds and again inside a complete CI-matching serial Story 008 run in 18.352 seconds. The final full Story 008 run passed all three selectors, all ten screenshots pixel-exact, the reviewed walkthrough README exact, and exited zero in 257 seconds. Full E2E hygiene passes."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run, not a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
     }
   ]
 }
