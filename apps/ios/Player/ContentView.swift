@@ -865,6 +865,7 @@ struct ReviewImportView: View {
   let jobID: UUID
   let didCommit: () -> Void
   @State private var isConfirmingAbandonment = false
+  @State private var isReviewingOrder = false
 
   var body: some View {
     ScrollViewReader { _ in
@@ -896,6 +897,9 @@ struct ReviewImportView: View {
     }
     .navigationTitle("Review Import")
     .navigationBarTitleDisplayMode(.inline)
+    .navigationDestination(isPresented: $isReviewingOrder) {
+      ReviewOrderView(model: model, jobID: jobID)
+    }
     .toolbar {
       ToolbarItem(placement: .topBarTrailing) {
         Button("Abandon Import", systemImage: "trash", role: .destructive) {
@@ -975,8 +979,9 @@ struct ReviewImportView: View {
           .foregroundStyle(proposal.warnings.isEmpty ? .green : .orange)
       }
       if proposal.assets.count > 1 || !proposal.warnings.isEmpty {
-        NavigationLink {
-          ReviewOrderView(model: model, jobID: jobID)
+        Button {
+          guard !isReviewingOrder else { return }
+          isReviewingOrder = true
         } label: {
           HStack(spacing: 12) {
             Image(systemName: proposal.warnings.isEmpty ? "list.number" : "exclamationmark.triangle")
@@ -996,6 +1001,7 @@ struct ReviewImportView: View {
             in: RoundedRectangle(cornerRadius: 16)
           )
         }
+        .disabled(isReviewingOrder)
         .buttonStyle(.plain)
         .accessibilityIdentifier("review-order-button")
       }

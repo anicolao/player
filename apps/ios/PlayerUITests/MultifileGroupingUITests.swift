@@ -122,9 +122,9 @@ final class MultifileGroupingUITests: XCTestCase {
       }
     )
 
-    try tapPhysicalAction(reviewOrder, in: app)
     let orderScreen = anyElement(app, "review-order-screen")
     let orderProbe = anyElement(app, "order-probe")
+    try tapPhysicalAction(reviewOrder, until: orderProbe, in: app)
     let orderingEvidence = anyElement(app, "ordering-evidence-natural-numeric")
     try requireValue(
       orderProbe,
@@ -366,24 +366,42 @@ final class MultifileGroupingUITests: XCTestCase {
       && !app.sheets.firstMatch.exists
   }
 
-  private func tapPhysicalAction(_ action: XCUIElement, in app: XCUIApplication) throws {
-    let actionFrame = action.frame
-    let appFrame = app.frame
-    guard action.exists,
-      actionFrame.width >= 44,
-      actionFrame.height >= 44,
-      !appFrame.isEmpty,
-      appFrame.contains(actionFrame)
-    else {
-      XCTFail("The multifile journey expected a visible 44-point action target")
-      throw MultifileGroupingTestError.semanticStateUnavailable
-    }
-    app.coordinate(
-      withNormalizedOffset: CGVector(
-        dx: (actionFrame.midX - appFrame.minX) / appFrame.width,
-        dy: (actionFrame.midY - appFrame.minY) / appFrame.height
-      )
-    ).tap()
+  private func tapPhysicalAction(
+    _ action: XCUIElement,
+    until destination: XCUIElement,
+    in app: XCUIApplication
+  ) throws {
+    let deliveryDeadline = EventDeadline()
+    repeat {
+      guard action.exists, action.isEnabled else {
+        if destination.waitForExistence(timeout: deliveryDeadline.remaining) { return }
+        XCTFail("The multifile journey expected its enabled action or semantic destination")
+        throw MultifileGroupingTestError.semanticStateUnavailable
+      }
+      let actionFrame = action.frame
+      let appFrame = app.frame
+      guard actionFrame.width >= 44,
+        actionFrame.height >= 44,
+        !appFrame.isEmpty,
+        appFrame.contains(actionFrame)
+      else {
+        if destination.waitForExistence(timeout: deliveryDeadline.remaining) { return }
+        XCTFail("The multifile journey expected a visible 44-point action target")
+        throw MultifileGroupingTestError.semanticStateUnavailable
+      }
+      app.coordinate(
+        withNormalizedOffset: CGVector(
+          dx: (actionFrame.midX - appFrame.minX) / appFrame.width,
+          dy: (actionFrame.midY - appFrame.minY) / appFrame.height
+        )
+      ).tap()
+      if destination.waitForExistence(timeout: min(0.25, deliveryDeadline.remaining)) {
+        return
+      }
+    } while deliveryDeadline.remaining > 0
+
+    XCTFail("The multifile action did not reveal its semantic destination")
+    throw MultifileGroupingTestError.semanticStateUnavailable
   }
 
   private func requireValue(_ element: XCUIElement, _ expected: String) throws {
