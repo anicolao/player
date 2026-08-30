@@ -1957,10 +1957,148 @@
         "commits": [
           "b9dc9a98e61dd2a3f808d98e8bcf7d720b4df02d"
         ],
-        "validation": "The complete Story 003 journey passed 5/5 on five independently created iOS 26.5 simulators using one immutable build. All five test executions passed, all 20 reviewed screenshot comparisons passed, all five walkthrough manifests remained exact, and the complete grouping, ordering, correction, atomic commit, and storage assertions ran on every attempt. Normal hosted run 33289300337 then passed Story 003 and the complete 13-story, 41-selector, 372-core-test, renderer matrix without a rerun; E2E hygiene and all 63 capture-readiness checks also pass."
+        "validation": "The complete Story 003 journey passed 5/5 on five independently created iOS 26.5 simulators using one immutable build. All five test executions passed, all 20 reviewed screenshot comparisons passed, all five walkthrough READMEs matched the reviewed baseline exactly, all five evidence manifests validated, and the complete grouping, ordering, correction, atomic commit, and storage assertions ran on every attempt. Normal hosted run 33289300337 then passed Story 003 and the complete 13-story, 41-selector, 372-core-test, renderer matrix without a rerun; E2E hygiene and all 63 capture-readiness checks also pass."
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request matrix run rather than a formal repeated qualification attempt, so no consecutive Story 003 qualification count existed to reset."
+    },
+    {
+      "signature": "ui-test:BackupUITests.testExportsClearsAndRestoresAVerifiedPortableLibrary:post-event-quiescence-exhausted-delivery-deadline",
+      "story": "010-library-backup",
+      "evidence": {
+        "workflowRun": 33290815417,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 010 artifact 9726180236 and lane-4 summary artifact 9726180364 retained the failed timeline, accessibility hierarchy, semantic probe, screenshot, recording, and complete shard timing",
+        "url": "https://github.com/anicolao/player/actions/runs/33290815417",
+        "commit": "b25b829a98f5c445ced2b9fc06ebfa60ebb5c650",
+        "observation": "XCTest synthesized the physical Export tap at t=25.40s, then the same synchronous tap call blocked in XCTest's post-event application-idle wait until t=41.01s. The operation probe still reported idle, so that one framework call had already consumed the complete two-second delivery deadline before the bounded loop regained control. The sibling Backup selector passed every export path; the other 12 stories, 40 other UI selectors, all 372 core tests, and the renderer also passed."
+      },
+      "rootCause": "The bounded input loop used XCUI coordinate tap's unrelated global post-event quiescence as part of physical synthesis. That private framework wait is synchronous and can run for its own roughly 15-second timeout even when the application handler receives no input, preventing the loop from observing its exact product event or safely issuing another synthesis within the two-second domain deadline.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "For the two physical-delivery loops that already require exact semantic destinations, set the pinned XCTest application's skip-post-event-quiescence interaction bit only around event synthesis and restore its prior options immediately afterward. Fail closed if the pinned option is unavailable; retain the exact operation/order probe and one shared two-second deadline as the sole completion contract.",
+        "commits": [
+          "d302b4e0fb08e0264c3c70fde65bdff6395c3849"
+        ],
+        "validation": "Complete Story 010 passed 5/5 on independent fresh iOS 26.5 simulators: 10/10 selectors, 20/20 reviewed screenshots, and five exact walkthroughs. Its 25 physical Export actions were acknowledged on first synthesis with no post-event idle wait. Complete Story 003 also passed 5/5 counted fresh-simulator attempts with 20/20 screenshot contracts, five exact walkthroughs, one synthesis per order navigation, no post-event idle wait, and a 0.245-second XCTest runtime range. Two separately retained pre-app infrastructure attempts were excluded: one CoreSimulator extension-placeholder promise loss and one explicitly evidenced host out-of-storage install failure; neither launched Bookshelf or executed story logic."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request matrix run rather than a formal repeated qualification attempt, so no consecutive Story 010 qualification count existed to reset."
+    },
+    {
+      "signature": "ui-test:BackupUITests.testExportsClearsAndRestoresAVerifiedPortableLibrary:scroll-post-event-quiescence-exhausted-action-deadline",
+      "story": "010-library-backup",
+      "evidence": {
+        "workflowRun": 33292763947,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 010 artifact 9726756050 and lane-4 summary artifact 9726756277 retained the failed timeline, exact scroll probe, hierarchy, failure screen, recording, and shard timing",
+        "url": "https://github.com/anicolao/player/actions/runs/33292763947/job/99207179004",
+        "commit": "d302b4e0fb08e0264c3c70fde65bdff6395c3849",
+        "observation": "The automatic-restore reveal synthesized its vertical press-and-drag at t=52.96s, then the same XCTest call remained in post-event application-idle quiescence until t=55.94s. When control returned, the two-second action deadline had expired and backup-scroll-readiness was still exactly interaction=0, completion=0, geometry=31, completion-geometry=0, offset=-116.0 at the top endpoint. The sibling Backup selector passed, as did the other 12 stories, 40 other UI selectors, all 372 core tests, and the renderer."
+      },
+      "rootCause": "The generalized scroll helper still executed physical press-and-drag gestures through XCTest's unrelated synchronous post-event quiescence, and it started the product-event deadline before that synthesis. The skip-quiescence correction for acknowledged taps therefore did not cover scroll gestures; one private framework wait could consume the entire domain deadline before the helper could observe delivery, retry an unchanged origin, or correlate settled scroll completion.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Pin each ScrollSurface to its XCTest application, synthesize scroll gestures with post-event quiescence disabled only around the physical interaction, and start the unchanged two-second action deadline after synthesis. Retry only while the exact interaction, completion, geometry, and offset state remains unchanged; otherwise require a correlated receipt followed by idle, progress-making completion geometry.",
+        "commits": [
+          "b5419056362788d55633408ece08dd3adee2a65f"
+        ],
+        "validation": "The complete two-selector Story 010 passed in /tmp/player-scroll-validation-010-current: both UI selectors passed, all four screenshot contracts were accepted, the reviewed README matched exactly, and EvidenceManifest validation passed. Complete current-source Stories 003, 004, 007, 008, and 009 also exercised the generalized gesture path successfully. Normal hosted successor run 33296677851 then passed all 13 stories, 41 UI selectors, 372 core tests, and the renderer without a rerun."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request matrix run rather than a formal repeated qualification attempt, so no consecutive Story 010 qualification count existed to reset."
+    },
+    {
+      "signature": "ui-test:LibraryOrganizationUITests.testOrganizesDailyLibraryAndRestoresATrashedBook:collection-reorder-before-save-publication",
+      "story": "008-library-search",
+      "evidence": {
+        "artifact": "/tmp/player-scroll-validation-008-current",
+        "url": "local-artifact:/tmp/player-scroll-validation-008-current",
+        "commit": "d302b4e0fb08e0264c3c70fde65bdff6395c3849",
+        "observation": "After tapping save-collection-books, the journey immediately tapped collection-move-up-90000000-0000-0000-0000-000000000002. XCTest failed at LibraryOrganizationUITests.swift:251 because that control did not yet exist; the hierarchy exposed only the first book's disabled Up control. The other two Story 008 selectors passed, and the first reviewed screenshot matched exactly."
+      },
+      "rootCause": "The test treated return from the Save tap as proof that the asynchronous collection-membership mutation had been published through SwiftUI. It attempted to reorder the second book before observing the authoritative collection count and appended order, so a valid intermediate one-row presentation caused an immediate element-bound tap failure.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "After Save, require the exact collection-probe value containing both selected books in appended order, then wait no more than two seconds for the second book's move-up control before performing the real reorder action and requiring the existing exact reordered collection state.",
+        "commits": [
+          "b5419056362788d55633408ece08dd3adee2a65f"
+        ],
+        "validation": "The complete three-selector Story 008 rerun in /tmp/player-scroll-validation-008-racefix passed all UI tests, emitted all ten canonical screenshots, and matched the reviewed README exactly. Its sole subsequent failure was the independently classified system-owned home-indicator comparison. Normal hosted successor run 33296677851 passed the complete Story 008 journey."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This local focused discovery occurred before formal exact-SHA qualification, so no accepted consecutive Story 008 qualification count existed to reset."
+    },
+    {
+      "signature": "evidence:008-library-search:parallel-clone-failure-screen-unavailable",
+      "story": "008-library-search",
+      "evidence": {
+        "artifact": "/tmp/player-scroll-validation-008-current",
+        "url": "local-artifact:/tmp/player-scroll-validation-008-current",
+        "commit": "d302b4e0fb08e0264c3c70fde65bdff6395c3849",
+        "observation": "The Story 008 XCTest failure was retained with testExitCode=65 and a valid result bundle, but FailureEvidence.json reported failureScreenExitCode=1 and failureScreen=null. XCTest exported its Screen Recording attachment as a zero-byte MP4, no Diagnostics/failure-screen.png or provenance file existed, and EvidenceManifest validation therefore failed closed."
+      },
+      "rootCause": "Failure-screen capture began only after xcodebuild returned. With parallel UI testing, the failing clone had already been destroyed and the owned base simulator was shutdown, so live capture could not observe the failed screen. XCTest's automatically generated recording was empty, and the harness retained no screenshot synchronously at issue-recording time.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Give every canonical UI-test class a shared XCTestCase base that captures one keep-always, exactly named screenshot before forwarding the first recorded issue. Prefer the unique newest nonempty direct PNG attachment before live or recording fallback, retain exact attachment provenance, dimensions, and bytes, and fail closed on unsafe, ambiguous, corrupt, or mismatched evidence.",
+        "commits": [
+          "974dc7d6c4ba6bc1c535a61f504790d489b63be1"
+        ],
+        "validation": "An intentional exact-commit UI failure retained at /tmp/player-failure-screen-974dc7d-exact-validation exported the observed XCTest-renamed attachment, reported failureScreenExitCode=0 with source=xctest-failure-screenshot, retained the exact nonempty 1206-by-2622 PNG bytes, and produced a valid failed-attempt EvidenceManifest. Extractor fixtures independently prove the screenshot-only, live, and recording tiers and reject ambiguous, unsafe, corrupt, wrong-format, and near-miss attachments; 17 evidence-manifest tests reject provenance, dimension, and byte mismatches."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This local diagnostic discovery and exact-commit fault injection occurred before formal exact-SHA qualification, so no accepted consecutive Story 008 qualification count existed to reset."
+    },
+    {
+      "signature": "screenshot:008-library-search:home-indicator-visibility-unqualified",
+      "story": "008-library-search",
+      "evidence": {
+        "artifact": "/tmp/player-scroll-validation-008-racefix",
+        "url": "local-artifact:/tmp/player-scroll-validation-008-racefix",
+        "commit": "d302b4e0fb08e0264c3c70fde65bdff6395c3849",
+        "observation": "All three UI selectors passed and nine screenshots matched pixel-exact, but 000-populated-library.png differed by 6,442 pixels. Every changed pixel was confined to the 432-by-15 strip at x=387, y=2583 occupied by the iOS home indicator; no app-owned pixel differed."
+      },
+      "rootCause": "The system may independently show or auto-hide the home indicator between otherwise identical settled screenshots. Story 008 had no reviewed system-region policy for that exact strip, so the fail-closed comparator treated system-owned visibility as an application pixel regression.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Qualify only the exact 432-by-15 home-indicator rectangle in 000-populated-library.png as system-owned volatility, with a documented reason. Preserve exact comparison over every other pixel and every other Story 008 screenshot.",
+        "commits": [
+          "b5419056362788d55633408ece08dd3adee2a65f"
+        ],
+        "validation": "A fresh comparison retained at /tmp/player-story008-policy-audit.3rRiqr passed with failureCount=0: 6,442 changed pixels were confined to the reviewed system rectangle, the remaining application pixels were canonical, and the other nine screenshots remained pixel-exact. Normal hosted successor run 33296677851 passed the complete Story 008 screenshot contract."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This local focused discovery occurred before formal exact-SHA qualification, so no accepted consecutive Story 008 qualification count existed to reset."
+    },
+    {
+      "signature": "hygiene:capture-readiness:stale-pre-synthesis-deadline-source-guard",
+      "story": "core",
+      "evidence": {
+        "workflowRun": 33296371716,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions lane-1 job log retained the successful evidence suite and simulator-lease checks followed by the capture-readiness hygiene exit; no story artifact existed because the failure preceded project generation and XCTest",
+        "url": "https://github.com/anicolao/player/actions/runs/33296371716/job/99216618711",
+        "commit": "b5419056362788d55633408ece08dd3adee2a65f",
+        "observation": "Lane 1 exited with status 1 in Enforce deterministic E2E hygiene immediately after the evidence and simulator-lease suites passed. No application or UI test ran. The workflow was later cancelled when the corrective successor commit superseded it; the missing-artifact upload errors were downstream consequences, not additional failure signatures."
+      },
+      "rootCause": "The capture-readiness self-test still required the obsolete literal source lines 'let actionDeadline = EventDeadline()' and 'while actionDeadline.remaining > 0'. The scroll correction intentionally made the deadline optional and initialized it only after physical synthesis. A raw rg -Fq under set -e rejected the stronger implementation silently instead of checking the actual ordering invariant.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Scope the hygiene assertion to scrollUntil, locate the skip-quiescence gesture synthesis and first action-deadline initialization, and require synthesis to precede deadline creation. Retain explicit guards for the optional deadline declaration and bounded loop so future changes cannot move the two-second budget back across physical synthesis.",
+        "commits": [
+          "c5af4b13ce1cc78603cb4290affeb7ebb4436b9e"
+        ],
+        "validation": "The focused capture-readiness test and complete verify-e2e-hygiene suite pass locally. Exact-commit normal hosted run 33296677851 passed lane 1 hygiene, all five story lanes, all 13 stories, 41 UI selectors, 372 core tests, and the renderer without a rerun."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "No application or UI-test process began, and this normal pull-request infrastructure failure did not create or reset any formal qualification count."
     }
   ]
 }
