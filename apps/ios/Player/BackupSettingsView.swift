@@ -145,6 +145,9 @@ struct BackupSettingsView: View {
               BackupSettingsDivider()
               BackupSettingsRow {
                 Button {
+                  guard !isWorking else { return }
+                  isWorking = true
+                  operationState = .preparing(exportKind.rawValue)
                   startOperation { await prepareExport() }
                 } label: {
                   Label("Export Library Backup", systemImage: "square.and.arrow.up")
@@ -414,9 +417,7 @@ struct BackupSettingsView: View {
   }
 
   private func prepareExport() async {
-    isWorking = true
     message = nil
-    operationState = .preparing(exportKind.rawValue)
     defer { isWorking = false }
     do {
       let backup = try await model.prepareLibraryBackup(kind: exportKind)

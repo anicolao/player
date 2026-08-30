@@ -439,22 +439,46 @@ final class BackupUITests: XCTestCase {
       button.tap()
       return
     }
-    let buttonFrame = button.frame
-    let appFrame = app.frame
-    guard buttonFrame.width >= 44,
-      buttonFrame.height >= 44,
-      !appFrame.isEmpty,
-      appFrame.contains(buttonFrame)
-    else {
-      XCTFail("Expected production action \(identifier) to be a visible 44-point target")
+    let operation = anyElement(app, "backup-operation-state")
+    XCTAssertTrue(operation.waitForExistence(timeout: 2))
+    guard let initialOperation = operation.value as? String else {
+      XCTFail("Expected the backup operation probe to publish a string token")
       return
     }
-    app.coordinate(
-      withNormalizedOffset: CGVector(
-        dx: (buttonFrame.midX - appFrame.minX) / appFrame.width,
-        dy: (buttonFrame.midY - appFrame.minY) / appFrame.height
-      )
-    ).tap()
+    let operationChanged = NSPredicate(
+      format: "exists == true AND value != %@", initialOperation
+    )
+    let deliveryDeadline = EventDeadline()
+    repeat {
+      let buttonFrame = button.frame
+      let appFrame = app.frame
+      guard buttonFrame.width >= 44,
+        buttonFrame.height >= 44,
+        !appFrame.isEmpty,
+        appFrame.contains(buttonFrame)
+      else {
+        XCTFail("Expected production action \(identifier) to be a visible 44-point target")
+        return
+      }
+      app.coordinate(
+        withNormalizedOffset: CGVector(
+          dx: (buttonFrame.midX - appFrame.minX) / appFrame.width,
+          dy: (buttonFrame.midY - appFrame.minY) / appFrame.height
+        )
+      ).tap()
+      if waitForPredicate(
+        operationChanged,
+        on: operation,
+        timeout: min(0.25, deliveryDeadline.remaining)
+      ) {
+        return
+      }
+    } while deliveryDeadline.remaining > 0
+
+    XCTFail(
+      "Production action \(identifier) did not publish a state transition; "
+        + "actual=\(String(describing: operation.value))"
+    )
   }
 
   private func requireOperation(_ expected: String, in app: XCUIApplication) throws {
