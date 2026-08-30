@@ -460,12 +460,16 @@ final class BackupUITests: XCTestCase {
         XCTFail("Expected production action \(identifier) to be a visible 44-point target")
         return
       }
-      app.coordinate(
+      let coordinate = app.coordinate(
         withNormalizedOffset: CGVector(
           dx: (buttonFrame.midX - appFrame.minX) / appFrame.width,
           dy: (buttonFrame.midY - appFrame.minY) / appFrame.height
         )
-      ).tap()
+      )
+      guard synthesizePhysicalTapWithoutPostEventQuiescence(coordinate, in: app) else {
+        XCTFail("The pinned XCTest runtime did not expose bounded physical synthesis")
+        return
+      }
       if waitForPredicate(
         operationChanged,
         on: operation,

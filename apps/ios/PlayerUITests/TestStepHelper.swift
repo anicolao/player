@@ -296,6 +296,31 @@ func waitForPredicate(
 }
 
 @MainActor
+func synthesizePhysicalTapWithoutPostEventQuiescence(
+  _ coordinate: XCUICoordinate,
+  in application: XCUIApplication
+) -> Bool {
+  // The pinned XCTest runtime exposes bit 1 as
+  // XCUIApplicationInteractionOptionSkipPostEventQuiescence. These callers
+  // already wait for an exact product-state event, so XCTest's independent
+  // global-idle wait is neither the completion signal nor part of its two-second
+  // contract. Fail closed if that pinned interaction option is unavailable.
+  let interactionOptionsKey = "currentInteractionOptions"
+  guard
+    let currentOptions = application.value(forKey: interactionOptionsKey) as? NSNumber
+  else { return false }
+  application.setValue(
+    NSNumber(value: currentOptions.uintValue | (1 << 1)),
+    forKey: interactionOptionsKey
+  )
+  defer {
+    application.setValue(currentOptions, forKey: interactionOptionsKey)
+  }
+  coordinate.tap()
+  return true
+}
+
+@MainActor
 func waitForNoElements(
   _ query: XCUIElementQuery,
   deadline: EventDeadline = EventDeadline()

@@ -389,12 +389,16 @@ final class MultifileGroupingUITests: XCTestCase {
         XCTFail("The multifile journey expected a visible 44-point action target")
         throw MultifileGroupingTestError.semanticStateUnavailable
       }
-      app.coordinate(
+      let coordinate = app.coordinate(
         withNormalizedOffset: CGVector(
           dx: (actionFrame.midX - appFrame.minX) / appFrame.width,
           dy: (actionFrame.midY - appFrame.minY) / appFrame.height
         )
-      ).tap()
+      )
+      guard synthesizePhysicalTapWithoutPostEventQuiescence(coordinate, in: app) else {
+        XCTFail("The pinned XCTest runtime did not expose bounded physical synthesis")
+        throw MultifileGroupingTestError.semanticStateUnavailable
+      }
       if destination.waitForExistence(timeout: min(0.25, deliveryDeadline.remaining)) {
         return
       }
