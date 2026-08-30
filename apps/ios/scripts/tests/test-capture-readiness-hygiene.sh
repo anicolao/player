@@ -183,6 +183,27 @@ rg -Fq 'terminalEndpoint: \.atBottom' \
   "${ui_test_root}/BookmarkUITests.swift"
 rg -Fq 'waitForExistence(container, deadline: EventDeadline())' \
   "${ui_test_root}/AccessibilityUITests.swift"
+multifile_grouping="${ui_test_root}/MultifileGroupingUITests.swift"
+if rg -n --regexp 'select(B4|Prelude|B3)\.tap\(\)' "${multifile_grouping}" \
+  > "${temporary_root}/multifile-selection-tap.log"; then
+  cat "${temporary_root}/multifile-selection-tap.log" >&2
+  echo 'multifile hygiene rejected an element-bound reversible selection tap' >&2
+  exit 1
+fi
+[[ "$(rg -c '^[[:space:]]+try selectTrack\($' \
+  "${multifile_grouping}")" == "3" ]] || {
+  echo 'multifile hygiene requires every track selection to use bounded delivery' >&2
+  exit 1
+}
+rg -Fq 'private func selectTrack(' \
+  "${multifile_grouping}"
+rg -Fq 'performPhysicalInteractionWithoutPostEventQuiescence(' \
+  "${multifile_grouping}"
+rg -Fq 'waitForPredicate(selected, on: action, timeout: selectionDeadline.remaining)' \
+  "${multifile_grouping}"
+rg -Fq 'let orderScroll = app.collectionViews.firstMatch' "${multifile_grouping}"
+rg -Fq 'let revealPredicate = NSPredicate' "${multifile_grouping}"
+rg -Fq 'timeout: min(0.35, revealDeadline.remaining)' "${multifile_grouping}"
 scroll_helper="${ui_test_root}/TestStepHelper.swift"
 scroll_start="$(rg -n '^func scrollUntil\(' "${scroll_helper}" | cut -d: -f1)"
 scroll_end="$(rg -n '^func challengeSettledEnd\(' "${scroll_helper}" | cut -d: -f1)"

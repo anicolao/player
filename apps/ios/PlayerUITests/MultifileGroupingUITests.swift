@@ -139,6 +139,8 @@ final class MultifileGroupingUITests: PlayerUITestCase {
     let preludeTrack = anyElement(app, "order-track-\(prelude)")
     let lastTrack = anyElement(app, "order-track-\(b3)")
     let saveOrder = app.buttons["save-order"]
+    let orderScroll = app.collectionViews.firstMatch
+    let orderActionBarTop = app.buttons["order-proposal-\(proposalA)"]
     try tester.step(
       "natural-order-review",
       description: "Review Order preserves natural numeric order and every original file",
@@ -181,8 +183,13 @@ final class MultifileGroupingUITests: PlayerUITestCase {
     )
 
     let selectB4 = app.buttons["order-select-\(b4)"]
-    selectB4.tap()
-    try requireLabel(selectB4, "Deselect track")
+    try selectTrack(
+      selectB4,
+      in: app,
+      within: orderScroll,
+      obscuredBelow: orderActionBarTop,
+      direction: .towardEnd
+    )
     app.buttons["order-move-to-\(proposalA)"].tap()
     try requireValue(
       orderProbe,
@@ -190,8 +197,13 @@ final class MultifileGroupingUITests: PlayerUITestCase {
     )
 
     let selectPrelude = app.buttons["order-select-\(prelude)"]
-    selectPrelude.tap()
-    try requireLabel(selectPrelude, "Deselect track")
+    try selectTrack(
+      selectPrelude,
+      in: app,
+      within: orderScroll,
+      obscuredBelow: orderActionBarTop,
+      direction: .towardStart
+    )
     app.buttons["order-move-up-\(prelude)"].tap()
     try requireValue(
       orderProbe,
@@ -209,8 +221,13 @@ final class MultifileGroupingUITests: PlayerUITestCase {
     )
 
     let selectB3 = app.buttons["order-select-\(b3)"]
-    selectB3.tap()
-    try requireLabel(selectB3, "Deselect track")
+    try selectTrack(
+      selectB3,
+      in: app,
+      within: orderScroll,
+      obscuredBelow: orderActionBarTop,
+      direction: .towardEnd
+    )
     app.buttons["split-selected-tracks"].tap()
     try requireValue(
       orderProbe,
@@ -411,23 +428,113 @@ final class MultifileGroupingUITests: PlayerUITestCase {
     throw MultifileGroupingTestError.semanticStateUnavailable
   }
 
-  private func requireValue(_ element: XCUIElement, _ expected: String) throws {
-    guard element.waitForStringValue(expected, timeout: 2) else {
+  private func selectTrack(
+    _ action: XCUIElement,
+    in app: XCUIApplication,
+    within container: XCUIElement,
+    obscuredBelow obstruction: XCUIElement,
+    direction: ScrollProbeDirection
+  ) throws {
+    guard container.waitForExistence(timeout: 2), obstruction.waitForExistence(timeout: 2) else {
+      XCTFail("The multifile journey expected the order list and pinned action boundary")
+      throw MultifileGroupingTestError.semanticStateUnavailable
+    }
+    var revealed = trackActionIsUnobscured(action, within: container, below: obstruction)
+    var revealDeadline: EventDeadline?
+    let revealPredicate = NSPredicate { _, _ in
+      self.trackActionIsUnobscured(action, within: container, below: obstruction)
+    }
+    while !revealed, revealDeadline?.remaining ?? 2 > 0 {
+      guard performPhysicalInteractionWithoutPostEventQuiescence(
+        in: app,
+        { self.scrollOrder(container, direction: direction) }
+      ) else {
+        XCTFail("The pinned XCTest runtime did not expose bounded physical synthesis")
+        throw MultifileGroupingTestError.semanticStateUnavailable
+      }
+      if revealDeadline == nil { revealDeadline = EventDeadline() }
+      guard let revealDeadline else { break }
+      revealed = waitForPredicate(
+        revealPredicate,
+        on: action,
+        timeout: min(0.35, revealDeadline.remaining)
+      )
+    }
+    guard revealed else {
       XCTFail(
-        "The multifile journey expected \(expected), latest=\(String(describing: element.value))"
+        "The multifile journey could not reveal its exact track action; "
+          + "track=\(action.identifier), frame=\(action.frame), obstruction=\(obstruction.frame)"
+      )
+      throw MultifileGroupingTestError.semanticStateUnavailable
+    }
+    guard action.exists, action.isEnabled, action.label == "Select track" else {
+      XCTFail("The multifile journey expected one unselected enabled track action")
+      throw MultifileGroupingTestError.semanticStateUnavailable
+    }
+    let actionFrame = action.frame
+    let appFrame = app.frame
+    guard !actionFrame.isEmpty,
+      !appFrame.isEmpty,
+      appFrame.contains(actionFrame)
+    else {
+      XCTFail("The multifile journey expected a fully visible track action")
+      throw MultifileGroupingTestError.semanticStateUnavailable
+    }
+    let coordinate = app.coordinate(
+      withNormalizedOffset: CGVector(
+        dx: (actionFrame.midX - appFrame.minX) / appFrame.width,
+        dy: (actionFrame.midY - appFrame.minY) / appFrame.height
+      )
+    )
+    guard performPhysicalInteractionWithoutPostEventQuiescence(
+      in: app,
+      { coordinate.tap() }
+    ) else {
+      XCTFail("The pinned XCTest runtime did not expose bounded physical synthesis")
+      throw MultifileGroupingTestError.semanticStateUnavailable
+    }
+    let selectionDeadline = EventDeadline()
+    let selected = NSPredicate(format: "exists == true AND label == %@", "Deselect track")
+    guard waitForPredicate(selected, on: action, timeout: selectionDeadline.remaining) else {
+      XCTFail(
+        "The multifile journey expected label Deselect track, latest=\(action.label)"
       )
       throw MultifileGroupingTestError.semanticStateUnavailable
     }
   }
 
-  private func requireLabel(_ element: XCUIElement, _ expected: String) throws {
-    let expectation = XCTNSPredicateExpectation(
-      predicate: NSPredicate(format: "exists == true AND label == %@", expected),
-      object: element
-    )
-    guard XCTWaiter.wait(for: [expectation], timeout: 2) == .completed else {
+  private func trackActionIsUnobscured(
+    _ action: XCUIElement,
+    within container: XCUIElement,
+    below obstruction: XCUIElement
+  ) -> Bool {
+    guard action.exists, action.isEnabled, action.label == "Select track",
+      container.exists, obstruction.exists
+    else { return false }
+    let frame = action.frame
+    let viewport = container.frame
+    let unobscuredBottom = min(viewport.maxY, obstruction.frame.minY)
+    return !frame.isEmpty
+      && frame.minY >= viewport.minY
+      && frame.maxY <= unobscuredBottom
+  }
+
+  private func scrollOrder(_ container: XCUIElement, direction: ScrollProbeDirection) {
+    let startY: CGFloat = direction == .towardEnd ? 0.72 : 0.28
+    let endY: CGFloat = direction == .towardEnd ? 0.28 : 0.72
+    container.coordinate(withNormalizedOffset: CGVector(dx: 0.82, dy: startY))
+      .press(
+        forDuration: 0.05,
+        thenDragTo: container.coordinate(withNormalizedOffset: CGVector(dx: 0.82, dy: endY)),
+        withVelocity: .default,
+        thenHoldForDuration: 0
+      )
+  }
+
+  private func requireValue(_ element: XCUIElement, _ expected: String) throws {
+    guard element.waitForStringValue(expected, timeout: 2) else {
       XCTFail(
-        "The multifile journey expected label \(expected), latest=\(element.label)"
+        "The multifile journey expected \(expected), latest=\(String(describing: element.value))"
       )
       throw MultifileGroupingTestError.semanticStateUnavailable
     }
