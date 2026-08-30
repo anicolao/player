@@ -1042,9 +1042,12 @@ final class AccessibilityUITests: PlayerUITestCase {
     ) else { return false }
 
     // Readiness and each user gesture are distinct observable events. A slow
-    // accessibility query must not consume the correction gesture's budget,
-    // and one settled correction must leave room for a bounded fine adjustment.
-    for _ in 0..<3 {
+    // accessibility query must not consume the correction gesture's budget.
+    // Continue only while each settled correction strictly reduces the
+    // remaining framing error. That gives this loop a finite, observable
+    // termination condition without guessing how many recognizer corrections
+    // a particular hosted simulator will need.
+    while true {
       guard let before = surface.state(), before.isIdle else { return false }
       let anchor = framing.anchor()
       guard let screenY = anchorScreenY(anchor, windowMinY: windowMinY) else {
@@ -1122,13 +1125,17 @@ final class AccessibilityUITests: PlayerUITestCase {
       if abs(updatedY - framing.targetMinY) <= framing.tolerance {
         return true
       }
+      let updatedError = abs(updatedY - framing.targetMinY)
+      guard updatedError < abs(displacement) - 0.5 else {
+        print(
+          "Capture framing stopped because the settled correction did not converge: "
+            + "target=\(framing.targetMinY), before=\(screenY), after=\(updatedY), "
+            + "container=\(surface.containerID), "
+            + "probe=\(String(describing: settledState))"
+        )
+        return false
+      }
     }
-    print(
-      "Capture framing deadline expired: target=\(framing.targetMinY), "
-        + "actual=\(String(describing: anchorScreenY(framing.anchor(), in: app))), "
-        + "container=\(surface.containerID), probe=\(String(describing: surface.readiness.value))"
-    )
-    return false
   }
 
   private func waitForCaptureAnchor(

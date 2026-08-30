@@ -290,5 +290,19 @@ if [[ "$(rg -c 'terminateAndWait\(' "${ui_test_root}/AccessibilityUITests.swift"
   echo 'accessibility lifecycle hygiene requires every process boundary to displace glass' >&2
   exit 1
 fi
+accessibility_tests="${ui_test_root}/AccessibilityUITests.swift"
+framing_start="$(rg -n '^  private func settleCaptureFraming\(' \
+  "${accessibility_tests}" | cut -d: -f1)"
+framing_end="$(rg -n '^  private func waitForCaptureAnchor\(' \
+  "${accessibility_tests}" | cut -d: -f1)"
+framing_source="$(sed -n "${framing_start},${framing_end}p" \
+  "${accessibility_tests}")"
+if rg -q 'for _ in 0\.\.<[0-9]+' <<<"${framing_source}"; then
+  echo 'accessibility framing hygiene rejects a fixed correction-attempt ceiling' >&2
+  exit 1
+fi
+rg -Fq 'while true {' <<<"${framing_source}"
+rg -Fq 'updatedError < abs(displacement) - 0.5' <<<"${framing_source}"
+rg -Fq 'let actionDeadline = EventDeadline()' <<<"${framing_source}"
 
 echo "Capture-readiness and selector source hygiene tests passed."
