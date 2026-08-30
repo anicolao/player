@@ -443,14 +443,18 @@ func scrollUntil(
   }
   if !requiresInteraction && condition() { return true }
 
-  // Readiness and the first virtualized-target query are one observable phase.
-  // Give gesture synthesis and its correlated completion a separate bounded
-  // event budget so a slow accessibility snapshot cannot prevent all input.
-  var actionDeadline: EventDeadline?
+  // Each physical gesture and its correlated completion are one observable
+  // event. A long but finite surface may require multiple such events, so give
+  // each synthesis its own deadline while bounding the total gesture count
+  // from the reported scroll geometry.
+  var remainingGestureCount = max(
+    2,
+    Int(ceil((initial.maximum - initial.minimum) / max(initial.containerLength * 0.2, 1))) + 2
+  )
   var observedInteraction = false
   var lastCorrelatedState: ScrollReadinessState?
   var before = initial
-  while actionDeadline?.remaining ?? 2 > 0 {
+  while remainingGestureCount > 0 {
     if let terminalEndpoint, before[keyPath: terminalEndpoint] {
       let context = failureContext()
       print(
@@ -460,14 +464,13 @@ func scrollUntil(
       )
       return false
     }
-    if let actionDeadline, actionDeadline.remaining < 0.2 { break }
     guard performPhysicalInteractionWithoutPostEventQuiescence(in: surface.application, gesture)
     else {
       print("The pinned XCTest runtime cannot bound scroll gesture synthesis")
       return false
     }
-    if actionDeadline == nil { actionDeadline = EventDeadline() }
-    guard let actionDeadline else { return false }
+    remainingGestureCount -= 1
+    let actionDeadline = EventDeadline()
 
     let receiptDeadline = EventDeadline(timeout: min(0.25, actionDeadline.remaining))
     let receiptMatches: (ScrollReadinessState) -> Bool = { after in

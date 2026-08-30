@@ -246,7 +246,7 @@ scroll_end="$(rg -n '^func challengeSettledEnd\(' "${scroll_helper}" | cut -d: -
 gesture_line="$(sed -n "${scroll_start},${scroll_end}p" "${scroll_helper}" \
   | rg -n -m 1 'performPhysicalInteractionWithoutPostEventQuiescence' | cut -d: -f1)"
 deadline_line="$(sed -n "${scroll_start},${scroll_end}p" "${scroll_helper}" \
-  | rg -n -m 1 'if actionDeadline == nil \{ actionDeadline = EventDeadline\(\) \}' \
+  | rg -n -m 1 'let actionDeadline = EventDeadline\(\)' \
   | cut -d: -f1)"
 [[ -n "${scroll_start}" && -n "${scroll_end}" \
   && -n "${gesture_line}" && -n "${deadline_line}" \
@@ -254,8 +254,9 @@ deadline_line="$(sed -n "${scroll_start},${scroll_end}p" "${scroll_helper}" \
   echo 'scroll hygiene requires the two-second action deadline to begin after physical synthesis' >&2
   exit 1
 }
-rg -Fq 'var actionDeadline: EventDeadline?' "${scroll_helper}"
-rg -Fq 'while actionDeadline?.remaining ?? 2 > 0' "${scroll_helper}"
+rg -Fq 'var remainingGestureCount = max(' "${scroll_helper}"
+rg -Fq 'while remainingGestureCount > 0' "${scroll_helper}"
+rg -Fq 'remainingGestureCount -= 1' "${scroll_helper}"
 rg -Fq 'terminateAndDisplaceSurface(app)' \
   "${ui_test_root}/AccessibilityUITests.swift"
 if [[ "$(rg -c 'terminateAndWait\(' "${ui_test_root}/AccessibilityUITests.swift")" != "1" ]]; then
