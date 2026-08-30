@@ -7,6 +7,17 @@ import XCTest
 
 @MainActor
 final class ComputerReceiverTests: XCTestCase {
+  private static let webRuntimePrimer = ReceiverWebRuntimePrimer()
+
+  nonisolated override class func setUp() {
+    super.setUp()
+    // Retain one in-process, nonpersistent WebKit context from the beginning of
+    // this suite. The real browser journey is alphabetically last, so its
+    // two-second document contract no longer includes cold creation of Apple's
+    // out-of-process WebContent/WebPrivacy graph.
+    MainActor.assumeIsolated { _ = webRuntimePrimer }
+  }
+
   func testCanonicalReceiverScenariosAndMirroringTipOverridesParseExactly() throws {
     let production = try E2EComputerReceiverLaunchConfiguration.parse(
       arguments: ["Player"],
@@ -781,6 +792,15 @@ final class ComputerReceiverTests: XCTestCase {
   }
 
   func testWebKitBrowserCompletesARealLocalHTTPImport() async throws {
+    let runtimePrimer = Self.webRuntimePrimer
+    let runtimeReady = runtimePrimer.expectation(in: self)
+    let runtimeWait = await XCTWaiter.fulfillment(of: [runtimeReady], timeout: 2)
+    guard runtimeWait == .completed, runtimePrimer.isReady else {
+      XCTFail("The retained in-process WebKit runtime did not become ready within two seconds")
+      return
+    }
+    runtimePrimer.releaseForJourney()
+
     let root = temporaryRoot()
     let importReceived = expectation(
       description: "Browser upload reached the app import handler"
@@ -815,9 +835,6 @@ final class ComputerReceiverTests: XCTestCase {
     )
     let documentBridge = ReceiverWebDocumentBridge(documentReady: documentReady)
     let webConfiguration = WKWebViewConfiguration()
-    // The receiver journey does not need persistent browser storage. Keeping
-    // this test ephemeral also keeps WebPrivacy/RLS database initialization
-    // outside the browser-to-receiver transport contract.
     webConfiguration.websiteDataStore = .nonPersistent()
     webConfiguration.userContentController.add(
       documentBridge,
@@ -837,6 +854,7 @@ final class ComputerReceiverTests: XCTestCase {
       webConfiguration.userContentController.removeScriptMessageHandler(
         forName: ReceiverWebDocumentBridge.messageName
       )
+      webView.navigationDelegate = nil
       withExtendedLifetime(browserHost) {}
       withExtendedLifetime(documentBridge) {}
     }
@@ -1456,6 +1474,50 @@ private actor ControlledReceiverImportCapture {
     await withCheckedContinuation { continuation in
       releaseContinuation = continuation
     }
+  }
+}
+
+@MainActor
+private final class ReceiverWebRuntimePrimer: NSObject, WKNavigationDelegate {
+  private let webView: WKWebView
+  private let host = UIViewController()
+  private let window = UIWindow(frame: UIScreen.main.bounds)
+  private var readinessExpectation: XCTestExpectation?
+  private(set) var isReady = false
+
+  override init() {
+    let configuration = WKWebViewConfiguration()
+    configuration.websiteDataStore = .nonPersistent()
+    webView = WKWebView(frame: .zero, configuration: configuration)
+    super.init()
+    webView.navigationDelegate = self
+    host.view = webView
+    window.rootViewController = host
+    window.makeKeyAndVisible()
+    webView.loadHTMLString(
+      "<!doctype html><title>Bookshelf WebKit Primer</title>",
+      baseURL: nil
+    )
+  }
+
+  func releaseForJourney() {
+    window.isHidden = true
+  }
+
+  func expectation(in testCase: XCTestCase) -> XCTestExpectation {
+    let expectation = testCase.expectation(description: "In-process WebKit runtime became ready")
+    if isReady {
+      expectation.fulfill()
+    } else {
+      readinessExpectation = expectation
+    }
+    return expectation
+  }
+
+  func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+    isReady = true
+    readinessExpectation?.fulfill()
+    readinessExpectation = nil
   }
 }
 
