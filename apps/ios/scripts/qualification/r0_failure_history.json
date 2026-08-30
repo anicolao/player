@@ -2099,6 +2099,174 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "No application or UI-test process began, and this normal pull-request infrastructure failure did not create or reset any formal qualification count."
+    },
+    {
+      "signature": "qualification:preflight:unpinned-ripgrep-launch-signature",
+      "story": "core",
+      "evidence": {
+        "workflowRun": 33300995169,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions exact-SHA preflight job 99229002901 retained the complete 44-test qualification-contract output; no macOS story or application process was started",
+        "url": "https://github.com/anicolao/player/actions/runs/33300995169/job/99229002901",
+        "commit": "12435bcffd71a65c0462b410159889e2962c2edb",
+        "observation": "Exact-SHA checkout and preflight identity passed, then 43 of 44 qualification-contract tests passed. The launch-infrastructure fixture produced ui-test:MultifileGroupingUITests.testRepairsMessyMultifileGroupingAndCommitsOneBookAtomically:exit-65 instead of its required infrastructure signature because the Ubuntu preflight image had no rg executable. All macOS story and matrix jobs remained gated and no app or UI-test process ran."
+      },
+      "rootCause": "The shared failure-signature classifier relied on rg for one fixed-string lookup, but the Ubuntu preflight neither installed nor pinned ripgrep. Because the Python contract helper captured the shell's stderr, the missing executable became a false condition instead of a visible dependency error and misclassified the retained launch-timeout fixture.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Use the ubiquitous grep fixed-string mode for this single portable literal classification, and execute the launch-infrastructure regression with a deliberately unavailable rg shim so a future dependency regression fails even on developer hosts that have ripgrep installed.",
+        "commits": [
+          "6113e51dcbd675aade534bd2191582bacb6aab82"
+        ],
+        "validation": "All 44 qualification-contract tests pass locally with the rg-unavailable regression fixture, qualification-support.sh passes shell parsing, and successor normal run 33301212390 passed the portable preflight and hygiene contract on all five lanes. That run's independent Story 003 selection failure is recorded separately."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "The failure occurred in Ubuntu preflight before any macOS application or UI-test process began, so it consumed no story or matrix qualification attempt and reset no accepted consecutive count."
+    },
+    {
+      "signature": "ui-test:MultifileGroupingUITests.testRepairsMessyMultifileGroupingAndCommitsExactlyOneBook:selection-preflight-exhausted-semantic-deadline",
+      "story": "003-multifile-grouping",
+      "evidence": {
+        "workflowRun": 33301212390,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 003 artifact 9729448681 and lane-2 summary 9729448915 retain the exact XCTest result, failure screen, hierarchy, logs, and lane attribution",
+        "url": "https://github.com/anicolao/player/actions/runs/33301212390/job/99229610375",
+        "commit": "6113e51dcbd675aade534bd2191582bacb6aab82",
+        "observation": "B4 selection and its move completed correctly. The subsequent Prelude selection tap then spent 12.9 seconds in XCTest's hidden 'Check for interrupting elements' phase before event synthesis. The product selected Prelude, and the retained failure screen showed the selected state, but the exact Deselect track label crossed the test's two-second post-call deadline. The other 12 stories, 40 UI selectors, 372 core tests, and App Store renderer passed in the same run."
+      },
+      "rootCause": "The reversible toggle used an element-bound XCUIElement.tap(). XCTest therefore performed an unbounded, implicit pre-synthesis obstruction check that was independent of application state and outside the test's semantic deadline. A correctly delivered product transition could arrive only after XCTest had already consumed 12.9 seconds, making the post-call label assertion nondeterministic.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Reveal each exact selection action above the real pinned proposal-control boundary with bounded physical list gestures and an event predicate, synthesize exactly one application-coordinate tap without post-event quiescence, then require the exact Deselect track label within a fresh two-second deadline. Never retry the reversible toggle. Source hygiene rejects regression to the three element-bound taps and requires all bounded-delivery components.",
+        "commits": [
+          "3b70e96ef196f12f60f70cfa7cf7ccbef8304286"
+        ],
+        "validation": "Fresh local Story 003 run apps/ios/DerivedData/E2E/003-multifile-grouping.run.fmJIh5 passed its UI test, all four screenshots, exact walkthrough, and evidence manifest. Its three application-coordinate selection taps synthesized promptly without the 12.9-second element preflight. Exact-commit successor run 33303658581 passed Story 003 in hosted lane 2; all 13 stories and 41 UI selectors passed without a rerun. That run's independent cold WebKit core failure is recorded separately."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run, not a formal exact-SHA qualification attempt, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "core:WebKitComputerReceiverTests.testWebKitBrowserCompletesARealLocalHTTPImport:retained-primer-insufficient-suite-overlap",
+      "story": "core",
+      "evidence": {
+        "workflowRun": 33303658581,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions lane-1 summary artifact 9730142802 and job 99236251628 retain the exact Core.xcresult, diagnostics, simulator logs, and lane attribution",
+        "url": "https://github.com/anicolao/player/actions/runs/33303658581/job/99236251628",
+        "commit": "3b70e96ef196f12f60f70cfa7cf7ccbef8304286",
+        "observation": "All 13 stories, 41 UI selectors, and the App Store renderer passed without a rerun, while the core suite passed 371 of 372 tests. ComputerReceiverTests began only about 1.6 seconds before its browser journey. The retained primer therefore crossed the exact two-second readiness deadline; diagnostics subsequently showed the cold Player WebContent process taking 6.852 seconds to launch."
+      },
+      "rootCause": "The retained nonpersistent WKWebView primer was created at the start of ComputerReceiverTests, but that suite's preceding 25 tests completed in only about 1.6 seconds on the hosted runner. Alphabetical placement at the end of one fast suite did not provide enough useful overlap for the cold out-of-process WebContent/WebPrivacy graph, so infrastructure startup still consumed the browser journey's product-event deadline.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Keep the retained WebKit primer in the early ComputerReceiverTests suite, but move the unchanged real browser journey into a dedicated WebKitComputerReceiverTests suite near the end of the bundle. Useful core tests now overlap cold runtime startup while every document, transfer, import, and status event retains its exact two-second deadline; no sleep, retry, or timeout extension was added. Source hygiene requires one early retained primer and exactly one late browser journey.",
+        "commits": [
+          "1ea623e464da0fd706d3fe0f0b8bf4d7ed515a7f"
+        ],
+        "validation": "A fresh local shard passed Story 004's real crop/edit journey, all four exact screenshot baselines and walkthrough, then all 372 core tests on a fresh simulator. The result bundle placed ComputerReceiverTests at suite 3 and WebKitComputerReceiverTests at suite 36. Hosted successor run 33305460273 passed the retained primer's exact two-second readiness gate and reached document navigation; its independent second-context launch failure is recorded separately."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run, not a formal exact-SHA qualification attempt, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "core:WebKitComputerReceiverTests.testWebKitBrowserCompletesARealLocalHTTPImport:new-nonpersistent-context-cold-launch",
+      "story": "core",
+      "evidence": {
+        "workflowRun": 33305460273,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions lane-1 summary artifact 9730634601 and job 99241116247 retain the exact Core.xcresult, diagnostics, simulator unified log, and lane attribution",
+        "url": "https://github.com/anicolao/player/actions/runs/33305460273/job/99241116247",
+        "commit": "1ea623e464da0fd706d3fe0f0b8bf4d7ed515a7f",
+        "observation": "The retained primer became ready within its exact two-second gate, proving the early-to-late suite overlap worked. The journey then created a second nonpersistent WKWebView configuration at 10:21:18.292; unified logs show WebKit requested a new WebContent process only at 10:21:20.311, after the document deadline, and the same-origin bridge did not fire. Core passed 371 of 372 tests while Stories 004 and 012 passed."
+      },
+      "rootCause": "Each separately constructed nonpersistent WKWebView configuration owned an isolated WebKit context. Retaining the primer kept its original WebContent process alive, but the real journey discarded that prepared context and launched a second cold WebContent process. Suite overlap therefore could not remove infrastructure startup from the document event deadline.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Run the real same-origin browser journey in the exact retained WKWebView whose document-finish event proved WebContent readiness. Attach and remove the journey bridge around that view, preserving one nonpersistent context and every exact two-second product-event deadline. Source hygiene permits exactly one WKWebView construction in the receiver tests and requires explicit begin/end journey ownership.",
+        "commits": [
+          "7782742f354f2562376907be159eb1e8ef7736b8"
+        ],
+        "validation": "A fresh simulator passed all 372 core tests with ComputerReceiverTests at suite 3 and WebKitComputerReceiverTests at suite 36. The unchanged real browser journey passed in 0.047 seconds, with no sleep, retry, fixed wait, or deadline increase. Exact-commit hosted run 33306881377 passed lane 1: Stories 004 and 012, all 372 core tests, hygiene, branding, StoreKit configuration, and retained artifacts were green without a rerun."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run, not a formal exact-SHA qualification attempt, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "ui-test:OfflineRecoveryUITests.testRecoversStartupAndExportsOnlySanitizedOfflineDiagnostics:restore-element-tap-not-delivered",
+      "story": "011-offline-recovery",
+      "evidence": {
+        "workflowRun": 33305460273,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 011 artifact 9730727777 and lane-2 summary 9730728195 retain the exact XCTest result, failure screen, hierarchy, logs, screenshot comparison, and lane attribution",
+        "url": "https://github.com/anicolao/player/actions/runs/33305460273/job/99241116125",
+        "commit": "1ea623e464da0fd706d3fe0f0b8bf4d7ed515a7f",
+        "observation": "The startup recovery screenshot matched exactly. XCTest then spent 4.14 seconds finding and checking the element-bound Restore action before synthesis. The retained failure screen remained on the unchanged recovery view, diagnostics-probe never appeared, and the two downstream screenshots were correctly reported missing. Stories 005 and 003 passed in the same lane; lanes 3, 4, and 5 also passed."
+      },
+      "rootCause": "The durable restore transition used XCUIElement.tap(), coupling delivery to XCTest's implicit element obstruction and quiescence machinery. XCTest reported synthesis but did not deliver a product transition, and the test had no exact post-synthesis action boundary. Retrying would be unsafe because restore mutates durable recovery state.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Resolve and validate the visible 44-point Restore target, synthesize exactly one application-coordinate tap with post-event quiescence disabled, create a fresh deadline only after synthesis, and require the exact diagnostics value within two seconds. Never retry the durable action. Source hygiene rejects the element-bound restore tap and requires the one-shot event boundary.",
+        "commits": [
+          "e764c61456ee6bf7d1ce91b1aa904bfe783cef90"
+        ],
+      "validation": "A fresh local Story 011 run passed the complete 68-second selector, including every recovery choice and support-export outcome; all three canonical screenshots matched pixel-exact, the reviewed walkthrough matched exactly, and the evidence manifest is valid. Full E2E hygiene passes. Exact-commit hosted run 33307075756 passed lane 2, including Stories 005, 011, and 003, without a rerun; all five canonical lanes were green."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run, not a formal exact-SHA qualification attempt, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "ui-test:LibraryOrganizationUITests.testOrganizesDailyLibraryAndRestoresATrashedBook:multi-gesture-scroll-shared-deadline-exhausted",
+      "story": "008-library-search",
+      "evidence": {
+        "workflowRun": 33306881377,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 008 artifact 9731101973 and lane-3 summary 9731102162 retain the exact XCTest result, failure screen, hierarchy, logs, screenshot comparison, and lane attribution",
+        "url": "https://github.com/anicolao/player/actions/runs/33306881377/job/99244883130",
+        "commit": "7782742f354f2562376907be159eb1e8ef7736b8",
+        "observation": "The first four Story 008 screenshots matched exactly. A completed upward gesture moved the Library root from offset -116 to 100.666, with correlated interaction, completion, geometry, and idle evidence, but the Backup row still intersected the mini-player. The shared two-second action deadline was then exhausted, so no second gesture was attempted and the remaining six screenshots were correctly reported missing. Story 008's two independent search and Trash selectors subsequently passed."
+      },
+      "rootCause": "The helper treated an entire multi-gesture scroll journey as one event by sharing the first gesture's two-second deadline across every later gesture. A correct first gesture and its accessibility queries could consume that budget even though the geometry proved more scrollable range remained and the target legitimately required a second discrete gesture.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Treat each physical gesture and its correlated settled completion as a distinct event with its own exact two-second deadline. Bound the total number of gestures from the surface's reported range and container geometry, retaining fail-closed terminal-endpoint handling and adding no sleep, retry-to-green, fixed wait, or longer per-event timeout. Source hygiene requires both the per-gesture deadline and finite geometry-derived gesture budget.",
+        "commits": [
+          "50b7d2c1a648ccd809f36e724dfda0fcc8f39e4f"
+        ],
+        "validation": "A fresh local Story 008 run passed all three UI selectors. The complete 141.964-second library organization selector traversed the formerly failing runway, all ten canonical screenshots matched pixel-exact, the reviewed walkthrough matched exactly, the evidence manifest is valid, and full E2E hygiene passes. Exact-commit hosted run 33308716213 passed lane 3, including Stories 007 and 008, without a rerun. That run's independent SpringBoard notification coordinate-space failure is recorded separately."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run, not a formal exact-SHA qualification attempt, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "ui-test:MultifileGroupingUITests.testRepairsMessyMultifileGroupingAndCommitsExactlyOneBook:apple-intelligence-banner-point-pixel-coordinate-mismatch",
+      "story": "003-multifile-grouping",
+      "evidence": {
+        "workflowRun": 33308716213,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 003 artifact 9731858600 and lane-2 summary 9731858913 retain the exact XCTest result, failure screen, SpringBoard hierarchy, synthesized-event trace, logs, screenshot comparison, and lane attribution",
+        "url": "https://github.com/anicolao/player/actions/runs/33308716213/job/99249765431",
+        "commit": "50b7d2c1a648ccd809f36e724dfda0fcc8f39e4f",
+        "observation": "Stories 005 and 011 passed before Story 003. After the import order mutation, the simulator presented its Ready for Apple Intelligence banner. The retained hierarchy placed the title at {{72,70},{270,18}} inside 402x874-point SpringBoard windows, but XCTest logged the dismissal drag from normalized (0.17,0.03) to (0.17,0.00). The retained failure screen shows the banner unchanged, two prior screenshots were retained, and the remaining two were correctly reported missing."
+      },
+      "rootCause": "SpringBoard's XCUIApplication.frame was reported in 1206x2622 screenshot pixels while notification descendants and normalized interaction coordinates used the 402x874 point space. Dividing the title's point frame by the application's pixel frame produced a drag origin above and left of the notification, so the correctly bounded dismissal event never touched the banner.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Select a nonempty SpringBoard window whose point-space frame contains the notification title and normalize the transient banner drag against that window. The retained failing geometry now maps to (0.515,0.090), inside the title, rather than (0.172,0.030). Keep the exact two-second disappearance event and fail-closed evidence; source hygiene rejects normalization against SpringBoard's pixel-space application frame.",
+        "commits": [
+          "6de4930a1495c74f3933e754e2fb5c017415ffaa"
+        ],
+        "validation": "A fresh local Story 003 build compiled the corrected UI-test helper and passed the complete selector in 41.449 seconds. All four canonical screenshots matched policy, the reviewed walkthrough matched exactly, the evidence manifest is valid, and full E2E hygiene passes. The retained failing hierarchy and logged normalized coordinate prove the corrected point-space mapping. Exact-commit hosted run 33310865234 passed lane 2, including Stories 005, 011, and 003, without a rerun; all five normal lanes and the aggregate gate were green."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run, not a formal exact-SHA qualification attempt, so it reset no accepted consecutive qualification count."
     }
   ]
 }
