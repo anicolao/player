@@ -401,11 +401,8 @@ final class OfflineRecoveryUITests: PlayerUITestCase {
       XCTFail("Expected recovery action \(identifier) to be an enabled 44-point target")
       throw OfflineRecoveryTestError.semanticStateUnavailable
     }
-    let coordinate = app.coordinate(
-      withNormalizedOffset: CGVector(
-        dx: (actionFrame.midX - appFrame.minX) / appFrame.width,
-        dy: (actionFrame.midY - appFrame.minY) / appFrame.height
-      )
+    let coordinate = action.coordinate(
+      withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
     )
     guard performPhysicalInteractionWithoutPostEventQuiescence(
       in: app,
