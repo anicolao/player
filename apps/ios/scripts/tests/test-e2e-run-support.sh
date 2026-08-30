@@ -381,16 +381,9 @@ cat > "${control_plane_fake_bin}/launchctl" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 printf 'launchctl\t%s\n' "$*" >> "${PLAYER_CONTROL_PLANE_LOG}"
-[[ "$*" == "kickstart -k user/$(id -u)/com.apple.CoreSimulator.CoreSimulatorService" ]]
+[[ "$*" == "kill SIGKILL user/$(id -u)/com.apple.CoreSimulator.CoreSimulatorService" ]]
 EOF
-cat > "${control_plane_fake_bin}/xcrun" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-printf 'xcrun\t%s\n' "$*" >> "${PLAYER_CONTROL_PLANE_LOG}"
-[[ "$*" == "simctl list devices --json" ]]
-[[ "$(sed -n '1p' "${PLAYER_CONTROL_PLANE_LOG}")" == $'launchctl\tkickstart -k user/'* ]]
-EOF
-chmod +x "${control_plane_fake_bin}/launchctl" "${control_plane_fake_bin}/xcrun"
+chmod +x "${control_plane_fake_bin}/launchctl"
 if env PATH="${control_plane_fake_bin}:${PATH}" \
   PLAYER_CONTROL_PLANE_LOG="${control_plane_log}" \
   GITHUB_ACTIONS=false "${control_plane_reset}" >/dev/null 2>&1; then
@@ -399,23 +392,10 @@ fi
 env PATH="${control_plane_fake_bin}:${PATH}" \
   PLAYER_CONTROL_PLANE_LOG="${control_plane_log}" \
   GITHUB_ACTIONS=true "${control_plane_reset}"
-[[ "$(wc -l < "${control_plane_log}" | tr -d ' ')" == 2 ]] \
-  || fail "hosted simulator reset did not perform exactly one restart and readiness event"
-[[ "$(sed -n '2p' "${control_plane_log}")" == $'xcrun\tsimctl list devices --json' ]] \
-  || fail "hosted simulator reset did not finish with the simctl readiness event"
-cat > "${control_plane_fake_bin}/launchctl" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-printf 'launchctl-timeout\t%s\n' "$*" >> "${PLAYER_CONTROL_PLANE_LOG}"
-exit 142
-EOF
-chmod +x "${control_plane_fake_bin}/launchctl"
-: > "${control_plane_log}"
-env PATH="${control_plane_fake_bin}:${PATH}" \
-  PLAYER_CONTROL_PLANE_LOG="${control_plane_log}" \
-  GITHUB_ACTIONS=true "${control_plane_reset}"
-[[ "$(sed -n '2p' "${control_plane_log}")" == $'xcrun\tsimctl list devices --json' ]] \
-  || fail "kickstart deadline prevented the readiness event from being observed"
+[[ "$(wc -l < "${control_plane_log}" | tr -d ' ')" == 1 ]] \
+  || fail "hosted simulator reset did not perform exactly one asynchronous termination"
+[[ "$(sed -n '1p' "${control_plane_log}")" == $'launchctl\tkill SIGKILL user/'* ]] \
+  || fail "hosted simulator reset did not target the exact per-user service"
 for destination_source in \
   "${run_e2e}" \
   "${ios_scripts}/run-e2e-shard.sh" \

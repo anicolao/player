@@ -12,15 +12,8 @@ run_with_two_second_deadline() {
   /usr/bin/perl -e 'alarm shift; exec @ARGV or exit 127' 2 "$@"
 }
 
-set +e
-run_with_two_second_deadline launchctl kickstart -k "${service_target}"
-kickstart_status=$?
-set -e
-if [[ "${kickstart_status}" -ne 0 && "${kickstart_status}" -ne 142 ]]; then
-  exit "${kickstart_status}"
-fi
-# The successful inventory response is the readiness event for the restarted
-# service. A kickstart can outlive its two-second caller while launchd completes
-# the requested restart, so its deadline is not itself a readiness failure. Do
-# not sleep, retry, or launch the product to warm the simulator.
-run_with_two_second_deadline xcrun simctl list devices --json >/dev/null
+# Ask launchd to terminate the stale service asynchronously. The immediately
+# following exact simulator lease acquisition is the readiness event: it cannot
+# return a simulator ID until launchd has served the create request. Do not add
+# a second blocking restart/inventory phase, sleep, retry, or product prelaunch.
+run_with_two_second_deadline launchctl kill SIGKILL "${service_target}"
