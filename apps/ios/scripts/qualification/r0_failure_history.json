@@ -1841,6 +1841,126 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request matrix run rather than a formal repeated qualification attempt, so no consecutive Story 007 qualification count existed to reset."
+    },
+    {
+      "signature": "ui-test:SafeZIPImportUITests.testRejectsHostileZIPsThenCancelsAndRetriesAValidArchive:ready-published-before-durable-save",
+      "story": "006-safe-zip-import",
+      "evidence": {
+        "workflowRun": 33279939346,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 006 artifact 9723038558 and lane-5 summary artifact 9723039238 retained the failed XCTest timeline, semantic probe, screenshots, and complete shard timing",
+        "url": "https://github.com/anicolao/player/actions/runs/33279939346",
+        "commit": "574c77275d5b24ba91d6a21b84788cf1db4514e2",
+        "observation": "The valid ZIP retry reached the exact ready state with both entries extracted, one proposal, and a byte-identical source, but the accessibility probe retained outside-writes=1. The immediately preceding recoverable inspection failure reported zero outside writes; every hostile ZIP case also reported zero, and no archive entry escaped staging."
+      },
+      "rootCause": "PlayerModel replaced the observable import job with its ready state before awaiting the actor-isolated durable save. SwiftUI could therefore render its read-only filesystem probe while Foundation was performing an atomic persistence mutation. Because filesystem changes are not an observable SwiftUI dependency, that render's transient outside-write count remained cached after the save completed and its helper disappeared.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Persist an updated library candidate before publishing it as observable model state, so ready is a truthful completion event after the persistence transaction. Retain the strict zero-outside-write assertion and add offending relative paths to future nonzero diagnostics without allowlisting or weakening any path.",
+        "commits": [
+          "bf767bb18550a7dfe1fa2f1bef75099dc4ed781a"
+        ],
+        "validation": "A focused actor-controlled regression proved ready remains unpublished while its durable save is in flight and appears only after release. All SafeZipExtractorTests then passed in 4.871 seconds. The complete canonical Story 006 passed locally with both parallel UI journeys in 84.625 seconds; all three reviewed screenshots and the walkthrough matched their baselines."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request matrix run rather than a formal repeated qualification attempt, so no consecutive Story 006 qualification count existed to reset."
+    },
+    {
+      "signature": "core-test:ComputerReceiverTests.testWebKitBrowserCompletesARealLocalHTTPImport:cold-player-webkit-runtime-unobserved",
+      "story": "core",
+      "evidence": {
+        "workflowRun": 33281834270,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions lane-1 summary artifact 9723634973 retained Core.xcresult, the complete 372-test result, core logs, and simulator diagnostics",
+        "url": "https://github.com/anicolao/player/actions/runs/33281834270/job/99178177943",
+        "commit": "bf767bb18550a7dfe1fa2f1bef75099dc4ed781a",
+        "observation": "All 13 canonical stories and 41 UI selectors passed, but the core gate passed 371 of 372 tests. The receiver listener became ready, then Player's WebContent and Networking processes cold-started; WebContent platform initialization completed just before the document deadline and its rendering backend only after it. No navigation or HTTP request began before the test cleaned up, and both WebKit processes then exited normally without a crash or unresponsive-process signal."
+      },
+      "rootCause": "The host preparation script dispatched a closed-loopback URL to Safari but never observed a readiness event, and Safari's process graph does not establish the later Player test host's nonpersistent WebKit context. The test consequently included cold creation of Player's WebContent, Networking, and WebPrivacy graph inside the same two-second interval intended to measure execution of an already-runnable receiver document.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Create and retain Player's exact in-process nonpersistent WebKit context at receiver-suite setup, require its real navigation-completion event within an independent two-second deadline, and only then start the unchanged two-second same-origin receiver-document gate. The journey still performs one production browser upload with no sleep, poll, retry, or longer condition deadline.",
+        "commits": [
+          "aa078cf4712005cfa81e747bd65a2977f48b7d7a"
+        ],
+        "validation": "The complete 26-test ComputerReceiverTests suite passed 5/5 on five independently created iOS 26.5 simulators; the real WebKit transfer test completed in 0.340 to 0.504 seconds. A final fresh-simulator core gate passed 372/372 tests in 11.839 seconds with no failure or skip."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request matrix run rather than a formal repeated qualification attempt, so no consecutive core qualification count existed to reset."
+    },
+    {
+      "signature": "core-fixtures:prepare-core-web-runtime:external-safari-openurl-timeout",
+      "story": "core",
+      "evidence": {
+        "workflowRun": 33284291662,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions lane-1 summary artifact 9724312984 retained the fixture log and complete shard timing; no Core.xcresult existed because the preparation command failed before XCTest launched",
+        "url": "https://github.com/anicolao/player/actions/runs/33284291662/job/99184668130",
+        "commit": "aa078cf4712005cfa81e747bd65a2977f48b7d7a",
+        "observation": "All 13 canonical stories and 41 UI selectors passed, but lane 1 exited before core tests when simctl openurl spent 26 seconds trying to open the deliberately closed loopback URL in Safari and returned NSPOSIXErrorDomain code 60. The in-process WebKit primer and all 372 core tests consequently never ran."
+      },
+      "rootCause": "The obsolete host workaround treated an unobserved external Safari launch as a mandatory fixture command. It neither prepared Player's nonpersistent WebKit process graph nor emitted a readiness event, yet its own platform timeout could fail the entire core gate before the event-driven in-process primer or any XCTest executed.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Remove the external Safari command and its simulator environment plumbing from both normal and formal core runners. Make hygiene reject any reintroduction of that unobserved gate; Player's retained in-process nonpersistent WebKit primer remains the sole startup prerequisite and must report its real navigation event within two seconds.",
+        "commits": [
+          "f30ca9b769200b413a63d2d968c4dbe570b4d62e"
+        ],
+        "validation": "The runner scripts pass shell parsing, E2E hygiene, 16 output/provenance/evidence tests, simulator lease and signal-cleanup tests, 63 capture-readiness checks, and all 44 qualification-contract tests. The exact normal hosted replacement run is retained with the commit's CI evidence."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request matrix run rather than a formal repeated qualification attempt, so no consecutive core qualification count existed to reset."
+    },
+    {
+      "signature": "ui-test:BackupUITests.testExportsClearsAndRestoresAVerifiedPortableLibrary:export-acknowledgement-after-async-boundary",
+      "story": "010-library-backup",
+      "evidence": {
+        "workflowRun": 33285746119,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 010 artifact 9724718605 and lane-4 summary artifact 9724718802 retained the failed timeline, accessibility hierarchy, screenshot, semantic probe, and complete shard timing",
+        "url": "https://github.com/anicolao/player/actions/runs/33285746119/job/99188493976",
+        "commit": "f30ca9b769200b413a63d2d968c4dbe570b4d62e",
+        "observation": "XCTest synthesized a touch at (201, 680.833), the center of the visible 370 by 47.7 point Export button, but the operation probe remained idle for the complete deadline. The sibling backup journey used the same physical coordinate and succeeded; all other 12 stories, 39 other UI selectors, 372 core tests, and the renderer passed."
+      },
+      "rootCause": "The Export button only spawned a MainActor task, while its first observable acknowledgement was published later inside that task. Under the failed run's unusually expensive accessibility and screenshot boundary, a durable idle state could not distinguish an undelivered synthesized touch from a delivered handler whose task had not run. The one-shot physical workaround therefore had neither an immediate receipt event nor a safe way to synthesize again.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Publish busy and preparing synchronously in the production Button handler before spawning the export task, guard duplicate handler delivery while busy, and synthesize again only while the same durable operation token remains unchanged under one two-second event deadline. Retain the separate exact awaiting-Files assertion and every backup outcome.",
+        "commits": [
+          "4ca2d355ba1be0290ecc9e8df55ba1488b3b1d85"
+        ],
+        "validation": "The complete two-selector Story 010 passed 5/5 on five independently created iOS 26.5 simulators using one immutable build. All ten test executions passed, all four reviewed screenshots matched on every attempt, the walkthrough README remained exact, and every media-inclusive, metadata-only, cancellation, provider-failure, integrity-failure, restore, and cleanup transition completed. Normal hosted run 33287847145 then passed both Story 010 selectors; E2E hygiene and all 63 capture-readiness checks also pass."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request matrix run rather than a formal repeated qualification attempt, so no consecutive Story 010 qualification count existed to reset."
+    },
+    {
+      "signature": "ui-test:MultifileGroupingUITests.testRepairsMessyMultifileGroupingAndCommitsExactlyOneBook:review-order-activation-unacknowledged",
+      "story": "003-multifile-grouping",
+      "evidence": {
+        "workflowRun": 33287847145,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 003 artifact 9725292424 and lane-2 summary artifact 9725292637 retained the failed timeline, hierarchy, semantic probes, screenshots, recording, and complete shard timing",
+        "url": "https://github.com/anicolao/player/actions/runs/33287847145/job/99193474740",
+        "commit": "4ca2d355ba1be0290ecc9e8df55ba1488b3b1d85",
+        "observation": "XCTest found a fully visible enabled review-order-button with frame {{20, 411.7}, {362, 71.3}} and synthesized at its exact physical center, approximately (201, 447), but order-probe never appeared during the deadline. The final hierarchy remained unchanged on Review Import with the same enabled control. The other 12 stories, 40 other UI selectors, all 372 core tests, and the renderer passed."
+      },
+      "rootCause": "The SwiftUI NavigationLink exposed no synchronous, idempotent acknowledgement that its implicit gesture and navigation transaction had begun. When hosted XCTest silently failed to deliver the one-shot physical input, the journey could observe only an unchanged origin and had no safe event-correlated way to synthesize the intended one-tap action again.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Replace the implicit NavigationLink with an explicit idempotent Button that synchronously publishes state-driven navigation and disables itself during the transition. Under one two-second event deadline, synthesize only while that exact origin remains present and enabled; stop immediately when it disables, disappears, or the exact order probe appears, and never touch after transition begins.",
+        "commits": [
+          "b9dc9a98e61dd2a3f808d98e8bcf7d720b4df02d"
+        ],
+        "validation": "The complete Story 003 journey passed 5/5 on five independently created iOS 26.5 simulators using one immutable build. All five test executions passed, all 20 reviewed screenshot comparisons passed, all five walkthrough manifests remained exact, and the complete grouping, ordering, correction, atomic commit, and storage assertions ran on every attempt. Normal hosted run 33289300337 then passed Story 003 and the complete 13-story, 41-selector, 372-core-test, renderer matrix without a rerun; E2E hygiene and all 63 capture-readiness checks also pass."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request matrix run rather than a formal repeated qualification attempt, so no consecutive Story 003 qualification count existed to reset."
     }
   ]
 }

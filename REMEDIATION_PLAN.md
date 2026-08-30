@@ -1,9 +1,8 @@
 # Application remediation plan
 
 **Status:** Implementation and deterministic automated coverage are complete
-through R16. The repaired predecessor passed normal CI; the final scheduling
-candidate, formal exact-SHA R0 qualification, and physical-device release
-acceptance remain pending.
+through R16. The final scheduling candidate passed normal CI; formal exact-SHA
+R0 qualification and physical-device release acceptance remain pending.
 **Created:** 2026-08-27
 **Source:** Report-only application and test-coverage audit completed 2026-08-27
 
@@ -78,7 +77,7 @@ release pass while its remaining gate is listed as pending.
 
 | Remediation | Implementation / automated evidence | Remaining gate |
 | --- | --- | --- |
-| R0 | Event-driven two-second waits, fail-closed evidence, the canonical selector manifest, repeated-attempt tooling, five normal shared-build lanes, five formal story-lane jobs covering all 13 independently attributed stories, and five subsequent matrix-lane jobs are implemented. The validator accepts 79 unique historical failure signatures, each with a confirmed cause and verified fix; 12 formal qualification resets are retained. Run [33278492881](https://github.com/anicolao/player/actions/runs/33278492881) passed the repaired exact predecessor `33573a0d50805d7e73ef78d86588e598611ca4b1` without a rerun in 33m31s: all 13 stories, 41 UI selectors, 371 core tests, and the App Store renderer passed. The final scheduling candidate redistributes that exact coverage across the same five hosted runners using timings from four expanded-suite samples. | Require the final scheduling candidate to pass normal CI, then run the exact-SHA gate and require 10/10 for every story plus 5/5 complete matrices. Publish its generated stability and timing report. |
+| R0 | Event-driven two-second waits, fail-closed evidence, the canonical selector manifest, repeated-attempt tooling, five normal shared-build lanes, five formal story-lane jobs covering all 13 independently attributed stories, and five subsequent matrix-lane jobs are implemented. The validator accepts 84 unique historical failure signatures, each with a confirmed cause and verified fix; 12 formal qualification resets are retained. Run [33289300337](https://github.com/anicolao/player/actions/runs/33289300337) passed exact head `b9dc9a98e61dd2a3f808d98e8bcf7d720b4df02d` without a rerun in 32m32s: all 13 stories, 41 UI selectors, 372 core tests, and the App Store renderer passed. This is 8m24s faster than the expanded-suite reference with identical coverage. | Run the formal exact-SHA gate and require 10/10 for every story plus 5/5 complete matrices. Publish its generated stability and timing report. |
 | R1 | Complete: real crop rendering is covered across save, relaunch, undo, and artwork consumers. | None. |
 | R2 | Complete: presentation errors retain their owning domain and actionable copy. | None. |
 | R3 | Complete: search-result identifiers are unique, interpolated, navigable, and source-checked. | None. |

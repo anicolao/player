@@ -54,10 +54,10 @@
   },
   "qualificationReference": {
     "source": {
-      "workflowRun": 33265457941,
-      "url": "https://github.com/anicolao/player/actions/runs/33265457941",
-      "headCommit": "df818a92cd2133a27819bbe92910de2076dc4e5c",
-      "checkoutCommit": "a201706caf46b5d73ca227d6f7afc62a7619937e",
+      "workflowRun": 33289300337,
+      "url": "https://github.com/anicolao/player/actions/runs/33289300337",
+      "headCommit": "b9dc9a98e61dd2a3f808d98e8bcf7d720b4df02d",
+      "checkoutCommit": "ab5a541881b17c665ed5f7d1f88335fa17b55289",
       "runner": "macos-26-arm64",
       "xcode": "26.6 (17F113)",
       "runtime": "iOS 26.5"
@@ -71,38 +71,38 @@
       ]
     },
     "suite": {
-      "logicalWallSeconds": 2258
+      "logicalWallSeconds": 1782
     },
     "stories": {
-      "001-ios-launch": 587,
-      "002-import-and-play": 373,
-      "003-multifile-grouping": 347,
-      "004-metadata-repair": 808,
-      "005-play-and-restore": 750,
-      "006-safe-zip-import": 395,
-      "007-sleep-timer": 1103,
-      "008-library-search": 863,
-      "009-accessible-core-journeys": 508,
-      "010-library-backup": 707,
-      "011-offline-recovery": 402,
-      "012-monetization": 307,
-      "013-app-store-listing": 671
+      "001-ios-launch": 723,
+      "002-import-and-play": 570,
+      "003-multifile-grouping": 286,
+      "004-metadata-repair": 900,
+      "005-play-and-restore": 895,
+      "006-safe-zip-import": 529,
+      "007-sleep-timer": 946,
+      "008-library-search": 692,
+      "009-accessible-core-journeys": 403,
+      "010-library-backup": 489,
+      "011-offline-recovery": 345,
+      "012-monetization": 260,
+      "013-app-store-listing": 360
     },
     "phases": {
-      "attachment-export": 34,
-      "build": 1182,
-      "build-provenance": 213,
+      "attachment-export": 33,
+      "build": 1009,
+      "build-provenance": 184,
       "build-reuse": 0,
       "environment-reuse": 0,
       "readme-comparison": 0,
-      "screenshot-comparison": 385,
-      "simulator": 1843,
-      "target-install": 268,
-      "test": 3773,
+      "screenshot-comparison": 337,
+      "simulator": 1671,
+      "target-install": 292,
+      "test": 3755,
       "walkthrough-materialization": 4,
-      "core-fixtures": 20,
-      "core-tests": 221,
-      "app-store-renderer": 10
+      "core-fixtures": 108,
+      "core-tests": 100,
+      "app-store-renderer": 11
     }
   }
 }

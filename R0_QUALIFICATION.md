@@ -1,10 +1,22 @@
 # R0 E2E qualification
 
-The manual **R0 E2E qualification** workflow is the release gate for declaring
-the canonical walkthrough suite deterministic. Dispatch it from the exact
-commit being qualified and paste that commit's full 40-character SHA into
-`expected_sha`. The workflow rejects a selected ref that does not resolve to
-that exact SHA.
+The **R0 E2E qualification** workflow is the release gate for declaring the
+canonical walkthrough suite deterministic. Because the reusable workflow may
+not yet be registered on the default branch, dispatch it through the **iOS**
+workflow on the remote qualification branch and pass that branch tip's full
+40-character SHA as `expected_sha`:
+
+```sh
+git fetch origin remediation/e2e-stabilization
+exact_sha="$(git rev-parse HEAD)"
+test "$(git rev-parse origin/remediation/e2e-stabilization)" = "${exact_sha}"
+gh workflow run ios.yml --ref remediation/e2e-stabilization \
+  -f expected_sha="${exact_sha}"
+```
+
+GitHub requires `--ref` to name a branch or tag; the immutable SHA belongs in
+`expected_sha`. The workflow rejects a selected ref, caller revision, or
+checkout that does not resolve to that exact SHA.
 
 The gate deliberately has two phases:
 
@@ -13,15 +25,17 @@ The gate deliberately has two phases:
 2. After every story reaches 10/10, five macOS lanes run five logical copies of
    the production CI matrix. A logical matrix is the union of the same numbered
    attempt from all five lanes. Every matrix attempt uses a fresh detached
-   worktree and fresh story simulators; lane 5 also repeats core and fixture
+   worktree and fresh story simulators; lane 1 also repeats core and fixture
    verification. The lane containing Story 013 also runs the same App Store
    asset renderer as production CI and retains all seven rendered PNGs.
 
-Each macOS lane verifies and generates once, then shares only one compiled test
-bundle. The qualification scripts hash every file in the shared build products
-after its creation and again after the lane. A changed build invalidates the
-qualification. Source SHA and tracked-worktree cleanliness are checked between
-attempts.
+Each story-qualification lane verifies and generates once, then shares one
+compiled test bundle across its stories and ten attempts. Each matrix lane
+creates a fresh build for every logical matrix and reuses it only across that
+lane's stories in that matrix. The qualification scripts hash every file in
+each shared build after its creation and again after its permitted reuse. A
+changed build invalidates the qualification. Source SHA and tracked-worktree
+cleanliness are checked between attempts.
 
 Test failures never stop later scheduled attempts and are never retried. The
 lane records the first supported failure signature and exits unsuccessfully
@@ -41,9 +55,10 @@ for 90 days, subject to the repository retention ceiling. Shared build products
 are intentionally excluded from uploads.
 
 The final `Exact-SHA R0 qualification report` job is the authoritative gate. It
-fails closed on a missing lane, missing attempt, duplicate story, wrong SHA,
-changed build, infrastructure-invalid run, red test, absent core gate, or any
-matrix that does not contain all 13 canonical stories exactly once. It also
+first requires both the 10/10 story gate and five-matrix stage to have succeeded,
+then fails closed on a missing lane, missing attempt, duplicate story, wrong
+SHA, changed build, infrastructure-invalid run, red test, absent core gate, or
+any matrix that does not contain all 13 canonical stories exactly once. It also
 fails if renderer evidence is absent, median logical complete-matrix wall time
 regresses more than 10%, or any median story time regresses more than 20%.
 The report includes minimum, median, p95, and maximum logical wall time plus

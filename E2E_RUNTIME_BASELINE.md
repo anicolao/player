@@ -63,22 +63,49 @@ the logical critical-lane threshold.
 
 R1-R16 intentionally increased canonical coverage from 26 to 41 selectors.
 Run [33265457941](https://github.com/anicolao/player/actions/runs/33265457941)
-is the retained expanded-suite reference: it completed in **40m56s**, with a
-**2,258-second** logical critical lane. The same 41-selector suite then passed
-in [run 33269183195](https://github.com/anicolao/player/actions/runs/33269183195)
-after allocation-only rebalancing.
+is the original expanded-suite reference: it completed in **40m56s**, with a
+**2,258-second** logical critical lane. The same 41-selector suite passed on the
+final allocation and exact accepted implementation in
+[run 33289300337](https://github.com/anicolao/player/actions/runs/33289300337)
+without a rerun.
 
-| Expanded-suite measurement | Reference allocation | Green rebalance | Delta |
+| Expanded-suite measurement | Reference allocation | Final exact-SHA run | Delta |
 | --- | ---: | ---: | ---: |
-| Workflow wall clock | 40m56s | 35m14s | -5m42s (-13.9%) |
-| Logical critical lane | 2,258s | 1,899s | -359s (-15.9%) |
+| Workflow wall clock | 40m56s | 32m32s | -8m24s (-20.5%) |
+| Logical critical lane | 2,258s | 1,782s | -476s (-21.1%) |
 | Canonical stories | 13 | 13 | unchanged |
 | UI-test selectors | 41 | 41 | unchanged |
 | Core gate / App Store renderer | included | included | unchanged |
 
-The final normal-CI candidate and formal repeated distribution are recorded
-only after those exact-SHA gates complete; a failed run is never substituted
-with a rerun-to-green.
+The final run passed all 13 stories, all 41 UI-test selectors, 372/372 core
+tests, and the seven-image App Store renderer in one attempt. Relative to the
+43m30s pre-parallel workflow, wall time is lower by 10m58s (-25.2%) even though
+R1-R16 expanded UI coverage from 26 to 41 selectors. The formal repeated
+distribution remains the release-qualification gate; a failed run is never
+substituted with a rerun-to-green.
+
+The exact story artifacts also retain the aggregate runner work below. These
+phase totals are summed across five concurrent lanes, so they explain where
+runner time went but must not be added to obtain workflow wall time.
+
+| Retained phase | Expanded reference | Final exact-SHA run | Delta |
+| --- | ---: | ---: | ---: |
+| Simulator create/boot/configure | 1,843s | 1,671s | -172s |
+| Five shared builds | 1,182s | 1,009s | -173s |
+| Build provenance | 213s | 184s | -29s |
+| Target installation | 268s | 292s | +24s |
+| UI test execution | 3,773s | 3,755s | -18s |
+| Attachment export | 34s | 33s | -1s |
+| Screenshot comparison | 385s | 337s | -48s |
+| Walkthrough materialization / README comparison | 4s | 4s | unchanged |
+| Core fixtures | 20s | 108s | +88s |
+| Core tests | 221s | 100s | -121s |
+| App Store renderer | 10s | 11s | +1s |
+
+The five shared builds and simulator provisioning remain the largest setup
+costs. The critical-path improvement comes from balancing complete stories
+across the five-runner concurrency ceiling and reusing one immutable build per
+lane, not from deleting tests or hiding setup outside the measurement.
 
 The repaired predecessor also passed without a rerun in
 [run 33278492881](https://github.com/anicolao/player/actions/runs/33278492881):
@@ -108,9 +135,10 @@ cost lowers the estimated median critical path by 239s (-13.0%).
 | 5 | 006 safe ZIP import; 009 accessible core journeys; 013 App Store listing and renderer |
 
 This is a scheduling-only change. It does not remove a selector, weaken a
-gate, add a test retry, or change the two-second event deadline. The actual
-before/after wall-clock result remains the final green hosted run, not this
-modelled estimate.
+gate, add a test retry, or change the two-second event deadline. The measured
+32m32s workflow and 1,782-second logical critical lane above are the actual
+before/after result; the allocation model is retained only to document how the
+layout was selected.
 
 ## Pre-remediation CI critical path
 
