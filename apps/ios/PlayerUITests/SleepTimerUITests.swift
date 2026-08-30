@@ -473,7 +473,13 @@ final class SleepTimerUITests: PlayerUITestCase {
     )
     XCTAssertTrue(
       scrollUntil(
-        { element.exists && element.isHittable },
+        {
+          elementIsFullyVisible(
+            element,
+            within: screen,
+            requiresHittable: false
+          )
+        },
         on: surface,
         deadline: EventDeadline(),
         terminalEndpoint: \.atBottom
