@@ -211,8 +211,17 @@ private func resolveAppleIntelligenceNotificationState(
 
   let notificationTitle = notificationTitles.element
   let notificationFrame = notificationTitle.frame
-  let springboardFrame = springboard.frame
-  guard !notificationFrame.isEmpty, !springboardFrame.isEmpty else {
+  // XCUIApplication.frame can be reported in screenshot pixels for SpringBoard
+  // while its descendant frames and normalized coordinates use points. Select
+  // a point-space window that contains the notification before converting its
+  // frame to the application-relative normalized coordinate system.
+  let coordinateFrame = springboard.windows.allElementsBoundByIndex
+    .map(\.frame)
+    .first {
+      !$0.isEmpty
+        && $0.contains(CGPoint(x: notificationFrame.midX, y: notificationFrame.midY))
+    }
+  guard !notificationFrame.isEmpty, let coordinateFrame else {
     let dismissed = waitForNoElements(notificationTitles, deadline: EventDeadline())
     guard dismissed else {
       attachSystemInterruptionEvidence(
@@ -222,7 +231,9 @@ private func resolveAppleIntelligenceNotificationState(
       )
       XCTFail(
         "The simulator's Apple Intelligence notification had no dismissible frame; "
-          + "notificationFrame=\(notificationFrame), springboardFrame=\(springboardFrame)",
+          + "notificationFrame=\(notificationFrame), "
+          + "springboardFrame=\(springboard.frame), "
+          + "windowFrames=\(springboard.windows.allElementsBoundByIndex.map(\.frame))",
         file: file,
         line: line
       )
@@ -235,12 +246,12 @@ private func resolveAppleIntelligenceNotificationState(
   // Anchor the drag to SpringBoard, whose frame survives the banner's automatic
   // dismissal. An element-bound swipe retries against the disappearing title and
   // can fail after the overlay has already left the screen.
-  let normalizedX = (notificationFrame.midX - springboardFrame.minX) / springboardFrame.width
+  let normalizedX = (notificationFrame.midX - coordinateFrame.minX) / coordinateFrame.width
   let normalizedStartY =
-    (notificationFrame.midY - springboardFrame.minY) / springboardFrame.height
+    (notificationFrame.midY - coordinateFrame.minY) / coordinateFrame.height
   let normalizedEndY = max(
     0.001,
-    (notificationFrame.minY - springboardFrame.minY - 44) / springboardFrame.height
+    (notificationFrame.minY - coordinateFrame.minY - 44) / coordinateFrame.height
   )
   springboard.coordinate(
     withNormalizedOffset: CGVector(dx: normalizedX, dy: normalizedStartY)

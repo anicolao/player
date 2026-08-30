@@ -150,6 +150,13 @@ rg -Fq 'attachSystemInterruptionEvidence(' \
   "${ui_test_root}/TestStepHelper.swift"
 rg -Fq 'let notificationFrame = notificationTitle.frame' \
   "${ui_test_root}/TestStepHelper.swift"
+rg -Fq 'let coordinateFrame = springboard.windows.allElementsBoundByIndex' \
+  "${ui_test_root}/TestStepHelper.swift"
+if rg -Fq 'let springboardFrame = springboard.frame' \
+  "${ui_test_root}/TestStepHelper.swift"; then
+  echo 'system-overlay hygiene rejected pixel-space SpringBoard frame normalization' >&2
+  exit 1
+fi
 rg -Fq 'springboard.coordinate(' \
   "${ui_test_root}/TestStepHelper.swift"
 if rg -Fq 'notificationTitle.swipeUp()' \
