@@ -15,7 +15,12 @@ on:
         type: string
 
 permissions:
+  actions: read
   contents: read
+
+concurrency:
+  group: r0-qualification-${{ inputs.expected_sha }}
+  cancel-in-progress: false
 
 jobs:
   preflight:
@@ -37,6 +42,37 @@ jobs:
           git diff --quiet
           git diff --cached --quiet
           jq -e 'length == 13' tests/e2e/manifest.json >/dev/null
+      - name: Reject reruns and repeated qualification dispatches
+        env:
+          CURRENT_RUN_ATTEMPT: ${{ github.run_attempt }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "${CURRENT_RUN_ATTEMPT}" = 1
+          workflow_id="$(gh api \
+            "/repos/${GITHUB_REPOSITORY}/actions/runs/${CURRENT_RUN_ID}" \
+            --jq '.workflow_id')"
+          mapfile -t candidate_run_ids < <(
+            gh api --paginate --method GET \
+              "/repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_id}/runs" \
+              -f head_sha="${EXPECTED_SHA}" \
+              -f per_page=100 \
+              --jq '.workflow_runs[] | select(.event == "workflow_dispatch") | .id'
+          )
+          qualification_run_ids=()
+          for candidate_run_id in "${candidate_run_ids[@]}"; do
+            qualification_jobs="$(gh api --paginate --method GET \
+              "/repos/${GITHUB_REPOSITORY}/actions/runs/${candidate_run_id}/jobs" \
+              -f filter=all \
+              -f per_page=100 \
+              --jq '.jobs[].name | select(endswith("Exact-SHA qualification preflight"))')"
+            if [[ -n "${qualification_jobs}" ]]; then
+              qualification_run_ids+=("${candidate_run_id}")
+            fi
+          done
+          test "${#qualification_run_ids[@]}" -eq 1
+          test "${qualification_run_ids[0]}" = "${CURRENT_RUN_ID}"
       - name: Test fail-closed qualification aggregation
         run: python3 apps/ios/scripts/qualification/test_aggregate_r0_qualification.py
 
@@ -135,7 +171,7 @@ jobs:
 
   matrix-qualification:
     name: Matrix qualification ${{ matrix.lane }}
-    needs: story-qualification
+    needs: story-gate
     runs-on: macos-26
     timeout-minutes: 210
     strategy:
@@ -205,28 +241,24 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Require successful qualification dependencies
-        env:
-          STORY_GATE_RESULT: ${{ needs.story-gate.result }}
-          MATRIX_RESULT: ${{ needs.matrix-qualification.result }}
-        run: |
-          test "${STORY_GATE_RESULT}" = success
-          test "${MATRIX_RESULT}" = success
       - uses: actions/checkout@v4
+        if: always()
         with:
           ref: ${{ inputs.expected_sha }}
       - name: Download story evidence
+        if: always()
         uses: actions/download-artifact@v4
         with:
           pattern: r0-story-evidence-*-${{ inputs.expected_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: downloaded/stories
       - name: Download matrix evidence when present
-        if: needs.matrix-qualification.result != 'skipped'
+        if: always() && needs.matrix-qualification.result != 'skipped'
         uses: actions/download-artifact@v4
         with:
           pattern: r0-matrix-*-${{ inputs.expected_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: downloaded/matrices
       - name: Validate all five logical matrices and render stability report
+        if: always()
         run: >-
           python3 apps/ios/scripts/qualification/aggregate_r0_qualification.py
           --story-input downloaded/stories
@@ -246,3 +278,11 @@ jobs:
           path: build/r0-qualification-report/
           if-no-files-found: error
           retention-days: 90
+      - name: Require successful qualification dependencies
+        if: always()
+        env:
+          STORY_GATE_RESULT: ${{ needs.story-gate.result }}
+          MATRIX_RESULT: ${{ needs.matrix-qualification.result }}
+        run: |
+          test "${STORY_GATE_RESULT}" = success
+          test "${MATRIX_RESULT}" = success

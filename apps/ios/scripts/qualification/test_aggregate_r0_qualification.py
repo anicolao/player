@@ -323,6 +323,60 @@ class QualificationAggregatorTests(unittest.TestCase):
         (self.story_summary().parent / artifact).rmdir()
         self.assertEqual(self.run_aggregate(), 1)
 
+    def test_rejects_story_attempt_artifact_substitution(self):
+        payload = json.loads(self.story_summary().read_text())
+        attempts = payload["stories"][0]["attempts"]
+        attempts[1]["artifact"] = attempts[0]["artifact"]
+        write_json(self.story_summary(), payload)
+        self.assertEqual(self.run_aggregate(), 1)
+        report = json.loads((self.root / "report/QualificationSummary.json").read_text())
+        errors = report["storyQualification"]["errors"]
+        self.assertTrue(any("artifact must be Stories/" in error for error in errors))
+        self.assertTrue(any("reuses artifact Stories/" in error for error in errors))
+
+    def test_rejects_matrix_story_artifact_substitution(self):
+        payload = json.loads(self.matrix_summary().read_text())
+        first = payload["matrices"][0]["stories"][0]
+        second = payload["matrices"][1]["stories"][0]
+        second["artifact"] = first["artifact"]
+        write_json(self.matrix_summary(), payload)
+        self.assertEqual(self.run_aggregate(), 1)
+        report = json.loads((self.root / "report/QualificationSummary.json").read_text())
+        errors = report["matrixQualification"]["errors"]
+        self.assertTrue(any("artifact must be Matrices/matrix-02/Stories/" in error
+                            for error in errors))
+        self.assertTrue(any("reuses artifact Matrices/matrix-01/Stories/" in error
+                            for error in errors))
+
+    def test_rejects_core_artifact_substitution(self):
+        payload = json.loads(self.matrix_summary(3).read_text())
+        payload["matrices"][1]["core"] = payload["matrices"][0]["core"]
+        write_json(self.matrix_summary(3), payload)
+        self.assertEqual(self.run_aggregate(), 1)
+        report = json.loads((self.root / "report/QualificationSummary.json").read_text())
+        errors = report["matrixQualification"]["errors"]
+        self.assertTrue(any(
+            "logical matrix 2 core artifact must be Matrices/matrix-02/Core" in error
+            for error in errors))
+        self.assertTrue(any(
+            "logical matrix 2 core reuses artifact Matrices/matrix-01/Core" in error
+            for error in errors))
+
+    def test_rejects_renderer_artifact_substitution(self):
+        payload = json.loads(self.matrix_summary(5).read_text())
+        payload["matrices"][1]["appStoreRenderer"] = \
+            payload["matrices"][0]["appStoreRenderer"]
+        write_json(self.matrix_summary(5), payload)
+        self.assertEqual(self.run_aggregate(), 1)
+        report = json.loads((self.root / "report/QualificationSummary.json").read_text())
+        errors = report["matrixQualification"]["errors"]
+        self.assertTrue(any(
+            "logical matrix 2 renderer artifact must be "
+            "Matrices/matrix-02/AppStoreListing" in error for error in errors))
+        self.assertTrue(any(
+            "logical matrix 2 renderer reuses artifact "
+            "Matrices/matrix-01/AppStoreListing" in error for error in errors))
+
     def test_log_and_result_do_not_prove_test_phase_entered(self):
         payload = json.loads(self.story_summary().read_text())
         artifact = payload["stories"][0]["attempts"][0]["artifact"]

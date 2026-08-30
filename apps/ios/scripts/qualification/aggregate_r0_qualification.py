@@ -111,6 +111,17 @@ def evidence_path(lane_root: Path, relative, label, errors):
     return lane_root / candidate
 
 
+def require_canonical_artifact(record, expected, observed, label, errors):
+    artifact = record.get("artifact")
+    if artifact != expected:
+        errors.append(f"{label} artifact must be {expected}")
+    if isinstance(artifact, str):
+        if artifact in observed:
+            errors.append(f"{label} reuses artifact {artifact}")
+        else:
+            observed.add(artifact)
+
+
 def validate_integrity_manifest(root: Path, label, errors):
     manifest = root / "EvidenceManifest.sha256"
     if not manifest.is_file():
@@ -306,6 +317,7 @@ def validate_attempt_evidence(lane_root, canonical_root, record, story, sha, lab
 
 def validate_story(root, canonical_root, expected_stories, sha, requested_attempts):
     errors, durations, signatures, failures = [], [], {}, []
+    observed_artifacts = set()
     pairs = summary_pairs(root, "StoryLaneSummary.json", errors)
     lanes = [item.get("lane") for _, item in pairs]
     if any(not isinstance(lane, str) for lane in lanes):
@@ -346,6 +358,11 @@ def validate_story(root, canonical_root, expected_stories, sha, requested_attemp
                 errors.append(f"{story_id} did not pass {requested_attempts}/{requested_attempts}")
             for attempt in attempts:
                 label = f"{story_id} attempt {attempt.get('attempt')}"
+                attempt_id = attempt.get("attempt")
+                if type(attempt_id) is int and attempt_id > 0:
+                    expected_artifact = f"Stories/{story_id}/attempt-{attempt_id:02d}"
+                    require_canonical_artifact(
+                        attempt, expected_artifact, observed_artifacts, label, errors)
                 duration = validate_measured_record(attempt, "result", label, errors)
                 if duration is not None:
                     durations.append(duration)
@@ -437,6 +454,7 @@ def validate_core(lane_root, gate, index, errors):
 
 def validate_matrices(root, canonical_root, expected_stories, sha, requested_matrices, baseline):
     errors, durations, signatures, failures = [], [], {}, []
+    observed_artifacts = set()
     story_values, phase_matrix_values, wall_values = defaultdict(list), defaultdict(list), []
     original = baseline["preRemediation"]
     reference = baseline["qualificationReference"]
@@ -487,6 +505,10 @@ def validate_matrices(root, canonical_root, expected_stories, sha, requested_mat
                     errors.append(f"matrix {index} contains a story with an invalid identifier")
                     continue
                 label = f"matrix {index} story {story_id}"
+                if type(index) is int and index > 0:
+                    expected_artifact = f"Matrices/matrix-{index:02d}/Stories/{story_id}"
+                    require_canonical_artifact(
+                        story, expected_artifact, observed_artifacts, label, errors)
                 duration = validate_measured_record(story, "status", label, errors)
                 if duration is not None:
                     durations.append(duration)
@@ -513,6 +535,9 @@ def validate_matrices(root, canonical_root, expected_stories, sha, requested_mat
             core_lane_root = next(lane_root for lane_root, matrix in matrices
                                   if matrix.get("core", {}).get("required"))
             gate = core[0]
+            require_canonical_artifact(
+                gate, f"Matrices/matrix-{index:02d}/Core", observed_artifacts,
+                f"logical matrix {index} core", errors)
             signature = gate.get("signature", "none")
             fixture_exit = gate.get("fixtureExitCode")
             fixture_log_exit = gate.get("fixtureLogExitCode")
@@ -569,6 +594,10 @@ def validate_matrices(root, canonical_root, expected_stories, sha, requested_mat
         if len(renderers) != 1:
             errors.append(f"logical matrix {index} does not contain exactly one required App Store renderer")
         else:
+            require_canonical_artifact(
+                renderers[0][1]["appStoreRenderer"],
+                f"Matrices/matrix-{index:02d}/AppStoreListing", observed_artifacts,
+                f"logical matrix {index} renderer", errors)
             if not any(story.get("story") == "013-app-store-listing"
                        for story in renderers[0][1].get("stories", [])):
                 errors.append(f"logical matrix {index} renderer is not attached to Story 013")

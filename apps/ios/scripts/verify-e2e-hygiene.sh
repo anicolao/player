@@ -449,6 +449,33 @@ cmp "${temporary_root}/qualification-expected-stories" \
   || fail "R0 qualification must assign every canonical story once in each phase"
 [[ "$(rg -c '^[[:space:]]+max-parallel: 5$' "${qualification_workflow}")" -eq 1 ]] \
   || fail "R0 story qualification must schedule exactly five isolated lanes concurrently"
+for actions_reader in "${workflow}" "${qualification_workflow}"; do
+  sed -n '/^permissions:/,/^jobs:/p' "${actions_reader}" \
+    | rg -q '^[[:space:]]+actions: read$' \
+    || fail "formal qualification and its caller must grant read-only Actions access"
+done
+rg -Fq 'group: r0-qualification-${{ inputs.expected_sha }}' \
+  "${qualification_workflow}" \
+  || fail "same-SHA formal qualifications must be serialized"
+rg -Fq 'cancel-in-progress: false' "${qualification_workflow}" \
+  || fail "formal qualification concurrency may not cancel an active measurement"
+preflight_section="$(sed -n '/^  preflight:/,/^  story-qualification:/p' \
+  "${qualification_workflow}")"
+for rerun_guard in \
+  'test "${CURRENT_RUN_ATTEMPT}" = 1' \
+  '/actions/workflows/${workflow_id}/runs' \
+  'select(.event == "workflow_dispatch")' \
+  'endswith("Exact-SHA qualification preflight")' \
+  'test "${#qualification_run_ids[@]}" -eq 1' \
+  'test "${qualification_run_ids[0]}" = "${CURRENT_RUN_ID}"'; do
+  rg -Fq "${rerun_guard}" <<< "${preflight_section}" \
+    || fail "formal qualification must reject reruns and repeated same-SHA dispatches"
+done
+matrix_qualification_section="$(sed -n \
+  '/^  matrix-qualification:/,/^  qualification-report:/p' \
+  "${qualification_workflow}")"
+rg -q '^    needs: story-gate$' <<< "${matrix_qualification_section}" \
+  || fail "formal matrices must begin only after the aggregate 10/10 story gate"
 rg -q 'r0-story-evidence-\$\{\{ matrix\.lane \}\}' "${qualification_workflow}" \
   || fail "R0 story qualification artifacts must remain independently attributable by lane"
 [[ "$(rg -c 'arguments=.*--attempts 10' "${qualification_workflow}")" -eq 1 ]] \
@@ -461,6 +488,33 @@ rg -q 'r0_failure_history.json' "${qualification_workflow}" \
   || fail "R0 qualification must include historical root-cause accounting"
 qualification_report_section="$(sed -n '/^  qualification-report:/,$p' \
   "${qualification_workflow}")"
+python3 - "${qualification_workflow}" <<'PY' \
+  || fail "the formal report must render and upload before dependency failure is asserted"
+import sys
+from pathlib import Path
+
+section = Path(sys.argv[1]).read_text(encoding="utf-8").split(
+    "  qualification-report:\n", 1
+)[1]
+ordered = [
+    "- uses: actions/checkout@v4",
+    "- name: Download story evidence",
+    "- name: Download matrix evidence when present",
+    "- name: Validate all five logical matrices and render stability report",
+    "- name: Upload final stability report",
+    "- name: Require successful qualification dependencies",
+]
+positions = [section.index(marker) for marker in ordered]
+if positions != sorted(positions):
+    raise SystemExit(1)
+for marker in ordered:
+    tail = section[section.index(marker):]
+    step = tail.split("\n      - ", 1)[0]
+    if "if: always()" not in step and marker != "- name: Download matrix evidence when present":
+        raise SystemExit(1)
+if "if: always() && needs.matrix-qualification.result != 'skipped'" not in section:
+    raise SystemExit(1)
+PY
 rg -q 'STORY_GATE_RESULT.*needs\.story-gate\.result' \
   <<< "${qualification_report_section}" \
   || fail "the authoritative qualification report must inspect the story-gate result"

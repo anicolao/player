@@ -71,6 +71,7 @@ on:
       - flake.lock
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
