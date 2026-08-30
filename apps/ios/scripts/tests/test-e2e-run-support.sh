@@ -403,6 +403,19 @@ env PATH="${control_plane_fake_bin}:${PATH}" \
   || fail "hosted simulator reset did not perform exactly one restart and readiness event"
 [[ "$(sed -n '2p' "${control_plane_log}")" == $'xcrun\tsimctl list devices --json' ]] \
   || fail "hosted simulator reset did not finish with the simctl readiness event"
+cat > "${control_plane_fake_bin}/launchctl" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'launchctl-timeout\t%s\n' "$*" >> "${PLAYER_CONTROL_PLANE_LOG}"
+exit 142
+EOF
+chmod +x "${control_plane_fake_bin}/launchctl"
+: > "${control_plane_log}"
+env PATH="${control_plane_fake_bin}:${PATH}" \
+  PLAYER_CONTROL_PLANE_LOG="${control_plane_log}" \
+  GITHUB_ACTIONS=true "${control_plane_reset}"
+[[ "$(sed -n '2p' "${control_plane_log}")" == $'xcrun\tsimctl list devices --json' ]] \
+  || fail "kickstart deadline prevented the readiness event from being observed"
 for destination_source in \
   "${run_e2e}" \
   "${ios_scripts}/run-e2e-shard.sh" \
