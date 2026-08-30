@@ -1,0 +1,14 @@
+{
+  "qualifiedSystemRegions": {
+    "000-populated-library.png": [
+      {
+        "height": 15,
+        "reason": "The iOS home indicator is system-owned and may be visible or auto-hidden when XCTest captures an otherwise identical settled app frame.",
+        "width": 432,
+        "x": 387,
+        "y": 2583
+      }
+    ]
+  },
+  "schemaVersion": 1
+}

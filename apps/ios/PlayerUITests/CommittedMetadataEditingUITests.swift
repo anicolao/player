@@ -473,6 +473,7 @@ final class CommittedMetadataEditingUITests: XCTestCase {
 
   private func metadataEditorSurface(_ app: XCUIApplication) -> ScrollSurface {
     ScrollSurface(
+      application: app,
       container: anyElement(app, "metadata-editor-scroll"),
       readiness: anyElement(app, "metadata-editor-scroll-readiness"),
       containerID: "metadata-editor-scroll",

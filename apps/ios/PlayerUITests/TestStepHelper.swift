@@ -296,9 +296,9 @@ func waitForPredicate(
 }
 
 @MainActor
-func synthesizePhysicalTapWithoutPostEventQuiescence(
-  _ coordinate: XCUICoordinate,
-  in application: XCUIApplication
+func performPhysicalInteractionWithoutPostEventQuiescence(
+  in application: XCUIApplication,
+  _ interaction: () -> Void
 ) -> Bool {
   // The pinned XCTest runtime exposes bit 1 as
   // XCUIApplicationInteractionOptionSkipPostEventQuiescence. These callers
@@ -316,7 +316,7 @@ func synthesizePhysicalTapWithoutPostEventQuiescence(
   defer {
     application.setValue(currentOptions, forKey: interactionOptionsKey)
   }
-  coordinate.tap()
+  interaction()
   return true
 }
 
@@ -383,6 +383,7 @@ enum ScrollProbeDirection: Equatable {
 
 @MainActor
 struct ScrollSurface {
+  let application: XCUIApplication
   let container: XCUIElement
   let readiness: XCUIElement
   let containerID: String
@@ -429,11 +430,11 @@ func scrollUntil(
   // Readiness and the first virtualized-target query are one observable phase.
   // Give gesture synthesis and its correlated completion a separate bounded
   // event budget so a slow accessibility snapshot cannot prevent all input.
-  let actionDeadline = EventDeadline()
+  var actionDeadline: EventDeadline?
   var observedInteraction = false
   var lastCorrelatedState: ScrollReadinessState?
   var before = initial
-  while actionDeadline.remaining > 0 {
+  while actionDeadline?.remaining ?? 2 > 0 {
     if let terminalEndpoint, before[keyPath: terminalEndpoint] {
       let context = failureContext()
       print(
@@ -443,45 +444,114 @@ func scrollUntil(
       )
       return false
     }
-    guard actionDeadline.remaining >= 0.2 else { break }
-    gesture()
+    if let actionDeadline, actionDeadline.remaining < 0.2 { break }
+    guard performPhysicalInteractionWithoutPostEventQuiescence(in: surface.application, gesture)
+    else {
+      print("The pinned XCTest runtime cannot bound scroll gesture synthesis")
+      return false
+    }
+    if actionDeadline == nil { actionDeadline = EventDeadline() }
+    guard let actionDeadline else { return false }
+
+    let receiptDeadline = EventDeadline(timeout: min(0.25, actionDeadline.remaining))
+    let receiptMatches: (ScrollReadinessState) -> Bool = { after in
+      let madeOffsetProgress: Bool
+      switch direction {
+      case .towardStart: madeOffsetProgress = after.offset < before.offset - 0.5
+      case .towardEnd: madeOffsetProgress = after.offset > before.offset + 0.5
+      }
+      return after.interactionID > before.interactionID || madeOffsetProgress
+    }
+    var received = waitForScrollReadiness(
+      surface,
+      deadline: receiptDeadline,
+      matching: receiptMatches
+    )
+    if !received, let latest = surface.state() { received = receiptMatches(latest) }
+    guard received else {
+      guard let latest = surface.state(),
+        latest.isIdle,
+        latest.interactionID == before.interactionID,
+        latest.completionID == before.completionID,
+        latest.geometryID == before.geometryID,
+        latest.completionGeometryID == before.completionGeometryID,
+        abs(latest.offset - before.offset) <= 0.5,
+        actionDeadline.remaining > 0
+      else {
+        print(
+          "Scroll gesture changed state without a correlatable receipt: "
+            + scrollReadinessDiagnostic(surface)
+        )
+        return false
+      }
+      before = latest
+      continue
+    }
 
     var settledState: ScrollReadinessState?
-    let correlated = waitForScrollReadiness(
+    let recordCorrelatedState: (ScrollReadinessState) -> Bool = { after in
+      settledState = nil
+      let madeOffsetProgress: Bool
+      switch direction {
+      case .towardStart: madeOffsetProgress = after.offset < before.offset - 0.5
+      case .towardEnd: madeOffsetProgress = after.offset > before.offset + 0.5
+      }
+      guard after.isIdle, after.geometryID > before.geometryID, madeOffsetProgress
+      else { return false }
+      let phaseCompletion = after.interactionID > before.interactionID
+        && after.completionID > before.completionID
+        && after.completionGeometryID == after.geometryID
+      let listGeometryFallback = surface.permitsGeometrySettledFallback
+        && after.geometryID > before.geometryID
+        && after.isIdle
+        && condition()
+      let isCorrelated = phaseCompletion || listGeometryFallback
+      if isCorrelated { settledState = after }
+      return isCorrelated
+    }
+    let observedCorrelatedState = waitForScrollReadiness(
       surface,
       deadline: actionDeadline,
-      matching: { after in
-        let madeOffsetProgress: Bool
-        switch direction {
-        case .towardStart: madeOffsetProgress = after.offset < before.offset - 0.5
-        case .towardEnd: madeOffsetProgress = after.offset > before.offset + 0.5
-        }
-        guard after.isIdle, after.geometryID > before.geometryID, madeOffsetProgress
-        else { return false }
-        let phaseCompletion = after.interactionID > before.interactionID
-          && after.completionID > before.completionID
-          && after.completionGeometryID == after.geometryID
-        let listGeometryFallback = surface.permitsGeometrySettledFallback
-          && after.geometryID > before.geometryID
-          && after.isIdle
-          && condition()
-        let isCorrelated = phaseCompletion || listGeometryFallback
-        if isCorrelated { settledState = after }
-        return isCorrelated
-      }
+      matching: recordCorrelatedState
     )
-    guard correlated, let settledState else {
+    if !observedCorrelatedState, let latest = surface.state() {
+      _ = recordCorrelatedState(latest)
+    }
+    guard let settledState else {
       let context = failureContext()
       print(
         "Scroll gesture lacked settled, progress-making evidence: "
-          + scrollReadinessDiagnostic(surface)
-          + (context.isEmpty ? "" : "; \(context)")
+            + scrollReadinessDiagnostic(surface)
+            + "; origin=interaction=\(before.interactionID),completion=\(before.completionID),"
+            + "geometry=\(before.geometryID),completion-geometry="
+            + "\(before.completionGeometryID),offset=\(before.offset)"
+            + (context.isEmpty ? "" : "; \(context)")
       )
       return false
     }
     observedInteraction = true
     lastCorrelatedState = settledState
     if condition() { return true }
+    if let terminalEndpoint, settledState[keyPath: terminalEndpoint],
+      waitForScrollReadiness(
+        surface,
+        deadline: actionDeadline,
+        matching: { after in
+          let phaseCompletion = after.interactionID >= settledState.interactionID
+            && after.completionID >= settledState.completionID
+            && after.completionGeometryID == after.geometryID
+          let listGeometryFallback = surface.permitsGeometrySettledFallback
+            && after.geometryID >= settledState.geometryID
+          return after.isIdle
+            && after[keyPath: terminalEndpoint]
+            && after.geometryID >= settledState.geometryID
+            && (phaseCompletion || listGeometryFallback)
+            && condition()
+        }
+      )
+    {
+      return true
+    }
     before = settledState
   }
 
@@ -489,10 +559,15 @@ func scrollUntil(
     let correlated = lastCorrelatedState,
     let latest = surface.state(),
     latest.isIdle,
-    latest.interactionID == correlated.interactionID,
-    latest.completionID == correlated.completionID,
     latest.geometryID >= correlated.geometryID,
-    latest.completionGeometryID == latest.geometryID,
+    (
+      (
+        latest.interactionID == correlated.interactionID
+          && latest.completionID == correlated.completionID
+          && latest.completionGeometryID == latest.geometryID
+      )
+        || surface.permitsGeometrySettledFallback
+    ),
     condition()
   {
     return true
@@ -510,15 +585,46 @@ func scrollUntil(
 func challengeSettledEnd(
   on surface: ScrollSurface,
   tracking element: XCUIElement,
-  deadline: EventDeadline = EventDeadline(),
   gesture: () -> Void
 ) -> Bool {
   guard let before = surface.state(), before.isIdle, before.atEnd else { return false }
   let beforeFrame = element.frame
-  gesture()
+  var received = false
+  var transitionDeadline: EventDeadline?
+  while transitionDeadline?.remaining ?? 2 > 0 && !received {
+    guard performPhysicalInteractionWithoutPostEventQuiescence(
+      in: surface.application,
+      gesture
+    ) else { return false }
+    if transitionDeadline == nil { transitionDeadline = EventDeadline() }
+    guard let transitionDeadline else { return false }
+    let receiptMatches: (ScrollReadinessState) -> Bool = {
+      $0.interactionID > before.interactionID
+    }
+    received = waitForScrollReadiness(
+      surface,
+      deadline: EventDeadline(timeout: min(0.25, transitionDeadline.remaining)),
+      matching: receiptMatches
+    )
+    if !received, let latest = surface.state() { received = receiptMatches(latest) }
+    if !received,
+      let latest = surface.state(),
+      latest.isIdle,
+      latest.atEnd == before.atEnd,
+      latest.interactionID == before.interactionID,
+      latest.completionID == before.completionID,
+      latest.geometryID == before.geometryID,
+      latest.completionGeometryID == before.completionGeometryID,
+      abs(latest.offset - before.offset) <= 1
+    {
+      continue
+    }
+    if !received { return false }
+  }
+  guard received, let transitionDeadline else { return false }
   guard waitForScrollReadiness(
     surface,
-    deadline: deadline,
+    deadline: transitionDeadline,
     matching: { after in
       after.isIdle && after.atEnd
         && after.interactionID > before.interactionID

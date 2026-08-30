@@ -159,6 +159,7 @@ final class SleepTimerUITests: XCTestCase {
     let cancelSleepTimer = restored.buttons["cancel-sleep-timer"]
     let activeCaptureDeadline = EventDeadline()
     let activeSurface = ScrollSurface(
+      application: restored,
       container: activeScreen,
       readiness: restored.descendants(matching: .any)["sleep-timer-scroll-readiness"],
       containerID: "sleep-timer-screen",
@@ -376,6 +377,7 @@ final class SleepTimerUITests: XCTestCase {
     let screen = app.descendants(matching: .any)["sleep-timer-screen"]
     XCTAssertTrue(waitForExistence(screen, deadline: EventDeadline()))
     let surface = ScrollSurface(
+      application: app,
       container: screen,
       readiness: app.descendants(matching: .any)["sleep-timer-scroll-readiness"],
       containerID: "sleep-timer-screen",
@@ -462,6 +464,7 @@ final class SleepTimerUITests: XCTestCase {
     let screen = app.descendants(matching: .any)["sleep-timer-screen"]
     XCTAssertTrue(waitForExistence(screen, deadline: EventDeadline()))
     let surface = ScrollSurface(
+      application: app,
       container: screen,
       readiness: app.descendants(matching: .any)["sleep-timer-scroll-readiness"],
       containerID: "sleep-timer-screen",

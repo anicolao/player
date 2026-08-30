@@ -395,7 +395,10 @@ final class MultifileGroupingUITests: XCTestCase {
           dy: (actionFrame.midY - appFrame.minY) / appFrame.height
         )
       )
-      guard synthesizePhysicalTapWithoutPostEventQuiescence(coordinate, in: app) else {
+      guard performPhysicalInteractionWithoutPostEventQuiescence(
+        in: app,
+        { coordinate.tap() }
+      ) else {
         XCTFail("The pinned XCTest runtime did not expose bounded physical synthesis")
         throw MultifileGroupingTestError.semanticStateUnavailable
       }

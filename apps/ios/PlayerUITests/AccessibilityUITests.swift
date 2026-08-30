@@ -853,6 +853,7 @@ final class AccessibilityUITests: XCTestCase {
     let readiness = anyElement(app, "\(containerID)-readiness")
     XCTAssertTrue(waitForExistence(container, deadline: EventDeadline()))
     let surface = ScrollSurface(
+      application: app,
       container: container,
       readiness: readiness,
       containerID: containerID,
@@ -1075,8 +1076,16 @@ final class AccessibilityUITests: XCTestCase {
         }
         direction = .towardStart
       }
+      guard performPhysicalInteractionWithoutPostEventQuiescence(
+        in: surface.application,
+        {
+          performAccessibilityFramingGesture(
+            displacement: displacement,
+            in: surface.container
+          )
+        }
+      ) else { return false }
       let actionDeadline = EventDeadline()
-      performAccessibilityFramingGesture(displacement: displacement, in: surface.container)
       var settledState: ScrollReadinessState?
       let settled = waitForScrollReadiness(
         surface,
@@ -1210,26 +1219,37 @@ final class AccessibilityUITests: XCTestCase {
     var current = before
     while current.hasScrollableRange, !current.atBottom {
       let previous = current
-      gesture()
+      guard performPhysicalInteractionWithoutPostEventQuiescence(
+        in: surface.application,
+        gesture
+      ) else { return false }
+      let gestureDeadline = EventDeadline()
       let remainingRange = previous.maximum - previous.offset
       let requiredProgress = min(previous.containerLength * 0.25, remainingRange)
       var settledState: ScrollReadinessState?
-      // Accessibility alias queries can be slow on a newly booted hosted
-      // simulator. Their duration must not consume the independently bounded
-      // product transition that follows the user's gesture.
-      let gestureDeadline = EventDeadline()
-      let observedSettledProgress = waitForScrollReadiness(
-        surface,
-        deadline: gestureDeadline
-      ) { after in
+      let recordSettledState: (ScrollReadinessState) -> Bool = { after in
+        settledState = nil
         let settled = after.isIdle
           && after.geometryReady
+          && after.interactionID >= previous.interactionID
+          && after.completionID >= previous.completionID
           && after.geometryID > previous.geometryID
           && after.offset >= previous.offset + max(0.5, requiredProgress - 1)
         if settled { settledState = after }
         return settled
       }
-      guard observedSettledProgress, let settledState
+      // Accessibility alias queries can be slow on a newly booted hosted
+      // simulator. Their duration must not consume the independently bounded
+      // product transition that follows the user's gesture.
+      let observedSettledState = waitForScrollReadiness(
+        surface,
+        deadline: gestureDeadline,
+        matching: recordSettledState
+      )
+      if !observedSettledState, let latest = surface.state() {
+        _ = recordSettledState(latest)
+      }
+      guard let settledState
       else {
         print(
           "List scroll lacked stable progress-making geometry: "
@@ -1239,6 +1259,26 @@ final class AccessibilityUITests: XCTestCase {
         return false
       }
       if condition() && (!requiresTerminalEndpoint || settledState.atBottom) { return true }
+      if settledState.atBottom,
+        waitForScrollReadiness(
+          surface,
+          deadline: gestureDeadline,
+          matching: { after in
+            let phaseCompletion = after.interactionID >= settledState.interactionID
+              && after.completionID >= settledState.completionID
+              && after.completionGeometryID == after.geometryID
+            let listGeometryFallback = surface.permitsGeometrySettledFallback
+              && after.geometryID >= settledState.geometryID
+            return after.isIdle
+              && after.atBottom
+              && after.geometryID >= settledState.geometryID
+              && (phaseCompletion || listGeometryFallback)
+              && condition()
+          }
+        )
+      {
+        return true
+      }
       current = settledState
     }
 
@@ -1276,22 +1316,27 @@ final class AccessibilityUITests: XCTestCase {
       directUpwardDrag(in: element, fromY: 0.86, toY: 0.11, velocity: 500)
     case .settingsLongForm:
       // This target sits near the bottom of the Form; finish at the endpoint so it clears chrome.
-      directUpwardDrag(in: element, fromY: 0.78, toY: 0.22, velocity: 4_000)
+      directUpwardDrag(in: element, fromY: 0.78, toY: 0.22, velocity: 1_000)
     case .accessibilitySettingsLongForm:
       // Underlap the Active iPhone heading while framing Reduce Motion below navigation.
-      element.swipeUp(velocity: 2_000)
+      directUpwardDrag(in: element, fromY: 0.78, toY: 0.22, velocity: 800)
     case .reviewImportActions:
       obstructionAwareUpwardDrag(in: element, obscuredBelow: obstruction)
     case .libraryLongForm:
       // Keep the touch above the live mini-player instead of guessing where its overlay ends.
       // scrollUntil observes each bounded move and only continues after correlated progress.
-      obstructionAwareUpwardDrag(in: element, obscuredBelow: obstruction)
+      obstructionAwareUpwardDrag(
+        in: element,
+        obscuredBelow: obstruction,
+        velocity: 1_000
+      )
     }
   }
 
   private func obstructionAwareUpwardDrag(
     in element: XCUIElement,
-    obscuredBelow obstruction: XCUIElement?
+    obscuredBelow obstruction: XCUIElement?,
+    velocity: XCUIGestureVelocity = 1_750
   ) {
     guard let obstruction, obstruction.exists, element.frame.height > 0 else {
       XCTFail("Expected a scroll surface and its pinned obstruction before scrolling")
@@ -1307,7 +1352,7 @@ final class AccessibilityUITests: XCTestCase {
       in: element,
       fromY: safeStartY,
       toY: 0.05,
-      velocity: 1_750
+      velocity: velocity
     )
   }
 

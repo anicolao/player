@@ -373,6 +373,7 @@ final class BookmarkUITests: XCTestCase {
     XCTAssertTrue(waitForExistence(miniPlayer, deadline: EventDeadline()))
     let scroll = app.scrollViews["book-detail-scroll"]
     let surface = ScrollSurface(
+      application: app,
       container: scroll,
       readiness: app.descendants(matching: .any)["book-detail-scroll-readiness"],
       containerID: "book-detail-scroll",
@@ -429,6 +430,7 @@ final class BookmarkUITests: XCTestCase {
     let scroll = app.scrollViews["book-detail-scroll"]
     XCTAssertTrue(waitForExistence(scroll, deadline: EventDeadline()))
     let surface = ScrollSurface(
+      application: app,
       container: scroll,
       readiness: app.descendants(matching: .any)["book-detail-scroll-readiness"],
       containerID: "book-detail-scroll",
@@ -474,6 +476,7 @@ final class BookmarkUITests: XCTestCase {
     let deadline = EventDeadline()
     XCTAssertTrue(waitForExistence(scrollContainer, deadline: deadline))
     let surface = ScrollSurface(
+      application: app,
       container: scrollContainer,
       readiness: app.descendants(matching: .any)[readinessID],
       containerID: containerID,

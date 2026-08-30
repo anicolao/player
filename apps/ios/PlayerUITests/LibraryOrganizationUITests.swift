@@ -248,8 +248,13 @@ final class LibraryOrganizationUITests: XCTestCase {
     app.buttons["collection-select-book-\(books[0])"].tap()
     app.buttons["collection-select-book-\(books[1])"].tap()
     app.buttons["save-collection-books"].tap()
-    app.buttons["collection-move-up-\(books[1])"].tap()
     let collection = anyElement(app, "collection-probe")
+    let appendedCollection =
+      "collection:\(collectionID):name=Quiet Evenings:count=2:order=\(books[0]),\(books[1])"
+    try requireValue(collection, appendedCollection)
+    let moveSecondBookUp = app.buttons["collection-move-up-\(books[1])"]
+    XCTAssertTrue(moveSecondBookUp.waitForExistence(timeout: 2))
+    moveSecondBookUp.tap()
     let expectedCollection =
       "collection:\(collectionID):name=Quiet Evenings:count=2:order=\(books[1]),\(books[0])"
     let collectionScroll = anyElement(app, "collection-detail-scroll")
@@ -312,6 +317,7 @@ final class LibraryOrganizationUITests: XCTestCase {
     let alphabeticalShelf = anyElement(app, "all-books-a-z-shelf-scroll")
     let alphabeticalShelfReadiness = anyElement(app, "all-books-a-z-shelf-scroll-readiness")
     let recentShelfSurface = ScrollSurface(
+      application: app,
       container: recentShelf,
       readiness: recentShelfReadiness,
       containerID: "all-books-recent-shelf-scroll",
@@ -447,8 +453,7 @@ final class LibraryOrganizationUITests: XCTestCase {
     XCTAssertTrue(
       challengeSettledEnd(
         on: recentShelfSurface,
-        tracking: oldestRecentBook,
-        deadline: EventDeadline()
+        tracking: oldestRecentBook
       ) {
         recentShelf.swipeLeft(velocity: .fast)
       },
@@ -550,6 +555,7 @@ final class LibraryOrganizationUITests: XCTestCase {
     let libraryScroll = anyElement(restoredApp, "library-root-scroll")
     let libraryScrollReadiness = anyElement(restoredApp, "library-root-scroll-readiness")
     let librarySurface = ScrollSurface(
+      application: restoredApp,
       container: libraryScroll,
       readiness: libraryScrollReadiness,
       containerID: "library-root-scroll",
@@ -614,8 +620,7 @@ final class LibraryOrganizationUITests: XCTestCase {
     XCTAssertTrue(
       challengeSettledEnd(
         on: librarySurface,
-        tracking: openTrash,
-        deadline: EventDeadline()
+        tracking: openTrash
       ) {
         fullHeightUpwardDrag(in: libraryScroll)
       },
@@ -1069,6 +1074,7 @@ final class LibraryOrganizationUITests: XCTestCase {
     app.tabBars.buttons["Settings"].tap()
     assertScrollsAboveMiniPlayer(
       app.buttons["settings-diagnostics"], miniPlayer: miniPlayer,
+      app: app,
       scrollContainer: anyElement(app, "settings-scroll"),
       readiness: anyElement(app, "settings-scroll-readiness"),
       permitsGeometrySettledFallback: true,
@@ -1083,6 +1089,7 @@ final class LibraryOrganizationUITests: XCTestCase {
     app.buttons["settings-backup"].tap()
     assertScrollsAboveMiniPlayer(
       anyElement(app, "backup-automatic-explanation"), miniPlayer: miniPlayer,
+      app: app,
       scrollContainer: anyElement(app, "backup-scroll"),
       readiness: anyElement(app, "backup-scroll-readiness"),
       permitsGeometrySettledFallback: false,
@@ -1102,6 +1109,7 @@ final class LibraryOrganizationUITests: XCTestCase {
     app.buttons["playback-defaults"].tap()
     assertScrollsAboveMiniPlayer(
       anyElement(app, "transport-seek-context"), miniPlayer: miniPlayer,
+      app: app,
       scrollContainer: anyElement(app, "transport-preferences-screen"),
       readiness: anyElement(app, "transport-preferences-scroll-readiness"),
       permitsGeometrySettledFallback: true,
@@ -1117,6 +1125,7 @@ final class LibraryOrganizationUITests: XCTestCase {
   private func assertScrollsAboveMiniPlayer(
     _ element: XCUIElement,
     miniPlayer: XCUIElement,
+    app: XCUIApplication,
     scrollContainer: XCUIElement,
     readiness: XCUIElement,
     permitsGeometrySettledFallback: Bool,
@@ -1125,6 +1134,7 @@ final class LibraryOrganizationUITests: XCTestCase {
     XCTAssertTrue(waitForExistence(element, deadline: EventDeadline()), message)
     XCTAssertTrue(waitForExistence(scrollContainer, deadline: EventDeadline()), message)
     let surface = ScrollSurface(
+      application: app,
       container: scrollContainer,
       readiness: readiness,
       containerID: scrollContainer.identifier,
@@ -1162,6 +1172,7 @@ final class LibraryOrganizationUITests: XCTestCase {
   ) {
     let container = anyElement(app, "settings-scroll")
     let surface = ScrollSurface(
+      application: app,
       container: container,
       readiness: anyElement(app, "settings-scroll-readiness"),
       containerID: "settings-scroll",

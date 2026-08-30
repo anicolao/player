@@ -338,6 +338,7 @@ final class BackupUITests: XCTestCase {
   private func revealBackupAction(_ element: XCUIElement, in app: XCUIApplication) {
     let scroll = app.scrollViews["backup-scroll"]
     let surface = ScrollSurface(
+      application: app,
       container: scroll,
       readiness: anyElement(app, "backup-scroll-readiness"),
       containerID: "backup-scroll",
@@ -466,7 +467,10 @@ final class BackupUITests: XCTestCase {
           dy: (buttonFrame.midY - appFrame.minY) / appFrame.height
         )
       )
-      guard synthesizePhysicalTapWithoutPostEventQuiescence(coordinate, in: app) else {
+      guard performPhysicalInteractionWithoutPostEventQuiescence(
+        in: app,
+        { coordinate.tap() }
+      ) else {
         XCTFail("The pinned XCTest runtime did not expose bounded physical synthesis")
         return
       }
