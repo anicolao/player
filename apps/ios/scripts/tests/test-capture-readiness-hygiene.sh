@@ -211,6 +211,14 @@ rg -Fq 'MainActor.assumeIsolated { _ = webRuntimePrimer }' \
   "${computer_receiver_tests}"
 rg -Fq 'final class WebKitComputerReceiverTests: XCTestCase {' \
   "${computer_receiver_tests}"
+rg -Fq 'let webView = runtimePrimer.beginJourney(with: documentBridge)' \
+  "${computer_receiver_tests}"
+rg -Fq 'defer { runtimePrimer.endJourney() }' \
+  "${computer_receiver_tests}"
+[[ "$(rg -c 'WKWebView\(' "${computer_receiver_tests}")" == "1" ]] || {
+  echo 'WebKit receiver hygiene requires the journey to reuse the retained primed web view' >&2
+  exit 1
+}
 [[ "$(rg -c 'func testWebKitBrowserCompletesARealLocalHTTPImport\(\)' \
   "${computer_receiver_tests}")" == "1" ]] || {
   echo 'WebKit receiver hygiene requires exactly one late browser journey' >&2

@@ -1240,8 +1240,6 @@ final class WebKitComputerReceiverTests: XCTestCase {
       XCTFail("The retained in-process WebKit runtime did not become ready within two seconds")
       return
     }
-    runtimePrimer.releaseForJourney()
-
     let root = temporaryRoot()
     let importReceived = expectation(
       description: "Browser upload reached the app import handler"
@@ -1275,31 +1273,12 @@ final class WebKitComputerReceiverTests: XCTestCase {
       description: "WebKit executed the same-origin receiver document"
     )
     let documentBridge = ReceiverWebDocumentBridge(documentReady: documentReady)
-    let webConfiguration = WKWebViewConfiguration()
-    webConfiguration.websiteDataStore = .nonPersistent()
-    webConfiguration.userContentController.add(
-      documentBridge,
-      name: ReceiverWebDocumentBridge.messageName
-    )
-    let webView = WKWebView(
-      frame: UIScreen.main.bounds,
-      configuration: webConfiguration
-    )
-    let browserHost = UIViewController()
-    browserHost.view = webView
-    let browserWindow = UIWindow(frame: UIScreen.main.bounds)
-    browserWindow.rootViewController = browserHost
-    browserWindow.makeKeyAndVisible()
-    defer {
-      browserWindow.isHidden = true
-      webConfiguration.userContentController.removeScriptMessageHandler(
-        forName: ReceiverWebDocumentBridge.messageName
-      )
-      webView.navigationDelegate = nil
-      withExtendedLifetime(browserHost) {}
-      withExtendedLifetime(documentBridge) {}
-    }
-    webView.navigationDelegate = documentBridge
+    // Execute in the exact retained view that proved WebContent readiness.
+    // Constructing another nonpersistent configuration starts an independent
+    // WebContent process and incorrectly charges that cold launch to the
+    // document event's two-second product contract.
+    let webView = runtimePrimer.beginJourney(with: documentBridge)
+    defer { runtimePrimer.endJourney() }
     // ComputerReceiverTests proves the built receiver document and asset route.
     // This test owns the distinct browser-origin API contract, so use a minimal
     // same-origin document rather than coupling its transport deadline to Svelte.
@@ -1527,8 +1506,23 @@ private final class ReceiverWebRuntimePrimer: NSObject, WKNavigationDelegate {
     )
   }
 
-  func releaseForJourney() {
+  func beginJourney(with documentBridge: ReceiverWebDocumentBridge) -> WKWebView {
+    webView.configuration.userContentController.add(
+      documentBridge,
+      name: ReceiverWebDocumentBridge.messageName
+    )
+    webView.navigationDelegate = documentBridge
+    webView.frame = UIScreen.main.bounds
+    window.isHidden = false
+    return webView
+  }
+
+  func endJourney() {
     window.isHidden = true
+    webView.configuration.userContentController.removeScriptMessageHandler(
+      forName: ReceiverWebDocumentBridge.messageName
+    )
+    webView.navigationDelegate = nil
   }
 
   func expectation(in testCase: XCTestCase) -> XCTestExpectation {
