@@ -83,19 +83,35 @@ jobs:
     timeout-minutes: 330
     strategy:
       fail-fast: false
-      max-parallel: 5
+      max-parallel: 13
       matrix:
         include:
-          - lane: lane-1
-            stories: '["004-metadata-repair","001-ios-launch"]'
-          - lane: lane-2
-            stories: '["005-play-and-restore","006-safe-zip-import"]'
-          - lane: lane-3
-            stories: '["007-sleep-timer","010-library-backup","012-monetization"]'
-          - lane: lane-4
-            stories: '["008-library-search","009-accessible-core-journeys","003-multifile-grouping"]'
-          - lane: lane-5
-            stories: '["011-offline-recovery","002-import-and-play","013-app-store-listing"]'
+          - lane: story-001
+            story: 001-ios-launch
+          - lane: story-002
+            story: 002-import-and-play
+          - lane: story-003
+            story: 003-multifile-grouping
+          - lane: story-004
+            story: 004-metadata-repair
+          - lane: story-005
+            story: 005-play-and-restore
+          - lane: story-006
+            story: 006-safe-zip-import
+          - lane: story-007
+            story: 007-sleep-timer
+          - lane: story-008
+            story: 008-library-search
+          - lane: story-009
+            story: 009-accessible-core-journeys
+          - lane: story-010
+            story: 010-library-backup
+          - lane: story-011
+            story: 011-offline-recovery
+          - lane: story-012
+            story: 012-monetization
+          - lane: story-013
+            story: 013-app-store-listing
     defaults:
       run:
         shell: nix develop --command bash --noprofile --norc -e -o pipefail {0}
@@ -117,13 +133,14 @@ jobs:
       - name: Measure ten isolated attempts per story
         env:
           LANE: ${{ matrix.lane }}
-          STORIES: ${{ matrix.stories }}
+          STORY: ${{ matrix.story }}
           EXPECTED_SHA: ${{ inputs.expected_sha }}
         run: |
-          arguments=(--lane "${LANE}" --sha "${EXPECTED_SHA}" --attempts 10)
-          while IFS= read -r story; do arguments+=(--story "${story}"); done \
-            < <(jq -r '.[]' <<< "${STORIES}")
-          apps/ios/scripts/qualification/run-story-lane.sh "${arguments[@]}"
+          apps/ios/scripts/qualification/run-story-lane.sh \
+            --lane "${LANE}" \
+            --sha "${EXPECTED_SHA}" \
+            --attempts 10 \
+            --story "${STORY}"
       - name: Upload complete story-lane evidence
         if: always()
         uses: actions/upload-artifact@v4

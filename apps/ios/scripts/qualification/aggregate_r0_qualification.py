@@ -320,10 +320,13 @@ def validate_story(root, canonical_root, expected_stories, sha, requested_attemp
     observed_artifacts = set()
     pairs = summary_pairs(root, "StoryLaneSummary.json", errors)
     lanes = [item.get("lane") for _, item in pairs]
+    expected_lane_count = len(expected_stories)
     if any(not isinstance(lane, str) for lane in lanes):
         errors.append("story lane summaries contain an invalid lane identifier")
-    if len(pairs) != 5 or len(set(lane for lane in lanes if isinstance(lane, str))) != 5:
-        errors.append(f"expected 5 unique story lane summaries, found {len(pairs)}")
+    if len(pairs) != expected_lane_count or len(
+            set(lane for lane in lanes if isinstance(lane, str))) != expected_lane_count:
+        errors.append(
+            f"expected {expected_lane_count} unique story lane summaries, found {len(pairs)}")
     seen = []
     for path, lane in pairs:
         lane_root = path.parent
@@ -336,7 +339,10 @@ def validate_story(root, canonical_root, expected_stories, sha, requested_attemp
             errors.append(f"story lane {lane.get('lane')} failed source/build integrity")
         if lane.get("status") != "passed":
             errors.append(f"story lane {lane.get('lane')} is not green")
-        for story in list_field(lane, "stories", lane_label, errors):
+        lane_stories = list_field(lane, "stories", lane_label, errors)
+        if len(lane_stories) != 1:
+            errors.append(f"{lane_label} must contain exactly one canonical story")
+        for story in lane_stories:
             if not isinstance(story, dict):
                 errors.append(f"{lane_label} contains a non-object story")
                 continue

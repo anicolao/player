@@ -264,16 +264,15 @@ cmp "${temporary_root}/manifest-stories" \
 [[ "$(sed -n '/^  matrix-qualification:/,/^  qualification-report:/p' \
   "${qualification_workflow}" | rg -c '^[[:space:]]+core: true$')" -eq 1 ]] \
   || fail "core and fixture tests must run in exactly one formal matrix lane"
-for formal_section in story-qualification matrix-qualification; do
-  section_end=story-gate
-  if [[ "${formal_section}" == matrix-qualification ]]; then
-    section_end=qualification-report
-  fi
-  lane_count="$(sed -n "/^  ${formal_section}:/,/^  ${section_end}:/p" \
-    "${qualification_workflow}" | rg -c '^[[:space:]]+- lane: lane-[1-5]$')"
-  [[ "${lane_count}" -eq 5 ]] \
-    || fail "${formal_section} must define exactly five hosted lanes"
-done
+story_lane_count="$(sed -n '/^  story-qualification:/,/^  story-gate:/p' \
+  "${qualification_workflow}" \
+  | rg -c '^[[:space:]]+- lane: story-[0-9]{3}$')"
+[[ "${story_lane_count}" -eq 13 ]] \
+  || fail "formal story qualification must define one hosted job per canonical story"
+matrix_lane_count="$(sed -n '/^  matrix-qualification:/,/^  qualification-report:/p' \
+  "${qualification_workflow}" | rg -c '^[[:space:]]+- lane: lane-[1-5]$')"
+[[ "${matrix_lane_count}" -eq 5 ]] \
+  || fail "formal matrix qualification must define exactly five hosted lanes"
 
 python3 - "${workflow}" "${qualification_workflow}" <<'PY' \
   || fail "normal and formal matrix lanes must have identical ordered work, core, and renderer attribution"
@@ -447,8 +446,8 @@ rg -o '[0-9]{3}-[a-z0-9][a-z0-9-]*' "${qualification_workflow}" \
 cmp "${temporary_root}/qualification-expected-stories" \
   "${temporary_root}/qualification-workflow-stories" \
   || fail "R0 qualification must assign every canonical story once in each phase"
-[[ "$(rg -c '^[[:space:]]+max-parallel: 5$' "${qualification_workflow}")" -eq 1 ]] \
-  || fail "R0 story qualification must schedule exactly five isolated lanes concurrently"
+[[ "$(rg -c '^[[:space:]]+max-parallel: 13$' "${qualification_workflow}")" -eq 1 ]] \
+  || fail "R0 story qualification must expose all thirteen isolated stories to the scheduler"
 for actions_reader in "${workflow}" "${qualification_workflow}"; do
   sed -n '/^permissions:/,/^jobs:/p' "${actions_reader}" \
     | rg -q '^[[:space:]]+actions: read$' \
@@ -478,7 +477,7 @@ rg -q '^    needs: story-gate$' <<< "${matrix_qualification_section}" \
   || fail "formal matrices must begin only after the aggregate 10/10 story gate"
 rg -q 'r0-story-evidence-\$\{\{ matrix\.lane \}\}' "${qualification_workflow}" \
   || fail "R0 story qualification artifacts must remain independently attributable by lane"
-[[ "$(rg -c 'arguments=.*--attempts 10' "${qualification_workflow}")" -eq 1 ]] \
+[[ "$(rg -c -- '--attempts 10' "${qualification_workflow}")" -eq 1 ]] \
   || fail "R0 story qualification must request exactly ten attempts"
 [[ "$(rg -c 'matrices 5' "${qualification_workflow}")" -eq 1 ]] \
   || fail "R0 matrix qualification must request exactly five matrices"

@@ -19,13 +19,7 @@ STORIES = ["001-ios-launch", "002-import-and-play", "003-multifile-grouping",
            "007-sleep-timer", "008-library-search", "009-accessible-core-journeys",
            "010-library-backup", "011-offline-recovery", "012-monetization",
            "013-app-store-listing"]
-STORY_QUALIFICATION_LANES = [
-    ["004-metadata-repair", "001-ios-launch"],
-    ["005-play-and-restore", "006-safe-zip-import"],
-    ["007-sleep-timer", "010-library-backup", "012-monetization"],
-    ["008-library-search", "009-accessible-core-journeys", "003-multifile-grouping"],
-    ["011-offline-recovery", "002-import-and-play", "013-app-store-listing"],
-]
+STORY_QUALIFICATION_LANES = [[story] for story in STORIES]
 MATRIX_QUALIFICATION_LANES = [
     ["004-metadata-repair", "012-monetization"],
     ["005-play-and-restore", "011-offline-recovery", "003-multifile-grouping"],
@@ -154,10 +148,10 @@ class QualificationAggregatorTests(unittest.TestCase):
         }]})
         self.story_root = self.root / "stories"
         self.matrix_root = self.root / "matrices"
-        for lane_index, lane_stories in enumerate(MATRIX_QUALIFICATION_LANES, 1):
+        for lane_index, lane_stories in enumerate(STORY_QUALIFICATION_LANES, 1):
             lane_root = self.story_root / f"artifact-{lane_index}"
             summaries = []
-            for story in STORY_QUALIFICATION_LANES[lane_index - 1]:
+            for story in lane_stories:
                 attempts = []
                 for index in range(1, 11):
                     artifact = f"Stories/{story}/attempt-{index:02d}"
@@ -170,10 +164,11 @@ class QualificationAggregatorTests(unittest.TestCase):
                                   "attemptCount": 10, "passCount": 10, "failureCount": 0,
                                   "attempts": attempts})
             write_json(lane_root / "StoryLaneSummary.json",
-                       {"stage": "story", "lane": f"lane-{lane_index}", "commit": SHA,
+                       {"stage": "story", "lane": f"story-{story}", "commit": SHA,
                         "requestedAttempts": 10, "buildUnchanged": True,
                         "infrastructureInvalid": False, "status": "passed", "stories": summaries})
 
+        for lane_index, lane_stories in enumerate(MATRIX_QUALIFICATION_LANES, 1):
             matrix_lane_root = self.matrix_root / f"artifact-{lane_index}"
             matrices = []
             for matrix_index in range(1, 6):
@@ -258,6 +253,7 @@ class QualificationAggregatorTests(unittest.TestCase):
         self.assertEqual(self.run_aggregate(), 0)
         summary = json.loads((self.root / "report/QualificationSummary.json").read_text())
         self.assertEqual(summary["status"], "passed")
+        self.assertEqual(summary["storyQualification"]["lanes"], 13)
         self.assertEqual(summary["storyQualification"]["durations"]["count"], 130)
         self.assertEqual(summary["matrixQualification"]["logicalWallClock"]["current"]["count"], 5)
         self.assertEqual(summary["matrixQualification"]["logicalWallClock"]["preRemediationSeconds"], 100)
@@ -333,6 +329,18 @@ class QualificationAggregatorTests(unittest.TestCase):
         errors = report["storyQualification"]["errors"]
         self.assertTrue(any("artifact must be Stories/" in error for error in errors))
         self.assertTrue(any("reuses artifact Stories/" in error for error in errors))
+
+    def test_rejects_multiple_stories_in_one_story_lane(self):
+        first = json.loads(self.story_summary(1).read_text())
+        second = json.loads(self.story_summary(2).read_text())
+        first["stories"].extend(second["stories"])
+        write_json(self.story_summary(1), first)
+        self.story_summary(2).unlink()
+        self.assertEqual(self.run_aggregate(), 1)
+        report = json.loads((self.root / "report/QualificationSummary.json").read_text())
+        errors = report["storyQualification"]["errors"]
+        self.assertTrue(any("must contain exactly one canonical story" in error
+                            for error in errors))
 
     def test_rejects_matrix_story_artifact_substitution(self):
         payload = json.loads(self.matrix_summary().read_text())
@@ -605,13 +613,13 @@ class QualificationAggregatorTests(unittest.TestCase):
         self.assertEqual(accounting["observed"][0]["qualificationResetCount"], 1)
 
     def test_historical_signature_recurrence_requires_new_root_cause_evidence(self):
-        path = self.story_summary(2)
+        path = self.story_summary(STORIES.index("005-play-and-restore") + 1)
         payload = json.loads(path.read_text())
-        attempt = payload["stories"][1]["attempts"][0]
+        attempt = payload["stories"][0]["attempts"][0]
         attempt["result"] = "failed"
         attempt["signature"] = "screenshot:pixel-difference:003-smart-rewind-applied.png"
-        payload["stories"][1]["passCount"] = 9
-        payload["stories"][1]["failureCount"] = 1
+        payload["stories"][0]["passCount"] = 9
+        payload["stories"][0]["failureCount"] = 1
         payload["status"] = "failed"
         write_json(path, payload)
         self.assertEqual(self.run_aggregate(), 1)
