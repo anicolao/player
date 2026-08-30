@@ -275,19 +275,57 @@ for formal_section in story-qualification matrix-qualification; do
     || fail "${formal_section} must define exactly five hosted lanes"
 done
 
-for core_runner in \
+python3 - "${workflow}" "${qualification_workflow}" <<'PY' \
+  || fail "normal and formal matrix lanes must have identical ordered work, core, and renderer attribution"
+import json
+import re
+import sys
+from pathlib import Path
+
+normal_text = Path(sys.argv[1]).read_text(encoding="utf-8")
+formal_text = Path(sys.argv[2]).read_text(encoding="utf-8")
+
+normal_blocks = re.findall(
+    r"(?ms)^          - shard: (lane-[1-5])\n(.*?)(?=^          - shard: |^    defaults:)",
+    normal_text,
+)
+normal = []
+for lane, body in normal_blocks:
+    stories = []
+    for value in re.findall(r"(?m)^            story_[1-3]: (.+)$", body):
+        value = value.strip().strip("'")
+        if value:
+            stories.append(value)
+    core = re.search(r"(?m)^            run_core: (true|false)$", body).group(1) == "true"
+    renderer = re.search(
+        r"(?m)^            renders_listing: (true|false)$", body
+    ).group(1) == "true"
+    normal.append((lane, stories, core, renderer))
+
+matrix_section = formal_text.split("  matrix-qualification:\n", 1)[1].split(
+    "  qualification-report:\n", 1
+)[0]
+formal_blocks = re.findall(
+    r"(?ms)^          - lane: (lane-[1-5])\n(.*?)(?=^          - lane: |^    defaults:)",
+    matrix_section,
+)
+formal = []
+for lane, body in formal_blocks:
+    stories_text = re.search(r"(?m)^            stories: '([^']+)'$", body).group(1)
+    stories = json.loads(stories_text)
+    core = re.search(r"(?m)^            core: (true|false)$", body).group(1) == "true"
+    formal.append((lane, stories, core, "013-app-store-listing" in stories))
+
+if len(normal) != 5 or len(formal) != 5 or normal != formal:
+    print(f"normal topology: {normal}", file=sys.stderr)
+    print(f"formal topology: {formal}", file=sys.stderr)
+    raise SystemExit(1)
+PY
+
+if rg -n 'prepare-core-web-runtime\.sh|simctl[[:space:]]+openurl' \
   "${script_dir}/run-e2e-shard.sh" \
-  "${script_dir}/qualification/run-matrix-lane.sh"; do
-  [[ "$(rg -c 'prepare-core-web-runtime\.sh' "${core_runner}")" -eq 1 ]] \
-    || fail "$(basename "${core_runner}") must prepare each isolated core WebKit runtime once"
-  preparation_line="$(rg -n -m 1 'prepare-core-web-runtime\.sh' "${core_runner}" | cut -d: -f1)"
-  fixture_line="$(rg -n -m 1 'fixtures/verify-generated-fixtures\.sh' "${core_runner}" | cut -d: -f1)"
-  [[ "${preparation_line}" -lt "${fixture_line}" ]] \
-    || fail "$(basename "${core_runner}") must overlap WebKit preparation with fixture work"
-done
-if rg -v '^[[:space:]]*#' "${script_dir}/prepare-core-web-runtime.sh" \
-  | rg -n --pcre2 '\b(?:sleep|usleep)\b|\bretry\b'; then
-  fail "core WebKit preparation must not sleep, poll, or retry"
+  "${script_dir}/qualification/run-matrix-lane.sh"; then
+  fail "core runners must not gate tests on an unobserved external Safari launch"
 fi
 
 if rg -q 'PlayerUITests/[A-Za-z0-9_]+/test[A-Za-z0-9_]+' "${workflow}"; then
@@ -421,6 +459,20 @@ rg -q 'r0_runtime_baseline.json' "${qualification_workflow}" \
   || fail "R0 qualification must enforce its versioned runtime baseline"
 rg -q 'r0_failure_history.json' "${qualification_workflow}" \
   || fail "R0 qualification must include historical root-cause accounting"
+qualification_report_section="$(sed -n '/^  qualification-report:/,$p' \
+  "${qualification_workflow}")"
+rg -q 'STORY_GATE_RESULT.*needs\.story-gate\.result' \
+  <<< "${qualification_report_section}" \
+  || fail "the authoritative qualification report must inspect the story-gate result"
+rg -q 'MATRIX_RESULT.*needs\.matrix-qualification\.result' \
+  <<< "${qualification_report_section}" \
+  || fail "the authoritative qualification report must inspect the matrix result"
+rg -Fq 'test "${STORY_GATE_RESULT}" = success' \
+  <<< "${qualification_report_section}" \
+  || fail "the authoritative qualification report must require a successful story gate"
+rg -Fq 'test "${MATRIX_RESULT}" = success' \
+  <<< "${qualification_report_section}" \
+  || fail "the authoritative qualification report must require a successful matrix stage"
 rg -q 'render-app-store-listing.swift' "${script_dir}/qualification/run-matrix-lane.sh" \
   || fail "R0 matrix qualification must run the production App Store renderer"
 if rg -n 'continue-on-error:|nick-fields/retry|retry-action' "${qualification_workflow}"; then

@@ -136,11 +136,9 @@ run_core_tests() {
     "${device_type}" "${runtime}" "$$")"
   xcrun simctl boot "${core_simulator_id}"
   xcrun simctl bootstatus "${core_simulator_id}" -b
-  export PLAYER_CORE_SIMULATOR_ID="${core_simulator_id}"
   fixture_start="${SECONDS}"
   set +e
   qualification_run_logged_commands "${shard_root}/Logs/core-fixtures.log" \
-    "${script_dir}/prepare-core-web-runtime.sh" \
     "${script_dir}/fixtures/verify-generated-fixtures.sh" \
     "${script_dir}/fixtures/verify-messy-multifile-fixture.sh" \
     "${script_dir}/fixtures/verify-zip-fixtures.sh" \
@@ -185,7 +183,6 @@ run_core_tests() {
   if "${script_dir}/simulator-lease.sh" release "${core_simulator_lease}" "$$"; then
     core_simulator_id=""
     core_simulator_lease=""
-    unset PLAYER_CORE_SIMULATOR_ID
   else
     cleanup_status="$?"
   fi

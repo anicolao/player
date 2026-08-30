@@ -90,11 +90,9 @@ run_core_gate() {
     com.apple.CoreSimulator.SimRuntime.iOS-26-5 "$$")"
   xcrun simctl boot "${core_simulator_id}"
   xcrun simctl bootstatus "${core_simulator_id}" -b
-  export PLAYER_CORE_SIMULATOR_ID="${core_simulator_id}"
   fixture_start="${SECONDS}"
   set +e
   qualification_run_logged_commands "${matrix_root}/Core/Logs/fixtures.log" \
-    "${worktree_ios}/scripts/prepare-core-web-runtime.sh" \
     "${worktree_ios}/scripts/fixtures/verify-generated-fixtures.sh" \
     "${worktree_ios}/scripts/fixtures/verify-messy-multifile-fixture.sh" \
     "${worktree_ios}/scripts/fixtures/verify-zip-fixtures.sh" \
@@ -138,7 +136,6 @@ run_core_gate() {
       "${core_simulator_lease}" "$$"; then
       core_simulator_id=""
       core_simulator_lease=""
-      unset PLAYER_CORE_SIMULATOR_ID
     else
       cleanup_status="$?"
     fi

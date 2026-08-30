@@ -205,6 +205,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - name: Require successful qualification dependencies
+        env:
+          STORY_GATE_RESULT: ${{ needs.story-gate.result }}
+          MATRIX_RESULT: ${{ needs.matrix-qualification.result }}
+        run: |
+          test "${STORY_GATE_RESULT}" = success
+          test "${MATRIX_RESULT}" = success
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.expected_sha }}
