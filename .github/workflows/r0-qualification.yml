@@ -76,45 +76,105 @@ jobs:
       - name: Test fail-closed qualification aggregation
         run: python3 apps/ios/scripts/qualification/test_aggregate_r0_qualification.py
 
-  story-qualification:
-    name: Story qualification ${{ matrix.lane }}
+  qualification-build:
+    name: Build exact-SHA qualification product once
     needs: preflight
     runs-on: macos-26
-    timeout-minutes: 330
-    strategy:
-      fail-fast: false
-      max-parallel: 13
-      matrix:
-        include:
-          - lane: story-001
-            story: 001-ios-launch
-          - lane: story-002
-            story: 002-import-and-play
-          - lane: story-003
-            story: 003-multifile-grouping
-          - lane: story-004
-            story: 004-metadata-repair
-          - lane: story-005
-            story: 005-play-and-restore
-          - lane: story-006
-            story: 006-safe-zip-import
-          - lane: story-007
-            story: 007-sleep-timer
-          - lane: story-008
-            story: 008-library-search
-          - lane: story-009
-            story: 009-accessible-core-journeys
-          - lane: story-010
-            story: 010-library-backup
-          - lane: story-011
-            story: 011-offline-recovery
-          - lane: story-012
-            story: 012-monetization
-          - lane: story-013
-            story: 013-app-store-listing
+    timeout-minutes: 60
     defaults:
       run:
         shell: nix develop --command bash --noprofile --norc -e -o pipefail {0}
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.expected_sha }}
+      - uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+      - name: Verify source and generate the project
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ inputs.expected_sha }}"
+          apps/ios/scripts/verify-e2e-environment.sh
+          apps/ios/scripts/verify-e2e-hygiene.sh
+          apps/ios/scripts/generate-project.sh
+          git diff --exit-code -- apps/ios/Player.xcodeproj
+      - name: Build and bind the shared E2E product
+        run: |
+          build_root="${PWD}/apps/ios/DerivedData/R0Qualification/SharedBuild"
+          lease="${PWD}/apps/ios/DerivedData/SimulatorLeases/qualification-build-$$.json"
+          simulator_id=""
+          cleanup() {
+            status="$?"
+            trap - EXIT INT TERM
+            if [[ -n "${simulator_id}" ]]; then
+              apps/ios/scripts/simulator-lease.sh release "${lease}" "$$" || status=1
+            fi
+            exit "${status}"
+          }
+          trap cleanup EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+          simulator_id="$(apps/ios/scripts/simulator-lease.sh acquire \
+            "${lease}" 'Player R0 Shared Build' \
+            com.apple.CoreSimulator.SimDeviceType.iPhone-17 \
+            com.apple.CoreSimulator.SimRuntime.iOS-26-5 "$$")"
+          xcrun simctl boot "${simulator_id}"
+          xcrun simctl bootstatus "${simulator_id}" -b
+          xcodebuild build-for-testing \
+            -project apps/ios/Player.xcodeproj \
+            -scheme Player \
+            -configuration E2E \
+            -destination "platform=iOS Simulator,arch=arm64,id=${simulator_id}" \
+            -derivedDataPath "${build_root}" \
+            CODE_SIGNING_ALLOWED=NO
+          apps/ios/scripts/e2e-build-provenance.sh write "${build_root}" \
+            com.apple.CoreSimulator.SimDeviceType.iPhone-17 \
+            com.apple.CoreSimulator.SimRuntime.iOS-26-5
+          tar -C "${build_root}" -cf \
+            "${PWD}/apps/ios/DerivedData/R0Qualification/SharedBuild.tar" \
+            Build/Products PlayerE2EBuildProvenance.json
+          (cd apps/ios/DerivedData/R0Qualification \
+            && shasum -a 256 SharedBuild.tar > SharedBuild.tar.sha256)
+          apps/ios/scripts/simulator-lease.sh release "${lease}" "$$"
+          simulator_id=""
+      - name: Upload immutable shared E2E product
+        uses: actions/upload-artifact@v4
+        with:
+          name: r0-shared-build-${{ inputs.expected_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            apps/ios/DerivedData/R0Qualification/SharedBuild.tar
+            apps/ios/DerivedData/R0Qualification/SharedBuild.tar.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+  story-qualification:
+    name: Story qualification ${{ matrix.story }} attempt ${{ matrix.attempt }}
+    needs: qualification-build
+    runs-on: macos-26
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 130
+      matrix:
+        story:
+          - 001-ios-launch
+          - 002-import-and-play
+          - 003-multifile-grouping
+          - 004-metadata-repair
+          - 005-play-and-restore
+          - 006-safe-zip-import
+          - 007-sleep-timer
+          - 008-library-search
+          - 009-accessible-core-journeys
+          - 010-library-backup
+          - 011-offline-recovery
+          - 012-monetization
+          - 013-app-store-listing
+        attempt: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    defaults:
+      run:
+        shell: bash --noprofile --norc -e -o pipefail {0}
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
       PLAYER_SKIP_SIMULATOR_LAUNCH: "1"
@@ -123,33 +183,46 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.expected_sha }}
-      - uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
-      - name: Verify and generate once
+      - uses: actions/download-artifact@v4
+        with:
+          name: r0-shared-build-${{ inputs.expected_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: apps/ios/DerivedData/R0Qualification/SharedBuildArtifact
+      - name: Verify the exact source and shared build
         run: |
           test "$(git rev-parse HEAD)" = "${{ inputs.expected_sha }}"
+          (cd apps/ios/DerivedData/R0Qualification/SharedBuildArtifact \
+            && shasum -a 256 -c SharedBuild.tar.sha256)
+          mkdir -p apps/ios/DerivedData/R0Qualification/SharedBuild
+          tar -C apps/ios/DerivedData/R0Qualification/SharedBuild -xf \
+            apps/ios/DerivedData/R0Qualification/SharedBuildArtifact/SharedBuild.tar
           apps/ios/scripts/verify-e2e-environment.sh
-          apps/ios/scripts/verify-e2e-hygiene.sh
-          apps/ios/scripts/generate-project.sh
           git diff --exit-code -- apps/ios/Player.xcodeproj
-      - name: Measure ten isolated attempts per story
+          apps/ios/scripts/e2e-build-provenance.sh verify \
+            "${PWD}/apps/ios/DerivedData/R0Qualification/SharedBuild" \
+            com.apple.CoreSimulator.SimDeviceType.iPhone-17 \
+            com.apple.CoreSimulator.SimRuntime.iOS-26-5
+      - name: Measure one fresh-host story attempt
         env:
-          LANE: ${{ matrix.lane }}
           STORY: ${{ matrix.story }}
+          ATTEMPT: ${{ matrix.attempt }}
           EXPECTED_SHA: ${{ inputs.expected_sha }}
         run: |
+          lane="story-${STORY%%-*}"
           apps/ios/scripts/qualification/run-story-lane.sh \
-            --lane "${LANE}" \
+            --lane "${lane}" \
             --sha "${EXPECTED_SHA}" \
-            --attempts 10 \
+            --attempts 1 \
+            --attempt-start "${ATTEMPT}" \
+            --prebuilt-build "${PWD}/apps/ios/DerivedData/R0Qualification/SharedBuild" \
             --story "${STORY}"
-      - name: Upload complete story-lane evidence
+      - name: Upload complete story-attempt evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: r0-story-evidence-${{ matrix.lane }}-${{ inputs.expected_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: r0-story-evidence-${{ matrix.story }}-attempt-${{ matrix.attempt }}-${{ inputs.expected_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            apps/ios/DerivedData/R0Qualification/Stories/${{ matrix.lane }}/
-            !apps/ios/DerivedData/R0Qualification/Stories/${{ matrix.lane }}/Build/
+            apps/ios/DerivedData/R0Qualification/Stories/story-*/
+            !apps/ios/DerivedData/R0Qualification/SharedBuild/
           if-no-files-found: error
           compression-level: 0
           retention-days: 30
@@ -188,32 +261,19 @@ jobs:
           retention-days: 90
 
   matrix-qualification:
-    name: Matrix qualification ${{ matrix.lane }}
-    needs: story-gate
+    name: Matrix qualification ${{ matrix.lane }} attempt ${{ matrix.matrix_attempt }}
+    needs: [story-gate, qualification-build]
     runs-on: macos-26
-    timeout-minutes: 210
+    timeout-minutes: 90
     strategy:
       fail-fast: false
+      max-parallel: 25
       matrix:
-        include:
-          - lane: lane-1
-            stories: '["004-metadata-repair","012-monetization"]'
-            core: true
-          - lane: lane-2
-            stories: '["005-play-and-restore","011-offline-recovery","003-multifile-grouping"]'
-            core: false
-          - lane: lane-3
-            stories: '["007-sleep-timer","008-library-search"]'
-            core: false
-          - lane: lane-4
-            stories: '["001-ios-launch","002-import-and-play","010-library-backup"]'
-            core: false
-          - lane: lane-5
-            stories: '["006-safe-zip-import","009-accessible-core-journeys","013-app-store-listing"]'
-            core: false
+        lane: [lane-1, lane-2, lane-3, lane-4, lane-5]
+        matrix_attempt: [1, 2, 3, 4, 5]
     defaults:
       run:
-        shell: nix develop --command bash --noprofile --norc -e -o pipefail {0}
+        shell: bash --noprofile --norc -e -o pipefail {0}
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
       PLAYER_SKIP_SIMULATOR_LAUNCH: "1"
@@ -222,30 +282,50 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.expected_sha }}
-      - uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
-      - name: Verify and generate once
+      - uses: actions/download-artifact@v4
+        with:
+          name: r0-shared-build-${{ inputs.expected_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: apps/ios/DerivedData/R0Qualification/SharedBuildArtifact
+      - name: Verify the exact source and shared build
         run: |
           test "$(git rev-parse HEAD)" = "${{ inputs.expected_sha }}"
+          (cd apps/ios/DerivedData/R0Qualification/SharedBuildArtifact \
+            && shasum -a 256 -c SharedBuild.tar.sha256)
+          mkdir -p apps/ios/DerivedData/R0Qualification/SharedBuild
+          tar -C apps/ios/DerivedData/R0Qualification/SharedBuild -xf \
+            apps/ios/DerivedData/R0Qualification/SharedBuildArtifact/SharedBuild.tar
           apps/ios/scripts/verify-e2e-environment.sh
-          apps/ios/scripts/generate-project.sh
           git diff --exit-code -- apps/ios/Player.xcodeproj
-      - name: Run five logical complete matrices
+          apps/ios/scripts/e2e-build-provenance.sh verify \
+            "${PWD}/apps/ios/DerivedData/R0Qualification/SharedBuild" \
+            com.apple.CoreSimulator.SimDeviceType.iPhone-17 \
+            com.apple.CoreSimulator.SimRuntime.iOS-26-5
+      - name: Run one fresh-host matrix lane
         env:
           LANE: ${{ matrix.lane }}
-          STORIES: ${{ matrix.stories }}
-          RUN_CORE: ${{ matrix.core }}
+          MATRIX_ATTEMPT: ${{ matrix.matrix_attempt }}
           EXPECTED_SHA: ${{ inputs.expected_sha }}
         run: |
-          arguments=(--lane "${LANE}" --sha "${EXPECTED_SHA}" --matrices 5)
-          if [[ "${RUN_CORE}" == true ]]; then arguments+=(--core); fi
+          case "${LANE}" in
+            lane-1) stories='["004-metadata-repair","012-monetization"]'; run_core=true ;;
+            lane-2) stories='["005-play-and-restore","011-offline-recovery","003-multifile-grouping"]'; run_core=false ;;
+            lane-3) stories='["007-sleep-timer","008-library-search"]'; run_core=false ;;
+            lane-4) stories='["001-ios-launch","002-import-and-play","010-library-backup"]'; run_core=false ;;
+            lane-5) stories='["006-safe-zip-import","009-accessible-core-journeys","013-app-store-listing"]'; run_core=false ;;
+            *) exit 2 ;;
+          esac
+          arguments=(--lane "${LANE}" --sha "${EXPECTED_SHA}" --matrices 1 \
+            --matrix-start "${MATRIX_ATTEMPT}" \
+            --prebuilt-build "${PWD}/apps/ios/DerivedData/R0Qualification/SharedBuild")
+          if [[ "${run_core}" == true ]]; then arguments+=(--core); fi
           while IFS= read -r story; do arguments+=(--story "${story}"); done \
-            < <(jq -r '.[]' <<< "${STORIES}")
+            < <(jq -r '.[]' <<< "${stories}")
           apps/ios/scripts/qualification/run-matrix-lane.sh "${arguments[@]}"
-      - name: Upload complete matrix-lane evidence
+      - name: Upload complete matrix-lane-attempt evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: r0-matrix-${{ matrix.lane }}-${{ inputs.expected_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: r0-matrix-${{ matrix.lane }}-attempt-${{ matrix.matrix_attempt }}-${{ inputs.expected_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             apps/ios/DerivedData/R0Qualification/Matrices/${{ matrix.lane }}/
             !apps/ios/DerivedData/R0Qualification/Matrices/${{ matrix.lane }}/Build/

@@ -9,7 +9,7 @@ device_type="com.apple.CoreSimulator.SimDeviceType.iPhone-17"
 
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 
-for command in jq swift xcodebuild xcrun; do
+for command in jq rg swift xcodebuild xcrun; do
   if ! command -v "${command}" >/dev/null 2>&1; then
     echo "Required E2E command is unavailable: ${command}" >&2
     exit 1

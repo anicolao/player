@@ -262,16 +262,16 @@ cmp "${temporary_root}/manifest-stories" \
   "${temporary_root}/qualification-matrix-stories" \
   || fail "formal matrix qualification must cover every canonical story exactly once"
 [[ "$(sed -n '/^  matrix-qualification:/,/^  qualification-report:/p' \
-  "${qualification_workflow}" | rg -c '^[[:space:]]+core: true$')" -eq 1 ]] \
+  "${qualification_workflow}" | rg -c 'run_core=true')" -eq 1 ]] \
   || fail "core and fixture tests must run in exactly one formal matrix lane"
 story_lane_count="$(sed -n '/^  story-qualification:/,/^  story-gate:/p' \
   "${qualification_workflow}" \
-  | rg -c '^[[:space:]]+- lane: story-[0-9]{3}$')"
+  | rg -c '^[[:space:]]+- [0-9]{3}-[a-z0-9][a-z0-9-]*$')"
 [[ "${story_lane_count}" -eq 13 ]] \
-  || fail "formal story qualification must define one hosted job per canonical story"
-matrix_lane_count="$(sed -n '/^  matrix-qualification:/,/^  qualification-report:/p' \
-  "${qualification_workflow}" | rg -c '^[[:space:]]+- lane: lane-[1-5]$')"
-[[ "${matrix_lane_count}" -eq 5 ]] \
+  || fail "formal story qualification must define every canonical story"
+sed -n '/^  matrix-qualification:/,/^  qualification-report:/p' \
+  "${qualification_workflow}" \
+  | rg -Fq 'lane: [lane-1, lane-2, lane-3, lane-4, lane-5]' \
   || fail "formal matrix qualification must define exactly five hosted lanes"
 
 python3 - "${workflow}" "${qualification_workflow}" <<'PY' \
@@ -304,15 +304,13 @@ for lane, body in normal_blocks:
 matrix_section = formal_text.split("  matrix-qualification:\n", 1)[1].split(
     "  qualification-report:\n", 1
 )[0]
-formal_blocks = re.findall(
-    r"(?ms)^          - lane: (lane-[1-5])\n(.*?)(?=^          - lane: |^    defaults:)",
-    matrix_section,
-)
 formal = []
-for lane, body in formal_blocks:
-    stories_text = re.search(r"(?m)^            stories: '([^']+)'$", body).group(1)
+for lane, stories_text, core_text in re.findall(
+    r"(?m)^            (lane-[1-5])\) stories='([^']+)'; run_core=(true|false) ;;$",
+    matrix_section,
+):
     stories = json.loads(stories_text)
-    core = re.search(r"(?m)^            core: (true|false)$", body).group(1) == "true"
+    core = core_text == "true"
     formal.append((lane, stories, core, "013-app-store-listing" in stories))
 
 if len(normal) != 5 or len(formal) != 5 or normal != formal:
@@ -376,6 +374,30 @@ rg -Fq 'if let takePreparedScreenshot = captureReadiness?.preparedScreenshot {' 
   || fail "prepared screenshot capture must distinguish verified evidence from the ordinary path"
 rg -Fq 'guard preparedScreenshot != nil else {' "${step_helper}" \
   || fail "prepared screenshot capture must fail closed when verified evidence is missing"
+
+accessibility_tests="${ui_test_root}/AccessibilityUITests.swift"
+[[ "$(rg -c 'self\.restoreAccessibilityScrollTop\(' "${accessibility_tests}")" -eq 3 ]] \
+  || fail "every accessibility capture that requires the top endpoint must restore it after system-notification dismissal"
+for top_capture_surface in \
+  review-import-scroll \
+  up-next-scroll \
+  computer-receiver-scroll; do
+  python3 - "${accessibility_tests}" "${top_capture_surface}" <<'PY' \
+    || fail "accessibility capture is missing post-overlay top restoration for ${top_capture_surface}"
+import pathlib
+import re
+import sys
+
+source = pathlib.Path(sys.argv[1]).read_text()
+surface = re.escape(sys.argv[2])
+pattern = (
+    r"prime:\s*\{\s*self\.restoreAccessibilityScrollTop\("
+    r"(?:(?!\n\s*\}\s*\)).)*?"
+    rf'containerID:\s*"{surface}"'
+)
+raise SystemExit(0 if re.search(pattern, source, flags=re.DOTALL) else 1)
+PY
+done
 
 smart_rewind_capture="$(awk '
   /"smart-rewind-applied"/ { capture = 1 }
@@ -446,8 +468,10 @@ rg -o '[0-9]{3}-[a-z0-9][a-z0-9-]*' "${qualification_workflow}" \
 cmp "${temporary_root}/qualification-expected-stories" \
   "${temporary_root}/qualification-workflow-stories" \
   || fail "R0 qualification must assign every canonical story once in each phase"
-[[ "$(rg -c '^[[:space:]]+max-parallel: 13$' "${qualification_workflow}")" -eq 1 ]] \
-  || fail "R0 story qualification must expose all thirteen isolated stories to the scheduler"
+[[ "$(rg -c '^[[:space:]]+max-parallel: 130$' "${qualification_workflow}")" -eq 1 ]] \
+  || fail "R0 story qualification must expose all 130 isolated attempts to the scheduler"
+[[ "$(rg -c '^[[:space:]]+max-parallel: 25$' "${qualification_workflow}")" -eq 1 ]] \
+  || fail "R0 matrix qualification must expose all 25 isolated lanes to the scheduler"
 for actions_reader in "${workflow}" "${qualification_workflow}"; do
   sed -n '/^permissions:/,/^jobs:/p' "${actions_reader}" \
     | rg -q '^[[:space:]]+actions: read$' \
@@ -473,14 +497,27 @@ done
 matrix_qualification_section="$(sed -n \
   '/^  matrix-qualification:/,/^  qualification-report:/p' \
   "${qualification_workflow}")"
-rg -q '^    needs: story-gate$' <<< "${matrix_qualification_section}" \
+rg -Fq 'needs: [story-gate, qualification-build]' <<< "${matrix_qualification_section}" \
   || fail "formal matrices must begin only after the aggregate 10/10 story gate"
-rg -q 'r0-story-evidence-\$\{\{ matrix\.lane \}\}' "${qualification_workflow}" \
-  || fail "R0 story qualification artifacts must remain independently attributable by lane"
-[[ "$(rg -c -- '--attempts 10' "${qualification_workflow}")" -eq 1 ]] \
-  || fail "R0 story qualification must request exactly ten attempts"
-[[ "$(rg -c 'matrices 5' "${qualification_workflow}")" -eq 1 ]] \
-  || fail "R0 matrix qualification must request exactly five matrices"
+rg -q 'r0-story-evidence-\$\{\{ matrix\.story \}\}-attempt-\$\{\{ matrix\.attempt \}\}' \
+  "${qualification_workflow}" \
+  || fail "R0 story artifacts must remain independently attributable by story and attempt"
+rg -Fq 'attempt: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]' "${qualification_workflow}" \
+  || fail "R0 story qualification must request exactly ten fresh-host attempts"
+[[ "$(rg -c -- '--attempts 1' "${qualification_workflow}")" -eq 1 ]] \
+  || fail "each R0 story job must run exactly one attempt"
+rg -Fq 'matrix_attempt: [1, 2, 3, 4, 5]' "${qualification_workflow}" \
+  || fail "R0 matrix qualification must request exactly five fresh-host matrices"
+[[ "$(rg -c -- '--matrices 1' "${qualification_workflow}")" -eq 1 ]] \
+  || fail "each R0 matrix job must run exactly one lane attempt"
+[[ "$(rg -c 'actions/download-artifact@v4' "${qualification_workflow}")" -ge 5 ]] \
+  || fail "fresh-host qualification jobs must consume the shared provenance-bound build"
+[[ "$(rg -c 'DeterminateSystems/nix-installer-action@' "${qualification_workflow}")" -eq 1 ]] \
+  || fail "formal qualification must install build software once, not in every measured job"
+[[ "$(rg -c 'shasum -a 256 -c SharedBuild.tar.sha256' "${qualification_workflow}")" -eq 2 ]] \
+  || fail "every fresh-host stage must verify the exact shared-build archive bytes"
+rg -Fq 'e2e-build-provenance.sh verify' "${qualification_workflow}" \
+  || fail "fresh-host stages must bind the shared build to source and toolchain provenance"
 rg -q 'r0_runtime_baseline.json' "${qualification_workflow}" \
   || fail "R0 qualification must enforce its versioned runtime baseline"
 rg -q 'r0_failure_history.json' "${qualification_workflow}" \

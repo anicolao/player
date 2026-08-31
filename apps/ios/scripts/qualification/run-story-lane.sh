@@ -9,13 +9,16 @@ manifest="${repository_root}/tests/e2e/manifest.json"
 lane=""
 expected_sha=""
 attempt_count=10
+attempt_start=1
 output_root="${ios_dir}/DerivedData/R0Qualification/Stories"
+prebuilt_build=""
 simulator_lease_root="${ios_dir}/DerivedData/SimulatorLeases"
 stories=()
 
 usage() {
   cat >&2 <<'EOF'
 usage: run-story-lane.sh --lane <id> --sha <commit> [--attempts 10]
+                         [--attempt-start 1] [--prebuilt-build <directory>]
                          [--output-root <directory>] --story <id>...
 
 Runs every named canonical story for exactly the requested number of measured
@@ -29,6 +32,8 @@ while [[ $# -gt 0 ]]; do
     --lane) lane="$2"; shift 2 ;;
     --sha) expected_sha="$2"; shift 2 ;;
     --attempts) attempt_count="$2"; shift 2 ;;
+    --attempt-start) attempt_start="$2"; shift 2 ;;
+    --prebuilt-build) prebuilt_build="$2"; shift 2 ;;
     --output-root) output_root="$2"; shift 2 ;;
     --story) stories+=("$2"); shift 2 ;;
     --help|-h) usage; exit 0 ;;
@@ -40,6 +45,11 @@ done
   || { echo "A lowercase story-lane identifier is required." >&2; exit 2; }
 [[ "${expected_sha}" =~ ^[0-9a-f]{40}$ ]] || { echo "A full lowercase commit SHA is required." >&2; exit 2; }
 [[ "${attempt_count}" =~ ^[1-9][0-9]*$ ]] || { echo "Attempt count must be positive." >&2; exit 2; }
+[[ "${attempt_start}" =~ ^[1-9][0-9]*$ ]] || { echo "Attempt start must be positive." >&2; exit 2; }
+if [[ -n "${prebuilt_build}" && "${prebuilt_build}" != /* ]]; then
+  echo "The prebuilt build path must be absolute." >&2
+  exit 2
+fi
 [[ ${#stories[@]} -gt 0 ]] || { echo "At least one --story is required." >&2; exit 2; }
 
 assert_source() {
@@ -76,13 +86,31 @@ done <<< "${requested}"
 assert_source
 
 lane_root="${output_root}/${lane}"
-shared_build="${lane_root}/Build"
+shared_build="${prebuilt_build:-${lane_root}/Build}"
 rm -rf "${lane_root}"
 mkdir -p "${lane_root}/Stories"
 lane_started="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 overall_status=0
 infrastructure_invalid=0
 build_manifest_ready=0
+if [[ -n "${prebuilt_build}" ]]; then
+  if has_build "${shared_build}"; then
+    capture_build_manifest "${shared_build}" "${lane_root}/BuildManifest.before.sha256"
+    build_manifest_ready=1
+  else
+    echo "The provenance-bound prebuilt E2E product is unavailable." >&2
+    infrastructure_invalid=1
+    overall_status=1
+  fi
+fi
+
+if [[ "${infrastructure_invalid}" -eq 1 ]]; then
+  jq -n --arg lane "${lane}" --arg commit "${expected_sha}" \
+    '{stage: "story", lane: $lane, commit: $commit, status: "failed",
+      buildUnchanged: false, infrastructureInvalid: true, stories: []}' \
+    > "${lane_root}/StoryLaneSummary.json"
+  exit 1
+fi
 
 for story in "${stories[@]}"; do
   story_root="${lane_root}/Stories/${story}"
@@ -91,12 +119,13 @@ for story in "${stories[@]}"; do
   printf 'attempt\tresult\tduration_seconds\texit_code\ttest_phase_entered\tsignature\n' \
     > "${story_root}/attempts.tsv"
 
-  for ((attempt = 1; attempt <= attempt_count; attempt += 1)); do
+  attempt_end=$((attempt_start + attempt_count - 1))
+  for ((attempt = attempt_start; attempt <= attempt_end; attempt += 1)); do
     assert_source || { infrastructure_invalid=1; overall_status=1; break; }
     attempt_name="$(printf 'attempt-%02d' "${attempt}")"
     retained="${story_root}/${attempt_name}"
     started_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-    attempt_start="${SECONDS}"
+    attempt_wall_start="${SECONDS}"
     attempt_status=0
     skip_build=1
     if [[ "${build_manifest_ready}" -eq 0 ]]; then skip_build=0; fi
@@ -113,7 +142,7 @@ for story in "${stories[@]}"; do
     if [[ ! -d "${retained}" ]]; then
       mkdir -p "${retained}"
     fi
-    duration=$((SECONDS - attempt_start))
+    duration=$((SECONDS - attempt_wall_start))
     evidence_valid=true
     if ! qualification_validate_evidence_manifest \
       "${retained}" "${repository_root}/tests/e2e/${story}" "${story}"; then

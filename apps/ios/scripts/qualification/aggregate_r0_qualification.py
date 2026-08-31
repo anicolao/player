@@ -321,19 +321,25 @@ def validate_story(root, canonical_root, expected_stories, sha, requested_attemp
     pairs = summary_pairs(root, "StoryLaneSummary.json", errors)
     lanes = [item.get("lane") for _, item in pairs]
     expected_lane_count = len(expected_stories)
+    fragmented = len(pairs) > expected_lane_count \
+        or any(item.get("requestedAttempts") == 1 for _, item in pairs)
+    expected_summary_count = expected_lane_count * requested_attempts \
+        if fragmented else expected_lane_count
     if any(not isinstance(lane, str) for lane in lanes):
         errors.append("story lane summaries contain an invalid lane identifier")
-    if len(pairs) != expected_lane_count or len(
+    if len(pairs) != expected_summary_count or len(
             set(lane for lane in lanes if isinstance(lane, str))) != expected_lane_count:
         errors.append(
-            f"expected {expected_lane_count} unique story lane summaries, found {len(pairs)}")
-    seen = []
+            f"expected {expected_summary_count} story summaries across "
+            f"{expected_lane_count} unique lanes, found {len(pairs)}")
+    seen, seen_attempts = [], set()
     for path, lane in pairs:
         lane_root = path.parent
         lane_label = f"story lane {lane.get('lane')}"
         if lane.get("stage") != "story" or lane.get("commit") != sha:
             errors.append(f"story lane {lane.get('lane')} has the wrong stage or SHA")
-        if lane.get("requestedAttempts") != requested_attempts:
+        lane_attempt_count = 1 if fragmented else requested_attempts
+        if lane.get("requestedAttempts") != lane_attempt_count:
             errors.append(f"story lane {lane.get('lane')} requested the wrong attempt count")
         if not lane.get("buildUnchanged") or lane.get("infrastructureInvalid"):
             errors.append(f"story lane {lane.get('lane')} failed source/build integrity")
@@ -356,16 +362,25 @@ def validate_story(root, canonical_root, expected_stories, sha, requested_attemp
                 errors.append(f"{story_id} contains a non-object attempt")
             attempts = [attempt for attempt in raw_attempts if isinstance(attempt, dict)]
             ids = [item.get("attempt") for item in attempts]
-            if story.get("commit") != sha or story.get("requestedAttempts") != requested_attempts:
+            if story.get("commit") != sha or story.get("requestedAttempts") != lane_attempt_count:
                 errors.append(f"{story_id} has the wrong SHA or requested count")
-            if story.get("attemptCount") != requested_attempts or ids != list(range(1, requested_attempts + 1)):
-                errors.append(f"{story_id} does not contain attempts 1-{requested_attempts}")
-            if story.get("passCount") != requested_attempts or story.get("failureCount") != 0:
-                errors.append(f"{story_id} did not pass {requested_attempts}/{requested_attempts}")
+            expected_ids = ids if fragmented else list(range(1, requested_attempts + 1))
+            valid_fragment_id = len(ids) == 1 and type(ids[0]) is int \
+                and 1 <= ids[0] <= requested_attempts
+            if story.get("attemptCount") != lane_attempt_count \
+                    or (fragmented and not valid_fragment_id) \
+                    or (not fragmented and ids != expected_ids):
+                errors.append(f"{story_id} does not contain the required attempt set")
+            if story.get("passCount") != lane_attempt_count or story.get("failureCount") != 0:
+                errors.append(f"{story_id} did not pass its requested attempts")
             for attempt in attempts:
                 label = f"{story_id} attempt {attempt.get('attempt')}"
                 attempt_id = attempt.get("attempt")
                 if type(attempt_id) is int and attempt_id > 0:
+                    attempt_key = (story_id, attempt_id)
+                    if attempt_key in seen_attempts:
+                        errors.append(f"{label} is duplicated across hosted summaries")
+                    seen_attempts.add(attempt_key)
                     expected_artifact = f"Stories/{story_id}/attempt-{attempt_id:02d}"
                     require_canonical_artifact(
                         attempt, expected_artifact, observed_artifacts, label, errors)
@@ -382,9 +397,16 @@ def validate_story(root, canonical_root, expected_stories, sha, requested_attemp
                     errors.append(f"{label} is not a measured pass")
                 validate_attempt_evidence(
                     lane_root, canonical_root, attempt, story_id, sha, label, errors)
-    if sorted(seen) != sorted(expected_stories) or len(seen) != len(set(seen)):
+    expected_attempts = {
+        (story, attempt) for story in expected_stories
+        for attempt in range(1, requested_attempts + 1)
+    }
+    if fragmented:
+        if seen_attempts != expected_attempts:
+            errors.append("fragmented story coverage is not the complete story-attempt product")
+    elif sorted(seen) != sorted(expected_stories) or len(seen) != len(set(seen)):
         errors.append("story lane coverage does not equal the canonical manifest exactly once")
-    return {"lanes": len(pairs), "stories": len(seen), "durations": distribution(durations),
+    return {"lanes": len(pairs), "stories": len(set(seen)), "durations": distribution(durations),
             "signatures": signatures, "failures": failures, "errors": errors}
 
 
@@ -466,18 +488,28 @@ def validate_matrices(root, canonical_root, expected_stories, sha, requested_mat
     reference = baseline["qualificationReference"]
     pairs = summary_pairs(root, "MatrixLaneSummary.json", errors)
     lanes = [item.get("lane") for _, item in pairs]
+    fragmented = len(pairs) > 5 or any(
+        item.get("requestedMatrices") == 1 for _, item in pairs
+    )
+    expected_summary_count = 5 * requested_matrices if fragmented else 5
     if any(not isinstance(lane, str) for lane in lanes):
         errors.append("matrix lane summaries contain an invalid lane identifier")
-    if len(pairs) != 5 or len(set(lane for lane in lanes if isinstance(lane, str))) != 5:
-        errors.append(f"expected 5 unique matrix lane summaries, found {len(pairs)}")
+    if len(pairs) != expected_summary_count \
+            or len(set(lane for lane in lanes if isinstance(lane, str))) != 5:
+        errors.append(
+            f"expected {expected_summary_count} matrix summaries across 5 unique lanes, "
+            f"found {len(pairs)}")
     by_attempt = {index: [] for index in range(1, requested_matrices + 1)}
+    seen_lane_attempts = set()
     for path, lane in pairs:
         lane_root = path.parent
         lane_label = f"matrix lane {lane.get('lane')}"
         if lane.get("stage") != "matrix" or lane.get("commit") != sha:
             errors.append(f"matrix lane {lane.get('lane')} has the wrong stage or SHA")
-        if lane.get("requestedMatrices") != requested_matrices or lane.get("matrixCount") != requested_matrices:
-            errors.append(f"matrix lane {lane.get('lane')} does not contain {requested_matrices} matrices")
+        lane_matrix_count = 1 if fragmented else requested_matrices
+        if lane.get("requestedMatrices") != lane_matrix_count \
+                or lane.get("matrixCount") != lane_matrix_count:
+            errors.append(f"matrix lane {lane.get('lane')} has the wrong matrix count")
         if not lane.get("buildUnchanged") or lane.get("infrastructureInvalid") or lane.get("status") != "passed":
             errors.append(f"matrix lane {lane.get('lane')} failed integrity or is not green")
         raw_matrices = list_field(lane, "matrices", lane_label, errors)
@@ -485,10 +517,17 @@ def validate_matrices(root, canonical_root, expected_stories, sha, requested_mat
             errors.append(f"{lane_label} contains a non-object matrix")
         lane_matrices = [item for item in raw_matrices if isinstance(item, dict)]
         indices = [item.get("matrixAttempt") for item in lane_matrices]
-        if indices != list(range(1, requested_matrices + 1)):
+        valid_fragment_index = len(indices) == 1 and type(indices[0]) is int \
+            and 1 <= indices[0] <= requested_matrices
+        if (fragmented and not valid_fragment_index) \
+                or (not fragmented and indices != list(range(1, requested_matrices + 1))):
             errors.append(f"matrix lane {lane.get('lane')} has noncontiguous matrix attempts")
         for matrix in lane_matrices:
             index = matrix.get("matrixAttempt")
+            lane_attempt_key = (lane.get("lane"), index)
+            if lane_attempt_key in seen_lane_attempts:
+                errors.append(f"matrix lane {lane.get('lane')} attempt {index} is duplicated")
+            seen_lane_attempts.add(lane_attempt_key)
             if index in by_attempt: by_attempt[index].append((lane_root, matrix))
             if matrix.get("commit") != sha or matrix.get("status") != "passed":
                 errors.append(f"matrix {index} lane {lane.get('lane')} is not a measured pass")
@@ -530,6 +569,13 @@ def validate_matrices(root, canonical_root, expected_stories, sha, requested_mat
                     errors.append(f"{label} is not a measured pass")
                 story["_phases"] = validate_attempt_evidence(
                     lane_root, canonical_root, story, story_id, sha, label, errors)
+    if fragmented:
+        expected_lane_attempts = {
+            (f"lane-{lane}", attempt) for lane in range(1, 6)
+            for attempt in range(1, requested_matrices + 1)
+        }
+        if seen_lane_attempts != expected_lane_attempts:
+            errors.append("fragmented matrix coverage is not the complete lane-attempt product")
     for index, matrices in by_attempt.items():
         stories = [story.get("story") for _, matrix in matrices for story in matrix.get("stories", [])]
         if len(matrices) != 5 or sorted(stories) != sorted(expected_stories) or len(stories) != len(set(stories)):

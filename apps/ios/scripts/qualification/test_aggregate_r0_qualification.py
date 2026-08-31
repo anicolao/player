@@ -2,6 +2,7 @@
 import json
 import hashlib
 import os
+import shutil
 import struct
 import subprocess
 import tempfile
@@ -248,6 +249,75 @@ class QualificationAggregatorTests(unittest.TestCase):
 
     def matrix_summary(self, lane=1):
         return self.matrix_root / f"artifact-{lane}/MatrixLaneSummary.json"
+
+    def test_fresh_host_fragments_preserve_complete_qualification_coverage(self):
+        fragmented_stories = self.root / "fragmented-stories"
+        for summary_path in self.story_root.rglob("StoryLaneSummary.json"):
+            lane_root = summary_path.parent
+            lane = json.loads(summary_path.read_text())
+            story = lane["stories"][0]
+            for attempt in story["attempts"]:
+                fragment_root = fragmented_stories / (
+                    f"{story['story']}-attempt-{attempt['attempt']:02d}"
+                )
+                source = lane_root / attempt["artifact"]
+                destination = fragment_root / attempt["artifact"]
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copytree(source, destination)
+                fragment_story = {
+                    **story,
+                    "requestedAttempts": 1,
+                    "attemptCount": 1,
+                    "passCount": 1,
+                    "failureCount": 0,
+                    "attempts": [attempt],
+                }
+                write_json(fragment_root / "StoryLaneSummary.json", {
+                    **lane,
+                    "requestedAttempts": 1,
+                    "stories": [fragment_story],
+                })
+
+        story_result = aggregate.validate_story(
+            fragmented_stories, self.root, STORIES, SHA, 10
+        )
+        self.assertEqual(story_result["errors"], [])
+        self.assertEqual(story_result["lanes"], 130)
+        self.assertEqual(story_result["stories"], 13)
+        next(fragmented_stories.rglob("StoryLaneSummary.json")).unlink()
+        self.assertTrue(aggregate.validate_story(
+            fragmented_stories, self.root, STORIES, SHA, 10
+        )["errors"])
+
+        fragmented_matrices = self.root / "fragmented-matrices"
+        for summary_path in self.matrix_root.rglob("MatrixLaneSummary.json"):
+            lane_root = summary_path.parent
+            lane = json.loads(summary_path.read_text())
+            for matrix in lane["matrices"]:
+                fragment_root = fragmented_matrices / (
+                    f"{lane['lane']}-matrix-{matrix['matrixAttempt']:02d}"
+                )
+                relative = Path("Matrices") / f"matrix-{matrix['matrixAttempt']:02d}"
+                destination = fragment_root / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copytree(lane_root / relative, destination)
+                write_json(fragment_root / "MatrixLaneSummary.json", {
+                    **lane,
+                    "requestedMatrices": 1,
+                    "matrixCount": 1,
+                    "matrices": [matrix],
+                })
+
+        baseline = aggregate.validate_baseline(self.baseline, STORIES)
+        matrix_result = aggregate.validate_matrices(
+            fragmented_matrices, self.root, STORIES, SHA, 5, baseline
+        )
+        self.assertEqual(matrix_result["errors"], [])
+        self.assertEqual(matrix_result["lanes"], 25)
+        next(fragmented_matrices.rglob("MatrixLaneSummary.json")).unlink()
+        self.assertTrue(aggregate.validate_matrices(
+            fragmented_matrices, self.root, STORIES, SHA, 5, baseline
+        )["errors"])
 
     def test_accepts_complete_green_evidence_and_reports_timings(self):
         self.assertEqual(self.run_aggregate(), 0)

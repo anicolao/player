@@ -9,7 +9,9 @@ manifest="${repository_root}/tests/e2e/manifest.json"
 lane=""
 expected_sha=""
 matrix_count=5
+matrix_start=1
 output_root="${base_ios_dir}/DerivedData/R0Qualification/Matrices"
+prebuilt_build=""
 run_core=0
 stories=()
 active_worktree=""
@@ -18,7 +20,7 @@ core_simulator_lease=""
 simulator_lease_root="${base_ios_dir}/DerivedData/SimulatorLeases"
 
 usage() {
-  echo "usage: run-matrix-lane.sh --lane <lane-1..5> --sha <commit> [--matrices 5] [--core] --story <id>..." >&2
+  echo "usage: run-matrix-lane.sh --lane <lane-1..5> --sha <commit> [--matrices 5] [--matrix-start 1] [--prebuilt-build <directory>] [--core] --story <id>..." >&2
 }
 
 while [[ $# -gt 0 ]]; do
@@ -26,6 +28,8 @@ while [[ $# -gt 0 ]]; do
     --lane) lane="$2"; shift 2 ;;
     --sha) expected_sha="$2"; shift 2 ;;
     --matrices) matrix_count="$2"; shift 2 ;;
+    --matrix-start) matrix_start="$2"; shift 2 ;;
+    --prebuilt-build) prebuilt_build="$2"; shift 2 ;;
     --output-root) output_root="$2"; shift 2 ;;
     --core) run_core=1; shift ;;
     --story) stories+=("$2"); shift 2 ;;
@@ -37,6 +41,11 @@ done
 [[ "${lane}" =~ ^lane-[1-5]$ ]] || { usage; exit 2; }
 [[ "${expected_sha}" =~ ^[0-9a-f]{40}$ ]] || { echo "A full lowercase commit SHA is required." >&2; exit 2; }
 [[ "${matrix_count}" =~ ^[1-9][0-9]*$ ]] || { echo "Matrix count must be positive." >&2; exit 2; }
+[[ "${matrix_start}" =~ ^[1-9][0-9]*$ ]] || { echo "Matrix start must be positive." >&2; exit 2; }
+if [[ -n "${prebuilt_build}" && "${prebuilt_build}" != /* ]]; then
+  echo "The prebuilt build path must be absolute." >&2
+  exit 2
+fi
 [[ ${#stories[@]} -gt 0 ]] || { echo "At least one --story is required." >&2; exit 2; }
 
 assert_source() {
@@ -201,12 +210,13 @@ overall_status=0
 infrastructure_invalid=0
 build_unchanged=true
 
-for ((matrix_index = 1; matrix_index <= matrix_count; matrix_index += 1)); do
+matrix_end=$((matrix_start + matrix_count - 1))
+for ((matrix_index = matrix_start; matrix_index <= matrix_end; matrix_index += 1)); do
   matrix_wall_start="${SECONDS}"
   assert_source "${repository_root}" || { infrastructure_invalid=1; overall_status=1; break; }
   matrix_name="$(printf 'matrix-%02d' "${matrix_index}")"
   matrix_root="${lane_root}/Matrices/${matrix_name}"
-  shared_build="${lane_root}/Build/${matrix_name}"
+  shared_build="${prebuilt_build:-${lane_root}/Build/${matrix_name}}"
   build_manifest_ready=0
   mkdir -p "${matrix_root}/Stories"
   : > "${matrix_root}/stories.jsonl"
@@ -215,6 +225,18 @@ for ((matrix_index = 1; matrix_index <= matrix_count; matrix_index += 1)); do
   git -C "${repository_root}" worktree add --detach "${active_worktree}" "${expected_sha}" >/dev/null
   assert_source "${active_worktree}" || { infrastructure_invalid=1; overall_status=1; break; }
   worktree_ios="${active_worktree}/apps/ios"
+  if [[ -n "${prebuilt_build}" ]]; then
+    if has_build "${shared_build}"; then
+      capture_build_manifest "${shared_build}" \
+        "${matrix_root}/BuildManifest.before.sha256"
+      build_manifest_ready=1
+    else
+      echo "The provenance-bound prebuilt E2E product is unavailable." >&2
+      infrastructure_invalid=1
+      overall_status=1
+    fi
+  fi
+  if [[ "${infrastructure_invalid}" -eq 1 ]]; then break; fi
   for story in "${stories[@]}"; do
     retained="${matrix_root}/Stories/${story}"
     story_start="${SECONDS}"
@@ -227,7 +249,7 @@ for ((matrix_index = 1; matrix_index <= matrix_count; matrix_index += 1)); do
       PLAYER_SIMULATOR_LEASE_ROOT="${simulator_lease_root}" \
       PLAYER_SKIP_E2E_BUILD="${skip_build}" \
       PLAYER_SKIP_E2E_ENVIRONMENT_VERIFICATION=1 \
-    PLAYER_SKIP_PROJECT_GENERATION=1 \
+      PLAYER_SKIP_PROJECT_GENERATION=1 \
       "${worktree_ios}/scripts/run-e2e.sh" --story "${story}" || story_status=$?
     if [[ ! -d "${retained}" ]]; then mkdir -p "${retained}"; fi
     evidence_valid=true
