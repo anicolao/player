@@ -207,7 +207,15 @@ final class PlayerModel {
   }
 
   func prepareSupportBundle() async throws -> PreparedSupportBundle {
-    let automaticBackupCount = await environment.persistence.automaticBackups().count
+    let automaticBackupCount: Int
+    if let startupRecoveryStatus {
+      // Startup recovery already validated every candidate backup while
+      // classifying the failure. Repeating that filesystem walk here can make
+      // support export wait on the same protected files a second time.
+      automaticBackupCount = startupRecoveryStatus.validAutomaticBackupCount
+    } else {
+      automaticBackupCount = await environment.persistence.automaticBackups().count
+    }
     return try await environment.diagnostics.prepareBundle(
       library: library,
       recovery: startupRecoveryStatus,

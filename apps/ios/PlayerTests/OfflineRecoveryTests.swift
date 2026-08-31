@@ -329,6 +329,34 @@ final class OfflineRecoveryTests: XCTestCase {
     XCTAssertFalse(FileManager.default.fileExists(atPath: prepared.url.path))
   }
 
+  @MainActor
+  func testRecoverySupportExportReusesValidatedBackupCountWithoutRescanningStorage()
+    async throws
+  {
+    let root = temporaryDirectory("recovery-support-count")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = RecoverySupportStore(validAutomaticBackupCount: 7)
+    let diagnostics = RecordingSupportDiagnosticsManager(root: root)
+    let model = PlayerModel(environment: PlayerEnvironment(
+      persistence: store,
+      media: FileSystemMediaManager(rootURL: root),
+      inspector: DeterministicAudioInspector(result: .failure(.unreadableAudio("unused"))),
+      playback: DeterministicPlaybackController(),
+      diagnostics: diagnostics
+    ))
+
+    await model.restore()
+    let recoveryBackupCount = model.startupRecoveryStatus?.validAutomaticBackupCount
+    XCTAssertEqual(recoveryBackupCount, 7)
+
+    _ = try await model.prepareSupportBundle()
+
+    let receivedBackupCount = await diagnostics.receivedAutomaticBackupCount()
+    let backupScanCount = await store.automaticBackupScanCount()
+    XCTAssertEqual(receivedBackupCount, 7)
+    XCTAssertEqual(backupScanCount, 0)
+  }
+
   private func makeBook(id: UUID, title: String) -> Book {
     Book(
       id: id,
@@ -369,4 +397,60 @@ final class OfflineRecoveryTests: XCTestCase {
   private func uuid(_ suffix: Int) -> UUID {
     UUID(uuidString: String(format: "c0000000-0000-0000-0000-%012d", suffix))!
   }
+}
+
+private actor RecoverySupportStore: LibraryPersisting {
+  private let validAutomaticBackupCount: Int
+  private var backupScanCount = 0
+
+  init(validAutomaticBackupCount: Int) {
+    self.validAutomaticBackupCount = validAutomaticBackupCount
+  }
+
+  func load() throws -> LibrarySnapshot {
+    throw PlayerCoreError.invalidStore
+  }
+
+  func save(_ snapshot: LibrarySnapshot) {}
+
+  func automaticBackups() -> [AutomaticLibraryBackup] {
+    backupScanCount += 1
+    return []
+  }
+
+  func startupRecoveryStatus() -> StartupRecoveryStatus {
+    StartupRecoveryStatus(
+      issue: .unreadableLibrary,
+      validAutomaticBackupCount: validAutomaticBackupCount,
+      invalidAutomaticBackupCount: 0
+    )
+  }
+
+  func automaticBackupScanCount() -> Int { backupScanCount }
+}
+
+private actor RecordingSupportDiagnosticsManager: SupportDiagnosticsManaging {
+  private let root: URL
+  private var automaticBackupCount: Int?
+
+  init(root: URL) {
+    self.root = root
+  }
+
+  func prepareBundle(
+    library: LibrarySnapshot,
+    recovery: StartupRecoveryStatus?,
+    reconciliation: StartupStorageReconciliation?,
+    automaticBackupCount: Int
+  ) -> PreparedSupportBundle {
+    self.automaticBackupCount = automaticBackupCount
+    return PreparedSupportBundle(
+      url: root.appending(path: "recovery-support.playersupport"),
+      byteCount: 0
+    )
+  }
+
+  func discardPreparedBundle(_ bundle: PreparedSupportBundle) {}
+
+  func receivedAutomaticBackupCount() -> Int? { automaticBackupCount }
 }
