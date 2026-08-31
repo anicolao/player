@@ -373,6 +373,15 @@ if rg -n 'XCUIApplication\(\)' \
   "${repository_root}/apps/ios/PlayerUITests" --glob '*.swift'; then
   fail "a UI test still requests Xcode's deferred target-application installation"
 fi
+project_spec="${repository_root}/apps/ios/project.yml"
+generated_project="${repository_root}/apps/ios/Player.xcodeproj/project.pbxproj"
+if rg -n 'TEST_TARGET_NAME' "${project_spec}" "${generated_project}"; then
+  fail "the UI-test bundle still lets Xcode reinstall the target application during test-without-building"
+fi
+rg -Fq '        Player: all' "${project_spec}" \
+  || fail "the Player scheme no longer builds the target application"
+rg -Fq '        PlayerUITests: [test]' "${project_spec}" \
+  || fail "the Player scheme no longer builds the UI-test bundle"
 runner_install_line="$(rg -F -n -m 1 'xcrun simctl install "${simulator}" "${test_runner}"' "${run_e2e}" | cut -d: -f1)"
 runner_receipt_line="$(rg -F -n -m 1 'xcrun simctl launch --terminate-running-process' "${run_e2e}" | cut -d: -f1)"
 [[ -n "${runner_install_line}" && -n "${runner_receipt_line}" \

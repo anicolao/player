@@ -176,13 +176,6 @@
 			remoteGlobalIDString = C526B3C6F7440F582811B83B;
 			remoteInfo = Player;
 		};
-		8DBDEC6D5E7C427FC823E73F /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = F45B4C872F70AD371A0CAA31 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = C526B3C6F7440F582811B83B;
-			remoteInfo = Player;
-		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -735,7 +728,6 @@
 			buildRules = (
 			);
 			dependencies = (
-				337A7E3F094DEB71FBFD2058 /* PBXTargetDependency */,
 			);
 			name = PlayerUITests;
 			packageProductDependencies = (
@@ -798,7 +790,6 @@
 					};
 					8DA48459DF19DCAFCEDD3018 = {
 						ProvisioningStyle = Automatic;
-						TestTargetID = C526B3C6F7440F582811B83B;
 					};
 					BD147BACC9FBDB21707188AE = {
 						ProvisioningStyle = Automatic;
@@ -1038,11 +1029,6 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		337A7E3F094DEB71FBFD2058 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = C526B3C6F7440F582811B83B /* Player */;
-			targetProxy = 8DBDEC6D5E7C427FC823E73F /* PBXContainerItemProxy */;
-		};
 		4ECB0BE5205A63DE2F72B063 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 5881E8E59EEA854DF68330AE /* ShareExtension */;
@@ -1147,7 +1133,6 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.spnss.player.uitests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = Player;
 			};
 			name = Debug;
 		};
@@ -1186,7 +1171,6 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.spnss.player.uitests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = Player;
 			};
 			name = Release;
 		};
@@ -1462,7 +1446,6 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.spnss.player.uitests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = Player;
 			};
 			name = E2E;
 		};
