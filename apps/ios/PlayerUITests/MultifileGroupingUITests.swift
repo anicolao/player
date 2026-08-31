@@ -388,30 +388,43 @@ final class MultifileGroupingUITests: PlayerUITestCase {
     until destination: XCUIElement,
     in app: XCUIApplication
   ) throws {
-    let deliveryDeadline = EventDeadline()
-    repeat {
-      guard action.exists, action.isEnabled else {
-        if destination.waitForExistence(timeout: deliveryDeadline.remaining) { return }
-        XCTFail("The multifile journey expected its enabled action or semantic destination")
-        throw MultifileGroupingTestError.semanticStateUnavailable
-      }
-      let actionFrame = action.frame
-      let appFrame = app.frame
-      guard actionFrame.width >= 44,
-        actionFrame.height >= 44,
-        !appFrame.isEmpty,
-        appFrame.contains(actionFrame)
-      else {
-        if destination.waitForExistence(timeout: deliveryDeadline.remaining) { return }
-        XCTFail("The multifile journey expected a visible 44-point action target")
-        throw MultifileGroupingTestError.semanticStateUnavailable
-      }
-      let coordinate = app.coordinate(
-        withNormalizedOffset: CGVector(
-          dx: (actionFrame.midX - appFrame.minX) / appFrame.width,
-          dy: (actionFrame.midY - appFrame.minY) / appFrame.height
-        )
+    if destination.exists { return }
+    guard action.exists, action.isEnabled else {
+      XCTFail("The multifile journey expected its enabled action or semantic destination")
+      throw MultifileGroupingTestError.semanticStateUnavailable
+    }
+    let actionFrame = action.frame
+    let appFrame = app.frame
+    guard actionFrame.width >= 44,
+      actionFrame.height >= 44,
+      !appFrame.isEmpty,
+      appFrame.contains(actionFrame)
+    else {
+      XCTFail("The multifile journey expected a visible 44-point action target")
+      throw MultifileGroupingTestError.semanticStateUnavailable
+    }
+    let coordinate = app.coordinate(
+      withNormalizedOffset: CGVector(
+        dx: (actionFrame.midX - appFrame.minX) / appFrame.width,
+        dy: (actionFrame.midY - appFrame.minY) / appFrame.height
       )
+    )
+
+    // Frame discovery and physical synthesis are not product-state waits. Give
+    // the semantic receipt its own two-second event deadline only after the
+    // first touch has completed, and redeliver only while the exact source
+    // action remains unchanged.
+    var deliveryDeadline: EventDeadline?
+    repeat {
+      if let deliveryDeadline {
+        if destination.exists { return }
+        guard action.exists, action.isEnabled, action.frame == actionFrame else {
+          if destination.waitForExistence(timeout: deliveryDeadline.remaining) { return }
+          XCTFail("The multifile journey lost its action before the semantic destination appeared")
+          throw MultifileGroupingTestError.semanticStateUnavailable
+        }
+        if deliveryDeadline.remaining <= 0 { break }
+      }
       guard performPhysicalInteractionWithoutPostEventQuiescence(
         in: app,
         { coordinate.tap() }
@@ -419,10 +432,20 @@ final class MultifileGroupingUITests: PlayerUITestCase {
         XCTFail("The pinned XCTest runtime did not expose bounded physical synthesis")
         throw MultifileGroupingTestError.semanticStateUnavailable
       }
+      if deliveryDeadline == nil { deliveryDeadline = EventDeadline() }
+      guard let deliveryDeadline else {
+        XCTFail("The multifile journey could not establish its delivery deadline")
+        throw MultifileGroupingTestError.semanticStateUnavailable
+      }
       if destination.waitForExistence(timeout: min(0.25, deliveryDeadline.remaining)) {
         return
       }
-    } while deliveryDeadline.remaining > 0
+      if !action.exists || !action.isEnabled || action.frame != actionFrame {
+        if destination.waitForExistence(timeout: deliveryDeadline.remaining) { return }
+        XCTFail("The multifile journey expected its enabled action or semantic destination")
+        throw MultifileGroupingTestError.semanticStateUnavailable
+      }
+    } while (deliveryDeadline?.remaining ?? 0) > 0
 
     XCTFail("The multifile action did not reveal its semantic destination")
     throw MultifileGroupingTestError.semanticStateUnavailable

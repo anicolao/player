@@ -1479,35 +1479,42 @@ final class LibraryOrganizationUITests: PlayerUITestCase {
     in app: XCUIApplication
   ) -> Bool {
     if destination.exists { return true }
-    let deliveryDeadline = EventDeadline()
-    repeat {
-      guard tabActionHasPhysicalTarget(action, in: app) else {
-        return destination.waitForExistence(timeout: deliveryDeadline.remaining)
-      }
-      let actionFrame = action.frame
-      let appFrame = app.frame
-      guard !appFrame.isEmpty else { return false }
+    guard tabActionHasPhysicalTarget(action, in: app) else { return false }
+    let actionFrame = action.frame
+    let appFrame = app.frame
+    guard !appFrame.isEmpty else { return false }
 
-      // Anchor input to the stable application surface. XCTest can report a
-      // fixed tab item non-hittable, or lose an element-bound tap, while its
-      // physical frame remains visible and unchanged under accessibility load.
-      let coordinate = app.coordinate(
-        withNormalizedOffset: CGVector(
-          dx: (actionFrame.midX - appFrame.minX) / appFrame.width,
-          dy: (actionFrame.midY - appFrame.minY) / appFrame.height
-        )
+    // Freeze the exact visible tab target before beginning delivery. The
+    // semantic receipt gets its own deadline after physical synthesis, and a
+    // second touch is permitted only while this original target is unchanged.
+    let coordinate = app.coordinate(
+      withNormalizedOffset: CGVector(
+        dx: (actionFrame.midX - appFrame.minX) / appFrame.width,
+        dy: (actionFrame.midY - appFrame.minY) / appFrame.height
       )
+    )
+    var deliveryDeadline: EventDeadline?
+    repeat {
+      if let deliveryDeadline {
+        if destination.exists { return true }
+        guard tabActionHasPhysicalTarget(action, in: app), action.frame == actionFrame else {
+          return destination.waitForExistence(timeout: deliveryDeadline.remaining)
+        }
+        if deliveryDeadline.remaining <= 0 { break }
+      }
       guard performPhysicalInteractionWithoutPostEventQuiescence(
         in: app,
         { coordinate.tap() }
       ) else { return false }
+      if deliveryDeadline == nil { deliveryDeadline = EventDeadline() }
+      guard let deliveryDeadline else { return false }
       if destination.waitForExistence(timeout: min(0.25, deliveryDeadline.remaining)) {
         return true
       }
-      if !action.exists {
+      if !action.exists || action.frame != actionFrame {
         return destination.waitForExistence(timeout: deliveryDeadline.remaining)
       }
-    } while deliveryDeadline.remaining > 0
+    } while (deliveryDeadline?.remaining ?? 0) > 0
     return destination.exists
   }
 

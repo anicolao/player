@@ -232,13 +232,38 @@ rg -Fq 'performPhysicalInteractionWithoutPostEventQuiescence(' "${offline_recove
 library_organization="${ui_test_root}/LibraryOrganizationUITests.swift"
 rg -Fq 'presentTabAction(addAudiobook, destination: receiverScreen, in: app)' \
   "${library_organization}"
-rg -Fq 'let deliveryDeadline = EventDeadline()' "${library_organization}"
 rg -Fq 'performPhysicalInteractionWithoutPostEventQuiescence(' "${library_organization}"
 rg -Fq 'timeout: min(0.25, deliveryDeadline.remaining)' "${library_organization}"
 if rg -Fq 'tapTabAction(addAudiobook, in: app)' "${library_organization}"; then
   echo 'Library organization hygiene rejects an unacknowledged Add action tap' >&2
   exit 1
 fi
+for delivery_source in \
+  "${multifile_grouping}:tapPhysicalAction:selectTrack" \
+  "${library_organization}:presentTabAction:requireValue" \
+  "${ui_test_root}/BackupUITests.swift:tapProductionAction:requireOperation"; do
+  delivery_file="${delivery_source%%:*}"
+  delivery_remainder="${delivery_source#*:}"
+  delivery_start_name="${delivery_remainder%%:*}"
+  delivery_end_name="${delivery_remainder#*:}"
+  delivery_start="$(rg -n "^  private func ${delivery_start_name}\\(" \
+    "${delivery_file}" | cut -d: -f1)"
+  delivery_end="$(rg -n "^  private func ${delivery_end_name}\\(" \
+    "${delivery_file}" | cut -d: -f1)"
+  delivery_body="$(sed -n "${delivery_start},${delivery_end}p" "${delivery_file}")"
+  delivery_gesture="$(rg -n -m 1 \
+    'performPhysicalInteractionWithoutPostEventQuiescence' \
+    <<<"${delivery_body}" | cut -d: -f1)"
+  delivery_deadline="$(rg -n -m 1 \
+    'deliveryDeadline = EventDeadline\(\)' \
+    <<<"${delivery_body}" | cut -d: -f1)"
+  [[ -n "${delivery_gesture}" && -n "${delivery_deadline}" \
+    && "${delivery_gesture}" -lt "${delivery_deadline}" ]] || {
+    echo "physical delivery hygiene requires a post-synthesis receipt deadline: ${delivery_file}" >&2
+    exit 1
+  }
+  rg -Fq 'frame ==' <<<"${delivery_body}"
+done
 computer_receiver_tests="${ui_test_root}/../PlayerTests/ComputerReceiverTests.swift"
 rg -Fq 'fileprivate static let webRuntimePrimer = ReceiverWebRuntimePrimer()' \
   "${computer_receiver_tests}"

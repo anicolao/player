@@ -449,29 +449,47 @@ final class BackupUITests: PlayerUITestCase {
     let operationChanged = NSPredicate(
       format: "exists == true AND value != %@", initialOperation
     )
-    let deliveryDeadline = EventDeadline()
-    repeat {
-      let buttonFrame = button.frame
-      let appFrame = app.frame
-      guard buttonFrame.width >= 44,
-        buttonFrame.height >= 44,
-        !appFrame.isEmpty,
-        appFrame.contains(buttonFrame)
-      else {
-        XCTFail("Expected production action \(identifier) to be a visible 44-point target")
-        return
-      }
-      let coordinate = app.coordinate(
-        withNormalizedOffset: CGVector(
-          dx: (buttonFrame.midX - appFrame.minX) / appFrame.width,
-          dy: (buttonFrame.midY - appFrame.minY) / appFrame.height
-        )
+    let buttonFrame = button.frame
+    let appFrame = app.frame
+    guard buttonFrame.width >= 44,
+      buttonFrame.height >= 44,
+      !appFrame.isEmpty,
+      appFrame.contains(buttonFrame)
+    else {
+      XCTFail("Expected production action \(identifier) to be a visible 44-point target")
+      return
+    }
+    let coordinate = app.coordinate(
+      withNormalizedOffset: CGVector(
+        dx: (buttonFrame.midX - appFrame.minX) / appFrame.width,
+        dy: (buttonFrame.midY - appFrame.minY) / appFrame.height
       )
+    )
+    var deliveryDeadline: EventDeadline?
+    repeat {
+      if let deliveryDeadline {
+        if operationChanged.evaluate(with: operation) { return }
+        guard button.exists, button.isEnabled, button.frame == buttonFrame else {
+          if waitForPredicate(
+            operationChanged,
+            on: operation,
+            timeout: deliveryDeadline.remaining
+          ) { return }
+          XCTFail("Production action \(identifier) changed before publishing its state transition")
+          return
+        }
+        if deliveryDeadline.remaining <= 0 { break }
+      }
       guard performPhysicalInteractionWithoutPostEventQuiescence(
         in: app,
         { coordinate.tap() }
       ) else {
         XCTFail("The pinned XCTest runtime did not expose bounded physical synthesis")
+        return
+      }
+      if deliveryDeadline == nil { deliveryDeadline = EventDeadline() }
+      guard let deliveryDeadline else {
+        XCTFail("Production action \(identifier) could not establish its delivery deadline")
         return
       }
       if waitForPredicate(
@@ -481,7 +499,16 @@ final class BackupUITests: PlayerUITestCase {
       ) {
         return
       }
-    } while deliveryDeadline.remaining > 0
+      if !button.exists || !button.isEnabled || button.frame != buttonFrame {
+        if waitForPredicate(
+          operationChanged,
+          on: operation,
+          timeout: deliveryDeadline.remaining
+        ) { return }
+        XCTFail("Production action \(identifier) changed before publishing its state transition")
+        return
+      }
+    } while (deliveryDeadline?.remaining ?? 0) > 0
 
     XCTFail(
       "Production action \(identifier) did not publish a state transition; "
