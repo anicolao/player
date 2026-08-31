@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.expected_sha }}
       - name: Require the dispatched revision exactly
@@ -88,7 +88,7 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
       PLAYER_SKIP_SIMULATOR_LAUNCH: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.expected_sha }}
       - uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
@@ -141,7 +141,7 @@ jobs:
           apps/ios/scripts/simulator-lease.sh release "${lease}" "$$"
           simulator_id=""
       - name: Upload immutable shared E2E product
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: r0-shared-build-${{ inputs.expected_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -183,10 +183,10 @@ jobs:
       PLAYER_SKIP_SIMULATOR_LAUNCH: "1"
       PLAYER_RESET_HOSTED_SIMULATOR_CONTROL_PLANE: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.expected_sha }}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: r0-shared-build-${{ inputs.expected_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: apps/ios/DerivedData/R0Qualification/SharedBuildArtifact
@@ -223,7 +223,7 @@ jobs:
             --story "${STORY}"
       - name: Upload complete story-attempt evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: r0-story-evidence-${{ matrix.story }}-attempt-${{ matrix.attempt }}-${{ inputs.expected_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -240,10 +240,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.expected_sha }}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: r0-story-evidence-*-${{ inputs.expected_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: downloaded/stories
@@ -259,7 +259,7 @@ jobs:
           --output build/r0-story-report
       - name: Upload story gate report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: r0-story-report-${{ inputs.expected_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: build/r0-story-report/
@@ -285,10 +285,10 @@ jobs:
       PLAYER_SKIP_SIMULATOR_LAUNCH: "1"
       PLAYER_RESET_HOSTED_SIMULATOR_CONTROL_PLANE: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.expected_sha }}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: r0-shared-build-${{ inputs.expected_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: apps/ios/DerivedData/R0Qualification/SharedBuildArtifact
@@ -332,7 +332,7 @@ jobs:
           apps/ios/scripts/qualification/run-matrix-lane.sh "${arguments[@]}"
       - name: Upload complete matrix-lane-attempt evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: r0-matrix-${{ matrix.lane }}-attempt-${{ matrix.matrix_attempt }}-${{ inputs.expected_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -349,19 +349,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: always()
         with:
           ref: ${{ inputs.expected_sha }}
       - name: Download story evidence
         if: always()
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: r0-story-evidence-*-${{ inputs.expected_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: downloaded/stories
       - name: Download matrix evidence when present
         if: always() && needs.matrix-qualification.result != 'skipped'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: r0-matrix-*-${{ inputs.expected_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: downloaded/matrices
@@ -380,7 +380,7 @@ jobs:
           --output build/r0-qualification-report
       - name: Upload final stability report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: r0-qualification-report-${{ inputs.expected_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: build/r0-qualification-report/

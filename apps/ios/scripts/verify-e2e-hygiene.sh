@@ -8,6 +8,7 @@ manifest="${repository_root}/tests/e2e/manifest.json"
 workflow="${repository_root}/.github/workflows/ios.yml"
 story_workflow="${repository_root}/.github/workflows/ios-e2e-story.yml"
 qualification_workflow="${repository_root}/.github/workflows/r0-qualification.yml"
+workflow_root="${repository_root}/.github/workflows"
 portable_tools_script="${script_dir}/prepare-portable-e2e-tools.sh"
 
 fail() {
@@ -285,6 +286,11 @@ for shared_build_workflow in "${workflow}" "${qualification_workflow}"; do
     "${shared_build_workflow}")" -eq 1 ]] \
     || fail "each immutable shared build must contain its portable tools"
 done
+if rg -n \
+  'actions/(checkout@v[1-6]|download-artifact@v[1-7]|upload-artifact@v[1-6])' \
+  "${workflow_root}"; then
+  fail "GitHub workflows must use the Node 24 checkout and artifact action releases"
+fi
 normal_consumer_sources="$(cat "${workflow}" "${story_workflow}")"
 [[ "$(rg -c 'export PATH="\$\{portable_tools\}:\$\{PATH\}"' \
   <<< "${normal_consumer_sources}")" -eq 2 ]] \
@@ -302,7 +308,7 @@ qualification_build_section="$(sed -n \
 [[ "$(rg -c '^[[:space:]]+PLAYER_SKIP_SIMULATOR_LAUNCH: "1"$' \
   <<< "${qualification_build_section}")" -eq 1 ]] \
   || fail "the qualification producer must suppress the interactive Nix simulator hook"
-[[ "$(rg -c 'actions/download-artifact@v4' <<< "${normal_consumer_sources}")" -eq 2 ]] \
+[[ "$(rg -c 'actions/download-artifact@v8' <<< "${normal_consumer_sources}")" -eq 2 ]] \
   || fail "normal CI story and core consumers must each download the shared build"
 [[ "$(rg -c 'shasum -a 256 -c SharedBuild.tar.sha256' \
   <<< "${normal_consumer_sources}")" -eq 2 ]] \
@@ -550,7 +556,7 @@ rg -Fq 'matrix_attempt: [1, 2, 3, 4, 5]' "${qualification_workflow}" \
   || fail "R0 matrix qualification must request exactly five fresh-host matrices"
 [[ "$(rg -c -- '--matrices 1' "${qualification_workflow}")" -eq 1 ]] \
   || fail "each R0 matrix job must run exactly one lane attempt"
-[[ "$(rg -c 'actions/download-artifact@v4' "${qualification_workflow}")" -ge 5 ]] \
+[[ "$(rg -c 'actions/download-artifact@v8' "${qualification_workflow}")" -ge 5 ]] \
   || fail "fresh-host qualification jobs must consume the shared provenance-bound build"
 [[ "$(rg -c 'DeterminateSystems/nix-installer-action@' "${qualification_workflow}")" -eq 1 ]] \
   || fail "formal qualification must install build software once, not in every measured job"
@@ -573,7 +579,7 @@ section = Path(sys.argv[1]).read_text(encoding="utf-8").split(
     "  qualification-report:\n", 1
 )[1]
 ordered = [
-    "- uses: actions/checkout@v4",
+    "- uses: actions/checkout@v7",
     "- name: Download story evidence",
     "- name: Download matrix evidence when present",
     "- name: Validate all five logical matrices and render stability report",
