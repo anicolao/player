@@ -353,6 +353,63 @@ func performPhysicalInteractionWithoutPostEventQuiescence(
 }
 
 @MainActor
+func reactivateApplicationAfterHome(
+  _ application: XCUIApplication,
+  requiring interactiveElement: XCUIElement
+) -> Bool {
+  let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+  guard springboard.wait(for: .runningForeground, timeout: 2) else { return false }
+
+  application.activate()
+  let interactive = NSPredicate { _, _ in
+    guard application.state == .runningForeground,
+      interactiveElement.exists,
+      interactiveElement.isEnabled,
+      interactiveElement.isHittable
+    else { return false }
+    let applicationFrame = application.frame
+    let elementFrame = interactiveElement.frame
+    return !applicationFrame.isEmpty
+      && !elementFrame.isEmpty
+      && applicationFrame.contains(elementFrame)
+  }
+  return waitForPredicate(interactive, on: interactiveElement, timeout: 2)
+}
+
+@MainActor
+func performBoundedForegroundInteraction(
+  _ interactiveElement: XCUIElement,
+  in application: XCUIApplication
+) -> Bool {
+  let interactive = NSPredicate { _, _ in
+    guard application.state == .runningForeground,
+      interactiveElement.exists,
+      interactiveElement.isEnabled,
+      interactiveElement.isHittable
+    else { return false }
+    let applicationFrame = application.frame
+    let elementFrame = interactiveElement.frame
+    return !applicationFrame.isEmpty
+      && !elementFrame.isEmpty
+      && applicationFrame.contains(elementFrame)
+  }
+  guard waitForPredicate(interactive, on: interactiveElement, timeout: 2) else { return false }
+
+  let applicationFrame = application.frame
+  let elementFrame = interactiveElement.frame
+  let coordinate = application.coordinate(
+    withNormalizedOffset: CGVector(
+      dx: (elementFrame.midX - applicationFrame.minX) / applicationFrame.width,
+      dy: (elementFrame.midY - applicationFrame.minY) / applicationFrame.height
+    )
+  )
+  return performPhysicalInteractionWithoutPostEventQuiescence(
+    in: application,
+    { coordinate.tap() }
+  )
+}
+
+@MainActor
 func waitForNoElements(
   _ query: XCUIElementQuery,
   deadline: EventDeadline = EventDeadline()

@@ -60,8 +60,13 @@ final class PositionRestoreUITests: PlayerUITestCase {
     try tapHittableButton("close-now-playing", in: app)
     XCTAssertTrue(miniPlayer.waitForExistence(timeout: 2))
     XCUIDevice.shared.press(.home)
-    app.activate()
-    XCTAssertTrue(app.wait(for: .runningForeground, timeout: 2))
+    XCTAssertTrue(
+      reactivateApplicationAfterHome(
+        app,
+        requiring: app.buttons["e2e-engine-progress-90"]
+      ),
+      "The exact progress control must become foreground-interactive after Home"
+    )
     try tapHittableButton("e2e-engine-progress-90", in: app)
     _ = try requirePlaybackState(miniPlayer, status: "playing", positionMilliseconds: 90_000)
     XCTAssertTrue(miniTimeline.waitForStringValue("1m30s of 2m00s", timeout: 2))
@@ -344,12 +349,14 @@ final class PositionRestoreUITests: PlayerUITestCase {
       XCTFail("No button reported identifier \(identifier)")
       throw PositionRestoreTestError.semanticStateUnavailable
     }
-    _ = waitForPredicate(NSPredicate(format: "hittable == true"), on: candidate)
-    guard let button = query.allElementsBoundByIndex.first(where: \.isHittable) else {
-      XCTFail("No hittable button reported identifier \(identifier)")
+    guard query.count == 1 else {
+      XCTFail("No unique foreground-interactive button reported identifier \(identifier)")
       throw PositionRestoreTestError.semanticStateUnavailable
     }
-    button.tap()
+    guard performBoundedForegroundInteraction(candidate, in: app) else {
+      XCTFail("The pinned XCTest runtime did not expose bounded button synthesis")
+      throw PositionRestoreTestError.semanticStateUnavailable
+    }
   }
 
   private func adjustSliderAndRequireAcknowledgement(
