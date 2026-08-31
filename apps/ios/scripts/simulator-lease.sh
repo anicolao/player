@@ -84,6 +84,12 @@ reconcile_leases() {
   leases=("${lease_directory}"/*.json)
   shopt -u nullglob
 
+  # Bash 3.2 and some nounset configurations reject expansion of a declared
+  # but empty array. An empty directory is already fully reconciled.
+  if (( ${#leases[@]} == 0 )); then
+    return 0
+  fi
+
   # Validate every record before deleting anything. One malformed record makes
   # ownership uncertain, so reconciliation fails closed without side effects.
   for lease_file in "${leases[@]}"; do
@@ -109,9 +115,11 @@ reconcile_leases() {
     stale_leases+=("${lease_file}")
   done
 
-  for lease_file in "${stale_leases[@]}"; do
-    release_lease_record "${lease_file}" || return 1
-  done
+  if (( ${#stale_leases[@]} > 0 )); then
+    for lease_file in "${stale_leases[@]}"; do
+      release_lease_record "${lease_file}" || return 1
+    done
+  fi
 }
 
 acquire_lease() {

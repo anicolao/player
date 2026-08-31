@@ -86,6 +86,10 @@ write_stale_lease() {
       owner: {pid: $ownerPID, startedAt: $ownerStartedAt}}' > "${lease_file}"
 }
 
+run_lease_tool reconcile "${lease_root}"
+[[ ! -s "${fake_state}/simctl.log" ]] \
+  || fail "empty reconciliation changed simulator state"
+
 first_id='11111111-1111-1111-1111-111111111111'
 second_id='55555555-5555-5555-5555-555555555555'
 printf '%s\n%s\n' "${first_id}" "${second_id}" > "${fake_state}/ids"
