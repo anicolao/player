@@ -549,7 +549,8 @@ final class AccessibilityUITests: PlayerUITestCase {
             app: app,
             container: receiverScreen,
             readiness: receiverScrollReadiness,
-            containerID: "computer-receiver-scroll"
+            containerID: "computer-receiver-scroll",
+            containerElementID: "computer-receiver-screen"
           )
         }
       ) {
@@ -728,14 +729,16 @@ final class AccessibilityUITests: PlayerUITestCase {
     app: XCUIApplication,
     container: XCUIElement,
     readiness: XCUIElement,
-    containerID: String
+    containerID: String,
+    containerElementID: String? = nil
   ) -> Bool {
     let surface = ScrollSurface(
       application: app,
       container: container,
       readiness: readiness,
       containerID: containerID,
-      axis: .vertical
+      axis: .vertical,
+      containerElementID: containerElementID
     )
     return scrollUntil(
       { surface.state()?.atTop == true },

@@ -393,6 +393,12 @@ pattern = (
 raise SystemExit(0 if re.search(pattern, source, flags=re.DOTALL) else 1)
 PY
 done
+rg -U -q --pcre2 \
+  'containerID:\s*"computer-receiver-scroll",\s*containerElementID:\s*"computer-receiver-screen"' \
+  "${accessibility_tests}" \
+  || fail "receiver capture restoration must bind its screen element to the separate scroll-state domain"
+rg -Fq 'container.identifier == (containerElementID ?? containerID)' "${step_helper}" \
+  || fail "scroll readiness must validate the physical container independently from its state-domain identifier"
 
 smart_rewind_capture="$(awk '
   /"smart-rewind-applied"/ { capture = 1 }

@@ -196,9 +196,9 @@ if rg -n -U --regexp 'XCUIDevice\.shared\.press\(\.home\)\n[[:space:]]*app\.acti
 fi
 rg -Fq 'backgroundReceipt.wait(timeout: 2)' \
   "${ui_test_root}/TestStepHelper.swift"
-rg -Fq 'application.wait(for: .runningBackground, timeout: 2)' \
+rg -Fq 'springboard.wait(for: .runningForeground, timeout: 2)' \
   "${ui_test_root}/TestStepHelper.swift" || {
-  echo 'lifecycle hygiene requires a bounded Home-delivery receipt before the scene checkpoint deadline' >&2
+  echo 'lifecycle hygiene requires a bounded SpringBoard Home-delivery receipt before the scene checkpoint deadline' >&2
   exit 1
 }
 python3 - "${ui_test_root}/TestStepHelper.swift" <<'PY'
@@ -207,10 +207,10 @@ from pathlib import Path
 
 source = Path(sys.argv[1]).read_text()
 home = source.index('XCUIDevice.shared.press(.home)')
-background = source.index('application.wait(for: .runningBackground, timeout: 2)', home)
-checkpoint = source.index('backgroundReceipt.wait(timeout: 2)', background)
+springboard = source.index('springboard.wait(for: .runningForeground, timeout: 2)', home)
+checkpoint = source.index('backgroundReceipt.wait(timeout: 2)', springboard)
 activation = source.index('application.activate()', checkpoint)
-if not home < background < checkpoint < activation:
+if not home < springboard < checkpoint < activation:
     raise SystemExit(
         'lifecycle hygiene requires Home delivery, checkpoint completion, then activation'
     )

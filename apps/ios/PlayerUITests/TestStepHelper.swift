@@ -394,9 +394,10 @@ func backgroundAndReactivateApplication(
   guard let backgroundReceipt = DarwinEventReceipt(
     name: "com.spnss.player.e2e.background-checkpoint-completed"
   ) else { return false }
+  let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
 
   XCUIDevice.shared.press(.home)
-  guard application.wait(for: .runningBackground, timeout: 2) else { return false }
+  guard springboard.wait(for: .runningForeground, timeout: 2) else { return false }
   guard backgroundReceipt.wait(timeout: 2) else { return false }
 
   application.activate()
@@ -585,13 +586,14 @@ struct ScrollSurface {
   let readiness: XCUIElement
   let containerID: String
   let axis: E2EScrollAxis
+  var containerElementID: String? = nil
   var permitsGeometrySettledFallback = false
 
   func state() -> ScrollReadinessState? {
     guard let state = ScrollReadinessState(readiness.value),
       state.containerID == containerID,
       state.axis == axis,
-      container.identifier == containerID
+      container.identifier == (containerElementID ?? containerID)
     else { return nil }
     return state
   }
