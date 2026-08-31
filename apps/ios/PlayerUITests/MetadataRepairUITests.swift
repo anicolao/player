@@ -215,6 +215,7 @@ final class MetadataRepairUITests: PlayerUITestCase {
     try adjust(
       cropZoom,
       toNormalizedPosition: 1,
+      in: app,
       until: cropPreview,
       hasValue: zoomedCrop
     )
@@ -222,6 +223,7 @@ final class MetadataRepairUITests: PlayerUITestCase {
     try adjust(
       cropHorizontal,
       toNormalizedPosition: 1,
+      in: app,
       until: cropPreview,
       hasValue: "preview=\(expectedCrop)"
     )
@@ -516,16 +518,17 @@ final class MetadataRepairUITests: PlayerUITestCase {
   private func adjust(
     _ slider: XCUIElement,
     toNormalizedPosition position: CGFloat,
+    in app: XCUIApplication,
     until state: XCUIElement,
     hasValue expected: String
   ) throws {
-    let deadline = EventDeadline()
-    repeat {
-      slider.adjust(toNormalizedSliderPosition: position)
-      if state.waitForStringValue(expected, timeout: min(0.25, deadline.remaining)) {
-        return
-      }
-    } while deadline.remaining > 0
+    if adjustSliderAcknowledged(
+      slider,
+      toNormalizedPosition: position,
+      in: app,
+      receipt: state,
+      satisfies: NSPredicate(format: "value == %@", expected)
+    ) { return }
 
     XCTFail(
       "The crop slider did not publish its required semantic state; expected=\(expected) actual=\(String(describing: state.value))"

@@ -399,11 +399,7 @@ func backgroundAndReactivateApplication(
   guard let backgroundReceipt = DarwinEventReceipt(
     name: "com.spnss.player.e2e.background-checkpoint-completed"
   ) else { return false }
-  let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-
   XCUIDevice.shared.press(.home)
-  springboard.activate()
-  guard springboard.wait(for: .runningForeground, timeout: 2) else { return false }
   guard backgroundReceipt.wait(timeout: 2) else { return false }
 
   application.activate()
@@ -420,6 +416,70 @@ func backgroundAndReactivateApplication(
       && applicationFrame.contains(elementFrame)
   }
   return waitForPredicate(interactive, on: interactiveElement, timeout: 2)
+}
+
+/// Adjusts an idempotent slider until the independently published production
+/// state acknowledges the requested value. The receipt deadline begins only
+/// after synthesis, and a missed gesture may be redelivered only while the
+/// exact foreground slider remains unchanged.
+@MainActor
+func adjustSliderAcknowledged(
+  _ slider: XCUIElement,
+  toNormalizedPosition position: CGFloat,
+  in application: XCUIApplication,
+  receipt: XCUIElement,
+  satisfies receiptPredicate: NSPredicate
+) -> Bool {
+  if receiptPredicate.evaluate(with: receipt) { return true }
+
+  let interactive = NSPredicate { _, _ in
+    guard application.state == .runningForeground,
+      slider.exists,
+      slider.isEnabled,
+      slider.isHittable
+    else { return false }
+    let applicationFrame = application.frame
+    let sliderFrame = slider.frame
+    return !applicationFrame.isEmpty
+      && !sliderFrame.isEmpty
+      && applicationFrame.contains(sliderFrame)
+  }
+  guard waitForPredicate(interactive, on: slider, timeout: 2) else { return false }
+  let sliderFrame = slider.frame
+  var deliveryDeadline: EventDeadline?
+
+  repeat {
+    if receiptPredicate.evaluate(with: receipt) { return true }
+    if let deliveryDeadline {
+      guard application.state == .runningForeground,
+        slider.exists,
+        slider.isEnabled,
+        slider.isHittable,
+        slider.frame == sliderFrame
+      else {
+        return waitForPredicate(
+          receiptPredicate,
+          on: receipt,
+          timeout: deliveryDeadline.remaining
+        )
+      }
+      if deliveryDeadline.remaining <= 0 { break }
+    }
+
+    guard performPhysicalInteractionWithoutPostEventQuiescence(
+      in: application,
+      { slider.adjust(toNormalizedSliderPosition: position) }
+    ) else { return false }
+    if deliveryDeadline == nil { deliveryDeadline = EventDeadline() }
+    guard let deliveryDeadline else { return false }
+    if waitForPredicate(
+      receiptPredicate,
+      on: receipt,
+      timeout: min(0.25, deliveryDeadline.remaining)
+    ) { return true }
+  } while (deliveryDeadline?.remaining ?? 0) > 0
+
+  return receiptPredicate.evaluate(with: receipt)
 }
 
 @MainActor

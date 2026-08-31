@@ -196,27 +196,62 @@ if rg -n -U --regexp 'XCUIDevice\.shared\.press\(\.home\)\n[[:space:]]*app\.acti
 fi
 rg -Fq 'backgroundReceipt.wait(timeout: 2)' \
   "${ui_test_root}/TestStepHelper.swift"
-rg -Fq 'springboard.wait(for: .runningForeground, timeout: 2)' \
-  "${ui_test_root}/TestStepHelper.swift" || {
-  echo 'lifecycle hygiene requires a bounded SpringBoard Home-delivery receipt before the scene checkpoint deadline' >&2
-  exit 1
-}
 python3 - "${ui_test_root}/TestStepHelper.swift" <<'PY'
 import sys
 from pathlib import Path
 
 source = Path(sys.argv[1]).read_text()
 home = source.index('XCUIDevice.shared.press(.home)')
-springboard_activation = source.index('springboard.activate()', home)
-springboard = source.index(
-    'springboard.wait(for: .runningForeground, timeout: 2)',
-    springboard_activation,
-)
-checkpoint = source.index('backgroundReceipt.wait(timeout: 2)', springboard)
+checkpoint = source.index('backgroundReceipt.wait(timeout: 2)', home)
 app_activation = source.index('application.activate()', checkpoint)
-if not home < springboard_activation < springboard < checkpoint < app_activation:
+if not home < checkpoint < app_activation:
     raise SystemExit(
-        'lifecycle hygiene requires Home, SpringBoard convergence, checkpoint, then app activation'
+        'lifecycle hygiene requires Home, the completed production checkpoint, then app activation'
+    )
+segment = source[home:checkpoint]
+if 'springboard.activate()' in segment or '.runningForeground' in segment:
+    raise SystemExit(
+        'lifecycle hygiene rejects sampled SpringBoard state before the stronger production checkpoint'
+    )
+PY
+for slider_source in \
+  "${ui_test_root}/PositionRestoreUITests.swift" \
+  "${ui_test_root}/TransportControlsUITests.swift" \
+  "${ui_test_root}/MetadataRepairUITests.swift"; do
+  rg -Fq 'adjustSliderAcknowledged(' "${slider_source}" || {
+    echo "slider hygiene requires an exact production receipt: ${slider_source}" >&2
+    exit 1
+  }
+done
+python3 - "${ui_test_root}" <<'PY'
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+uses = []
+needle = 'adjust(toNormalizedSliderPosition:'
+for path in sorted(root.glob('*.swift')):
+    count = path.read_text().count(needle)
+    uses.extend([path.name] * count)
+if uses != ['TestStepHelper.swift']:
+    raise SystemExit(
+        'slider hygiene requires exactly one direct XCUI slider adjustment, '
+        f'inside the acknowledged helper; found={uses}'
+    )
+
+source = (root / 'TestStepHelper.swift').read_text()
+helper = source.index('func adjustSliderAcknowledged(')
+synthesis = source.index(
+    'performPhysicalInteractionWithoutPostEventQuiescence(', helper
+)
+deadline = source.index(
+    'if deliveryDeadline == nil { deliveryDeadline = EventDeadline() }',
+    synthesis,
+)
+receipt = source.index('waitForPredicate(', deadline)
+if not helper < synthesis < deadline < receipt:
+    raise SystemExit(
+        'slider hygiene requires physical synthesis before the bounded receipt deadline'
     )
 PY
 rg -Fq 'applicationFrame.contains(elementFrame)' \

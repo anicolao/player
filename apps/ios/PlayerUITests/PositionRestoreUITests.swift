@@ -118,6 +118,7 @@ final class PositionRestoreUITests: PlayerUITestCase {
     let seekedState = try adjustSliderAndRequireAcknowledgement(
       positionSlider,
       to: 0.5,
+      in: app,
       reportingThrough: nowPlaying,
       expectedPositionMilliseconds: seekPositionMilliseconds
     )
@@ -361,10 +362,29 @@ final class PositionRestoreUITests: PlayerUITestCase {
   private func adjustSliderAndRequireAcknowledgement(
     _ slider: XCUIElement,
     to normalizedPosition: CGFloat,
+    in app: XCUIApplication,
     reportingThrough element: XCUIElement,
     expectedPositionMilliseconds: Int
   ) throws -> PlaybackSemanticState {
-    slider.adjust(toNormalizedSliderPosition: normalizedPosition)
+    let acknowledged = NSPredicate { object, _ in
+      guard let element = object as? XCUIElement,
+        let state = PlaybackSemanticState(element.value as? String)
+      else { return false }
+      return state.status == "paused"
+        && state.positionMilliseconds == expectedPositionMilliseconds
+    }
+    guard adjustSliderAcknowledged(
+      slider,
+      toNormalizedPosition: normalizedPosition,
+      in: app,
+      receipt: element,
+      satisfies: acknowledged
+    ) else {
+      XCTFail(
+        "The slider did not acknowledge position=\(expectedPositionMilliseconds); latest=\(String(describing: element.value))"
+      )
+      throw PositionRestoreTestError.semanticStateUnavailable
+    }
     if let state = waitForPlaybackState(
       element,
       status: "paused",

@@ -207,7 +207,19 @@ final class TransportControlsUITests: PlayerUITestCase {
 
     let slider = app.sliders["player-position-slider"]
     XCTAssertTrue(slider.waitForExistence(timeout: 2))
-    slider.adjust(toNormalizedSliderPosition: 0.5)
+    XCTAssertTrue(
+      adjustSliderAcknowledged(
+        slider,
+        toNormalizedPosition: 0.5,
+        in: app,
+        receipt: nowPlaying,
+        satisfies: NSPredicate(
+          format: "value == %@",
+          "player:paused:\(bookID):1:60000"
+        )
+      ),
+      "The position slider must publish its exact playback receipt"
+    )
     try requireValue(nowPlaying, "player:paused:\(bookID):1:60000")
     app.buttons["player-skip-forward"].tap()
     try requireValue(nowPlaying, "player:paused:\(bookID):2:105000")
