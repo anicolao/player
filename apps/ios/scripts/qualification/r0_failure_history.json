@@ -2486,6 +2486,30 @@
       },
       "qualificationResetCount": 1,
       "resetEvidence": "Formal exact-SHA Story 009 passed attempts 01 through 09 at 1cacde68e3a06f23e97b8dd309686566ed80ac89, then attempt 10 failed this framing assertion and reset its consecutive qualification count from nine to zero."
+    },
+    {
+      "signature": "ui-test:003-multifile-grouping:pre-synthesis-delivery-deadline-exhausted",
+      "story": "003-multifile-grouping",
+      "evidence": {
+        "workflowRun": 33345429470,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 003 artifact 9743017606 retains all ten attempts, the exact XCTest result, direct failure screenshot and hierarchy, UIKit touch trace, unified logs, and valid failure-screen provenance",
+        "url": "https://github.com/anicolao/player/actions/runs/33345429470/job/99348654534",
+        "commit": "1fca3751db5cc67c142f0d80214685593ab3e72a",
+        "observation": "Story 003 attempt 03 synthesized the exact frozen Review Order center and UIKit recorded touch delivery through TouchEventsCompleted, but SwiftUI did not acknowledge the action and the enabled origin remained unchanged. Accessibility and frame discovery had consumed roughly one second before synthesis; synthesis consumed the rest, so the subsequent order-probe receipt wait began with 0.0 seconds and the intended unchanged-state redelivery never occurred."
+      },
+      "rootCause": "The bounded physical-delivery loop created its two-second semantic receipt deadline before expensive accessibility existence and frame queries. Under hosted accessibility load, unrelated target discovery and physical synthesis exhausted that deadline before the product-state event could be observed or an idempotent unchanged-origin touch could be redelivered.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "For Review Order, Library Add, and Backup Export, validate and freeze the exact visible target before timing, synthesize without unrelated post-event quiescence, then begin one two-second semantic-receipt deadline. Redeliver only while the exact origin frame and state remain unchanged, stop touching as soon as transition begins, and retain every downstream destination/value assertion.",
+        "commits": [
+          "d7d1f14453defb8f6890770f614fec66a7f5a5a1"
+        ],
+        "validation": "A complete two-architecture simulator build-for-testing succeeds. All 18 qualification-support tests and full E2E hygiene pass; the source contract requires post-synthesis receipt deadlines and frozen-frame invariants in all three delivery helpers. Exact-code hosted run 33349732905 passed all five lanes without a rerun, including complete Story 003, Library Add, Backup Export, all 13 stories, all 41 UI selectors, 372 core tests, fixture gates, and the App Store renderer."
+      },
+      "qualificationResetCount": 1,
+      "resetEvidence": "Formal exact-SHA Story 003 passed attempts 01 and 02 at 1fca3751db5cc67c142f0d80214685593ab3e72a, then attempt 03 failed and reset its consecutive count from two to zero. Later attempts in the same 9/10 job do not recover the required uninterrupted 10/10 qualification."
     }
   ]
 }
