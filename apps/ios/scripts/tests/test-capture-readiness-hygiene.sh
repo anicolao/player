@@ -241,7 +241,8 @@ fi
 for delivery_source in \
   "${multifile_grouping}:tapPhysicalAction:selectTrack" \
   "${library_organization}:presentTabAction:requireValue" \
-  "${ui_test_root}/BackupUITests.swift:tapProductionAction:requireOperation"; do
+  "${ui_test_root}/BackupUITests.swift:tapProductionAction:requireOperation" \
+  "${ui_test_root}/LibrarySearchCoverageUITests.swift:deliverPhysicalAction:tap"; do
   delivery_file="${delivery_source%%:*}"
   delivery_remainder="${delivery_source#*:}"
   delivery_start_name="${delivery_remainder%%:*}"
@@ -264,6 +265,15 @@ for delivery_source in \
   }
   rg -Fq 'frame ==' <<<"${delivery_body}"
 done
+library_search_coverage="${ui_test_root}/LibrarySearchCoverageUITests.swift"
+if rg -n --regexp 'try tap\((menu|item), in: app\)' "${library_search_coverage}" \
+  > "${temporary_root}/search-menu-delivery.log"; then
+  cat "${temporary_root}/search-menu-delivery.log" >&2
+  echo 'Library search hygiene rejects unacknowledged menu action taps' >&2
+  exit 1
+fi
+rg -Fq 'until: itemControl' "${library_search_coverage}"
+rg -Fq 'value != %@' "${library_search_coverage}"
 computer_receiver_tests="${ui_test_root}/../PlayerTests/ComputerReceiverTests.swift"
 rg -Fq 'fileprivate static let webRuntimePrimer = ReceiverWebRuntimePrimer()' \
   "${computer_receiver_tests}"

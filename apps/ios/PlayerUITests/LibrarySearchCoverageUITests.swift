@@ -200,8 +200,100 @@ final class LibrarySearchCoverageUITests: PlayerUITestCase {
   }
 
   private func choose(_ item: String, from menu: String, in app: XCUIApplication) throws {
-    try tap(menu, in: app)
-    try tap(item, in: app)
+    let menuControl = uniquelyIdentifiedElement(app, menu)
+    let itemControl = uniquelyIdentifiedElement(app, item)
+    try deliverPhysicalAction(
+      menuControl,
+      until: itemControl,
+      satisfies: NSPredicate(format: "exists == true"),
+      in: app
+    )
+
+    let probe = uniquelyIdentifiedElement(app, "library-search-results-probe")
+    guard probe.exists, let previousValue = probe.value.map(String.init(describing:)) else {
+      XCTFail("The search menu had no semantic state before selecting \(item)")
+      throw LibrarySearchCoverageError.stateUnavailable
+    }
+    try deliverPhysicalAction(
+      itemControl,
+      until: probe,
+      satisfies: NSPredicate(format: "exists == true AND value != %@", previousValue),
+      in: app
+    )
+  }
+
+  private func deliverPhysicalAction(
+    _ action: XCUIElement,
+    until receipt: XCUIElement,
+    satisfies receiptPredicate: NSPredicate,
+    in app: XCUIApplication
+  ) throws {
+    if receiptPredicate.evaluate(with: receipt) { return }
+    guard action.exists, action.isEnabled, action.isHittable else {
+      XCTFail("The search menu expected its enabled physical action")
+      throw LibrarySearchCoverageError.stateUnavailable
+    }
+    let actionFrame = action.frame
+    let appFrame = app.frame
+    guard !actionFrame.isEmpty,
+      !appFrame.isEmpty,
+      appFrame.contains(actionFrame)
+    else {
+      XCTFail("The search menu expected a visible action target")
+      throw LibrarySearchCoverageError.stateUnavailable
+    }
+    let coordinate = app.coordinate(
+      withNormalizedOffset: CGVector(
+        dx: (actionFrame.midX - appFrame.minX) / appFrame.width,
+        dy: (actionFrame.midY - appFrame.minY) / appFrame.height
+      )
+    )
+
+    var deliveryDeadline: EventDeadline?
+    repeat {
+      if let deliveryDeadline {
+        if receiptPredicate.evaluate(with: receipt) { return }
+        guard action.exists, action.isEnabled, action.frame == actionFrame else {
+          if waitForPredicate(
+            receiptPredicate,
+            on: receipt,
+            timeout: deliveryDeadline.remaining
+          ) { return }
+          XCTFail("The search menu transitioned without publishing its semantic receipt")
+          throw LibrarySearchCoverageError.stateUnavailable
+        }
+        if deliveryDeadline.remaining <= 0 { break }
+      }
+      guard performPhysicalInteractionWithoutPostEventQuiescence(
+        in: app,
+        { coordinate.tap() }
+      ) else {
+        XCTFail("The pinned XCTest runtime did not expose bounded physical synthesis")
+        throw LibrarySearchCoverageError.stateUnavailable
+      }
+      if deliveryDeadline == nil { deliveryDeadline = EventDeadline() }
+      guard let deliveryDeadline else {
+        XCTFail("The search menu could not establish its delivery deadline")
+        throw LibrarySearchCoverageError.stateUnavailable
+      }
+      if waitForPredicate(
+        receiptPredicate,
+        on: receipt,
+        timeout: min(0.25, deliveryDeadline.remaining)
+      ) { return }
+      if !action.exists || !action.isEnabled || action.frame != actionFrame {
+        if waitForPredicate(
+          receiptPredicate,
+          on: receipt,
+          timeout: deliveryDeadline.remaining
+        ) { return }
+        XCTFail("The search menu lost its action before publishing its semantic receipt")
+        throw LibrarySearchCoverageError.stateUnavailable
+      }
+    } while (deliveryDeadline?.remaining ?? 0) > 0
+
+    XCTFail("The search menu action did not publish its semantic receipt")
+    throw LibrarySearchCoverageError.stateUnavailable
   }
 
   private func tap(_ identifier: String, in app: XCUIApplication) throws {
