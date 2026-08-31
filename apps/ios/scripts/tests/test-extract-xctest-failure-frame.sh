@@ -82,13 +82,27 @@ jq -e '
 direct="${test_root}/direct-screenshot"
 mkdir -p "${direct}/Attachments" "${direct}/Diagnostics"
 cp "${valid}/Diagnostics/failure-screen.png" "${direct}/Attachments/failure.png"
+cp "${valid}/Diagnostics/failure-screen.png" "${direct}/Attachments/later-passing.png"
 cp "${valid}/Attachments/older.mp4" "${direct}/Attachments/older.mp4"
+cp "${valid}/Attachments/older.mp4" "${direct}/Attachments/later-passing.mp4"
 jq -n '[{testIdentifier: "PlayerUITests/Failure/testExample()",
   attachments: [
+    {exportedFileName: "issue.txt",
+      suggestedHumanReadableName: "Complete Issue Description.txt",
+      isAssociatedWithFailure: true},
     {exportedFileName: "older.mp4",
       suggestedHumanReadableName: "Screen Recording fixture.mp4", timestamp: 300},
     {exportedFileName: "failure.png",
       suggestedHumanReadableName: "xctest-failure-screen_0_66A67D4C-8F3E-4D49-96B7-BBF13DCF045F.png", timestamp: 200}
+  ]},
+  {testIdentifier: "PlayerUITests/Passing/testLater()",
+   attachments: [
+    {exportedFileName: "later-passing.mp4",
+      suggestedHumanReadableName: "Screen Recording later.mp4", timestamp: 500,
+      isAssociatedWithFailure: false},
+    {exportedFileName: "later-passing.png",
+      suggestedHumanReadableName: "xctest-failure-screen_0_77777777-7777-7777-7777-777777777777.png",
+      timestamp: 400, isAssociatedWithFailure: false}
   ]}]' > "${direct}/Attachments/manifest.json"
 swift "${extractor}" "${direct}/Attachments" \
   "${direct}/Diagnostics/failure-screen.png" \

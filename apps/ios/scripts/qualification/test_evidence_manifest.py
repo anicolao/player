@@ -299,6 +299,11 @@ class EvidenceManifestTests(unittest.TestCase):
             "testIdentifier": "PlayerUITests/Failure/testExample()",
             "attachments": [
                 {
+                    "exportedFileName": "issue.txt",
+                    "suggestedHumanReadableName": "Complete Issue Description.txt",
+                    "isAssociatedWithFailure": True,
+                },
+                {
                     "exportedFileName": "recording.mp4",
                     "suggestedHumanReadableName": "Screen Recording 2026-08-28.mp4",
                     "timestamp": 100.0,
@@ -332,6 +337,22 @@ class EvidenceManifestTests(unittest.TestCase):
         self.assertTrue(manifest["validation"]["valid"])
         self.assertEqual(errors, [])
 
+        later_passing = attempt / "Attachments/later-passing.mp4"
+        later_passing.write_bytes(b"\x00\x00\x00\x14ftypqt  \x00\x00\x00\x00")
+        attachments.append({
+            "testIdentifier": "PlayerUITests/Passing/testLater()",
+            "attachments": [{
+                "exportedFileName": "later-passing.mp4",
+                "suggestedHumanReadableName": "Screen Recording later.mp4",
+                "timestamp": 400.0,
+                "isAssociatedWithFailure": False,
+            }],
+        })
+        write_json(attempt / "Attachments/manifest.json", attachments)
+        manifest, errors = self.write_and_validate(attempt)
+        self.assertTrue(manifest["validation"]["valid"])
+        self.assertEqual(errors, [])
+
         corrupt_newer = attempt / "Attachments/corrupt-newer.mp4"
         corrupt_newer.write_bytes(b"nonempty but corrupt")
         attachments[0]["attachments"].append({
@@ -350,11 +371,18 @@ class EvidenceManifestTests(unittest.TestCase):
         attachment.write_bytes(PNG_1X1)
         attachments = [{
             "testIdentifier": "PlayerUITests/Failure/testExample()",
-            "attachments": [{
-                "exportedFileName": "failure.png",
-                "suggestedHumanReadableName": "xctest-failure-screen_0_66A67D4C-8F3E-4D49-96B7-BBF13DCF045F.png",
-                "timestamp": 200.0,
-            }],
+            "attachments": [
+                {
+                    "exportedFileName": "issue.txt",
+                    "suggestedHumanReadableName": "Complete Issue Description.txt",
+                    "isAssociatedWithFailure": True,
+                },
+                {
+                    "exportedFileName": "failure.png",
+                    "suggestedHumanReadableName": "xctest-failure-screen_0_66A67D4C-8F3E-4D49-96B7-BBF13DCF045F.png",
+                    "timestamp": 200.0,
+                },
+            ],
         }]
         write_json(attempt / "Attachments/manifest.json", attachments)
         self.assertFalse(evidence.build_manifest(
@@ -375,6 +403,22 @@ class EvidenceManifestTests(unittest.TestCase):
         failure = json.loads(failure_path.read_text())
         failure["failureScreen"] = source
         write_json(failure_path, failure)
+        manifest, errors = self.write_and_validate(attempt)
+        self.assertTrue(manifest["validation"]["valid"])
+        self.assertEqual(errors, [])
+
+        later_passing = attempt / "Attachments/later-passing.png"
+        later_passing.write_bytes(PNG_1X1)
+        attachments.append({
+            "testIdentifier": "PlayerUITests/Passing/testLater()",
+            "attachments": [{
+                "exportedFileName": "later-passing.png",
+                "suggestedHumanReadableName": "xctest-failure-screen_0_77777777-7777-7777-7777-777777777777.png",
+                "timestamp": 400.0,
+                "isAssociatedWithFailure": False,
+            }],
+        })
+        write_json(attempt / "Attachments/manifest.json", attachments)
         manifest, errors = self.write_and_validate(attempt)
         self.assertTrue(manifest["validation"]["valid"])
         self.assertEqual(errors, [])

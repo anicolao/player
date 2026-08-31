@@ -239,11 +239,26 @@ def png_dimensions(path: Path):
         return None
 
 
+def failure_scoped_attachment_groups(attachments):
+    if not isinstance(attachments, list):
+        return []
+    failed = [
+        group for group in attachments
+        if isinstance(group, dict)
+        and any(
+            isinstance(attachment, dict)
+            and attachment.get("isAssociatedWithFailure") is True
+            for attachment in group.get("attachments", [])
+        )
+    ]
+    return failed or attachments
+
+
 def screen_recording_candidates(root: Path, attachments, errors):
     candidates = []
     if not isinstance(attachments, list):
         return candidates
-    for group in attachments:
+    for group in failure_scoped_attachment_groups(attachments):
         if not isinstance(group, dict):
             continue
         test_identifier = group.get("testIdentifier")
@@ -284,7 +299,7 @@ def failure_screenshot_candidates(root: Path, attachments, errors):
     candidates = []
     if not isinstance(attachments, list):
         return candidates
-    for group in attachments:
+    for group in failure_scoped_attachment_groups(attachments):
         if not isinstance(group, dict):
             continue
         test_identifier = group.get("testIdentifier")

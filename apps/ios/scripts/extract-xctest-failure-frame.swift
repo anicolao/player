@@ -15,6 +15,7 @@ private struct ExportedAttachment: Decodable {
   let exportedFileName: String
   let suggestedHumanReadableName: String
   let timestamp: Double?
+  let isAssociatedWithFailure: Bool?
 }
 
 private struct Candidate {
@@ -181,6 +182,13 @@ private func requireRegularFile(_ url: URL) throws -> URLResourceValues {
   return values
 }
 
+private func failureScopedGroups(_ groups: [AttachmentGroup]) -> [AttachmentGroup] {
+  let failed = groups.filter { group in
+    group.attachments.contains { $0.isAssociatedWithFailure == true }
+  }
+  return failed.isEmpty ? groups : failed
+}
+
 private func loadCandidate(from attachmentsURL: URL) throws -> Candidate {
   let manifestURL = attachmentsURL.appending(path: "manifest.json")
   _ = try requireRegularFile(manifestURL)
@@ -192,7 +200,7 @@ private func loadCandidate(from attachmentsURL: URL) throws -> Candidate {
   }
 
   var candidates: [Candidate] = []
-  for group in groups {
+  for group in failureScopedGroups(groups) {
     for attachment in group.attachments {
       let name = attachment.exportedFileName
       guard attachment.suggestedHumanReadableName.hasPrefix("Screen Recording "),
@@ -238,7 +246,7 @@ private func loadFailureScreenshotCandidate(from attachmentsURL: URL) throws -> 
   }
 
   var candidates: [Candidate] = []
-  for group in groups {
+  for group in failureScopedGroups(groups) {
     for attachment in group.attachments {
       guard isFailureScreenshotName(attachment.suggestedHumanReadableName) else {
         continue
