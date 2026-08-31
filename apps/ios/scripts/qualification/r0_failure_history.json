@@ -2558,6 +2558,368 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run, not a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "ui-test:BookmarkUITests.testBookmarksCaptureOrganizeSearchJumpDeleteAndUndoExactly:add-bookmark-touch-unacknowledged",
+      "story": "007-sleep-timer",
+      "evidence": {
+        "workflowRun": 33362158118,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 007 artifact 9749840380 retains all ten attempts, the exact attempt-09 XCTest result, direct failure screenshot and hierarchy, synthesized-event trace, valid failure-screen provenance, and complete attempt evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33362158118/job/99395615312",
+        "commit": "f446109a5624405b0afc76356bb76a4035b26a49",
+        "observation": "Story 007 attempts 01 through 08 passed, attempt 09 failed, and attempt 10 passed. Attempt 09 synthesized the conventional Add Bookmark tap at t=68.09s, but the exact bookmark-saved receipt never appeared; the retained idle Now Playing screen still showed the enabled bookmark action and no saved banner. The action was therefore not accepted, while the other nine attempts and retained evidence remained valid."
+      },
+      "rootCause": "The bookmark journey treated return from XCTest's conventional element-bound tap as proof that SwiftUI accepted the asynchronous add action. Because the production button exposed no synchronous in-progress state, a missed touch left both the origin and final receipt unchanged and the test had no safe, receipt-correlated opportunity to redeliver it.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Expose a synchronous saving state that disables the production Add Bookmark button before launching its asynchronous mutation. Freeze the exact visible action coordinate, synthesize without unrelated post-event quiescence, and start the two-second delivery deadline only after synthesis; accept either the disabled origin or exact final bookmark receipt and redeliver only while both remain absent. Duplicate saves are prevented, with no sleep, timeout increase, rerun, or coverage reduction.",
+        "commits": [
+          "f619b5ae92ed1af8c7e233d8eb3fb11f54e6de1b"
+        ],
+        "validation": "The source-hygiene gate rejects a restored unacknowledged Add Bookmark tap and requires both the synchronous production disabled state and the shared post-synthesis receipt helper. A clean arm64 E2E build succeeded, and the exact Bookmark selector passed its complete capture, edit, sort, search, jump, delete, persistence, undo, and relaunch journey in 75.939 seconds."
+      },
+      "qualificationResetCount": 1,
+      "resetEvidence": "Formal exact-SHA Story 007 passed attempts 01 through 08 at f446109a5624405b0afc76356bb76a4035b26a49, then attempt 09 failed and reset that story's consecutive qualification count from eight to zero. Attempt 10 in the same job does not recover the required uninterrupted 10/10 qualification."
+    },
+    {
+      "signature": "ui-test:OfflineRecoveryUITests.testRecoversStartupAndExportsOnlySanitizedOfflineDiagnostics:diagnostics-action-accepted-before-completion-receipt",
+      "story": "011-offline-recovery",
+      "evidence": {
+        "workflowRun": 33362158118,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 011 artifact 9750203240 retains all ten attempts, the exact attempt-10 XCTest result, direct failure screenshot and hierarchy, semantic diagnostics probes, valid failure-screen provenance, and complete attempt evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33362158118/job/99395615335",
+        "commit": "f446109a5624405b0afc76356bb76a4035b26a49",
+        "observation": "Story 011 attempts 01 through 09 passed. Attempt 10 accepted the Verify sanitized support bundle action: the retained screen showed the disabled working state and Preparing sanitized report progress. The asynchronous offline-recovery diagnostics probe nevertheless remained diagnostics:pending when the test's single two-second wait expired, so the accepted delivery and later completion were incorrectly measured against one undifferentiated boundary."
+      },
+      "rootCause": "The verification journey used a conventional tap followed by one final-value timeout, even though production first accepts the action synchronously and then prepares, verifies, discards, and publishes the sanitized result asynchronously. It had neither a formal delivery receipt nor a fresh completion deadline, so a valid accepted action could consume the entire observation budget before accessibility published the final probe.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Set the production E2E verification working state synchronously in the button action, use its disabled state or the exact final probe as the bounded delivery receipt, then require the exact sanitized completion value under a fresh independent two-second event deadline. Duplicate work is prevented, with no sleep, timeout increase, rerun, or coverage reduction.",
+        "commits": [
+          "f619b5ae92ed1af8c7e233d8eb3fb11f54e6de1b",
+          "310ef57eb3318c5fbecef5118983a7ab5a202cef"
+        ],
+        "validation": "The source-hygiene gate rejects the former unacknowledged Verify tap and requires the synchronous working state plus shared delivery helper. A clean arm64 E2E build succeeded, and the exact Offline Recovery selector passed in 70.097 seconds with every recovery and export assertion, exact pixel matches for all three canonical screenshots, and an exact walkthrough README match."
+      },
+      "qualificationResetCount": 1,
+      "resetEvidence": "Formal exact-SHA Story 011 passed attempts 01 through 09 at f446109a5624405b0afc76356bb76a4035b26a49, then attempt 10 failed and reset that story's consecutive qualification count from nine to zero."
+    },
+    {
+      "signature": "ui-test:PositionRestoreUITests.testLiveProgressUpdatesMiniAndFullPlayerAcrossLifecycle:springboard-foreground-before-bookshelf-background-completion",
+      "story": "005-play-and-restore",
+      "evidence": {
+        "workflowRun": 33362158118,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 005 artifact 9754492252 retains all ten attempts, the exact attempt-02 XCTest result, direct failure screenshot and hierarchy, lifecycle logs, valid failure-screen provenance, all four pixel-exact walkthrough comparisons, and complete attempt evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33362158118/job/99395615361",
+        "commit": "f446109a5624405b0afc76356bb76a4035b26a49",
+        "observation": "Story 005 attempt 01 passed, attempt 02 failed, and attempts 03 through 10 passed. In attempt 02 SpringBoard reported runningForeground at t=73.85s and the helper immediately activated Bookshelf, but Bookshelf did not begin its Home-triggered deactivation until roughly 1.7 seconds later. Home therefore won the transition: the exact Progress 90 control never became foreground-interactive, its retained debug query still showed a stale transition snapshot, and the valid failure screenshot showed SpringBoard. Every other selector and all four screenshot comparisons passed."
+      },
+      "rootCause": "SpringBoard's runningForeground state is published before the outgoing application necessarily completes its own Home transition. The lifecycle helper treated SpringBoard foreground ownership alone as completion and reactivated Bookshelf while its delayed deactivation was still pending; the later Home completion returned control to SpringBoard. The prior fix correctly prevented dispatching a touch to SpringBoard, but lacked the separate Bookshelf runningBackground receipt needed before requesting reactivation.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "First require Bookshelf to enter the background, then use the final domain-level repair: register a Darwin receipt before Home and require the production scenePhase background checkpoint to complete before reactivation. Retain the exact app-contained foreground-interactive receipt and bounded physical synthesis, with no sleep, activation retry, timeout increase, rerun, or coverage reduction.",
+        "commits": [
+          "2b399ed3599d85729824ddb223931defa4d249a6",
+          "ee710c41c2ee24c54d183d99c82cd94f3555306d"
+        ],
+        "validation": "The source-hygiene gate requires the production background-checkpoint completion receipt before activation. A clean arm64 E2E build succeeded, the exact Position Restore selector passed locally, and normal hosted run 33392110023 passed all of lane 2 at ee710c41c2ee24c54d183d99c82cd94f3555306d, including the complete live progress, mini/full-player, Home lifecycle, seek, pause, and relaunch journey."
+      },
+      "qualificationResetCount": 1,
+      "resetEvidence": "Formal exact-SHA Story 005 passed attempt 01 at f446109a5624405b0afc76356bb76a4035b26a49, then attempt 02 failed and reset that story's consecutive qualification count from one to zero. Later attempts in the same 9/10 job do not recover the required uninterrupted 10/10 qualification."
+    },
+    {
+      "signature": "ui-test:PositionRestoreUITests.testLiveProgressUpdatesMiniAndFullPlayerAcrossLifecycle:running-background-before-checkpoint-completion",
+      "story": "005-play-and-restore",
+      "evidence": {
+        "workflowRun": 33387101232,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 005 artifact 9757052453 retains the exact XCTest result, direct failure screenshot, screen recording, accessibility queries, semantic diagnostics, and complete failure evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33387101232/job/99472083015",
+        "commit": "2b399ed3599d85729824ddb223931defa4d249a6",
+        "observation": "SpringBoard reached runningForeground and Bookshelf reached runningBackground, but the exact Progress 90 control never became foreground-interactive. The retained trace proves the process-state receipt completed while the production scenePhase background task and durable playback checkpoint were still outstanding; no progress touch was dispatched."
+      },
+      "rootCause": "XCUIApplication runningBackground describes process state, not completion of the asynchronous SwiftUI scenePhase background work. Reactivating immediately after that process receipt could cancel or race the durable playback checkpoint, so neither SpringBoard ownership nor application state was a sufficient domain completion event.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Publish a Darwin notification only after the production background checkpoint finishes, register the receipt before pressing Home, and require it within the existing two-second event boundary before activation. The same helper protects both lifecycle journeys, with no sleep, retry, timeout increase, or coverage reduction.",
+        "commits": [
+          "ee710c41c2ee24c54d183d99c82cd94f3555306d"
+        ],
+        "validation": "The source-hygiene contract requires the post-checkpoint receipt and rejects direct Home/reactivation races. Normal hosted run 33392110023 passed all of lane 2 at ee710c41c2ee24c54d183d99c82cd94f3555306d, including both Position Restore selectors, Remote Interruption, Transport Controls, Smart Rewind, Offline Recovery, and Multifile Grouping."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run, not a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "infrastructure:004-metadata-repair:xcode-app-launch-transaction-timeout-after-shared-host-attempts",
+      "story": "004-metadata-repair",
+      "evidence": {
+        "workflowRun": 33362158118,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 004 artifact 9755339412 retains all ten attempts and the exact attempt-08 XCTest result, launch failure issue description, failure screenshots, screen recording, Xcode logs, and complete attempt evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33362158118/job/99395615414",
+        "commit": "f446109a5624405b0afc76356bb76a4035b26a49",
+        "observation": "Story 004 attempts 01 through 07 passed. On attempt 08 the XCTest runner began, but Xcode spent about 69 seconds in the first Bookshelf launch transaction and failed before the application process existed with 'Timed out while launching application via Xcode.' The second selector then launched and passed with all four pixel comparisons exact or within tolerance; attempts 09 and 10 also passed. No product assertion or two-second application condition caused the failure."
+      },
+      "rootCause": "The formal topology isolated simulator data but ran ten measured attempts inside one long-lived hosted job, reusing per-user Xcode, CoreSimulator, and test-management service state. That did not satisfy the plan's clean-host equivalence requirement and allowed an accumulated pre-product launch-channel failure to invalidate a later attempt even though the application never began.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Publish every story-attempt pair as its own fresh macOS job and every matrix-lane-attempt pair as its own fresh job. Build the exact SHA once, checksum and provenance-bind the immutable products, then verify them on every consumer. This preserves all 130 story attempts and 25 matrix lanes while removing cross-attempt host state and repeated software installation.",
+        "commits": [
+          "60e6cf8b38f29aeec50ba916e621563a4b1d57ad"
+        ],
+        "validation": "All 50 fail-closed aggregation tests accept only the complete 13-by-10 and 5-by-5 Cartesian products and reject missing or duplicate fragments. Shell syntax, workflow YAML, shared-build checksum/provenance round-trip, environment, and E2E hygiene contracts pass locally. The one permitted final exact-SHA qualification is the empirical acceptance gate for the fresh-host topology."
+      },
+      "qualificationResetCount": 1,
+      "resetEvidence": "Formal exact-SHA Story 004 passed attempts 01 through 07 at f446109a5624405b0afc76356bb76a4035b26a49, then the pre-product Xcode launch failure on attempt 08 reset that story's consecutive qualification count from seven to zero. Attempts 09 and 10 in the same job do not recover the required uninterrupted 10/10 qualification."
+    },
+    {
+      "signature": "ui-test:AccessibilityUITests.testCoreJourneysRemainCompleteAtLargestAccessibilityText:system-banner-dismissal-moved-top-capture",
+      "story": "009-accessible-core-journeys",
+      "evidence": {
+        "workflowRun": 33392110023,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 009 artifact 9758743402 retains the exact XCTest result, direct failure screenshot, accessibility hierarchy, system-banner handling trace, semantic capture-readiness diagnostics, and complete failure evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33392110023/job/99487933136",
+        "commit": "ee710c41c2ee24c54d183d99c82cd94f3555306d",
+        "observation": "The Review Import top-capture readiness probe initially succeeded. An Apple Intelligence notification then appeared between readiness and capture; dismissing it required an upward SpringBoard drag that also moved the underlying Review Import scroll view. The final readiness check correctly failed because the screen was no longer atTop, and the retained screenshot showed the title and artwork above the header with only metadata and the add action remaining in view."
+      },
+      "rootCause": "System-banner dismissal can mutate the underlying application's scroll position even after semantic capture readiness succeeds. The top-capture path reran the readiness check but had no semantic prime capable of restoring the requested endpoint after that external gesture.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "After system interruption handling, semantically prime every top-anchored scroll capture back to its accessibility endpoint and require the existing atTop readiness probe before capture. Review Import, Up Next, and Computer Receiver use bounded event-driven scrollUntil operations with no sleep, timeout increase, rerun, or coverage reduction.",
+        "commits": [
+          "864283184f309f295ee0141e19a826c35adb6a74"
+        ],
+        "validation": "The source-hygiene gate requires the semantic top restoration for all three affected capture surfaces. The formerly failing Review Import capture passed locally with exact readiness and screenshot checks. In normal hosted run 33402091403, both the Review Import and Metadata Repair captures completed before the journey encountered a separate Book Detail framing receipt defect, confirming the banner recovery itself on the hosted environment."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run, not a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "ui-test:PositionRestoreUITests.testLiveProgressUpdatesMiniAndFullPlayerAcrossLifecycle:home-delivery-consumed-checkpoint-deadline",
+      "story": "005-play-and-restore",
+      "evidence": {
+        "workflowRun": 33402091403,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 005 artifact 9762782794 retains the exact XCTest result, SpringBoard failure screenshot, lifecycle trace, semantic probes, valid failure-screen provenance, and complete story evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33402091403/job/99520625025",
+        "commit": "864283184f309f295ee0141e19a826c35adb6a74",
+        "observation": "The helper registered the production checkpoint receipt, pressed Home, and immediately spent its one two-second checkpoint deadline while Bookshelf still had not published runningBackground. The retained failure screenshot at t=37.20s remained SpringBoard and no reactivation occurred; the lifecycle boundary failed before any progress action was dispatched."
+      },
+      "rootCause": "The helper collapsed physical Home delivery and asynchronous checkpoint completion into one deadline. On a hosted transition where Home delivery itself consumed the observation budget, the domain checkpoint had no independent bounded opportunity to complete even though both events were required and causally ordered.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "After Home, first require Bookshelf's runningBackground process receipt under its own two-second event boundary, then require the already-registered production checkpoint receipt under a fresh two-second boundary before activation. Preserve the exact foreground-interactive and playback receipts with no sleep, retry, or timeout increase.",
+        "commits": [
+          "39eafd4b8a029a836ab54253be33ec459380cb1c"
+        ],
+        "validation": "Lifecycle source hygiene requires the exact Home, runningBackground, checkpoint, activation order. The exact Position Restore selector passed its complete local lifecycle and playback journey in 20.729 seconds after the repair."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run, not a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "core-test:MirroringDropAdapterTests.testMaterializesFileProviderWithoutSecondPhysicalCopyAndCleansSession:provider-temporary-representation-link-count",
+      "story": "core",
+      "evidence": {
+        "workflowRun": 33402091403,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions lane-1 summary artifact 9762887004 retains the complete core XCTest result, fixture log, and exact failed assertion after 371 other core tests passed",
+        "url": "https://github.com/anicolao/player/actions/runs/33402091403/job/99520625048",
+        "commit": "864283184f309f295ee0141e19a826c35adb6a74",
+        "observation": "The adapter destination contained the expected bytes and cleanup behavior, but the test observed a hard-link count of one instead of at least two after obtaining the source through a real NSItemProvider. The provider is allowed to copy, replace, or delete its own temporary file representation before the adapter receives it, so the assertion measured provider implementation behavior rather than the adapter's no-second-copy contract."
+      },
+      "rootCause": "The test asserted inode linkage across the NSItemProvider abstraction, outside the ownership boundary of MirroringDropAdapter. NSItemProvider only promises a temporary file representation, not that its delivered URL remains hard-linked to the original registration fixture.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Inject the adapter's MirroringItemProvider boundary directly for the no-second-copy test and return the controlled source from loadFile, so hard-link identity is asserted only across code owned by the adapter. Retain the other tests that exercise real NSItemProvider integration and all cleanup and byte assertions.",
+        "commits": [
+          "39eafd4b8a029a836ab54253be33ec459380cb1c"
+        ],
+        "validation": "The exact repaired core selector compiled and passed locally in 0.010 seconds. The full source and qualification hygiene suites pass without reducing the core-test target or UI-story manifest."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run, not a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "ui-test:AccessibilityUITests.testCoreJourneysRemainCompleteAtLargestAccessibilityText:short-pan-completed-geometry-without-interaction-id",
+      "story": "009-accessible-core-journeys",
+      "evidence": {
+        "workflowRun": 33402091403,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 009 artifact 9762965001 retains the exact XCTest result, direct failure screenshot and hierarchy, scroll readiness probe, semantic logs, valid failure-screen provenance, and partial pixel comparisons",
+        "url": "https://github.com/anicolao/player/actions/runs/33402091403/job/99520624932",
+        "commit": "864283184f309f295ee0141e19a826c35adb6a74",
+        "observation": "The small corrective Book Detail pan advanced geometry and offset to 300.333, returned phase=idle, and published completion-geometry=66 equal to geometry=66. SwiftUI did not increment the interaction and completion IDs for that short physical pan, so the helper rejected the complete settled geometry receipt and failed framing even though the retained screenshot showed the narrator near the requested position."
+      },
+      "rootCause": "Capture framing required the high-level scroll interaction IDs to advance even when the production readiness bridge had already acknowledged newer geometry, an idle phase, meaningful progress, and a completion geometry exactly matching the current geometry. Short pans can complete through that lower-level semantic path without SwiftUI opening a new tracked interaction phase.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Accept a corrective pan only when geometry is newer, movement progressed toward the target, the scroll is idle, and completionGeometryID equals the current geometryID; retain the stronger interaction-ID receipt when it is published. This is an event receipt, not a list-only fallback, sleep, retry, or enlarged timeout.",
+        "commits": [
+          "39eafd4b8a029a836ab54253be33ec459380cb1c"
+        ],
+        "validation": "Capture-readiness hygiene requires the completed-current-geometry receipt. The exact local accessibility selector passed the formerly failing Book Detail framing and emitted 002-large-text-book-detail.png; its later failure was the expected consequence of invoking xcodebuild directly without run-e2e's required system Increase Contrast configuration, outside this repair."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run, not a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "infrastructure:013-app-store-listing:xcode-app-launch-timeout-after-shared-normal-lane-stories",
+      "story": "013-app-store-listing",
+      "evidence": {
+        "workflowRun": 33402091403,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 013 artifact 9762971188 retains the exact first-selector XCTest result, launch failure description, diagnostics, screenshot, screen recording, and complete failure evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33402091403/job/99520624932",
+        "commit": "864283184f309f295ee0141e19a826c35adb6a74",
+        "observation": "Story 013 was the third story on normal lane 5 after Stories 006 and 009. Its first and only selector entered Xcode's initial app-launch transaction, spent about 69 seconds there, and failed before a Bookshelf application process existed. This reproduces in normal CI the same cross-story hosted Xcode service-state failure class seen in formal Story 004."
+      },
+      "rootCause": "The five-lane normal topology reused one hosted macOS account's Xcode, CoreSimulator, and test-management service state across multiple complete stories. Simulator data cleanup did not reset those per-user services, so a later story could fail before product launch after earlier stories had used the same host.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Build and provenance-bind the E2E product once, then run each of all 13 canonical stories and the complete core gate on separate fresh macOS jobs. Verify the shared artifact checksum, exact source, generated project, toolchain, and provenance on every consumer while exposing all story jobs to the scheduler's concurrency limit.",
+        "commits": [
+          "39eafd4b8a029a836ab54253be33ec459380cb1c"
+        ],
+        "validation": "Workflow YAML, shell syntax, all 68 qualification-support tests, and full E2E hygiene pass locally. The fail-closed contract proves all 13 stories remain exactly once, the full core target remains once, Nix and compilation occur only in the producer, and both consumer classes verify the immutable build; the candidate normal CI run is the hosted acceptance gate."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run, not a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "infrastructure:normal-ci:fresh-host-missing-ripgrep",
+      "story": "core",
+      "evidence": {
+        "workflowRun": 33409434723,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions retained each of the 14 fresh consumer job logs; every log records successful checkout, shared-artifact download and checksum verification followed by the same fail-closed environment error before test execution",
+        "url": "https://github.com/anicolao/player/actions/runs/33409434723/job/99548466061",
+        "commit": "3200f1e5c3d3d8a92344571c69063ecb2ff84f44",
+        "observation": "The shared build producer passed. All 13 story consumers and the core consumer then downloaded and checksum-verified its artifact, but verify-e2e-environment stopped before provenance verification or test execution with 'Required E2E command is unavailable: rg'. The stock macos-26 image included jq but not ripgrep; no UI selector or core test began."
+      },
+      "rootCause": "Moving measured consumers out of the Nix development shell removed repeated setup but also removed ripgrep, which successful E2E paths use for environment enforcement and failure diagnostics and the core fixture gates use directly. The topology had verified the artifact but had not made its non-Xcode runtime tool dependency self-contained.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Download the official arm64 Darwin ripgrep release once in each shared-build producer, verify its pinned SHA-256 and exact version, include it in the checksummed build artifact, and activate it for both normal consumer classes and both formal consumer classes. Consumers remain Nix-free and no measured test coverage is removed.",
+        "commits": [
+          "91ab6e63a3972d296d072a60f44ac75dc1ca4fdd"
+        ],
+        "validation": "The official ripgrep 15.2.0 archive passed its pinned checksum and exact-version check, then passed a local tar/extract/clean-PATH round trip. Workflow YAML, shell syntax, full E2E hygiene, and all 68 qualification-support tests pass; hygiene requires one packaged toolset per producer and activation in every fresh consumer class."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run and no test process began, so it reset no accepted formal consecutive qualification count."
+    },
+    {
+      "signature": "infrastructure:normal-ci:isolated-story-output-parent-absent",
+      "story": "001-ios-launch",
+      "evidence": {
+        "workflowRun": 33411222913,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions retained each fresh story job log; the logs prove shared-build checksum, portable-tool environment, generated-project, and provenance verification passed before run-e2e rejected the absent output parent",
+        "url": "https://github.com/anicolao/player/actions/runs/33411222913/job/99554619476",
+        "commit": "91ab6e63a3972d296d072a60f44ac75dc1ca4fdd",
+        "observation": "Fresh Story 001 reached the canonical runner after all immutable-build checks passed, then exited in 0.09 seconds with 'The E2E output parent does not exist: .../apps/ios/DerivedData/E2E'. Other story consumers reported the same pre-attempt contract failure. The old shard wrapper had created this parent; the direct fresh-story workflow had not."
+      },
+      "rootCause": "run-e2e intentionally refuses to create an unresolved caller-selected output parent, but the new direct normal-CI caller delegated that responsibility to a removed shard wrapper. Fresh checkouts therefore had no DerivedData/E2E directory even though the fully resolved per-story child path was valid and isolated.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Create the fixed repository-scoped DerivedData/E2E parent immediately before invoking the one canonical story; continue passing the resolved story child to run-e2e and retain its fail-closed parent contract. Add source hygiene that requires this initialization exactly once in normal CI.",
+        "commits": [
+          "32921ec0a3001bb782eb05ae007cb13025208c3c"
+        ],
+        "validation": "Workflow YAML, shell syntax, full E2E hygiene, and the canonical 13-story manifest contract pass. The change creates only the fixed output parent and does not alter selectors, test conditions, event deadlines, build provenance, or coverage."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run and no XCTest attempt began, so it reset no accepted formal consecutive qualification count."
+    },
+    {
+      "signature": "ui-test:PositionRestoreUITests.testLiveProgressUpdatesMiniAndFullPlayerAcrossLifecycle:background-audio-never-published-running-background",
+      "story": "005-play-and-restore",
+      "evidence": {
+        "workflowRun": 33412537834,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 005 artifact 9767150693 retains the exact XCTest result, SpringBoard screenshot, lifecycle trace, application-state queries, semantic probes, and complete failure evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33412537834/job/99559356835",
+        "commit": "32921ec0a3001bb782eb05ae007cb13025208c3c",
+        "observation": "The Home action put SpringBoard in runningForeground and production completed its registered background playback checkpoint, but XCTest never published Bookshelf as runningBackground before the helper's separate two-second deadline. System logs showed the audio application becoming non-visible while remaining running-active in the NonUserInteractive role, which is valid for continuing background playback. The helper failed before reactivation or any progress action was dispatched."
+      },
+      "rootCause": "XCUIApplication runningBackground is neither a necessary nor durable receipt for an audio application after Home: XCTest can miss the transient state, and iOS may legitimately retain the process as running-active for background playback. Requiring that sampled process state after the durable scene checkpoint made a valid lifecycle fail on a fresh host.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Use SpringBoard runningForeground as the bounded receipt that Home acquired the foreground, then require the already-registered production scene checkpoint before activation and retain the exact app-contained foreground-interactive receipt. This proves the physical, domain, and restored-UI boundaries independently without relying on a lossy intermediate process state, sleeping, retrying, extending a deadline, or reducing coverage.",
+        "commits": [
+          "dc58f1d76ff209d1465bd009db74644618f089b0"
+        ],
+        "validation": "Lifecycle source hygiene requires the exact Home, SpringBoard foreground, production checkpoint, activation order and rejects the former runningBackground proxy. The exact Position Restore selector passed its complete local playback, Home, reactivation, seek, pause, and relaunch journey in 19.412 seconds on an iOS 26.5 simulator. On fresh-host run 33417891737 the same complete Position Restore selector passed; Story 005 later reported the separately recorded Remote Interruption Home-animation failure."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run, not a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "ui-test:AccessibilityUITests.testCoreJourneysRemainCompleteAtLargestAccessibilityText:receiver-scroll-domain-mismatched-physical-element",
+      "story": "009-accessible-core-journeys",
+      "evidence": {
+        "workflowRun": 33412537834,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 009 artifact 9766906084 retains the exact XCTest result, correct top-anchored receiver screenshot, hierarchy, semantic scroll probe, valid failure-screen provenance, and complete failure evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33412537834/job/99559357054",
+        "commit": "32921ec0a3001bb782eb05ae007cb13025208c3c",
+        "observation": "The Receive from Computer screen was visibly ready and correctly anchored at the top. Its semantic probe reported container computer-receiver-scroll, vertical axis, idle phase, geometry-ready=true, at-top=true, offset=-70.0, and minimum=-70.0. Capture readiness nevertheless rejected the first observation because the physical scroll element's intentional identifier was computer-receiver-screen rather than the separate semantic state-domain identifier."
+      },
+      "rootCause": "ScrollSurface incorrectly assumed that a physical XCUIElement identifier must equal the semantic readiness bridge's container-domain identifier. The receiver screen intentionally uses computer-receiver-screen for the physical surface and computer-receiver-scroll for its scroll-state domain, so valid parsed top geometry was discarded before capture.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Bind the optional physical container identifier independently from the required semantic scroll-state domain and specify both contracts at the receiver call site. All other surfaces retain their same-identifier default, with no sleep, retry, timeout increase, screenshot relaxation, or coverage reduction.",
+        "commits": [
+          "dc58f1d76ff209d1465bd009db74644618f089b0"
+        ],
+        "validation": "Source hygiene requires the receiver's explicit physical/domain binding and the generic helper's independent validation. The exact largest-accessibility-text selector passed its complete local journey in 99.149 seconds on an iOS 26.5 simulator, including the formerly rejected receiver top capture. Fresh-host normal run 33417891737 then passed the complete Story 009 job at dc58f1d76ff209d1465bd009db74644618f089b0, including both accessibility selectors and every screenshot comparison."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run, not a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "ui-test:RemoteInterruptionUITests.testRemoteInterruptionRouteLossAndBackgroundEventsJournalAcknowledgedPositions:home-animation-never-reached-background-checkpoint",
+      "story": "005-play-and-restore",
+      "evidence": {
+        "workflowRun": 33417891737,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 005 artifact 9768761461 retains the exact XCTest result, mid-transition SpringBoard screenshot, lifecycle trace, application and system logs, valid failure-screen provenance, and complete story evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33417891737/job/99576929181",
+        "commit": "dc58f1d76ff209d1465bd009db74644618f089b0",
+        "observation": "The repaired Position Restore selector passed. In the later Remote Interruption selector, XCTest's Home press returned and SpringBoard reported runningForeground, but the production background-checkpoint notification never arrived under its independent two-second boundary. No app activation or final remote command occurred. The retained screenshot shows Bookshelf still shrinking as a rounded Home-screen card over blurred icons, proving the system transition itself had not converged despite the coarse SpringBoard process state."
+      },
+      "rootCause": "XCUIApplication runningForeground is published before SpringBoard's Home transition becomes idle and before the outgoing SwiftUI scene necessarily receives background. On this hosted attempt the visual transition remained incomplete, so the correctly registered production checkpoint could not occur. A sampled process state was again too coarse to request the next lifecycle phase.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "After the physical Home event, explicitly activate SpringBoard to converge its outstanding transition, then require bounded SpringBoard foreground ownership and the independently registered production background checkpoint before reactivating Bookshelf. Retain the exact app-contained foreground-interactive receipt. This adds no sleep, retry, timeout increase, or coverage reduction.",
+        "commits": [
+          "0e52d834427fe9f7ce6ff036ec7af375d7b13e67"
+        ],
+        "validation": "Lifecycle hygiene requires Home, explicit SpringBoard convergence, bounded SpringBoard ownership, production checkpoint, and app activation in that exact order. The exact Remote Interruption selector passed its complete local command, interruption, route-loss, Home, final command, and relaunch journey in 17.969 seconds; the exact Position Restore selector also passed with the shared helper in 19.988 seconds on iOS 26.5. Fresh-host normal run 33421395062 then passed the complete 15m32s Story 005 job at 0e52d834427fe9f7ce6ff036ec7af375d7b13e67, including all eight selectors and four screenshot comparisons."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run, not a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
     }
   ]
 }

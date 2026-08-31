@@ -98,6 +98,89 @@ contention. From first runner admission to the final shard completion was
 1,782-second accepted scheduling run. This validates the correction but does
 not replace the clean 32m32s no-queue measurement above.
 
+Two later exact-code timing checks also passed without reruns while R0 failure
+qualification continued. [Run 33357450846](https://github.com/anicolao/player/actions/runs/33357450846)
+completed in **39m06s**, and
+[run 33359695859](https://github.com/anicolao/player/actions/runs/33359695859)
+completed in **40m31s**. Each retained all five lanes, 13 stories, 41 UI-test
+selectors, core and fixture gates, and the App Store renderer. The latest run
+is 25 seconds faster than the original 40m56s expanded-suite reference and
+2m59s faster than the 43m30s pre-parallel workflow despite the increase from
+26 to 41 UI selectors. These single runs corroborate the no-regression result;
+they do not replace the required repeated formal distribution.
+
+### Fresh-host scheduling comparison baseline
+
+[Run 33421395062](https://github.com/anicolao/player/actions/runs/33421395062)
+is the coverage-preserving baseline immediately before deterministic five-chain
+scheduling. It passed on commit
+`0e52d834427fe9f7ce6ff036ec7af375d7b13e67` without a rerun: all 13 canonical
+stories, all 41 UI-test selectors, 372/372 core tests, fixture gates, and the
+App Store renderer passed. The workflow was created at 17:46:36Z, its producer
+was admitted at 17:48:18Z while its predecessor released the hosted pool, and
+the aggregate gate completed at 18:34:52Z. Therefore its exact
+created-to-complete wall clock was **48m16s**, including **1m42s** of visible
+admission queue, and its first-admission-to-green time was **46m34s**.
+
+The producer and 14 fresh macOS consumers accumulated **2h51m25s** of runner
+time; the consumers alone accumulated **2h38m54s**. All 14 consumers became
+eligible together after the producer, but GitHub admitted at most five. Their
+arbitrary admission order left a 14m46s Story 011 job at the tail even though
+shorter work had run earlier. Scheduling alone can remove that avoidable tail
+without sharing hosts or changing selection. The measured two-run mean yields
+five chains within 12.5 seconds of the ideal average lower bound:
+
+| Chain | Fresh-host work | Estimated mean |
+| --- | --- | ---: |
+| 1 | 005 play and restore; 004 metadata repair | 32m06.5s |
+| 2 | 009 accessible core journeys; 011 offline recovery; core/fixtures | 32m22.0s |
+| 3 | 007 sleep timer; 013 App Store listing; 003 multifile grouping | 32m12.5s |
+| 4 | 008 library search; 010 library backup; 012 monetization | 32m31.5s |
+| 5 | 006 safe ZIP import; 001 iOS launch; 002 import and play | 32m22.5s |
+
+Each item remains a separate reusable-workflow call and therefore receives a
+fresh hosted machine. Dependencies only determine admission order. A failed
+story does not suppress later coverage in its chain; the final aggregate gate
+still requires every story and core result to succeed. The after measurement
+must come from the first CI run of this scheduler, without rerunning a failed
+attempt.
+
+### Formal qualification topology reference
+
+The pre-isolation formal
+[run 33362158118](https://github.com/anicolao/player/actions/runs/33362158118)
+ran from 05:54:19Z through 11:09:49Z: **5h15m30s** workflow wall clock.
+Its 13 story jobs accumulated **21h50m36s** of macOS runner time, and their
+story stage spanned **5h10m27s** from first admission to last completion. Each
+long-lived job ran one story ten times. Attempts remained logically distinct,
+but all ten shared the same hosted machine and its per-user Xcode service
+state; Story 004's eighth attempt failed in Xcode's launch transaction before
+the application process existed after the first seven attempts passed.
+
+The replacement formal topology preserves the exact 13 stories x 10 attempts
+and five complete matrices x five attempts. It publishes all 130 story attempts
+and all 25 matrix-lane attempts as independently attributable jobs, while the
+account's five-macOS-runner limit controls actual admission. One producer
+installs Nix, verifies and generates the project, compiles the E2E product,
+binds its provenance, and publishes a checksum. Fresh measured jobs use the
+stock macOS image, verify that checksum and provenance, and run exactly one
+attempt. This removes cross-attempt host state without deleting coverage,
+retrying failures, or moving measured test execution outside CI.
+
+The current normal lane setup confirms why the shared artifact matters. In
+[run 33392110023](https://github.com/anicolao/player/actions/runs/33392110023),
+lane 2 spent 61 seconds installing Nix, 51 seconds verifying the pinned
+environment, and 8 seconds generating the project; including checkout and
+step transitions, canonical execution began about 2m05s after runner admission.
+Those costs occur once in the formal producer instead of in each of the 155
+fresh measured jobs. GitHub container jobs run on Linux, whereas Xcode and the
+iOS Simulator require macOS, so a Docker image cannot replace the macOS runner;
+the immutable shared build is the applicable preconfiguration boundary.
+
+The after-isolation formal wall-clock and runner-time measurements will be
+recorded from the one permitted exact-SHA qualification dispatch. A normal PR
+run is not substituted for that distribution.
+
 | Retained phase | Expanded reference | Final exact-SHA run | Delta |
 | --- | ---: | ---: | ---: |
 | Simulator create/boot/configure | 1,843s | 1,671s | -172s |
