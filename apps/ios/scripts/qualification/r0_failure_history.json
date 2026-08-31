@@ -2510,6 +2510,54 @@
       },
       "qualificationResetCount": 1,
       "resetEvidence": "Formal exact-SHA Story 003 passed attempts 01 and 02 at 1fca3751db5cc67c142f0d80214685593ab3e72a, then attempt 03 failed and reset its consecutive count from two to zero. Later attempts in the same 9/10 job do not recover the required uninterrupted 10/10 qualification."
+    },
+    {
+      "signature": "ui-test:008-library-search:sort-menu-item-not-delivered",
+      "story": "008-library-search",
+      "evidence": {
+        "workflowRun": 33351712764,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 008 artifact 9744373737 and lane-3 summary 9744374238 retain the exact XCTest result, synthesized-event trace, direct failure screenshot and hierarchy, production search probe, all ten screenshot comparisons, and lane attribution",
+        "url": "https://github.com/anicolao/player/actions/runs/33351712764/job/99366242587",
+        "commit": "a547b6c2f365669ab6f6421280f88d151df661cc",
+        "observation": "Story 008 opened the Sort menu and XCTest synthesized the Author item tap at t=15.31s, then remained in post-event application-idle quiescence until t=20.77s. The retained failure screen still showed the open menu with Title selected, and the exact production probe remained sort=title,direction=descending instead of the required sort=author,direction=descending. The other two Story 008 selectors passed, all ten retained screenshots matched their canonical comparisons, and the other 12 stories, 40 other UI selectors, 372 core tests, fixture gates, and renderer passed."
+      },
+      "rootCause": "The search journey used ordinary element-bound taps for both opening a menu and selecting its item, treating XCTest's return as proof of delivery. Under hosted accessibility load the Author synthesis returned without invoking the production action, while the menu and prior semantic state remained unchanged. The later exact search assertion detected the missed action but had no receipt-correlated, idempotent opportunity to redeliver it.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Resolve each menu and item to one unique visible action, freeze its exact frame, synthesize through the stable application surface without unrelated post-event quiescence, and begin one two-second delivery deadline only after synthesis. Require item existence as the menu-opening receipt and a changed production search-results probe as the item-selection receipt; redeliver only while the exact enabled origin frame remains unchanged, and fail immediately if the origin transitions without publishing its receipt. Add no sleep, test rerun, timeout increase, or coverage reduction.",
+        "commits": [
+          "4862371925e7d71e855d7e7f4df605c786410dea"
+        ],
+        "validation": "The exact fix SHA passes a complete two-architecture simulator build and the full E2E hygiene gate, whose source contract rejects restored unacknowledged menu or item taps and requires both menu-presentation and changed-search-state receipts. Its exact provenance-bound local search-coverage journey passed every production sort, direction, status, format, missing-metadata, navigation, clear, persistence, relaunch, and reset assertion in 72.9 seconds."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run, not a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "ui-test:PositionRestoreUITests.testLiveProgressUpdatesMiniAndFullPlayerAcrossLifecycle:home-transition-progress-action-dispatched-to-springboard",
+      "story": "005-play-and-restore",
+      "evidence": {
+        "workflowRun": 33354131739,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 005 artifact 9745274244 and lane-2 summary 9745275188 retain the exact XCTest result, direct failure screenshot and valid provenance, lifecycle and synthesized-event trace, semantic playback probes, all four screenshot attachments, and lane attribution",
+        "url": "https://github.com/anicolao/player/actions/runs/33354131739/job/99372931270",
+        "commit": "4862371925e7d71e855d7e7f4df605c786410dea",
+        "observation": "PositionRestoreUITests expected the live playback probe to advance from playing/75000 to playing/90000 after the Progress90 control, but its final exact value remained playing/75000. The retained lifecycle evidence proves that the Home transition completed after app.activate and the intended Progress90 touch was dispatched to SpringBoard rather than Bookshelf. The XCTest failure screenshot has valid retained provenance, all four screenshot attachments matched, and the Story 008 menu-delivery correction and every lane other than Story 005 passed."
+      },
+      "rootCause": "The journey called app.activate immediately after pressing Home and treated XCUIApplication.runningForeground as proof that SpringBoard had already consumed the Home transition and returned foreground interaction ownership to Bookshelf. That state could be observed out of lifecycle-event order: Home completed afterward, so the element-bound Progress90 tap targeted a stale app accessibility element while the physical touch was delivered to SpringBoard. The downstream exact playback assertion truthfully detected that production state remained at 75 seconds.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "After Home, first require SpringBoard's foreground event, then activate Bookshelf and require the exact intended control to be uniquely enabled, hittable, and fully contained by the foreground application frame. Freeze that app-relative coordinate and synthesize through the application surface without unrelated post-event quiescence under the existing two-second bound; retain the exact playback-state receipt. Apply the same lifecycle gate to the final Remote Interruption command, with no sleep, retry-to-green, timeout increase, or coverage reduction.",
+        "commits": [
+          "795c609eb15574e8b287594946ac2f3f20a9eb4e"
+        ],
+        "validation": "The complete E2E hygiene gate passes and requires both lifecycle journeys to use the shared post-Home foreground-interactive receipt while rejecting immediate app activation after Home. The exact local Position Restore selector passed its complete live progress, mini/full-player, lifecycle, seek, pause, and relaunch journey in 18.770 seconds; the exact Remote Interruption selector passed its complete lifecycle and final-command journey in 19.049 seconds. The arm64 E2E build succeeds. No x86 build or hosted replacement result is claimed."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run, not a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
     }
   ]
 }
