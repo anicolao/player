@@ -6,6 +6,7 @@ repository_root="$(cd "${script_dir}/../../.." && pwd)"
 ui_test_root="${repository_root}/apps/ios/PlayerUITests"
 manifest="${repository_root}/tests/e2e/manifest.json"
 workflow="${repository_root}/.github/workflows/ios.yml"
+story_workflow="${repository_root}/.github/workflows/ios-e2e-story.yml"
 qualification_workflow="${repository_root}/.github/workflows/r0-qualification.yml"
 portable_tools_script="${script_dir}/prepare-portable-e2e-tools.sh"
 
@@ -227,16 +228,42 @@ sort -o "${temporary_root}/source-tests" "${temporary_root}/source-tests"
 cmp "${temporary_root}/manifest-tests" "${temporary_root}/source-tests" \
   || fail "every UI test method must appear exactly once in the canonical manifest"
 
-sed -n '/^  e2e-stories:/,/^    defaults:/p' "${workflow}" \
-  | rg -o '^[[:space:]]+- [0-9]{3}-[a-z0-9][a-z0-9-]*$' \
-  | sed -E 's/^[[:space:]]+- //' | sort > "${temporary_root}/workflow-stories"
+rg -o '^[[:space:]]{6}story: [0-9]{3}-[a-z0-9][a-z0-9-]*$' "${workflow}" \
+  | sed -E 's/^[[:space:]]+story: //' | sort > "${temporary_root}/workflow-stories"
 cmp "${temporary_root}/manifest-stories" "${temporary_root}/workflow-stories" \
   || fail "every canonical story must appear exactly once in normal CI"
-[[ "$(rg -c '^[[:space:]]+max-parallel: 13$' "${workflow}")" -eq 1 ]] \
-  || fail "normal CI must expose all 13 isolated stories to the scheduler"
+[[ "$(rg -c 'uses: \./\.github/workflows/ios-e2e-story\.yml' "${workflow}")" -eq 13 ]] \
+  || fail "normal CI must run all 13 stories through the fresh-host reusable job"
+[[ "$(rg -c '^  story-[0-9]{3}:$' "${workflow}")" -eq 13 ]] \
+  || fail "normal CI must define exactly 13 independently attributable story jobs"
+[[ "$(rg -c '^    needs: e2e-build$' "${workflow}")" -eq 5 ]] \
+  || fail "normal CI must begin exactly five balanced macOS scheduling chains"
+for scheduling_edge in \
+  'needs: [e2e-build, story-005]' \
+  'needs: [e2e-build, story-009]' \
+  'needs: [e2e-build, story-011]' \
+  'needs: [e2e-build, story-007]' \
+  'needs: [e2e-build, story-013]' \
+  'needs: [e2e-build, story-008]' \
+  'needs: [e2e-build, story-010]' \
+  'needs: [e2e-build, story-006]' \
+  'needs: [e2e-build, story-001]'; do
+  [[ "$(rg -Fxc "    ${scheduling_edge}" "${workflow}")" -eq 1 ]] \
+    || fail "normal CI is missing balanced scheduling edge ${scheduling_edge}"
+done
+[[ "$(rg -c "!cancelled\(\).*needs\.e2e-build\.result == 'success'" \
+  "${workflow}")" -eq 9 ]] \
+  || fail "every dependent fresh-host job must continue after an earlier test failure"
+[[ "$(sed -n '/^  ios-tests:/,/^  r0-qualification:/p' "${workflow}" \
+  | rg -c '^      - story-[0-9]{3}$')" -eq 13 ]] \
+  || fail "the normal aggregate gate must require every independent story result"
+rg -Fq 'workflow_call:' "${story_workflow}" \
+  || fail "normal story execution must remain a reusable fresh-host workflow"
+rg -Fq 'runs-on: macos-26' "${story_workflow}" \
+  || fail "every reusable normal story must run on its own hosted macOS job"
 [[ "$(rg -c 'DeterminateSystems/nix-installer-action@' "${workflow}")" -eq 1 ]] \
   || fail "normal CI must install Nix only in the shared-build producer"
-e2e_build_section="$(sed -n '/^  e2e-build:/,/^  e2e-stories:/p' "${workflow}")"
+e2e_build_section="$(sed -n '/^  e2e-build:/,/^  story-005:/p' "${workflow}")"
 [[ "$(rg -c '^[[:space:]]+PLAYER_SKIP_SIMULATOR_LAUNCH: "1"$' \
   <<< "${e2e_build_section}")" -eq 1 ]] \
   || fail "the shared-build producer must suppress the interactive Nix simulator hook"
@@ -257,34 +284,44 @@ for shared_build_workflow in "${workflow}" "${qualification_workflow}"; do
   [[ "$(rg -c 'Build/Products PlayerE2EBuildProvenance\.json PortableTools' \
     "${shared_build_workflow}")" -eq 1 ]] \
     || fail "each immutable shared build must contain its portable tools"
-  [[ "$(rg -c 'export PATH="\$\{portable_tools\}:\$\{PATH\}"' \
-    "${shared_build_workflow}")" -eq 2 ]] \
-    || fail "each fresh consumer class must activate the portable tools"
-  [[ "$(rg -c '>> "\$\{GITHUB_PATH\}"' "${shared_build_workflow}")" -eq 2 ]] \
-    || fail "portable tools must remain active in every measured consumer step"
 done
+normal_consumer_sources="$(cat "${workflow}" "${story_workflow}")"
+[[ "$(rg -c 'export PATH="\$\{portable_tools\}:\$\{PATH\}"' \
+  <<< "${normal_consumer_sources}")" -eq 2 ]] \
+  || fail "normal story and core consumers must activate the portable tools"
+[[ "$(rg -c '>> "\$\{GITHUB_PATH\}"' <<< "${normal_consumer_sources}")" -eq 2 ]] \
+  || fail "portable tools must remain active in both normal consumer classes"
+[[ "$(rg -c 'export PATH="\$\{portable_tools\}:\$\{PATH\}"' \
+  "${qualification_workflow}")" -eq 2 ]] \
+  || fail "both formal fresh consumer classes must activate the portable tools"
+[[ "$(rg -c '>> "\$\{GITHUB_PATH\}"' "${qualification_workflow}")" -eq 2 ]] \
+  || fail "portable tools must remain active in both formal consumer classes"
 qualification_build_section="$(sed -n \
   '/^  qualification-build:/,/^  story-qualification:/p' \
   "${qualification_workflow}")"
 [[ "$(rg -c '^[[:space:]]+PLAYER_SKIP_SIMULATOR_LAUNCH: "1"$' \
   <<< "${qualification_build_section}")" -eq 1 ]] \
   || fail "the qualification producer must suppress the interactive Nix simulator hook"
-[[ "$(rg -c 'actions/download-artifact@v4' "${workflow}")" -eq 2 ]] \
+[[ "$(rg -c 'actions/download-artifact@v4' <<< "${normal_consumer_sources}")" -eq 2 ]] \
   || fail "normal CI story and core consumers must each download the shared build"
-[[ "$(rg -c 'shasum -a 256 -c SharedBuild.tar.sha256' "${workflow}")" -eq 2 ]] \
+[[ "$(rg -c 'shasum -a 256 -c SharedBuild.tar.sha256' \
+  <<< "${normal_consumer_sources}")" -eq 2 ]] \
   || fail "normal CI consumers must verify the shared-build checksum"
-[[ "$(rg -c 'e2e-build-provenance\.sh verify' "${workflow}")" -eq 2 ]] \
+[[ "$(rg -c 'e2e-build-provenance\.sh verify' \
+  <<< "${normal_consumer_sources}")" -eq 2 ]] \
   || fail "normal CI consumers must verify shared-build provenance"
-[[ "$(rg -c 'run-e2e\.sh --story \"\$\{STORY\}\"' "${workflow}")" -eq 1 ]] \
+[[ "$(rg -c 'run-e2e\.sh --story \"\$\{STORY\}\"' "${story_workflow}")" -eq 1 ]] \
   || fail "each normal CI story job must run its one complete canonical story"
 [[ "$(rg -c 'mkdir -p \"\$\{PWD\}/apps/ios/DerivedData/E2E\"' \
-  "${workflow}")" -eq 1 ]] \
+  "${story_workflow}")" -eq 1 ]] \
   || fail "normal CI must create the isolated E2E output parent before story startup"
 [[ "$(rg -c -- '-only-testing:PlayerTests' "${workflow}")" -eq 1 ]] \
   || fail "normal CI must run the complete core-test target exactly once"
 [[ "$(rg -c '^      - \.github/workflows/r0-qualification\.yml$' "${workflow}")" -eq 2 ]] \
   || fail "formal qualification workflow changes must trigger pull-request and main CI"
-[[ "$(rg -c '^[[:space:]]*PLAYER_E2E_PARALLEL_WORKERS=1' "${workflow}")" -eq 1 ]] \
+[[ "$(rg -c '^      - \.github/workflows/ios-e2e-story\.yml$' "${workflow}")" -eq 2 ]] \
+  || fail "normal reusable-story workflow changes must trigger pull-request and main CI"
+[[ "$(rg -c '^[[:space:]]*PLAYER_E2E_PARALLEL_WORKERS=1' "${story_workflow}")" -eq 1 ]] \
   || fail "normal CI must keep UI test classes serial within each isolated story"
 
 sed -n '/^  story-qualification:/,/^  story-gate:/p' \
@@ -320,7 +357,8 @@ if rg -n 'prepare-core-web-runtime\.sh|simctl[[:space:]]+openurl' \
   fail "core runners must not gate tests on an unobserved external Safari launch"
 fi
 
-if rg -q 'PlayerUITests/[A-Za-z0-9_]+/test[A-Za-z0-9_]+' "${workflow}"; then
+if rg -q 'PlayerUITests/[A-Za-z0-9_]+/test[A-Za-z0-9_]+' \
+  "${workflow}" "${story_workflow}"; then
   fail "CI must derive selectors from the canonical manifest instead of duplicating them"
 fi
 
@@ -455,7 +493,8 @@ helper_termination_line="${helper_termination%%:*}"
 [[ "$(rg -c '\.terminate\(\)' "${termination_helper}")" -eq 1 ]] \
   || fail "TestStepHelper may not terminate applications outside terminateAndWait"
 
-if rg -n 'continue-on-error:|nick-fields/retry|retry-action' "${workflow}"; then
+if rg -n 'continue-on-error:|nick-fields/retry|retry-action' \
+  "${workflow}" "${story_workflow}"; then
   fail "CI may not hide an E2E failure behind a retry"
 fi
 
@@ -473,7 +512,7 @@ cmp "${temporary_root}/qualification-expected-stories" \
   || fail "R0 story qualification must expose all 130 isolated attempts to the scheduler"
 [[ "$(rg -c '^[[:space:]]+max-parallel: 25$' "${qualification_workflow}")" -eq 1 ]] \
   || fail "R0 matrix qualification must expose all 25 isolated lanes to the scheduler"
-for actions_reader in "${workflow}" "${qualification_workflow}"; do
+for actions_reader in "${workflow}" "${story_workflow}" "${qualification_workflow}"; do
   sed -n '/^permissions:/,/^jobs:/p' "${actions_reader}" \
     | rg -q '^[[:space:]]+actions: read$' \
     || fail "formal qualification and its caller must grant read-only Actions access"

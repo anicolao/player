@@ -35,6 +35,7 @@ on:
       - UX_DESIGN.md
       - VISION.md
       - .github/workflows/ios.yml
+      - .github/workflows/ios-e2e-story.yml
       - .github/workflows/r0-qualification.yml
       - flake.nix
       - flake.lock
@@ -66,6 +67,7 @@ on:
       - UX_DESIGN.md
       - VISION.md
       - .github/workflows/ios.yml
+      - .github/workflows/ios-e2e-story.yml
       - .github/workflows/r0-qualification.yml
       - flake.nix
       - flake.lock
@@ -151,95 +153,105 @@ jobs:
           compression-level: 0
           retention-days: 30
 
-  e2e-stories:
-    name: E2E story ${{ matrix.story }}
+  # Five balanced dependency chains match the repository's observed five-runner
+  # macOS allowance. Every call still gets a fresh host. `!cancelled()` keeps later
+  # work in a chain running after an earlier test failure, so coverage is not
+  # shortened on red commits.
+  story-005:
     if: inputs.expected_sha == ''
     needs: e2e-build
-    runs-on: macos-26
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      max-parallel: 13
-      matrix:
-        story:
-          - 001-ios-launch
-          - 002-import-and-play
-          - 003-multifile-grouping
-          - 004-metadata-repair
-          - 005-play-and-restore
-          - 006-safe-zip-import
-          - 007-sleep-timer
-          - 008-library-search
-          - 009-accessible-core-journeys
-          - 010-library-backup
-          - 011-offline-recovery
-          - 012-monetization
-          - 013-app-store-listing
-    defaults:
-      run:
-        shell: bash --noprofile --norc -e -o pipefail {0}
-    env:
-      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
-      PLAYER_SKIP_SIMULATOR_LAUNCH: "1"
-      PLAYER_RESET_HOSTED_SIMULATOR_CONTROL_PLANE: "1"
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: ios-shared-build-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: apps/ios/DerivedData/NormalCI/SharedBuildArtifact
-      - name: Verify source and immutable shared build
-        run: |
-          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
-          (cd apps/ios/DerivedData/NormalCI/SharedBuildArtifact \
-            && shasum -a 256 -c SharedBuild.tar.sha256)
-          mkdir -p apps/ios/DerivedData/NormalCI/SharedBuild
-          tar -C apps/ios/DerivedData/NormalCI/SharedBuild -xf \
-            apps/ios/DerivedData/NormalCI/SharedBuildArtifact/SharedBuild.tar
-          portable_tools="${PWD}/apps/ios/DerivedData/NormalCI/SharedBuild/PortableTools"
-          export PATH="${portable_tools}:${PATH}"
-          printf '%s\n' "${portable_tools}" >> "${GITHUB_PATH}"
-          apps/ios/scripts/verify-e2e-environment.sh
-          git diff --exit-code -- apps/ios/Player.xcodeproj
-          apps/ios/scripts/e2e-build-provenance.sh verify \
-            "${PWD}/apps/ios/DerivedData/NormalCI/SharedBuild" \
-            com.apple.CoreSimulator.SimDeviceType.iPhone-17 \
-            com.apple.CoreSimulator.SimRuntime.iOS-26-5
-      - name: Run one canonical story on this fresh host
-        env:
-          STORY: ${{ matrix.story }}
-        run: |
-          mkdir -p "${PWD}/apps/ios/DerivedData/E2E"
-          PLAYER_E2E_PARALLEL_WORKERS=1 \
-            PLAYER_E2E_BUILD_DATA="${PWD}/apps/ios/DerivedData/NormalCI/SharedBuild" \
-            PLAYER_E2E_OUTPUT="${PWD}/apps/ios/DerivedData/E2E/${STORY}" \
-            PLAYER_SKIP_E2E_BUILD=1 \
-            PLAYER_SKIP_E2E_ENVIRONMENT_VERIFICATION=1 \
-            PLAYER_SKIP_PROJECT_GENERATION=1 \
-            apps/ios/scripts/run-e2e.sh --story "${STORY}"
-      - name: Render reviewable App Store images
-        if: matrix.story == '013-app-store-listing'
-        run: >-
-          swift scripts/render-app-store-listing.swift
-          app-store/listing.json
-          apps/ios/DerivedData/E2E/013-app-store-listing/ActualWalkthrough/screenshots/ios
-          build/app-store-listing/screenshots
-      - name: Upload complete story evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ios-e2e-${{ matrix.story }}
-          path: |
-            apps/ios/DerivedData/E2E/${{ matrix.story }}/
-            build/app-store-listing/screenshots/
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 30
+    uses: ./.github/workflows/ios-e2e-story.yml
+    with:
+      story: 005-play-and-restore
+
+  story-004:
+    if: ${{ !cancelled() && inputs.expected_sha == '' && needs.e2e-build.result == 'success' }}
+    needs: [e2e-build, story-005]
+    uses: ./.github/workflows/ios-e2e-story.yml
+    with:
+      story: 004-metadata-repair
+
+  story-009:
+    if: inputs.expected_sha == ''
+    needs: e2e-build
+    uses: ./.github/workflows/ios-e2e-story.yml
+    with:
+      story: 009-accessible-core-journeys
+
+  story-011:
+    if: ${{ !cancelled() && inputs.expected_sha == '' && needs.e2e-build.result == 'success' }}
+    needs: [e2e-build, story-009]
+    uses: ./.github/workflows/ios-e2e-story.yml
+    with:
+      story: 011-offline-recovery
+
+  story-007:
+    if: inputs.expected_sha == ''
+    needs: e2e-build
+    uses: ./.github/workflows/ios-e2e-story.yml
+    with:
+      story: 007-sleep-timer
+
+  story-013:
+    if: ${{ !cancelled() && inputs.expected_sha == '' && needs.e2e-build.result == 'success' }}
+    needs: [e2e-build, story-007]
+    uses: ./.github/workflows/ios-e2e-story.yml
+    with:
+      story: 013-app-store-listing
+
+  story-003:
+    if: ${{ !cancelled() && inputs.expected_sha == '' && needs.e2e-build.result == 'success' }}
+    needs: [e2e-build, story-013]
+    uses: ./.github/workflows/ios-e2e-story.yml
+    with:
+      story: 003-multifile-grouping
+
+  story-008:
+    if: inputs.expected_sha == ''
+    needs: e2e-build
+    uses: ./.github/workflows/ios-e2e-story.yml
+    with:
+      story: 008-library-search
+
+  story-010:
+    if: ${{ !cancelled() && inputs.expected_sha == '' && needs.e2e-build.result == 'success' }}
+    needs: [e2e-build, story-008]
+    uses: ./.github/workflows/ios-e2e-story.yml
+    with:
+      story: 010-library-backup
+
+  story-012:
+    if: ${{ !cancelled() && inputs.expected_sha == '' && needs.e2e-build.result == 'success' }}
+    needs: [e2e-build, story-010]
+    uses: ./.github/workflows/ios-e2e-story.yml
+    with:
+      story: 012-monetization
+
+  story-006:
+    if: inputs.expected_sha == ''
+    needs: e2e-build
+    uses: ./.github/workflows/ios-e2e-story.yml
+    with:
+      story: 006-safe-zip-import
+
+  story-001:
+    if: ${{ !cancelled() && inputs.expected_sha == '' && needs.e2e-build.result == 'success' }}
+    needs: [e2e-build, story-006]
+    uses: ./.github/workflows/ios-e2e-story.yml
+    with:
+      story: 001-ios-launch
+
+  story-002:
+    if: ${{ !cancelled() && inputs.expected_sha == '' && needs.e2e-build.result == 'success' }}
+    needs: [e2e-build, story-001]
+    uses: ./.github/workflows/ios-e2e-story.yml
+    with:
+      story: 002-import-and-play
 
   core-tests:
     name: Core tests and fixture gates
-    if: inputs.expected_sha == ''
-    needs: e2e-build
+    if: ${{ !cancelled() && inputs.expected_sha == '' && needs.e2e-build.result == 'success' }}
+    needs: [e2e-build, story-011]
     runs-on: macos-26
     timeout-minutes: 30
     defaults:
@@ -334,18 +346,29 @@ jobs:
   ios-tests:
     name: Core tests and exact E2E walkthroughs
     if: ${{ always() && inputs.expected_sha == '' }}
-    needs: [e2e-build, e2e-stories, core-tests]
+    needs:
+      - e2e-build
+      - story-001
+      - story-002
+      - story-003
+      - story-004
+      - story-005
+      - story-006
+      - story-007
+      - story-008
+      - story-009
+      - story-010
+      - story-011
+      - story-012
+      - story-013
+      - core-tests
     runs-on: ubuntu-latest
     steps:
       - name: Require every parallel iOS gate
         env:
-          BUILD_RESULT: ${{ needs.e2e-build.result }}
-          STORY_RESULT: ${{ needs.e2e-stories.result }}
-          CORE_RESULT: ${{ needs.core-tests.result }}
+          IOS_RESULTS: ${{ toJSON(needs) }}
         run: |
-          test "$BUILD_RESULT" = success
-          test "$STORY_RESULT" = success
-          test "$CORE_RESULT" = success
+          jq -e 'all(.[]; .result == "success")' <<< "${IOS_RESULTS}"
 
   r0-qualification:
     name: Formal exact-SHA R0 qualification
