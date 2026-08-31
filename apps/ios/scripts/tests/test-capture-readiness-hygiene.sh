@@ -196,6 +196,8 @@ if rg -n -U --regexp 'XCUIDevice\.shared\.press\(\.home\)\n[[:space:]]*app\.acti
 fi
 rg -Fq 'springboard.wait(for: .runningForeground, timeout: 2)' \
   "${ui_test_root}/TestStepHelper.swift"
+rg -Fq 'application.wait(for: .runningBackground, timeout: 2)' \
+  "${ui_test_root}/TestStepHelper.swift"
 rg -Fq 'applicationFrame.contains(elementFrame)' \
   "${ui_test_root}/TestStepHelper.swift"
 if [[ "$(rg -c \

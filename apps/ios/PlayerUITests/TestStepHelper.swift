@@ -359,6 +359,7 @@ func reactivateApplicationAfterHome(
 ) -> Bool {
   let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
   guard springboard.wait(for: .runningForeground, timeout: 2) else { return false }
+  guard application.wait(for: .runningBackground, timeout: 2) else { return false }
 
   application.activate()
   let interactive = NSPredicate { _, _ in
