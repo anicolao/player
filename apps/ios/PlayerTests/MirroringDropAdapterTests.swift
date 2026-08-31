@@ -17,10 +17,24 @@ final class MirroringDropAdapterTests: XCTestCase {
     let source = fixtureRoot.appending(path: "Chapter 01.mp3")
     let payload = Data("mirroring file provider".utf8)
     try payload.write(to: source)
-    let provider = fileProvider(
-      source,
-      typeIdentifier: try XCTUnwrap(UTType(filenameExtension: "mp3")?.identifier),
-      suggestedName: "Chapter 01.mp3"
+    let typeIdentifier = try XCTUnwrap(UTType(filenameExtension: "mp3")?.identifier)
+    let unavailable = NSError(domain: NSItemProvider.errorDomain, code: -1)
+    let provider = MirroringItemProvider(
+      registeredTypeIdentifiers: [typeIdentifier],
+      suggestedName: "Chapter 01.mp3",
+      canLoadURLObject: false,
+      loadURLObject: { completion in
+        completion(nil, unavailable)
+        return Progress(totalUnitCount: 1)
+      },
+      loadInPlace: { _, completion in
+        completion(nil, false, unavailable)
+        return Progress(totalUnitCount: 1)
+      },
+      loadFile: { _, completion in
+        completion(source, nil)
+        return Progress(totalUnitCount: 1)
+      }
     )
     let adapter = MirroringDropAdapter(rootURL: receiverRoot)
     var updates: [MirroringDropProgress] = []

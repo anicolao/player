@@ -1162,9 +1162,9 @@ final class AccessibilityUITests: PlayerUITestCase {
           let phaseCompletion = after.interactionID > before.interactionID
             && after.completionID > before.completionID
             && after.completionGeometryID == after.geometryID
-          let listGeometryFallback = surface.permitsGeometrySettledFallback
+          let settledGeometryReceipt = after.completionGeometryID == after.geometryID
           let isSettled = after.isIdle && after.geometryID > before.geometryID
-            && progressed && (phaseCompletion || listGeometryFallback)
+            && progressed && (phaseCompletion || settledGeometryReceipt)
           if isSettled { settledState = after }
           return isSettled
         }

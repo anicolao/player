@@ -196,11 +196,25 @@ if rg -n -U --regexp 'XCUIDevice\.shared\.press\(\.home\)\n[[:space:]]*app\.acti
 fi
 rg -Fq 'backgroundReceipt.wait(timeout: 2)' \
   "${ui_test_root}/TestStepHelper.swift"
-if rg -Fq 'application.wait(for: .runningBackground, timeout: 2)' \
-  "${ui_test_root}/TestStepHelper.swift"; then
-  echo 'lifecycle hygiene rejected process state as a scene-background receipt' >&2
+rg -Fq 'application.wait(for: .runningBackground, timeout: 2)' \
+  "${ui_test_root}/TestStepHelper.swift" || {
+  echo 'lifecycle hygiene requires a bounded Home-delivery receipt before the scene checkpoint deadline' >&2
   exit 1
-fi
+}
+python3 - "${ui_test_root}/TestStepHelper.swift" <<'PY'
+import sys
+from pathlib import Path
+
+source = Path(sys.argv[1]).read_text()
+home = source.index('XCUIDevice.shared.press(.home)')
+background = source.index('application.wait(for: .runningBackground, timeout: 2)', home)
+checkpoint = source.index('backgroundReceipt.wait(timeout: 2)', background)
+activation = source.index('application.activate()', checkpoint)
+if not home < background < checkpoint < activation:
+    raise SystemExit(
+        'lifecycle hygiene requires Home delivery, checkpoint completion, then activation'
+    )
+PY
 rg -Fq 'applicationFrame.contains(elementFrame)' \
   "${ui_test_root}/TestStepHelper.swift"
 if [[ "$(rg -c \
@@ -406,5 +420,8 @@ fi
 rg -Fq 'while true {' <<<"${framing_source}"
 rg -Fq 'updatedError < abs(displacement) - 0.5' <<<"${framing_source}"
 rg -Fq 'let actionDeadline = EventDeadline()' <<<"${framing_source}"
+rg -Fq 'let settledGeometryReceipt = after.completionGeometryID == after.geometryID' \
+  <<<"${framing_source}"
+rg -Fq 'phaseCompletion || settledGeometryReceipt' <<<"${framing_source}"
 
 echo "Capture-readiness and selector source hygiene tests passed."

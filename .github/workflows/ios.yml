@@ -75,178 +75,267 @@ permissions:
   contents: read
 
 jobs:
-  e2e-shards:
-    name: iOS shard ${{ matrix.shard }}
+  e2e-build:
+    name: Build the normal-CI E2E product once
     if: inputs.expected_sha == ''
     runs-on: macos-26
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - shard: lane-1
-            story_1: 004-metadata-repair
-            story_2: 012-monetization
-            story_3: ''
-            run_core: true
-            renders_listing: false
-          - shard: lane-2
-            story_1: 005-play-and-restore
-            story_2: 011-offline-recovery
-            story_3: 003-multifile-grouping
-            run_core: false
-            renders_listing: false
-          - shard: lane-3
-            story_1: 007-sleep-timer
-            story_2: 008-library-search
-            story_3: ''
-            run_core: false
-            renders_listing: false
-          - shard: lane-4
-            story_1: 001-ios-launch
-            story_2: 002-import-and-play
-            story_3: 010-library-backup
-            run_core: false
-            renders_listing: false
-          - shard: lane-5
-            story_1: 006-safe-zip-import
-            story_2: 009-accessible-core-journeys
-            story_3: 013-app-store-listing
-            run_core: false
-            renders_listing: true
+    timeout-minutes: 60
     defaults:
       run:
         shell: nix develop --command bash --noprofile --norc -e -o pipefail {0}
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
-      PLAYER_SKIP_SIMULATOR_LAUNCH: "1"
-      PLAYER_SKIP_PROJECT_GENERATION: "1"
-      PLAYER_E2E_PARALLEL_WORKERS: "1"
-      PLAYER_RESET_HOSTED_SIMULATOR_CONTROL_PLANE: "1"
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
-
-      - name: Verify pinned environment
-        run: apps/ios/scripts/verify-e2e-environment.sh
-
-      - name: Enforce deterministic E2E hygiene
-        if: matrix.run_core
-        run: apps/ios/scripts/verify-e2e-hygiene.sh
-
-      - name: Enforce Bookshelf product branding
-        if: matrix.run_core
-        run: apps/ios/scripts/verify-bookshelf-branding.sh
-
-      - name: Verify StoreKit Full Unlock configuration
-        if: matrix.run_core
-        run: apps/ios/scripts/verify-storekit-configuration.sh
-
-      - name: Generate Xcode project
-        run: apps/ios/scripts/generate-project.sh
-
-      - name: Require reproducible project generation
-        run: git diff --exit-code -- apps/ios/Player.xcodeproj
-
-      - name: Run canonical stories with one shared build
-        env:
-          SHARD: ${{ matrix.shard }}
-          RUN_CORE: ${{ matrix.run_core }}
-          STORY_1: ${{ matrix.story_1 }}
-          STORY_2: ${{ matrix.story_2 }}
-          STORY_3: ${{ matrix.story_3 }}
+      - name: Verify source contracts and generate the project
         run: |
-          arguments=(--shard "${SHARD}")
-          if [[ "${RUN_CORE}" == "true" ]]; then arguments+=(--core); fi
-          for story in "${STORY_1}" "${STORY_2}" "${STORY_3}"; do
-            if [[ -n "${story}" ]]; then arguments+=("${story}"); fi
-          done
-          apps/ios/scripts/run-e2e-shard.sh "${arguments[@]}"
+          apps/ios/scripts/verify-e2e-environment.sh
+          apps/ios/scripts/verify-e2e-hygiene.sh
+          apps/ios/scripts/verify-bookshelf-branding.sh
+          apps/ios/scripts/verify-storekit-configuration.sh
+          apps/ios/scripts/generate-project.sh
+          git diff --exit-code -- apps/ios/Player.xcodeproj
+      - name: Build and bind the immutable E2E product
+        run: |
+          build_root="${PWD}/apps/ios/DerivedData/NormalCI/SharedBuild"
+          lease="${PWD}/apps/ios/DerivedData/SimulatorLeases/normal-ci-build-$$.json"
+          simulator_id=""
+          cleanup() {
+            status="$?"
+            trap - EXIT INT TERM
+            if [[ -n "${simulator_id}" ]]; then
+              apps/ios/scripts/simulator-lease.sh release "${lease}" "$$" || status=1
+            fi
+            exit "${status}"
+          }
+          trap cleanup EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+          simulator_id="$(apps/ios/scripts/simulator-lease.sh acquire \
+            "${lease}" 'Player normal CI shared build' \
+            com.apple.CoreSimulator.SimDeviceType.iPhone-17 \
+            com.apple.CoreSimulator.SimRuntime.iOS-26-5 "$$")"
+          xcrun simctl boot "${simulator_id}"
+          xcrun simctl bootstatus "${simulator_id}" -b
+          xcodebuild build-for-testing \
+            -project apps/ios/Player.xcodeproj \
+            -scheme Player \
+            -configuration E2E \
+            -destination "platform=iOS Simulator,arch=arm64,id=${simulator_id}" \
+            -derivedDataPath "${build_root}" \
+            CODE_SIGNING_ALLOWED=NO
+          apps/ios/scripts/e2e-build-provenance.sh write "${build_root}" \
+            com.apple.CoreSimulator.SimDeviceType.iPhone-17 \
+            com.apple.CoreSimulator.SimRuntime.iOS-26-5
+          tar -C "${build_root}" -cf \
+            "${PWD}/apps/ios/DerivedData/NormalCI/SharedBuild.tar" \
+            Build/Products PlayerE2EBuildProvenance.json
+          (cd apps/ios/DerivedData/NormalCI \
+            && shasum -a 256 SharedBuild.tar > SharedBuild.tar.sha256)
+          apps/ios/scripts/simulator-lease.sh release "${lease}" "$$"
+          simulator_id=""
+      - name: Upload immutable shared E2E product
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-shared-build-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            apps/ios/DerivedData/NormalCI/SharedBuild.tar
+            apps/ios/DerivedData/NormalCI/SharedBuild.tar.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
 
+  e2e-stories:
+    name: E2E story ${{ matrix.story }}
+    if: inputs.expected_sha == ''
+    needs: e2e-build
+    runs-on: macos-26
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 13
+      matrix:
+        story:
+          - 001-ios-launch
+          - 002-import-and-play
+          - 003-multifile-grouping
+          - 004-metadata-repair
+          - 005-play-and-restore
+          - 006-safe-zip-import
+          - 007-sleep-timer
+          - 008-library-search
+          - 009-accessible-core-journeys
+          - 010-library-backup
+          - 011-offline-recovery
+          - 012-monetization
+          - 013-app-store-listing
+    defaults:
+      run:
+        shell: bash --noprofile --norc -e -o pipefail {0}
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      PLAYER_SKIP_SIMULATOR_LAUNCH: "1"
+      PLAYER_RESET_HOSTED_SIMULATOR_CONTROL_PLANE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ios-shared-build-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: apps/ios/DerivedData/NormalCI/SharedBuildArtifact
+      - name: Verify source and immutable shared build
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          (cd apps/ios/DerivedData/NormalCI/SharedBuildArtifact \
+            && shasum -a 256 -c SharedBuild.tar.sha256)
+          mkdir -p apps/ios/DerivedData/NormalCI/SharedBuild
+          tar -C apps/ios/DerivedData/NormalCI/SharedBuild -xf \
+            apps/ios/DerivedData/NormalCI/SharedBuildArtifact/SharedBuild.tar
+          apps/ios/scripts/verify-e2e-environment.sh
+          git diff --exit-code -- apps/ios/Player.xcodeproj
+          apps/ios/scripts/e2e-build-provenance.sh verify \
+            "${PWD}/apps/ios/DerivedData/NormalCI/SharedBuild" \
+            com.apple.CoreSimulator.SimDeviceType.iPhone-17 \
+            com.apple.CoreSimulator.SimRuntime.iOS-26-5
+      - name: Run one canonical story on this fresh host
+        env:
+          STORY: ${{ matrix.story }}
+        run: |
+          PLAYER_E2E_PARALLEL_WORKERS=1 \
+            PLAYER_E2E_BUILD_DATA="${PWD}/apps/ios/DerivedData/NormalCI/SharedBuild" \
+            PLAYER_E2E_OUTPUT="${PWD}/apps/ios/DerivedData/E2E/${STORY}" \
+            PLAYER_SKIP_E2E_BUILD=1 \
+            PLAYER_SKIP_E2E_ENVIRONMENT_VERIFICATION=1 \
+            PLAYER_SKIP_PROJECT_GENERATION=1 \
+            apps/ios/scripts/run-e2e.sh --story "${STORY}"
       - name: Render reviewable App Store images
-        if: matrix.renders_listing
+        if: matrix.story == '013-app-store-listing'
         run: >-
           swift scripts/render-app-store-listing.swift
           app-store/listing.json
           apps/ios/DerivedData/E2E/013-app-store-listing/ActualWalkthrough/screenshots/ios
           build/app-store-listing/screenshots
-
-      - name: Upload first story diagnostics
-        if: ${{ always() && matrix.story_1 != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: ios-e2e-${{ matrix.story_1 }}
-          path: |
-            apps/ios/DerivedData/E2E/${{ matrix.story_1 }}/Run.json
-            apps/ios/DerivedData/E2E/${{ matrix.story_1 }}/PhaseTimings.tsv
-            apps/ios/DerivedData/E2E/${{ matrix.story_1 }}/Logs/
-            apps/ios/DerivedData/E2E/${{ matrix.story_1 }}/Diagnostics/
-            apps/ios/DerivedData/E2E/${{ matrix.story_1 }}/ActualWalkthrough/
-            apps/ios/DerivedData/E2E/${{ matrix.story_1 }}/Attachments/
-            apps/ios/DerivedData/E2E/${{ matrix.story_1 }}/Results/Story.xcresult/
-            build/app-store-listing/screenshots/
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: Upload second story diagnostics
-        if: ${{ always() && matrix.story_2 != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: ios-e2e-${{ matrix.story_2 }}
-          path: |
-            apps/ios/DerivedData/E2E/${{ matrix.story_2 }}/Run.json
-            apps/ios/DerivedData/E2E/${{ matrix.story_2 }}/PhaseTimings.tsv
-            apps/ios/DerivedData/E2E/${{ matrix.story_2 }}/Logs/
-            apps/ios/DerivedData/E2E/${{ matrix.story_2 }}/Diagnostics/
-            apps/ios/DerivedData/E2E/${{ matrix.story_2 }}/ActualWalkthrough/
-            apps/ios/DerivedData/E2E/${{ matrix.story_2 }}/Attachments/
-            apps/ios/DerivedData/E2E/${{ matrix.story_2 }}/Results/Story.xcresult/
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: Upload third story diagnostics
-        if: ${{ always() && matrix.story_3 != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: ios-e2e-${{ matrix.story_3 }}
-          path: |
-            apps/ios/DerivedData/E2E/${{ matrix.story_3 }}/Run.json
-            apps/ios/DerivedData/E2E/${{ matrix.story_3 }}/PhaseTimings.tsv
-            apps/ios/DerivedData/E2E/${{ matrix.story_3 }}/Logs/
-            apps/ios/DerivedData/E2E/${{ matrix.story_3 }}/Diagnostics/
-            apps/ios/DerivedData/E2E/${{ matrix.story_3 }}/ActualWalkthrough/
-            apps/ios/DerivedData/E2E/${{ matrix.story_3 }}/Attachments/
-            apps/ios/DerivedData/E2E/${{ matrix.story_3 }}/Results/Story.xcresult/
-          if-no-files-found: error
-          retention-days: 30
-
-      - name: Upload shard and core diagnostics
+      - name: Upload complete story evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ios-e2e-${{ matrix.shard }}-summary
+          name: ios-e2e-${{ matrix.story }}
           path: |
-            apps/ios/DerivedData/E2EShards/${{ matrix.shard }}/Shard.json
-            apps/ios/DerivedData/E2EShards/${{ matrix.shard }}/StoryTimings.tsv
-            apps/ios/DerivedData/E2EShards/${{ matrix.shard }}/Logs/
-            apps/ios/DerivedData/E2EShards/${{ matrix.shard }}/Core/
+            apps/ios/DerivedData/E2E/${{ matrix.story }}/
+            build/app-store-listing/screenshots/
           if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+  core-tests:
+    name: Core tests and fixture gates
+    if: inputs.expected_sha == ''
+    needs: e2e-build
+    runs-on: macos-26
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash --noprofile --norc -e -o pipefail {0}
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ios-shared-build-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: apps/ios/DerivedData/NormalCI/SharedBuildArtifact
+      - name: Verify source and immutable shared build
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          (cd apps/ios/DerivedData/NormalCI/SharedBuildArtifact \
+            && shasum -a 256 -c SharedBuild.tar.sha256)
+          mkdir -p apps/ios/DerivedData/NormalCI/SharedBuild
+          tar -C apps/ios/DerivedData/NormalCI/SharedBuild -xf \
+            apps/ios/DerivedData/NormalCI/SharedBuildArtifact/SharedBuild.tar
+          apps/ios/scripts/verify-e2e-environment.sh
+          git diff --exit-code -- apps/ios/Player.xcodeproj
+          apps/ios/scripts/e2e-build-provenance.sh verify \
+            "${PWD}/apps/ios/DerivedData/NormalCI/SharedBuild" \
+            com.apple.CoreSimulator.SimDeviceType.iPhone-17 \
+            com.apple.CoreSimulator.SimRuntime.iOS-26-5
+      - name: Verify generated fixtures
+        run: |
+          mkdir -p apps/ios/DerivedData/NormalCI/Core/Logs
+          apps/ios/scripts/fixtures/verify-generated-fixtures.sh \
+            2>&1 | tee apps/ios/DerivedData/NormalCI/Core/Logs/fixtures.log
+          apps/ios/scripts/fixtures/verify-messy-multifile-fixture.sh \
+            2>&1 | tee -a apps/ios/DerivedData/NormalCI/Core/Logs/fixtures.log
+          apps/ios/scripts/fixtures/verify-zip-fixtures.sh \
+            2>&1 | tee -a apps/ios/DerivedData/NormalCI/Core/Logs/fixtures.log
+          apps/ios/scripts/fixtures/verify-import-channel-fixtures.sh \
+            2>&1 | tee -a apps/ios/DerivedData/NormalCI/Core/Logs/fixtures.log
+          apps/ios/scripts/fixtures/verify-metadata-repair-fixture.sh \
+            2>&1 | tee -a apps/ios/DerivedData/NormalCI/Core/Logs/fixtures.log
+          apps/ios/scripts/fixtures/verify-populated-library-fixture.sh \
+            2>&1 | tee -a apps/ios/DerivedData/NormalCI/Core/Logs/fixtures.log
+      - name: Run all core tests on a fresh host
+        run: |
+          core_root="${PWD}/apps/ios/DerivedData/NormalCI/Core"
+          lease="${PWD}/apps/ios/DerivedData/SimulatorLeases/normal-ci-core-$$.json"
+          simulator_id=""
+          cleanup() {
+            status="$?"
+            trap - EXIT INT TERM
+            if [[ -n "${simulator_id}" ]]; then
+              apps/ios/scripts/simulator-lease.sh release "${lease}" "$$" || status=1
+            fi
+            exit "${status}"
+          }
+          trap cleanup EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+          simulator_id="$(apps/ios/scripts/simulator-lease.sh acquire \
+            "${lease}" 'Player normal CI core' \
+            com.apple.CoreSimulator.SimDeviceType.iPhone-17 \
+            com.apple.CoreSimulator.SimRuntime.iOS-26-5 "$$")"
+          xcrun simctl boot "${simulator_id}"
+          xcrun simctl bootstatus "${simulator_id}" -b
+          xcodebuild test-without-building \
+            -project apps/ios/Player.xcodeproj \
+            -scheme Player \
+            -configuration E2E \
+            -destination "platform=iOS Simulator,arch=arm64,id=${simulator_id}" \
+            -derivedDataPath "${PWD}/apps/ios/DerivedData/NormalCI/SharedBuild" \
+            -parallel-testing-enabled NO \
+            -maximum-parallel-testing-workers 1 \
+            -only-testing:PlayerTests \
+            -resultBundlePath "${core_root}/Core.xcresult" \
+            CODE_SIGNING_ALLOWED=NO \
+            2>&1 | tee "${core_root}/Logs/core-tests.log"
+          apps/ios/scripts/simulator-lease.sh release "${lease}" "$$"
+          simulator_id=""
+      - name: Upload complete core-test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-core-tests
+          path: apps/ios/DerivedData/NormalCI/Core/
+          if-no-files-found: error
+          compression-level: 0
           retention-days: 30
 
   ios-tests:
     name: Core tests and exact E2E walkthroughs
     if: ${{ always() && inputs.expected_sha == '' }}
-    needs: [e2e-shards]
+    needs: [e2e-build, e2e-stories, core-tests]
     runs-on: ubuntu-latest
     steps:
       - name: Require every parallel iOS gate
         env:
-          SHARD_RESULT: ${{ needs.e2e-shards.result }}
-        run: test "$SHARD_RESULT" = success
+          BUILD_RESULT: ${{ needs.e2e-build.result }}
+          STORY_RESULT: ${{ needs.e2e-stories.result }}
+          CORE_RESULT: ${{ needs.core-tests.result }}
+        run: |
+          test "$BUILD_RESULT" = success
+          test "$STORY_RESULT" = success
+          test "$CORE_RESULT" = success
 
   r0-qualification:
     name: Formal exact-SHA R0 qualification

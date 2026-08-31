@@ -226,26 +226,29 @@ sort -o "${temporary_root}/source-tests" "${temporary_root}/source-tests"
 cmp "${temporary_root}/manifest-tests" "${temporary_root}/source-tests" \
   || fail "every UI test method must appear exactly once in the canonical manifest"
 
-rg -o 'story_[1-3]: [0-9]{3}-[a-z0-9][a-z0-9-]*' "${workflow}" \
-  | sed 's/^story_[1-3]: //' | sort > "${temporary_root}/workflow-stories"
+sed -n '/^  e2e-stories:/,/^    defaults:/p' "${workflow}" \
+  | rg -o '^[[:space:]]+- [0-9]{3}-[a-z0-9][a-z0-9-]*$' \
+  | sed -E 's/^[[:space:]]+- //' | sort > "${temporary_root}/workflow-stories"
 cmp "${temporary_root}/manifest-stories" "${temporary_root}/workflow-stories" \
-  || fail "every canonical story must appear exactly once in the CI shards"
-
-rg -o 'shard: [a-z0-9][a-z0-9-]*' "${workflow}" \
-  | sed 's/^shard: //' | sort > "${temporary_root}/workflow-shards"
-[[ "$(wc -l < "${temporary_root}/workflow-shards" | tr -d ' ')" -eq 5 ]] \
-  || fail "CI must define exactly five macOS shards"
-[[ "$(sort -u "${temporary_root}/workflow-shards" | wc -l | tr -d ' ')" -eq 5 ]] \
-  || fail "CI shard identifiers must be unique"
-[[ "$(rg -c 'run_core: true' "${workflow}")" -eq 1 ]] \
-  || fail "core and fixture tests must run in exactly one CI shard"
+  || fail "every canonical story must appear exactly once in normal CI"
+[[ "$(rg -c '^[[:space:]]+max-parallel: 13$' "${workflow}")" -eq 1 ]] \
+  || fail "normal CI must expose all 13 isolated stories to the scheduler"
+[[ "$(rg -c 'DeterminateSystems/nix-installer-action@' "${workflow}")" -eq 1 ]] \
+  || fail "normal CI must install Nix only in the shared-build producer"
+[[ "$(rg -c 'actions/download-artifact@v4' "${workflow}")" -eq 2 ]] \
+  || fail "normal CI story and core consumers must each download the shared build"
+[[ "$(rg -c 'shasum -a 256 -c SharedBuild.tar.sha256' "${workflow}")" -eq 2 ]] \
+  || fail "normal CI consumers must verify the shared-build checksum"
+[[ "$(rg -c 'e2e-build-provenance\.sh verify' "${workflow}")" -eq 2 ]] \
+  || fail "normal CI consumers must verify shared-build provenance"
+[[ "$(rg -c 'run-e2e\.sh --story \"\$\{STORY\}\"' "${workflow}")" -eq 1 ]] \
+  || fail "each normal CI story job must run its one complete canonical story"
+[[ "$(rg -c -- '-only-testing:PlayerTests' "${workflow}")" -eq 1 ]] \
+  || fail "normal CI must run the complete core-test target exactly once"
 [[ "$(rg -c '^      - \.github/workflows/r0-qualification\.yml$' "${workflow}")" -eq 2 ]] \
   || fail "formal qualification workflow changes must trigger pull-request and main CI"
-[[ "$(rg -c 'PLAYER_E2E_PARALLEL_WORKERS: "1"' "${workflow}")" -eq 1 ]] \
-  || fail "CI must keep UI test classes serial within each macOS shard"
-rg -q '^[[:space:]]*PLAYER_E2E_PARALLEL_WORKERS=1' \
-  "${script_dir}/run-e2e-shard.sh" \
-  || fail "the shard runner must keep UI test classes serial"
+[[ "$(rg -c '^[[:space:]]*PLAYER_E2E_PARALLEL_WORKERS=1' "${workflow}")" -eq 1 ]] \
+  || fail "normal CI must keep UI test classes serial within each isolated story"
 
 sed -n '/^  story-qualification:/,/^  story-gate:/p' \
   "${qualification_workflow}" \
@@ -273,51 +276,6 @@ sed -n '/^  matrix-qualification:/,/^  qualification-report:/p' \
   "${qualification_workflow}" \
   | rg -Fq 'lane: [lane-1, lane-2, lane-3, lane-4, lane-5]' \
   || fail "formal matrix qualification must define exactly five hosted lanes"
-
-python3 - "${workflow}" "${qualification_workflow}" <<'PY' \
-  || fail "normal and formal matrix lanes must have identical ordered work, core, and renderer attribution"
-import json
-import re
-import sys
-from pathlib import Path
-
-normal_text = Path(sys.argv[1]).read_text(encoding="utf-8")
-formal_text = Path(sys.argv[2]).read_text(encoding="utf-8")
-
-normal_blocks = re.findall(
-    r"(?ms)^          - shard: (lane-[1-5])\n(.*?)(?=^          - shard: |^    defaults:)",
-    normal_text,
-)
-normal = []
-for lane, body in normal_blocks:
-    stories = []
-    for value in re.findall(r"(?m)^            story_[1-3]: (.+)$", body):
-        value = value.strip().strip("'")
-        if value:
-            stories.append(value)
-    core = re.search(r"(?m)^            run_core: (true|false)$", body).group(1) == "true"
-    renderer = re.search(
-        r"(?m)^            renders_listing: (true|false)$", body
-    ).group(1) == "true"
-    normal.append((lane, stories, core, renderer))
-
-matrix_section = formal_text.split("  matrix-qualification:\n", 1)[1].split(
-    "  qualification-report:\n", 1
-)[0]
-formal = []
-for lane, stories_text, core_text in re.findall(
-    r"(?m)^            (lane-[1-5])\) stories='([^']+)'; run_core=(true|false) ;;$",
-    matrix_section,
-):
-    stories = json.loads(stories_text)
-    core = core_text == "true"
-    formal.append((lane, stories, core, "013-app-store-listing" in stories))
-
-if len(normal) != 5 or len(formal) != 5 or normal != formal:
-    print(f"normal topology: {normal}", file=sys.stderr)
-    print(f"formal topology: {formal}", file=sys.stderr)
-    raise SystemExit(1)
-PY
 
 if rg -n 'prepare-core-web-runtime\.sh|simctl[[:space:]]+openurl' \
   "${script_dir}/run-e2e-shard.sh" \

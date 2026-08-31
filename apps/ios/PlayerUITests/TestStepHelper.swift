@@ -396,6 +396,7 @@ func backgroundAndReactivateApplication(
   ) else { return false }
 
   XCUIDevice.shared.press(.home)
+  guard application.wait(for: .runningBackground, timeout: 2) else { return false }
   guard backgroundReceipt.wait(timeout: 2) else { return false }
 
   application.activate()
