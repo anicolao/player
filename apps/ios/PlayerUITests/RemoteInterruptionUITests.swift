@@ -198,9 +198,8 @@ final class RemoteInterruptionUITests: PlayerUITestCase {
       reason: "play"
     )
 
-    XCUIDevice.shared.press(.home)
     XCTAssertTrue(
-      reactivateApplicationAfterHome(
+      backgroundAndReactivateApplication(
         app,
         requiring: app.buttons["e2e-remote-pause"]
       ),

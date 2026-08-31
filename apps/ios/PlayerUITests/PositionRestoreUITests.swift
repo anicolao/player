@@ -59,9 +59,8 @@ final class PositionRestoreUITests: PlayerUITestCase {
 
     try tapHittableButton("close-now-playing", in: app)
     XCTAssertTrue(miniPlayer.waitForExistence(timeout: 2))
-    XCUIDevice.shared.press(.home)
     XCTAssertTrue(
-      reactivateApplicationAfterHome(
+      backgroundAndReactivateApplication(
         app,
         requiring: app.buttons["e2e-engine-progress-90"]
       ),

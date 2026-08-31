@@ -4,6 +4,23 @@ import Observation
 import Security
 import UIKit
 
+#if E2E
+  enum E2ELifecycleEvent {
+    static let backgroundCheckpointCompleted =
+      "com.spnss.player.e2e.background-checkpoint-completed"
+
+    static func postBackgroundCheckpointCompleted() {
+      CFNotificationCenterPostNotification(
+        CFNotificationCenterGetDarwinNotifyCenter(),
+        CFNotificationName(backgroundCheckpointCompleted as CFString),
+        nil,
+        nil,
+        true
+      )
+    }
+  }
+#endif
+
 struct E2EPersistedLibrary {
   let snapshot: LibrarySnapshot
   let encoded: String

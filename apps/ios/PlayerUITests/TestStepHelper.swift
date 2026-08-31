@@ -1,3 +1,4 @@
+import Darwin
 import XCTest
 import UniformTypeIdentifiers
 
@@ -352,14 +353,50 @@ func performPhysicalInteractionWithoutPostEventQuiescence(
   return true
 }
 
+@_silgen_name("notify_register_file_descriptor")
+private func e2eNotifyRegisterFileDescriptor(
+  _ name: UnsafePointer<CChar>,
+  _ descriptor: UnsafeMutablePointer<Int32>,
+  _ flags: Int32,
+  _ token: UnsafeMutablePointer<Int32>
+) -> UInt32
+
+@_silgen_name("notify_cancel")
+private func e2eNotifyCancel(_ token: Int32) -> UInt32
+
+private final class DarwinEventReceipt: @unchecked Sendable {
+  private var descriptor: Int32 = -1
+  private var token: Int32 = 0
+
+  init?(name: String) {
+    let status = name.withCString { notificationName in
+      e2eNotifyRegisterFileDescriptor(notificationName, &descriptor, 0, &token)
+    }
+    guard status == 0, descriptor >= 0 else { return nil }
+  }
+
+  deinit {
+    _ = e2eNotifyCancel(token)
+  }
+
+  func wait(timeout: TimeInterval) -> Bool {
+    var event = pollfd(fd: descriptor, events: Int16(POLLIN), revents: 0)
+    return Darwin.poll(&event, 1, Int32(timeout * 1_000)) == 1
+      && event.revents & Int16(POLLIN) != 0
+  }
+}
+
 @MainActor
-func reactivateApplicationAfterHome(
+func backgroundAndReactivateApplication(
   _ application: XCUIApplication,
   requiring interactiveElement: XCUIElement
 ) -> Bool {
-  let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-  guard springboard.wait(for: .runningForeground, timeout: 2) else { return false }
-  guard application.wait(for: .runningBackground, timeout: 2) else { return false }
+  guard let backgroundReceipt = DarwinEventReceipt(
+    name: "com.spnss.player.e2e.background-checkpoint-completed"
+  ) else { return false }
+
+  XCUIDevice.shared.press(.home)
+  guard backgroundReceipt.wait(timeout: 2) else { return false }
 
   application.activate()
   let interactive = NSPredicate { _, _ in

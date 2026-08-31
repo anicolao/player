@@ -178,8 +178,8 @@ fi
 for lifecycle_source in \
   "${ui_test_root}/PositionRestoreUITests.swift" \
   "${ui_test_root}/RemoteInterruptionUITests.swift"; do
-  rg -Fq 'reactivateApplicationAfterHome(' "${lifecycle_source}" || {
-    echo "lifecycle hygiene requires an exact foreground-interactive receipt after Home: ${lifecycle_source}" >&2
+  rg -Fq 'backgroundAndReactivateApplication(' "${lifecycle_source}" || {
+    echo "lifecycle hygiene requires an exact background receipt before reactivation: ${lifecycle_source}" >&2
     exit 1
   }
   rg -Fq 'performBoundedForegroundInteraction(' "${lifecycle_source}" || {
@@ -194,10 +194,13 @@ if rg -n -U --regexp 'XCUIDevice\.shared\.press\(\.home\)\n[[:space:]]*app\.acti
   echo 'lifecycle hygiene rejected app activation before SpringBoard acknowledged Home' >&2
   exit 1
 fi
-rg -Fq 'springboard.wait(for: .runningForeground, timeout: 2)' \
+rg -Fq 'backgroundReceipt.wait(timeout: 2)' \
   "${ui_test_root}/TestStepHelper.swift"
-rg -Fq 'application.wait(for: .runningBackground, timeout: 2)' \
-  "${ui_test_root}/TestStepHelper.swift"
+if rg -Fq 'application.wait(for: .runningBackground, timeout: 2)' \
+  "${ui_test_root}/TestStepHelper.swift"; then
+  echo 'lifecycle hygiene rejected process state as a scene-background receipt' >&2
+  exit 1
+fi
 rg -Fq 'applicationFrame.contains(elementFrame)' \
   "${ui_test_root}/TestStepHelper.swift"
 if [[ "$(rg -c \

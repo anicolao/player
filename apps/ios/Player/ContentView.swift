@@ -292,7 +292,12 @@ struct ContentView: View {
           await drainSharedImports()
         }
       case .background:
-        Task { await model.checkpointForBackground() }
+        Task {
+          await model.checkpointForBackground()
+          #if E2E
+            E2ELifecycleEvent.postBackgroundCheckpointCompleted()
+          #endif
+        }
       default:
         break
       }
