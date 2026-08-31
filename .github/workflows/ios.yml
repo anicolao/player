@@ -209,6 +209,7 @@ jobs:
         env:
           STORY: ${{ matrix.story }}
         run: |
+          mkdir -p "${PWD}/apps/ios/DerivedData/E2E"
           PLAYER_E2E_PARALLEL_WORKERS=1 \
             PLAYER_E2E_BUILD_DATA="${PWD}/apps/ios/DerivedData/NormalCI/SharedBuild" \
             PLAYER_E2E_OUTPUT="${PWD}/apps/ios/DerivedData/E2E/${STORY}" \

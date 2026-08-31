@@ -277,6 +277,9 @@ qualification_build_section="$(sed -n \
   || fail "normal CI consumers must verify shared-build provenance"
 [[ "$(rg -c 'run-e2e\.sh --story \"\$\{STORY\}\"' "${workflow}")" -eq 1 ]] \
   || fail "each normal CI story job must run its one complete canonical story"
+[[ "$(rg -c 'mkdir -p \"\$\{PWD\}/apps/ios/DerivedData/E2E\"' \
+  "${workflow}")" -eq 1 ]] \
+  || fail "normal CI must create the isolated E2E output parent before story startup"
 [[ "$(rg -c -- '-only-testing:PlayerTests' "${workflow}")" -eq 1 ]] \
   || fail "normal CI must run the complete core-test target exactly once"
 [[ "$(rg -c '^      - \.github/workflows/r0-qualification\.yml$' "${workflow}")" -eq 2 ]] \
