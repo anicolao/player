@@ -425,7 +425,7 @@ final class AppStoreListingUITests: PlayerUITestCase {
     fixture: String,
     extraArguments: [String] = []
   ) -> XCUIApplication {
-    let app = XCUIApplication()
+    let app = bookshelfApplication()
     app.launchArguments = [
       "-e2e", "-e2e-reset", "-e2e-fixture", fixture,
       "-AppleLanguages", "(en)", "-AppleLocale", "en_CA",

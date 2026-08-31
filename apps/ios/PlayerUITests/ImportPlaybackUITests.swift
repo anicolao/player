@@ -286,7 +286,7 @@ final class ImportPlaybackUITests: PlayerUITestCase {
   }
 
   private func makeApplication(fixture: String = "single-audiobook-ready") -> XCUIApplication {
-    let app = XCUIApplication()
+    let app = bookshelfApplication()
     app.launchArguments += [
       "-e2e", "-e2e-reset", "-e2e-fixture", fixture,
       "-AppleLanguages", "(en)", "-AppleLocale", "en_CA",

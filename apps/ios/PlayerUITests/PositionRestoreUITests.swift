@@ -303,7 +303,7 @@ final class PositionRestoreUITests: PlayerUITestCase {
   }
 
   private func makeApplication(reset: Bool, eventControls: Bool = false) -> XCUIApplication {
-    let app = XCUIApplication()
+    let app = bookshelfApplication()
     app.launchArguments = [
       "-e2e",
       "-e2e-fixture", "committed-current-book",

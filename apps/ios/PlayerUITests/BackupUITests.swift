@@ -5,7 +5,7 @@ final class BackupUITests: PlayerUITestCase {
   func testExportsClearsAndRestoresAVerifiedPortableLibrary() throws {
     continueAfterFailure = false
     XCUIDevice.shared.orientation = .portrait
-    let app = XCUIApplication()
+    let app = bookshelfApplication()
     app.launchArguments = [
       "-e2e", "-e2e-fixture", "portable-backup", "-e2e-reset",
       "-e2e-start-section", "settings",
@@ -272,7 +272,7 @@ final class BackupUITests: PlayerUITestCase {
   }
 
   private func launchBackupFixture() -> XCUIApplication {
-    let app = XCUIApplication()
+    let app = bookshelfApplication()
     app.launchArguments = [
       "-e2e", "-e2e-fixture", "portable-backup", "-e2e-reset",
       "-e2e-start-section", "settings",

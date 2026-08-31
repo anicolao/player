@@ -158,7 +158,7 @@ final class LibrarySearchCoverageUITests: PlayerUITestCase {
   }
 
   private func makeApplication(reset: Bool) throws -> XCUIApplication {
-    let app = XCUIApplication()
+    let app = bookshelfApplication()
     app.launchArguments = [
       "-e2e", "-e2e-fixture", "synthetic-search-matrix",
       "-AppleLanguages", "(en)", "-AppleLocale", "en_CA",

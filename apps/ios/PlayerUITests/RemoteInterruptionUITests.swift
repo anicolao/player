@@ -245,7 +245,7 @@ final class RemoteInterruptionUITests: PlayerUITestCase {
   }
 
   private func makeApplication(reset: Bool) -> XCUIApplication {
-    let app = XCUIApplication()
+    let app = bookshelfApplication()
     app.launchArguments = [
       "-e2e",
       "-e2e-event-controls",

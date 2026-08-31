@@ -401,7 +401,7 @@ final class MetadataRepairUITests: PlayerUITestCase {
   }
 
   private func makeApplication(reset: Bool = true) throws -> XCUIApplication {
-    let app = XCUIApplication()
+    let app = bookshelfApplication()
     app.launchArguments = [
       "-e2e", "-e2e-fixture", "synthetic-metadata-repair",
       "-AppleLanguages", "(en)",

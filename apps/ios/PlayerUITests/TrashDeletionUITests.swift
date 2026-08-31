@@ -245,7 +245,7 @@ final class TrashDeletionUITests: PlayerUITestCase {
   }
 
   private func makeApplication(reset: Bool) throws -> XCUIApplication {
-    let app = XCUIApplication()
+    let app = bookshelfApplication()
     app.launchArguments = [
       "-e2e", "-e2e-fixture", "synthetic-permanent-trash",
       "-AppleLanguages", "(en)", "-AppleLocale", "en_CA",

@@ -6,7 +6,7 @@ final class MonetizationUITests: PlayerUITestCase {
     continueAfterFailure = false
     XCUIDevice.shared.orientation = .portrait
 
-    let app = XCUIApplication()
+    let app = bookshelfApplication()
     app.launchArguments = [
       "-e2e",
       "-e2e-reset",

@@ -23,7 +23,7 @@ final class LaunchUITests: PlayerUITestCase {
 
   func testRejectsUnknownDynamicTypeConfigurationInsteadOfUsingMedium() {
     continueAfterFailure = false
-    let app = XCUIApplication()
+    let app = bookshelfApplication()
     app.launchArguments = [
       "-e2e", "-e2e-reset", "-e2e-fixture", "empty-library",
       "-AppleLanguages", "(en)", "-AppleLocale", "en_CA",
@@ -39,7 +39,7 @@ final class LaunchUITests: PlayerUITestCase {
 
   func testRejectsInvalidNavigationBeforeConstructingTheFixtureEnvironment() {
     continueAfterFailure = false
-    let app = XCUIApplication()
+    let app = bookshelfApplication()
     app.launchArguments = [
       "-e2e", "-e2e-reset", "-e2e-fixture", "empty-library",
       "-e2e-start-section", "inbox",
@@ -156,7 +156,7 @@ final class LaunchUITests: PlayerUITestCase {
 
   func testRejectsUnknownFixtureWithoutFallingBackToProduction() {
     continueAfterFailure = false
-    let app = XCUIApplication()
+    let app = bookshelfApplication()
     app.launchArguments = [
       "-e2e", "-e2e-reset", "-e2e-fixture", "misspelled-fixture",
       "-AppleLanguages", "(en)", "-AppleLocale", "en_CA",
@@ -492,7 +492,7 @@ final class LaunchUITests: PlayerUITestCase {
     fixture: String = "empty-library",
     additionalArguments: [String] = []
   ) -> XCUIApplication {
-    let app = XCUIApplication()
+    let app = bookshelfApplication()
     app.launchArguments += [
       "-e2e",
       "-e2e-reset",

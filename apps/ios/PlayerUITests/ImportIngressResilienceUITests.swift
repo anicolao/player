@@ -101,7 +101,7 @@ final class ImportIngressResilienceUITests: PlayerUITestCase {
     pauseAt: String? = nil,
     channel: String
   ) -> XCUIApplication {
-    let app = XCUIApplication()
+    let app = bookshelfApplication()
     app.launchArguments = baseArguments(reset: reset) + [
       "-e2e-import-channel", channel,
     ]

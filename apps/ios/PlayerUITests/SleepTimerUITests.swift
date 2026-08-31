@@ -492,7 +492,7 @@ final class SleepTimerUITests: PlayerUITestCase {
   }
 
   private func makeApplication(namespace: String, reset: Bool) -> XCUIApplication {
-    let app = XCUIApplication()
+    let app = bookshelfApplication()
     app.launchArguments = [
       "-e2e",
       "-e2e-fixture", "sleep-timer",

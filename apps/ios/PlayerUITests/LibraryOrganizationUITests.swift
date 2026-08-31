@@ -1016,7 +1016,7 @@ final class LibraryOrganizationUITests: PlayerUITestCase {
   }
 
   private func makeApplication(reset: Bool) throws -> XCUIApplication {
-    let app = XCUIApplication()
+    let app = bookshelfApplication()
     app.launchArguments = [
       "-e2e", "-e2e-fixture", "synthetic-populated-library",
       "-AppleLanguages", "(en)", "-AppleLocale", "en_CA",

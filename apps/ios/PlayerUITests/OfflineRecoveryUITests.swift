@@ -5,7 +5,7 @@ final class OfflineRecoveryUITests: PlayerUITestCase {
   func testRecoversStartupAndExportsOnlySanitizedOfflineDiagnostics() throws {
     continueAfterFailure = false
     XCUIDevice.shared.orientation = .portrait
-    let app = XCUIApplication()
+    let app = bookshelfApplication()
     app.launchArguments = [
       "-e2e", "-e2e-fixture", "offline-recovery", "-e2e-reset",
       "-e2e-start-section", "settings",
@@ -429,7 +429,7 @@ final class OfflineRecoveryUITests: PlayerUITestCase {
   }
 
   private func launchRecoveryApp(scenario: String) -> XCUIApplication {
-    let app = XCUIApplication()
+    let app = bookshelfApplication()
     app.launchArguments = [
       "-e2e", "-e2e-fixture", "offline-recovery", "-e2e-reset",
       "-e2e-offline-recovery-scenario", scenario,

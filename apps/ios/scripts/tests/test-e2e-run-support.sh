@@ -364,6 +364,21 @@ test_phase_line="$(rg -n -m 1 'run_logged_phase test xcodebuild test-without-bui
   || fail "the exact target application is not installed before XCTest launch"
 rg -Fq 'target_application="${build_data}/Build/Products/E2E-iphonesimulator/Player.app"' "${run_e2e}" \
   || fail "target preinstallation is not bound to the exact E2E build product"
+rg -Fq 'test_runner_application="${build_data}/Build/Products/E2E-iphonesimulator/PlayerUITests-Runner.app"' "${run_e2e}" \
+  || fail "test-runner preinstallation is not bound to the exact E2E build product"
+rg -Fq 'XCUIApplication(bundleIdentifier: "com.spnss.player")' \
+  "${repository_root}/apps/ios/PlayerUITests/TestStepHelper.swift" \
+  || fail "Bookshelf UI tests are not bound to the explicitly preinstalled application"
+if rg -n 'XCUIApplication\(\)' \
+  "${repository_root}/apps/ios/PlayerUITests" --glob '*.swift'; then
+  fail "a UI test still requests Xcode's deferred target-application installation"
+fi
+runner_install_line="$(rg -F -n -m 1 'xcrun simctl install "${simulator}" "${test_runner}"' "${run_e2e}" | cut -d: -f1)"
+runner_receipt_line="$(rg -F -n -m 1 'xcrun simctl launch --terminate-running-process' "${run_e2e}" | cut -d: -f1)"
+[[ -n "${runner_install_line}" && -n "${runner_receipt_line}" \
+  && "${runner_install_line}" -lt "${runner_receipt_line}" \
+  && "${runner_receipt_line}" -lt "${test_phase_line}" ]] \
+  || fail "the exact test runner lacks a FrontBoard registration receipt before XCTest launch"
 reset_line="$(rg -n -m 1 'run_logged_phase simulator-control-plane-reset' "${run_e2e}" | cut -d: -f1)"
 lease_line="$(rg -n -F -m 1 'simulator_lease="${simulator_lease_root}/story-' "${run_e2e}" | cut -d: -f1)"
 [[ -n "${reset_line}" && -n "${lease_line}" && "${reset_line}" -lt "${lease_line}" ]] \

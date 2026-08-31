@@ -629,7 +629,7 @@ final class AccessibilityUITests: PlayerUITestCase {
     reset: Bool = true,
     metadataRichNamespace: String? = nil
   ) -> XCUIApplication {
-    let app = XCUIApplication()
+    let app = bookshelfApplication()
     app.launchArguments = baseArguments(
       fixture: fixture,
       reset: reset,
@@ -641,7 +641,7 @@ final class AccessibilityUITests: PlayerUITestCase {
   }
 
   private func makeReceiverApplication() -> XCUIApplication {
-    let app = XCUIApplication()
+    let app = bookshelfApplication()
     app.launchArguments =
       baseArguments(fixture: "empty-library") + [
         "-e2e-computer-receiver-ready", "-e2e-show-mirroring-tip",
@@ -652,7 +652,7 @@ final class AccessibilityUITests: PlayerUITestCase {
   }
 
   private func makePopulatedLibraryApplication() throws -> XCUIApplication {
-    let app = XCUIApplication()
+    let app = bookshelfApplication()
     app.launchArguments = baseArguments(fixture: "synthetic-populated-library")
     app.launchEnvironment["TZ"] = "America/Toronto"
     app.launchEnvironment["PLAYER_E2E_DYNAMIC_TYPE"] = "accessibility5"

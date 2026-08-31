@@ -3,6 +3,11 @@ import XCTest
 import UniformTypeIdentifiers
 
 @MainActor
+func bookshelfApplication() -> XCUIApplication {
+  XCUIApplication(bundleIdentifier: "com.spnss.player")
+}
+
+@MainActor
 class PlayerUITestCase: XCTestCase {
   private var retainedFailureScreen = false
 

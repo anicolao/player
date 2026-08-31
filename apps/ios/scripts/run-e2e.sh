@@ -196,6 +196,28 @@ run_logged_phase() {
   return "${phase_status}"
 }
 
+install_e2e_targets() {
+  local simulator="$1"
+  local application="$2"
+  local application_bundle_identifier="$3"
+  local test_runner="$4"
+  local test_runner_bundle_identifier="$5"
+
+  xcrun simctl install "${simulator}" "${application}"
+  xcrun simctl install "${simulator}" "${test_runner}"
+  # Successful FrontBoard launches are the durable receipts that both
+  # asynchronous LaunchServices registrations are visible. MobileInstallation
+  # can report success while either bundle is still unknown or busy.
+  local bundle_identifier
+  for bundle_identifier in \
+    "${application_bundle_identifier}" "${test_runner_bundle_identifier}"; do
+    xcrun simctl launch --terminate-running-process \
+      "${simulator}" "${bundle_identifier}"
+    xcrun simctl terminate "${simulator}" "${bundle_identifier}" \
+      2>/dev/null || true
+  done
+}
+
 capture_failure_screen() {
   local temporary_screen="${story_output}/Diagnostics/.failure-screen-live.$$.png"
   local temporary_source="${story_output}/Diagnostics/.failure-screen-source.$$.json"
@@ -451,13 +473,22 @@ else
 fi
 
 target_application="${build_data}/Build/Products/E2E-iphonesimulator/Player.app"
+target_bundle_identifier="com.spnss.player"
+test_runner_application="${build_data}/Build/Products/E2E-iphonesimulator/PlayerUITests-Runner.app"
+test_runner_bundle_identifier="com.spnss.player.uitests.xctrunner"
 if [[ ! -d "${target_application}" ]]; then
   echo "The exact E2E target application is unavailable: ${target_application}" >&2
   exit 1
 fi
+if [[ ! -d "${test_runner_application}" ]]; then
+  echo "The exact E2E test runner is unavailable: ${test_runner_application}" >&2
+  exit 1
+fi
 if ! run_logged_phase target-install \
-  xcrun simctl install "${simulator_id}" "${target_application}"; then
-  echo "Could not install the exact E2E target before XCTest launch." >&2
+  install_e2e_targets "${simulator_id}" "${target_application}" \
+    "${target_bundle_identifier}" "${test_runner_application}" \
+    "${test_runner_bundle_identifier}"; then
+  echo "Could not register the exact E2E application and test runner before XCTest launch." >&2
   exit 1
 fi
 

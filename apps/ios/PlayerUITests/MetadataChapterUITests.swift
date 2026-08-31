@@ -8,7 +8,7 @@ final class MetadataChapterUITests: PlayerUITestCase {
     continueAfterFailure = false
     XCUIDevice.shared.orientation = .portrait
 
-    let setup = XCUIApplication()
+    let setup = bookshelfApplication()
     setup.launchArguments = [
       "-e2e", "-e2e-reset", "-e2e-fixture", "metadata-rich-book",
       "-e2e-metadata-rich-namespace", "metadata-live-progress",
@@ -26,7 +26,7 @@ final class MetadataChapterUITests: PlayerUITestCase {
     XCTAssertTrue(setup.otherElements["now-playing-screen"].waitForExistence(timeout: 2))
     XCTAssertTrue(terminateAndWait(setup))
 
-    let app = XCUIApplication()
+    let app = bookshelfApplication()
     app.launchArguments = [
       "-e2e", "-e2e-event-controls", "-e2e-fixture", "metadata-rich-book",
       "-e2e-metadata-rich-namespace", "metadata-live-progress",
@@ -80,7 +80,7 @@ final class MetadataChapterUITests: PlayerUITestCase {
     continueAfterFailure = false
     XCUIDevice.shared.orientation = .portrait
 
-    let app = XCUIApplication()
+    let app = bookshelfApplication()
     app.launchArguments = [
       "-e2e", "-e2e-reset", "-e2e-fixture", "metadata-rich-book",
       "-e2e-metadata-rich-namespace", "metadata-chapters",

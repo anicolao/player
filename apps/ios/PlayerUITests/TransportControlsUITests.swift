@@ -323,7 +323,7 @@ final class TransportControlsUITests: PlayerUITestCase {
     eventControls: Bool = false,
     failsTransportOverrideClear: Bool = false
   ) -> XCUIApplication {
-    let app = XCUIApplication()
+    let app = bookshelfApplication()
     app.launchArguments = [
       "-e2e", "-e2e-fixture", "metadata-rich-book",
       "-e2e-metadata-rich-namespace", namespace,
