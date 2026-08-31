@@ -1862,6 +1862,7 @@ private struct NowPlayingView: View {
   @State private var showsSleepTimer = false
   @State private var smartRewindUndoPositionMilliseconds: Int64?
   @State private var savedBookmarkID: UUID?
+  @State private var isSavingBookmark = false
   var body: some View {
     let slider = PlaybackSliderConfiguration(durationSeconds: displayedDuration)
     ZStack {
@@ -2097,11 +2098,17 @@ private struct NowPlayingView: View {
 
   private var addBookmarkButton: some View {
     Button {
-      Task { savedBookmarkID = await model.addBookmark() }
+      guard !isSavingBookmark else { return }
+      isSavingBookmark = true
+      Task {
+        savedBookmarkID = await model.addBookmark()
+        isSavingBookmark = false
+      }
     } label: {
       Image(systemName: "bookmark").frame(width: 44, height: 44)
     }
     .buttonStyle(.plain)
+    .disabled(isSavingBookmark)
     .accessibilityLabel("Add Bookmark")
     .accessibilityIdentifier("add-bookmark")
   }

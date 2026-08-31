@@ -31,10 +31,10 @@ final class BookmarkUITests: PlayerUITestCase {
 
     let add = app.buttons["add-bookmark"]
     XCTAssertTrue(add.waitForExistence(timeout: 2))
-    add.tap()
-    try requireValue(
-      app.descendants(matching: .any)["bookmark-saved"],
-      "bookmark=\(boundaryBookmarkID):book=\(bookID):position=60000"
+    try addBookmark(
+      with: add,
+      expectedValue: "bookmark=\(boundaryBookmarkID):book=\(bookID):position=60000",
+      in: app
     )
     var probe = try requireProbe(app, count: 1, position: 60_000, clock: 1_700_030_000)
     XCTAssertEqual(probe["clock"], "1700030000")
@@ -51,10 +51,10 @@ final class BookmarkUITests: PlayerUITestCase {
     probe = try requireProbe(app, count: 1, position: 15_000, clock: 1_700_030_060)
     XCTAssertEqual(probe["clock"], "1700030060")
     XCTAssertEqual(probe.journal, "1:pause@60000,2:seek@15000")
-    add.tap()
-    try requireValue(
-      app.descendants(matching: .any)["bookmark-saved"],
-      "bookmark=\(secondBookmarkID):book=\(bookID):position=15000"
+    try addBookmark(
+      with: add,
+      expectedValue: "bookmark=\(secondBookmarkID):book=\(bookID):position=15000",
+      in: app
     )
     probe = try requireProbe(app, count: 2, position: 15_000, clock: 1_700_030_060)
     XCTAssertEqual(probe["order"], "\(boundaryBookmarkID),\(secondBookmarkID)")
@@ -571,6 +571,28 @@ final class BookmarkUITests: PlayerUITestCase {
     }
     XCTFail("Bookmark probe did not reach count=\(count), transactions=\(transactions.map(String.init) ?? "any"), position=\(position), clock=\(clock); actual=\(String(describing: element.value))")
     throw BookmarkUITestError.probeUnavailable
+  }
+
+  private func addBookmark(
+    with action: XCUIElement,
+    expectedValue: String,
+    in app: XCUIApplication
+  ) throws {
+    let receipt = app.descendants(matching: .any)["bookmark-saved"]
+    let completed = NSPredicate(
+      format: "exists == true AND value == %@",
+      expectedValue
+    )
+    guard deliverPhysicalActionAcknowledgedByDisabling(
+      action,
+      until: receipt,
+      satisfies: completed,
+      in: app
+    ) else {
+      XCTFail("Add Bookmark did not acknowledge delivery within two seconds")
+      throw BookmarkUITestError.probeUnavailable
+    }
+    try requireValue(receipt, expectedValue)
   }
 
   private func requireValue(

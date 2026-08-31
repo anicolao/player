@@ -222,6 +222,34 @@ rg -Fq 'requiresScrollableRange: true' \
   "${ui_test_root}/BookmarkUITests.swift"
 rg -Fq 'terminalEndpoint: \.atBottom' \
   "${ui_test_root}/BookmarkUITests.swift"
+if rg -Fq 'add.tap()' "${ui_test_root}/BookmarkUITests.swift"; then
+  echo 'bookmark hygiene rejects unacknowledged Add Bookmark taps' >&2
+  exit 1
+fi
+rg -Fq 'deliverPhysicalActionAcknowledgedByDisabling(' \
+  "${ui_test_root}/BookmarkUITests.swift"
+rg -Fq '@State private var isSavingBookmark = false' \
+  "${ui_test_root}/../Player/ContentView.swift"
+rg -Fq '.disabled(isSavingBookmark)' \
+  "${ui_test_root}/../Player/ContentView.swift"
+delivery_helper="${ui_test_root}/TestStepHelper.swift"
+delivery_helper_start="$(rg -n '^func deliverPhysicalActionAcknowledgedByDisabling\(' \
+  "${delivery_helper}" | cut -d: -f1)"
+delivery_helper_end="$(rg -n '^func waitForNoElements\(' \
+  "${delivery_helper}" | cut -d: -f1)"
+delivery_helper_body="$(sed -n "${delivery_helper_start},${delivery_helper_end}p" \
+  "${delivery_helper}")"
+delivery_helper_gesture="$(rg -n -m 1 \
+  'performPhysicalInteractionWithoutPostEventQuiescence' \
+  <<<"${delivery_helper_body}" | cut -d: -f1)"
+delivery_helper_deadline="$(rg -n -m 1 \
+  'deliveryDeadline = EventDeadline()' \
+  <<<"${delivery_helper_body}" | cut -d: -f1)"
+[[ -n "${delivery_helper_gesture}" && -n "${delivery_helper_deadline}" \
+  && "${delivery_helper_gesture}" -lt "${delivery_helper_deadline}" ]] || {
+  echo 'async action hygiene requires a post-synthesis delivery deadline' >&2
+  exit 1
+}
 rg -Fq 'waitForExistence(container, deadline: EventDeadline())' \
   "${ui_test_root}/AccessibilityUITests.swift"
 multifile_grouping="${ui_test_root}/MultifileGroupingUITests.swift"

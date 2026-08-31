@@ -409,6 +409,75 @@ func performBoundedForegroundInteraction(
   )
 }
 
+/// Delivers an asynchronous production button action without guessing whether
+/// XCTest's synthesized event reached SwiftUI. The button's synchronous
+/// disabled state acknowledges acceptance; an already-published final receipt
+/// also counts as delivery. Re-synthesis is safe only while both are absent.
+@MainActor
+func deliverPhysicalActionAcknowledgedByDisabling(
+  _ action: XCUIElement,
+  until completionReceipt: XCUIElement,
+  satisfies completionPredicate: NSPredicate,
+  in application: XCUIApplication
+) -> Bool {
+  if completionPredicate.evaluate(with: completionReceipt) { return true }
+
+  let interactive = NSPredicate { _, _ in
+    guard application.state == .runningForeground,
+      action.exists,
+      action.isEnabled,
+      action.isHittable
+    else { return false }
+    let applicationFrame = application.frame
+    let actionFrame = action.frame
+    return !applicationFrame.isEmpty
+      && !actionFrame.isEmpty
+      && applicationFrame.contains(actionFrame)
+  }
+  guard waitForPredicate(interactive, on: action, timeout: 2) else { return false }
+
+  let applicationFrame = application.frame
+  let actionFrame = action.frame
+  let coordinate = application.coordinate(
+    withNormalizedOffset: CGVector(
+      dx: (actionFrame.midX - applicationFrame.minX) / applicationFrame.width,
+      dy: (actionFrame.midY - applicationFrame.minY) / applicationFrame.height
+    )
+  )
+  let disabled = NSPredicate(format: "exists == true AND enabled == false")
+  var deliveryDeadline: EventDeadline?
+
+  repeat {
+    if completionPredicate.evaluate(with: completionReceipt) { return true }
+    if action.exists, !action.isEnabled { return true }
+    guard action.exists, action.isEnabled, action.isHittable, action.frame == actionFrame else {
+      guard let deliveryDeadline else { return false }
+      return waitForPredicate(
+        completionPredicate,
+        on: completionReceipt,
+        timeout: deliveryDeadline.remaining
+      )
+    }
+    if let deliveryDeadline, deliveryDeadline.remaining <= 0 { break }
+
+    guard performPhysicalInteractionWithoutPostEventQuiescence(
+      in: application,
+      { coordinate.tap() }
+    ) else { return false }
+    if deliveryDeadline == nil { deliveryDeadline = EventDeadline() }
+    guard let deliveryDeadline else { return false }
+
+    if waitForPredicate(
+      disabled,
+      on: action,
+      timeout: min(0.25, deliveryDeadline.remaining)
+    ) { return true }
+    if completionPredicate.evaluate(with: completionReceipt) { return true }
+  } while (deliveryDeadline?.remaining ?? 0) > 0
+
+  return false
+}
+
 @MainActor
 func waitForNoElements(
   _ query: XCUIElementQuery,
