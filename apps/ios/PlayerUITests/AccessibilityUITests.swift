@@ -83,6 +83,7 @@ final class AccessibilityUITests: PlayerUITestCase {
     app.buttons["review-import-job-10000000-0000-0000-0000-000000000001"].tap()
     let add = app.buttons["add-import-to-library"]
     let reviewScreen = anyElement(app, "review-import-screen")
+    let reviewScroll = app.scrollViews["review-import-scroll"]
     let reviewScrollReadiness = anyElement(app, "review-import-scroll-readiness")
     try tester.step(
       "large-text-import-review",
@@ -102,7 +103,15 @@ final class AccessibilityUITests: PlayerUITestCase {
       captureReadiness: accessibilityCaptureReadiness(
         app: app,
         specification: "At capture, the exact import proposal is idle at the top with placeholder artwork, title, and pinned Add action fully visible",
-        anchor: reviewScrollReadiness
+        anchor: reviewScrollReadiness,
+        prime: {
+          self.restoreAccessibilityScrollTop(
+            app: app,
+            container: reviewScroll,
+            readiness: reviewScrollReadiness,
+            containerID: "review-import-scroll"
+          )
+        }
       ) {
         self.hasExactValue(
           reviewScreen,
@@ -360,6 +369,7 @@ final class AccessibilityUITests: PlayerUITestCase {
     )
     let upNextScreen = anyElement(app, "up-next-screen")
     let upNextProbe = anyElement(app, "up-next-probe")
+    let upNextScroll = anyElement(app, "up-next-scroll")
     let upNextScrollReadiness = anyElement(app, "up-next-scroll-readiness")
     let firstUpNextBook = app.buttons["up-next-book-\(secondBookID)"]
     let firstUpNextCover = firstUpNextBook.descendants(matching: .other)
@@ -385,7 +395,15 @@ final class AccessibilityUITests: PlayerUITestCase {
       captureReadiness: accessibilityCaptureReadiness(
         app: app,
         specification: "At capture, the exact three-book Up Next order is visible with its first cover-bearing row and paused mini-player in settled geometry",
-        anchor: upNextScrollReadiness
+        anchor: upNextScrollReadiness,
+        prime: {
+          self.restoreAccessibilityScrollTop(
+            app: app,
+            container: upNextScroll,
+            readiness: upNextScrollReadiness,
+            containerID: "up-next-scroll"
+          )
+        }
       ) {
         self.hasExactValue(upNextScreen, "ready")
           && self.hasExactValue(
@@ -525,7 +543,15 @@ final class AccessibilityUITests: PlayerUITestCase {
         app: app,
         specification: "At capture, the exact ready receiver is idle at the top with its large-text address and pairing section stably laid out",
         anchor: receiverScrollReadiness,
-        intendedSheetContentID: "computer-receiver-screen"
+        intendedSheetContentID: "computer-receiver-screen",
+        prime: {
+          self.restoreAccessibilityScrollTop(
+            app: app,
+            container: receiverScreen,
+            readiness: receiverScrollReadiness,
+            containerID: "computer-receiver-scroll"
+          )
+        }
       ) {
         self.hasExactValue(receiverScreen, "receiver:ready")
           && self.hasSettledScroll(
@@ -695,6 +721,42 @@ final class AccessibilityUITests: PlayerUITestCase {
         && app.keyboards.count == 0
         && app.alerts.count == 0
         && !self.hasUnintendedSheet(app, intendedContentID: intendedSheetContentID)
+    }
+  }
+
+  private func restoreAccessibilityScrollTop(
+    app: XCUIApplication,
+    container: XCUIElement,
+    readiness: XCUIElement,
+    containerID: String
+  ) -> Bool {
+    let surface = ScrollSurface(
+      application: app,
+      container: container,
+      readiness: readiness,
+      containerID: containerID,
+      axis: .vertical
+    )
+    return scrollUntil(
+      { surface.state()?.atTop == true },
+      on: surface,
+      deadline: EventDeadline(),
+      direction: .towardStart,
+      terminalEndpoint: \.atTop,
+      failureContext: {
+        "post-overlay top restoration for \(containerID); "
+          + "container=\(container.frame), probe=\(String(describing: readiness.value))"
+      }
+    ) {
+      container.coordinate(withNormalizedOffset: CGVector(dx: 0.82, dy: 0.25))
+        .press(
+          forDuration: 0.01,
+          thenDragTo: container.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.82, dy: 0.65)
+          ),
+          withVelocity: 500,
+          thenHoldForDuration: 0.1
+        )
     }
   }
 
