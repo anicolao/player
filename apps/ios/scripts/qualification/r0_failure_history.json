@@ -2462,6 +2462,30 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run and no product or test-body behavior began, so it reset no accepted formal qualification count."
+    },
+    {
+      "signature": "ui-test:009-accessible-core-journeys:metadata-capture-fixed-correction-ceiling",
+      "story": "009-accessible-core-journeys",
+      "evidence": {
+        "workflowRun": 33336466219,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 009 artifact 9740570789 retains all ten attempts, the exact XCTest result, synthesized-event trace, failure screenshot and hierarchy, scroll-readiness probes, and complete attempt evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33336466219/job/99324260501",
+        "commit": "1cacde68e3a06f23e97b8dd309686566ed80ac89",
+        "observation": "Story 009 attempts 01 through 09 passed. Attempt 10 reached the correct metadata editor with Identity, Title, Apply, and all fields visible; its third acknowledged correction advanced idle scroll geometry but left the Identity anchor at screen y 142.7 instead of 135.0 ± 1.0. The helper then failed solely because its fixed three-correction loop ended."
+      },
+      "rootCause": "The framing helper bounded convergence by an assumed count of three synthesized corrections rather than by observable convergence. XCTest consumed a slightly different amount of the final short pan on attempt 10, so a valid progress-making correction exhausted the arbitrary count while 7.7 points of finite framing error remained.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Continue framing only while each independently acknowledged, idle correction strictly reduces the measured anchor error; succeed at tolerance and fail immediately at a scroll endpoint, missing readiness, no progress, or non-convergence. Every physical correction retains its own two-second event deadline, with no sleep, timeout increase, test rerun, or coverage reduction.",
+        "commits": [
+          "12603a3de670696e00f41568acc960bb5ca13f2d"
+        ],
+        "validation": "The changed Swift parses successfully; all 18 qualification-support tests and the complete E2E hygiene gate pass. The source contract rejects any restored fixed correction ceiling and requires both the strict convergence condition and a fresh action deadline. Exact-code hosted run 33341788139 passed all five lanes without a rerun, including complete Story 009 on lane 5, all 13 stories, all 41 UI selectors, 372 core tests, fixture gates, and the App Store renderer."
+      },
+      "qualificationResetCount": 1,
+      "resetEvidence": "Formal exact-SHA Story 009 passed attempts 01 through 09 at 1cacde68e3a06f23e97b8dd309686566ed80ac89, then attempt 10 failed this framing assertion and reset its consecutive qualification count from nine to zero."
     }
   ]
 }
