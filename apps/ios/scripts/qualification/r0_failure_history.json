@@ -3016,6 +3016,79 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "screenshot:pixel-difference:002-corrected-one-book.png",
+      "story": "003-multifile-grouping",
+      "evidence": {
+        "workflowRun": 33443538076,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 003 attempt-07 artifact 9778080716 retains the exact XCTest result, all four screenshots, expected/actual/diff diagnostics, semantic probes, and complete attempt evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33443538076/job/99660197304",
+        "commit": "daa062ace6118c5fbc127fe0a8af999488e81896",
+        "observation": "The selector completed every semantic assertion and produced all four canonical screenshots, but 002-corrected-one-book captured SwiftUI's native List while a removed section's row was still rendered as a detached floating snapshot over the corrected rows. The persisted review revision was already 7 and the surrounding screenshots were exact or canonical. The attempt summary incorrectly named the first tolerated canonical image because its signature classifier treated every non-exact result as failed; the retained comparison summary identifies 002 as the sole pixel difference."
+      },
+      "rootCause": "A persisted order revision could remove and regroup List sections while SwiftUI's implicit row-removal animation was still visible. The semantic revision and saved order were atomic, but screenshot readiness had no production event capable of observing the framework's detached transition layer. Separately, the diagnostic classifier failed to exclude accepted canonical comparisons when selecting the failed image.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Disable implicit transaction animations for the review-order List so each accepted persisted revision is visually atomic, while preserving scrolling and direct manipulation. Select screenshot signatures only from results that are neither exact nor canonical, with a regression containing accepted images before the real failure.",
+        "commits": [
+          "a171dcf965f2630eb306a31864389f29731042fc",
+          "2841169a8c3399de965541e96b2ba50802922e96"
+        ],
+        "validation": "The complete Story 003 journey passed locally in 42.285 seconds with all four reviewed screenshots accepted and an exact README. Two concurrent fresh-simulator stress attempts then passed in 42.391 and 42.538 seconds with 002 pixel-exact. Qualification-support tests pass, and replaying signature extraction against the retained failed artifact now reports screenshot:pixel-difference:002-corrected-one-book.png."
+      },
+      "qualificationResetCount": 1,
+      "resetEvidence": "Formal exact-SHA Story 003 attempt 07 failed at daa062ace6118c5fbc127fe0a8af999488e81896, resetting that story's consecutive qualification count; no other attempt in the same failed dispatch can restore the required uninterrupted 10/10 result."
+    },
+    {
+      "signature": "infrastructure:xcode-application-launch-timeout:ImportIngressResilienceUITests.testConsumesAndDeduplicatesShareExtensionAppGroupHandoff+ImportIngressResilienceUITests.testDocumentOpenResumesOneImportAcrossAcquireAndInspectRestarts:exit-65",
+      "story": "002-import-and-play",
+      "evidence": {
+        "workflowRun": 33443538076,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 002 attempt-04 artifact 9778404616 retains the exact xcresult, MobileInstallation and LaunchServices timeline, simulator diagnostics, all six accepted screenshots, and complete attempt evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33443538076/job/99660197327",
+        "commit": "daa062ace6118c5fbc127fe0a8af999488e81896",
+        "observation": "The harness preinstalled and obtained FrontBoard receipts for the exact target app and runner, but Xcode reinstalled the runner and later began reinstalling the target after test execution started. The first selector timed out launching the app and the second could not acquire a background assertion while the target still had pid 0. After the deferred target install completed, the remaining five selectors passed and all six canonical screenshots matched."
+      },
+      "rootCause": "The UI-test target still declared Player as TEST_TARGET_NAME through its project dependency. That metadata instructed test-without-building to manage and reinstall the target application even though the harness had already installed and receipted the exact product, recreating an asynchronous LaunchServices gap on a severely constrained fresh host.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Remove the UI bundle's target dependency and TEST_TARGET_NAME association while retaining explicit Player and PlayerUITests scheme builds and the harness's exact app/runner preinstallation receipts. Add source hygiene that rejects a restored association or lost scheme build.",
+        "commits": [
+          "18e727b36ff3fc79cc19011d2461a5e928855655"
+        ],
+        "validation": "The generated xctestrun now uses UseUITargetAppProvidedByTests and contains no target app path or bundle identifier for Xcode-managed deployment. A complete fresh-simulator Story 002 run passed all seven selectors in 95.981 seconds, including both formerly failing ingress selectors, all six screenshots, and the exact README. Project regeneration, run-support, hygiene, and qualification-support checks pass."
+      },
+      "qualificationResetCount": 1,
+      "resetEvidence": "Formal exact-SHA Story 002 attempt 04 entered XCTest and failed two selectors at daa062ace6118c5fbc127fe0a8af999488e81896, resetting that story's consecutive qualification count."
+    },
+    {
+      "signature": "infrastructure:qualification-shared-build-download-reported-success-without-files",
+      "story": "002-import-and-play",
+      "evidence": {
+        "workflowRun": 33443538076,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions job log for Story 002 attempt 01 records shared artifact 9777466643 beginning download, the download step succeeding without materialized files, and checksum verification failing because SharedBuild.tar.sha256 did not exist",
+        "url": "https://github.com/anicolao/player/actions/runs/33443538076/job/99660197233",
+        "commit": "daa062ace6118c5fbc127fe0a8af999488e81896",
+        "observation": "actions/download-artifact@v4 printed its start message and returned success under GitHub's forced Node 24 runtime, yet neither SharedBuild.tar nor SharedBuild.tar.sha256 existed in the destination. The immediately following fail-closed checksum step rejected the absent file before simulator creation, provenance verification, or any test attempt."
+      },
+      "rootCause": "The workflow retained the Node 20 generation of GitHub's standard artifact action after hosted runners forced JavaScript actions onto Node 24. In this occurrence the compatibility path silently accepted an incomplete download; the repository checksum contract correctly prevented those missing bytes from being used.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Upgrade all workflows to checkout@v7, download-artifact@v8, and upload-artifact@v7, retain checksum and provenance verification, and make E2E hygiene reject every older Node 20 major.",
+        "commits": [
+          "fd0c4dd34d96e1e2860640e9d7ca9670862d1e66"
+        ],
+        "validation": "Every workflow now parses with the Node 24 action majors. Full E2E hygiene and qualification-support checks pass, and a source guard rejects checkout v1-v6, download-artifact v1-v7, or upload-artifact v1-v6 anywhere under .github/workflows."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "The shared build did not materialize and no simulator, application, or test process began, so the infrastructure-invalid job resets no accepted formal consecutive qualification count."
     }
   ]
 }

@@ -1,9 +1,10 @@
 # Application remediation plan
 
 **Status:** Implementation and deterministic automated coverage are complete
-through R16. The final scheduling candidate is awaiting normal-CI acceptance;
-formal exact-SHA R0 qualification and physical-device release acceptance remain
-pending.
+through R16. The five-chain scheduler has passed normal CI with unchanged
+coverage and a recorded before/after measurement. Formal exact-SHA R0
+qualification is exposing and driving independently diagnosed repairs;
+physical-device release acceptance remains pending.
 **Created:** 2026-08-27
 **Source:** Report-only application and test-coverage audit completed 2026-08-27
 
@@ -95,6 +96,32 @@ release pass while its remaining gate is listed as pending.
 | R14 | Complete: “Use Library Defaults” clears overrides atomically, updates live behavior, persists across relaunch, and leaves truthful state on failure. | None. |
 | R15 | Now Playing metadata/artwork, command registration, durable position, interruptions, and route loss have deterministic adapter and E2E coverage. | Complete EP-01 through EP-07 in [EXTERNAL_PLAYBACK_ACCEPTANCE.md](EXTERNAL_PLAYBACK_ACCEPTANCE.md) on one release candidate. Apple Watch remains explicit post-MVP scope. |
 | R16 | Complete: CI selects every canonical regression, names describe the proved behavior, close controls are unambiguous, and reviewed screenshot policies survive baseline recording. | The final branch tip must pass the normal five-lane CI matrix before formal qualification is dispatched. |
+
+### Current R0 qualification update
+
+Normal [run 33439248042](https://github.com/anicolao/player/actions/runs/33439248042)
+accepted the deterministic five-chain scheduler at exact commit
+`daa062ace6118c5fbc127fe0a8af999488e81896`: all 13 stories, all 41 UI
+selectors, 374/374 core tests, fixtures, exact walkthroughs, and the App Store
+renderer passed without a rerun. Created-to-complete wall time was 48m15s,
+versus 48m16s for the same-coverage fresh-host baseline; aggregate producer and
+consumer time fell by 4m02s. The detailed comparison is in
+[E2E_RUNTIME_BASELINE.md](E2E_RUNTIME_BASELINE.md).
+
+The ensuing one-permitted formal dispatch
+[33443538076](https://github.com/anicolao/player/actions/runs/33443538076)
+has so far exposed three independent failure classes: a transient SwiftUI List
+removal layer disagreeing with an already committed multifile-order revision,
+Xcode reinstalling the target app because the UI bundle retained
+`TEST_TARGET_NAME`, and a legacy Node 20 artifact action reporting a successful
+download without materializing the shared archive. Each retained artifact was
+diagnosed independently; focused fixes and regressions are committed without
+rerunning the failed SHA. Failure evidence also exposed and corrected a fourth
+diagnostic defect that named an accepted canonical screenshot instead of the
+actual differing image. The ledger now contains 131 unique signatures and 21
+formal qualification resets. This update supersedes the earlier 128/19 counts
+in the long-form R0 ledger row above; the running dispatch may add evidence
+before the final qualifying SHA is selected.
 
 ## R0 — Stabilize and qualify E2E
 

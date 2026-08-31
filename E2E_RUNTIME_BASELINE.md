@@ -169,6 +169,25 @@ artifacts, fixes, and complete local canonical validations are recorded in the
 R0 failure ledger; the accepted after measurement still requires the next
 complete green execution.
 
+The accepted scheduler execution is
+[run 33439248042](https://github.com/anicolao/player/actions/runs/33439248042)
+at exact commit `daa062ace6118c5fbc127fe0a8af999488e81896`. It passed without
+a rerun from 21:02:34Z through 21:50:49Z: **48m15s**
+created-to-complete, one second faster than the 48m16s baseline and therefore
+effectively flat. Coverage did not decrease: all 13 canonical stories, all 41
+UI selectors, 374/374 core tests, fixture gates, exact walkthroughs, and the
+App Store renderer passed. Producer plus consumers used **2h47m23s**, 4m02s
+less runner time than the baseline's 2h51m25s.
+
+The five chains saturated the account's five-macOS-runner limit and eliminated
+the arbitrary tail admission. The observed critical chain was Story 008,
+Story 010, then Story 012. Story 008 took 19m01s in this sample, versus the
+14m46s late Story 011 that dominated the unscheduled baseline; that fresh-host
+variance consumed the scheduling model's expected wall-clock gain. The result
+is still the accepted coverage-preserving before/after measurement: maximal
+available parallelism reduced aggregate runner work, did not regress wall
+clock, and did not trade coverage or deadlines for speed.
+
 ### Formal qualification topology reference
 
 The pre-isolation formal
