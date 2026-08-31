@@ -778,7 +778,11 @@ class QualificationAggregatorTests(unittest.TestCase):
         retained = self.root / "failed-screenshot"
         write_json(retained / "Diagnostics/ScreenshotComparison/summary.json", {
             "failureCount": 1,
-            "images": [{"name": "003-smart-rewind-applied.png", "result": "pixel-difference"}]
+            "images": [
+                {"name": "000-ready.png", "result": "canonical"},
+                {"name": "001-exact.png", "result": "exact"},
+                {"name": "003-smart-rewind-applied.png", "result": "pixel-difference"},
+            ]
         })
         self.assertEqual(self.failure_signature(retained, 1),
                          "screenshot:pixel-difference:003-smart-rewind-applied.png")

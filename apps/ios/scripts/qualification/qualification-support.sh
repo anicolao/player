@@ -127,7 +127,7 @@ qualification_failure_signature() {
   elif [[ -f "${retained}/Diagnostics/ScreenshotComparison/summary.json" ]] \
     && [[ "$(jq -r '.failureCount // 0' \
       "${retained}/Diagnostics/ScreenshotComparison/summary.json")" -gt 0 ]]; then
-    jq -r '[.images[] | select(.result != "exact")][0]
+    jq -r '[.images[] | select(.result != "exact" and .result != "canonical")][0]
       | "screenshot:\(.result):\(.name)"' \
       "${retained}/Diagnostics/ScreenshotComparison/summary.json"
   elif [[ -f "${retained}/PhaseTimings.tsv" ]]; then
