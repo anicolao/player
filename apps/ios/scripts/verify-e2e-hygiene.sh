@@ -235,6 +235,10 @@ cmp "${temporary_root}/manifest-stories" "${temporary_root}/workflow-stories" \
   || fail "normal CI must expose all 13 isolated stories to the scheduler"
 [[ "$(rg -c 'DeterminateSystems/nix-installer-action@' "${workflow}")" -eq 1 ]] \
   || fail "normal CI must install Nix only in the shared-build producer"
+e2e_build_section="$(sed -n '/^  e2e-build:/,/^  e2e-stories:/p' "${workflow}")"
+[[ "$(rg -c '^[[:space:]]+PLAYER_SKIP_SIMULATOR_LAUNCH: "1"$' \
+  <<< "${e2e_build_section}")" -eq 1 ]] \
+  || fail "the shared-build producer must suppress the interactive Nix simulator hook"
 [[ "$(rg -c 'actions/download-artifact@v4' "${workflow}")" -eq 2 ]] \
   || fail "normal CI story and core consumers must each download the shared build"
 [[ "$(rg -c 'shasum -a 256 -c SharedBuild.tar.sha256' "${workflow}")" -eq 2 ]] \

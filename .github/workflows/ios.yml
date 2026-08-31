@@ -85,6 +85,7 @@ jobs:
         shell: nix develop --command bash --noprofile --norc -e -o pipefail {0}
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      PLAYER_SKIP_SIMULATOR_LAUNCH: "1"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
