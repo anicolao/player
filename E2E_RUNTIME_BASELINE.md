@@ -141,9 +141,18 @@ five chains within 12.5 seconds of the ideal average lower bound:
 Each item remains a separate reusable-workflow call and therefore receives a
 fresh hosted machine. Dependencies only determine admission order. A failed
 story does not suppress later coverage in its chain; the final aggregate gate
-still requires every story and core result to succeed. The after measurement
-must come from the first CI run of this scheduler, without rerunning a failed
-attempt.
+still requires every story and core result to succeed. The accepted after
+measurement must come from a complete green CI run of this scheduler, without
+rerunning a failed attempt.
+
+The first scheduler execution,
+[run 33426513529](https://github.com/anicolao/player/actions/runs/33426513529),
+proved that fail-open successor admission preserved all coverage, but it is not
+an accepted after sample because Stories 004 and 011 failed before product UI
+on two distinct asynchronous LaunchServices registration races. It completed
+in **49m29s** created-to-complete. The run was not rerun; its exact evidence and
+repairs are retained in the R0 failure ledger, and the repaired scheduler must
+produce a complete green sample for the before/after comparison.
 
 ### Formal qualification topology reference
 
@@ -406,11 +415,11 @@ Implemented:
 2. Story isolation is preserved while each lane reuses one generated project
    and compiled test bundle. Every story still owns a fresh simulator,
    persistence namespace, result bundle, diagnostics, and artifact manifest.
-3. Normal CI and the five-matrix qualification stage use five measured,
-   coverage-preserving lanes. The ten-attempt story stage exposes each of the
-   13 canonical stories as an independently scheduled job, so GitHub can keep
-   every available macOS slot occupied without coupling a short story to the
-   tail of a longer static bundle. Coverage remains 130 isolated story attempts.
+3. Normal CI uses five measured dependency chains whose individual stories
+   remain fresh-host jobs. The formal ten-attempt story stage exposes all 130
+   attempts as independently scheduled jobs, and the five-matrix stage exposes
+   all 25 lane attempts independently, so GitHub can keep every available
+   macOS slot occupied without coupling one attempt to a long-lived host.
 4. Product-state waits remain event driven and capped at two seconds; runtime
    was not traded for permissive waits or retry-to-green.
 5. Schema-v2 evidence retains exact CI provenance, all 13 story times, the

@@ -2920,6 +2920,54 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run, not a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "infrastructure:011-offline-recovery:xctrunner-launch-before-launchservices-registration",
+      "story": "011-offline-recovery",
+      "evidence": {
+        "workflowRun": 33426513529,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 011 artifact 9771936526 retains the exact xcresult, MobileInstallation and LaunchServices timeline, simulator diagnostics, and complete failure evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33426513529/job/99608026511",
+        "commit": "adec2dcd8cab79b0301954761d4ff80ad9743e0f",
+        "observation": "MobileInstallation reported the exact PlayerUITests-Runner developer install successful at 19:09:39Z, Xcode attempted to launch it at 19:10:08Z, and FrontBoard rejected the unknown bundle before LaunchServices durably saved and removed the pending registration at 19:10:44Z. No test process or product assertion began."
+      },
+      "rootCause": "simctl/MobileInstallation install success is not a durable receipt that asynchronous LaunchServices registration is visible to FrontBoard. On this fresh host, Xcode launched the test runner during that registration gap.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Preinstall the exact application and exact test runner, require successful FrontBoard launches as durable registration receipts for both bundle identifiers, terminate both receipts, and bind every test to the explicitly installed Bookshelf bundle. This adds no wait, retry, timeout increase, or coverage reduction.",
+        "commits": [
+          "648147f695511833eae40dc2be2e8c227b5b64db"
+        ],
+        "validation": "The complete canonical Story 011 journey passed locally on a newly created iOS 26.5 simulator in 68.863 seconds. Its three reviewed screenshots matched pixel-exactly, its walkthrough README matched exactly, and the harness logged successful FrontBoard receipts for both exact build products before XCTest launch."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run and no test process began, so it reset no accepted formal consecutive qualification count."
+    },
+    {
+      "signature": "infrastructure:004-metadata-repair:target-app-launch-during-xcode-install",
+      "story": "004-metadata-repair",
+      "evidence": {
+        "workflowRun": 33426513529,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 004 artifact 9772280817 retains the exact xcresult, MobileInstallation and LaunchServices timeline, simulator diagnostics, and complete failure evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33426513529/job/99609570716",
+        "commit": "adec2dcd8cab79b0301954761d4ff80ad9743e0f",
+        "observation": "Xcode updated the target application placeholder at 19:16:43Z and reported its developer/delta update successful at 19:16:46Z, but attempted to launch Bookshelf while LaunchServices still held the pending save until 19:17:12Z. FrontBoard rejected the launch because com.spnss.player was installing or uninstalling; the first selector failed before app UI, while the second selector passed after registration settled."
+      },
+      "rootCause": "Bare XCUIApplication construction asked Xcode to perform a deferred target-application installation even though the harness had already installed the exact app. Xcode then launched during its own asynchronous LaunchServices transaction on the fresh host.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Bind all UI tests to XCUIApplication(bundleIdentifier: \"com.spnss.player\") so they use the exact preinstalled application, while requiring FrontBoard registration receipts for both the target and runner before XCTest. This adds no wait, retry, timeout increase, or coverage reduction.",
+        "commits": [
+          "648147f695511833eae40dc2be2e8c227b5b64db"
+        ],
+        "validation": "The complete canonical Story 004 journey passed locally on a newly created iOS 26.5 simulator: both selectors passed in 137.203 seconds, all four reviewed screenshots matched pixel-exactly, and the walkthrough README matched exactly. Full E2E hygiene and all 68 fail-closed qualification-support tests also pass."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run and the failure preceded application UI, so it reset no accepted formal consecutive qualification count."
     }
   ]
 }
