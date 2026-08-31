@@ -128,12 +128,14 @@ jobs:
             -destination "platform=iOS Simulator,arch=arm64,id=${simulator_id}" \
             -derivedDataPath "${build_root}" \
             CODE_SIGNING_ALLOWED=NO
+          apps/ios/scripts/prepare-portable-e2e-tools.sh \
+            "${build_root}/PortableTools"
           apps/ios/scripts/e2e-build-provenance.sh write "${build_root}" \
             com.apple.CoreSimulator.SimDeviceType.iPhone-17 \
             com.apple.CoreSimulator.SimRuntime.iOS-26-5
           tar -C "${build_root}" -cf \
             "${PWD}/apps/ios/DerivedData/NormalCI/SharedBuild.tar" \
-            Build/Products PlayerE2EBuildProvenance.json
+            Build/Products PlayerE2EBuildProvenance.json PortableTools
           (cd apps/ios/DerivedData/NormalCI \
             && shasum -a 256 SharedBuild.tar > SharedBuild.tar.sha256)
           apps/ios/scripts/simulator-lease.sh release "${lease}" "$$"
@@ -194,6 +196,9 @@ jobs:
           mkdir -p apps/ios/DerivedData/NormalCI/SharedBuild
           tar -C apps/ios/DerivedData/NormalCI/SharedBuild -xf \
             apps/ios/DerivedData/NormalCI/SharedBuildArtifact/SharedBuild.tar
+          portable_tools="${PWD}/apps/ios/DerivedData/NormalCI/SharedBuild/PortableTools"
+          export PATH="${portable_tools}:${PATH}"
+          printf '%s\n' "${portable_tools}" >> "${GITHUB_PATH}"
           apps/ios/scripts/verify-e2e-environment.sh
           git diff --exit-code -- apps/ios/Player.xcodeproj
           apps/ios/scripts/e2e-build-provenance.sh verify \
@@ -255,6 +260,9 @@ jobs:
           mkdir -p apps/ios/DerivedData/NormalCI/SharedBuild
           tar -C apps/ios/DerivedData/NormalCI/SharedBuild -xf \
             apps/ios/DerivedData/NormalCI/SharedBuildArtifact/SharedBuild.tar
+          portable_tools="${PWD}/apps/ios/DerivedData/NormalCI/SharedBuild/PortableTools"
+          export PATH="${portable_tools}:${PATH}"
+          printf '%s\n' "${portable_tools}" >> "${GITHUB_PATH}"
           apps/ios/scripts/verify-e2e-environment.sh
           git diff --exit-code -- apps/ios/Player.xcodeproj
           apps/ios/scripts/e2e-build-provenance.sh verify \

@@ -7,6 +7,7 @@ ui_test_root="${repository_root}/apps/ios/PlayerUITests"
 manifest="${repository_root}/tests/e2e/manifest.json"
 workflow="${repository_root}/.github/workflows/ios.yml"
 qualification_workflow="${repository_root}/.github/workflows/r0-qualification.yml"
+portable_tools_script="${script_dir}/prepare-portable-e2e-tools.sh"
 
 fail() {
   echo "E2E hygiene check failed: $*" >&2
@@ -239,6 +240,35 @@ e2e_build_section="$(sed -n '/^  e2e-build:/,/^  e2e-stories:/p' "${workflow}")"
 [[ "$(rg -c '^[[:space:]]+PLAYER_SKIP_SIMULATOR_LAUNCH: "1"$' \
   <<< "${e2e_build_section}")" -eq 1 ]] \
   || fail "the shared-build producer must suppress the interactive Nix simulator hook"
+[[ -x "${portable_tools_script}" ]] \
+  || fail "the checksum-pinned portable E2E tool preparer must be executable"
+for portable_tool_contract in \
+  'version="15.2.0"' \
+  'archive_sha256="3750b2e93f37e0c692657da574d7019a101c0084da05a790c83fd335bad973e4"' \
+  'expected_version="ripgrep 15.2.0 (rev e89fff89ac)"' \
+  'shasum -a 256 -c -' \
+  '"${output_directory}/rg" --version'; do
+  rg -Fq "${portable_tool_contract}" "${portable_tools_script}" \
+    || fail "portable E2E tools are missing ${portable_tool_contract}"
+done
+for shared_build_workflow in "${workflow}" "${qualification_workflow}"; do
+  [[ "$(rg -c 'prepare-portable-e2e-tools\.sh' "${shared_build_workflow}")" -eq 1 ]] \
+    || fail "each shared-build producer must package portable E2E tools once"
+  [[ "$(rg -c 'Build/Products PlayerE2EBuildProvenance\.json PortableTools' \
+    "${shared_build_workflow}")" -eq 1 ]] \
+    || fail "each immutable shared build must contain its portable tools"
+  [[ "$(rg -c 'export PATH="\$\{portable_tools\}:\$\{PATH\}"' \
+    "${shared_build_workflow}")" -eq 2 ]] \
+    || fail "each fresh consumer class must activate the portable tools"
+  [[ "$(rg -c '>> "\$\{GITHUB_PATH\}"' "${shared_build_workflow}")" -eq 2 ]] \
+    || fail "portable tools must remain active in every measured consumer step"
+done
+qualification_build_section="$(sed -n \
+  '/^  qualification-build:/,/^  story-qualification:/p' \
+  "${qualification_workflow}")"
+[[ "$(rg -c '^[[:space:]]+PLAYER_SKIP_SIMULATOR_LAUNCH: "1"$' \
+  <<< "${qualification_build_section}")" -eq 1 ]] \
+  || fail "the qualification producer must suppress the interactive Nix simulator hook"
 [[ "$(rg -c 'actions/download-artifact@v4' "${workflow}")" -eq 2 ]] \
   || fail "normal CI story and core consumers must each download the shared build"
 [[ "$(rg -c 'shasum -a 256 -c SharedBuild.tar.sha256' "${workflow}")" -eq 2 ]] \
