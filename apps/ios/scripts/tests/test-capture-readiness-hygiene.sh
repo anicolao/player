@@ -207,12 +207,16 @@ from pathlib import Path
 
 source = Path(sys.argv[1]).read_text()
 home = source.index('XCUIDevice.shared.press(.home)')
-springboard = source.index('springboard.wait(for: .runningForeground, timeout: 2)', home)
+springboard_activation = source.index('springboard.activate()', home)
+springboard = source.index(
+    'springboard.wait(for: .runningForeground, timeout: 2)',
+    springboard_activation,
+)
 checkpoint = source.index('backgroundReceipt.wait(timeout: 2)', springboard)
-activation = source.index('application.activate()', checkpoint)
-if not home < springboard < checkpoint < activation:
+app_activation = source.index('application.activate()', checkpoint)
+if not home < springboard_activation < springboard < checkpoint < app_activation:
     raise SystemExit(
-        'lifecycle hygiene requires Home delivery, checkpoint completion, then activation'
+        'lifecycle hygiene requires Home, SpringBoard convergence, checkpoint, then app activation'
     )
 PY
 rg -Fq 'applicationFrame.contains(elementFrame)' \

@@ -397,6 +397,7 @@ func backgroundAndReactivateApplication(
   let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
 
   XCUIDevice.shared.press(.home)
+  springboard.activate()
   guard springboard.wait(for: .runningForeground, timeout: 2) else { return false }
   guard backgroundReceipt.wait(timeout: 2) else { return false }
 
