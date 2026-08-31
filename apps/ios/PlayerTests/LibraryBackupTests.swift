@@ -716,6 +716,24 @@ final class LibraryBackupTests: XCTestCase {
     XCTAssertEqual(countAfterDuplicateSave, countBeforeDuplicateSave)
   }
 
+  func testSaveCanSkipAutomaticRecoveryCopiesWithoutSkippingPrimaryPersistence() async throws {
+    let root = temporaryDirectory("automatic-backups-disabled")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = CodableLibraryStore(
+      fileURL: root.appending(path: "Library.json"),
+      createsAutomaticBackups: false
+    )
+    var snapshot = LibrarySnapshot.empty
+    snapshot.allBooksViewStyle = .list
+
+    try await store.save(snapshot)
+
+    let persisted = try await store.load()
+    let backups = await store.automaticBackups()
+    XCTAssertEqual(persisted, snapshot)
+    XCTAssertTrue(backups.isEmpty)
+  }
+
   func testAutomaticRestoreReadAndWriteFailuresPreservePrimaryBytes() async throws {
     for failure in [AutomaticRestoreFailure.read, .write] {
       let root = temporaryDirectory("automatic-restore-\(failure.rawValue)")

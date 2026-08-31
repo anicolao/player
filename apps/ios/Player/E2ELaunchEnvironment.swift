@@ -3115,7 +3115,13 @@ extension PlayerEnvironment {
         "30000000-0000-0000-0000-000000000300",
       ].compactMap(UUID.init(uuidString:))
       return PlayerEnvironment(
-        persistence: CodableLibraryStore(fileURL: root.appending(path: "Library.json")),
+        // This story proves acquisition, repair, and the atomic media commit.
+        // Automatic recovery-copy churn is covered by the backup/recovery
+        // journeys and must not sit on this interaction's two-second receipt.
+        persistence: CodableLibraryStore(
+          fileURL: root.appending(path: "Library.json"),
+          createsAutomaticBackups: false
+        ),
         media: FileSystemMediaManager(rootURL: playerDataRoot),
         inspector: DeterministicAudioInspector(
           result: .success(

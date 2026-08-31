@@ -10,12 +10,14 @@ actor CodableLibraryStore: LibraryPersisting {
   private let artifactID: @Sendable () -> UUID
   private let automaticRestoreRead: @Sendable (URL) throws -> Data
   private let automaticRestoreWrite: @Sendable (Data, URL) throws -> Void
+  private let createsAutomaticBackups: Bool
 
   init(
     fileURL: URL,
     fileManager: FileManager = .default,
     artifactNow: @escaping @Sendable () -> Date = { Date() },
     artifactID: @escaping @Sendable () -> UUID = { UUID() },
+    createsAutomaticBackups: Bool = true,
     automaticRestoreRead: @escaping @Sendable (URL) throws -> Data = {
       try Data(contentsOf: $0)
     },
@@ -27,6 +29,7 @@ actor CodableLibraryStore: LibraryPersisting {
     self.fileManager = fileManager
     self.artifactNow = artifactNow
     self.artifactID = artifactID
+    self.createsAutomaticBackups = createsAutomaticBackups
     self.automaticRestoreRead = automaticRestoreRead
     self.automaticRestoreWrite = automaticRestoreWrite
   }
@@ -188,7 +191,9 @@ actor CodableLibraryStore: LibraryPersisting {
     try data.write(to: fileURL, options: [.atomic, .completeFileProtectionUnlessOpen])
     // Once the primary atomic write succeeds, a low-space failure while making
     // a redundant copy must not report the committed mutation as failed.
-    try? createAutomaticBackup(of: fileURL, prefix: "library")
+    if createsAutomaticBackups {
+      try? createAutomaticBackup(of: fileURL, prefix: "library")
+    }
   }
 
   func automaticBackups() async -> [AutomaticLibraryBackup] {
