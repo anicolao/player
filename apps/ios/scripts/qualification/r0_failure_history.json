@@ -2968,6 +2968,54 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run and the failure preceded application UI, so it reset no accepted formal consecutive qualification count."
+    },
+    {
+      "signature": "ui-test:OfflineRecoveryUITests.testRecoversStartupAndExportsOnlySanitizedOfflineDiagnostics:support-preparation-rescans-validated-backups",
+      "story": "011-offline-recovery",
+      "evidence": {
+        "workflowRun": 33432987841,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 011 artifact 9774552239 retains the exact xcresult, disabled preparing-support screen, semantic action state, application logs, and complete failure evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33432987841/job/99629512861",
+        "commit": "e9d2129de1e233c56ff3c186963736a349533944",
+        "observation": "The exact target and test runner both passed their FrontBoard registration receipts and the complete selector began. After the listener tapped startup-recovery-diagnostics, production acknowledged preparing-support but did not reach awaiting-files within its independent two-second completion deadline; the retained screen showed Protecting local data with disabled recovery actions. All three canonical screenshots were produced and pixel-exact before the final assertion failed."
+      },
+      "rootCause": "Startup recovery had already enumerated and validated every automatic database backup to produce StartupRecoveryStatus, but prepareSupportBundle synchronously repeated that protected-filesystem scan before writing the report. The redundant second traversal coupled support export to unrelated filesystem latency and left the accepted action in preparing-support on the fresh host.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "When support export follows startup recovery, reuse the validated automatic-backup count already carried by StartupRecoveryStatus. Preserve the normal fresh scan outside recovery and keep support-bundle construction, sanitization, Files presentation, cancellation, and error handling unchanged.",
+        "commits": [
+          "cfe2bcf7f4bc53b167d5c91d1e49c789ea915d98"
+        ],
+        "validation": "A focused regression proves recovery support export forwards the previously validated count and performs zero additional storage scans. The complete canonical Story 011 journey then passed locally in 69.684 seconds, including every recovery choice and all support export outcomes; all three reviewed screenshots matched pixel-exactly and the walkthrough README matched exactly."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "ui-test:MultifileGroupingUITests.testRepairsMessyMultifileGroupingAndCommitsExactlyOneBook:automatic-backup-churn-exceeds-acquisition-receipt",
+      "story": "003-multifile-grouping",
+      "evidence": {
+        "workflowRun": 33432987841,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 003 artifact 9774917630 retains the exact xcresult, Inspecting metadata failure screen, acquisition and import probes, application logs, and complete failure evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33432987841/job/99633204400",
+        "commit": "e9d2129de1e233c56ff3c186963736a349533944",
+        "observation": "The exact target and runner registration receipts succeeded, the Choose from Files touch was delivered, Inbox displayed the five-selection import job, and production reached Inspecting metadata. The acquisition probe nevertheless remained acquisition:pending beyond its independent two-second completion deadline. This fresh host had already taken 170 seconds to install the target, demonstrating severe filesystem latency; the selector failed before any canonical capture rather than extending or retrying its receipt."
+      },
+      "rootCause": "The multifile journey's import checkpoints used the production CodableLibraryStore, whose every atomic state save also created, compared, rotated, and deleted automatic recovery copies. Backup behavior is unrelated to this journey's acquisition, repair, and atomic media-commit contract and is exhaustively covered by dedicated backup and recovery tests, but its repeated disk churn sat directly on the interaction's two-second receipt under a severely I/O-constrained host.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Add a default-on automatic-backup policy to CodableLibraryStore and disable only recovery-copy creation in the isolated multifile E2E composition. The story still atomically persists every primary catalog checkpoint, uses the production acquisition and review paths, verifies exact source preservation, and proves the exact eight-file managed-media commit; production and backup/recovery journeys retain default backup behavior.",
+        "commits": [
+          "c39afcc671e2f31f213231c219eb2a5e6d2fa070"
+        ],
+        "validation": "A focused store regression proves disabled recovery-copy creation still atomically persists and reloads the primary catalog. The complete canonical Story 003 journey then passed locally in 41.321 seconds; all four reviewed screenshots matched policy, the walkthrough README matched exactly, and the acquisition receipt completed within its unchanged two-second event deadline."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
     }
   ]
 }

@@ -154,6 +154,21 @@ in **49m29s** created-to-complete. The run was not rerun; its exact evidence and
 repairs are retained in the R0 failure ledger, and the repaired scheduler must
 produce a complete green sample for the before/after comparison.
 
+The next scheduler execution,
+[run 33432987841](https://github.com/anicolao/player/actions/runs/33432987841),
+also preserved every successor and attained the account's five-runner
+concurrency ceiling. It ran from 19:53:08Z through 20:42:59Z for **49m51s**
+created-to-complete; the producer passed in **10m05s**, all 13 stories ran, and
+the complete core/fixture gate passed. Stories 004 and 011 reached product UI,
+proving both prior registration repairs. The run is still not an accepted
+after sample: Story 011 exposed a redundant recovery-backup scan before support
+export, and Story 003 exposed unrelated automatic-backup churn on its
+two-second acquisition receipt while its fresh host was severely I/O
+constrained. The run was not rerun. Both distinct signatures, retained
+artifacts, fixes, and complete local canonical validations are recorded in the
+R0 failure ledger; the accepted after measurement still requires the next
+complete green execution.
+
 ### Formal qualification topology reference
 
 The pre-isolation formal
