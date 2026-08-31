@@ -1167,6 +1167,14 @@ private struct ReviewOrderView: View {
             }
           }
         }
+        // A proposal merge can move several rows while removing a section. The
+        // native List transition otherwise leaves a detached row snapshot over
+        // the already-updated order for part of a frame, so the semantic model
+        // and the visible editor briefly disagree. Apply each persisted review
+        // revision atomically; scrolling and direct manipulation remain live.
+        .transaction { transaction in
+          transaction.disablesAnimations = true
+        }
         .playerMiniPlayerScrollRunway()
         .scrollContentBackground(.hidden)
         .environment(\.editMode, .constant(.active))
