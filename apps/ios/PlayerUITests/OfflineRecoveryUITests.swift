@@ -138,11 +138,26 @@ final class OfflineRecoveryUITests: PlayerUITestCase {
 
     let verify = app.buttons["e2e-verify-diagnostics"]
     XCTAssertTrue(verify.waitForExistence(timeout: 2))
-    verify.tap()
     let sanitizedProbe = anyElement(app, "offline-recovery-diagnostics-probe")
     let expectedSanitized =
       "diagnostics:sanitized=true:forbidden=absent:offline=true:quarantined=3"
-    XCTAssertTrue(sanitizedProbe.waitForStringValue(expectedSanitized, timeout: 2))
+    let completed = NSPredicate(
+      format: "exists == true AND value == %@",
+      expectedSanitized
+    )
+    XCTAssertTrue(
+      deliverPhysicalActionAcknowledgedByDisabling(
+        verify,
+        until: sanitizedProbe,
+        satisfies: completed,
+        in: app
+      ),
+      "Verify sanitized support bundle did not acknowledge delivery within two seconds"
+    )
+    XCTAssertTrue(
+      waitForPredicate(completed, on: sanitizedProbe, timeout: EventDeadline().remaining),
+      "Sanitized support bundle did not publish its completion receipt within two seconds"
+    )
     try tester.step(
       "sanitized-support-bundle",
       description:

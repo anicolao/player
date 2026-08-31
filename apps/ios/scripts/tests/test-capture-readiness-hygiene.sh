@@ -228,6 +228,16 @@ if rg -Fq 'add.tap()' "${ui_test_root}/BookmarkUITests.swift"; then
 fi
 rg -Fq 'deliverPhysicalActionAcknowledgedByDisabling(' \
   "${ui_test_root}/BookmarkUITests.swift"
+if rg -Fq 'verify.tap()' "${ui_test_root}/OfflineRecoveryUITests.swift"; then
+  echo 'offline diagnostics hygiene rejects an unacknowledged verification tap' >&2
+  exit 1
+fi
+rg -Fq 'deliverPhysicalActionAcknowledgedByDisabling(' \
+  "${ui_test_root}/OfflineRecoveryUITests.swift"
+rg -Fq 'guard !isWorking else { return }' \
+  "${ui_test_root}/../Player/SupportDiagnosticsView.swift"
+rg -Fq 'isWorking = true' \
+  "${ui_test_root}/../Player/SupportDiagnosticsView.swift"
 rg -Fq '@State private var isSavingBookmark = false' \
   "${ui_test_root}/../Player/ContentView.swift"
 rg -Fq '.disabled(isSavingBookmark)' \

@@ -327,6 +327,8 @@ struct SupportDiagnosticsView: View {
       .overlay(alignment: .topLeading) {
         if E2EOfflineRecoveryBridge.shared.isConfigured {
           Button {
+            guard !isWorking else { return }
+            isWorking = true
             Task { await verifySanitizedBundleForE2E() }
           } label: {
             Color.white.opacity(0.001)
@@ -393,7 +395,6 @@ struct SupportDiagnosticsView: View {
 
   #if E2E
     private func verifySanitizedBundleForE2E() async {
-      isWorking = true
       defer {
         isWorking = false
         e2eRevision += 1
