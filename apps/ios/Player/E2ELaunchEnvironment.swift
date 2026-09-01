@@ -35,6 +35,31 @@ import UIKit
       )
     }
   }
+
+  enum E2EOperationEvent {
+    static let receiverImporting =
+      "com.spnss.player.e2e.receiver-importing"
+    static let receiverCompleted =
+      "com.spnss.player.e2e.receiver-completed"
+
+    static func postReceiverImporting() {
+      post(name: receiverImporting)
+    }
+
+    static func postReceiverCompleted() {
+      post(name: receiverCompleted)
+    }
+
+    private static func post(name: String) {
+      CFNotificationCenterPostNotification(
+        CFNotificationCenterGetDarwinNotifyCenter(),
+        CFNotificationName(name as CFString),
+        nil,
+        nil,
+        true
+      )
+    }
+  }
 #endif
 
 struct E2EPersistedLibrary {

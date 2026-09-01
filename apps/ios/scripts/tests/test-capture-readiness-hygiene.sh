@@ -244,6 +244,14 @@ rg -Fq 'com.spnss.player.e2e.scene-became-inactive' \
   "${script_dir}/../../Player/E2ELaunchEnvironment.swift"
 rg -Fq 'com.spnss.player.e2e.scene-became-background' \
   "${script_dir}/../../Player/E2ELaunchEnvironment.swift"
+rg -Fq 'E2EOperationEvent.postReceiverImporting()' \
+  "${script_dir}/../../Player/ComputerReceiverView.swift"
+rg -Fq 'E2EOperationEvent.postReceiverCompleted()' \
+  "${script_dir}/../../Player/ComputerReceiverView.swift"
+rg -Fq 'importingReceipt?.wait(timeout: 2)' \
+  "${ui_test_root}/LaunchUITests.swift"
+rg -Fq 'completedReceipt?.wait(timeout: 2)' \
+  "${ui_test_root}/LaunchUITests.swift"
 python3 - "${ui_test_root}/LaunchUITests.swift" <<'PY'
 import sys
 from pathlib import Path

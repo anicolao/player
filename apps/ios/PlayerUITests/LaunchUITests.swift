@@ -143,6 +143,14 @@ final class LaunchUITests: PlayerUITestCase {
     XCTAssertTrue(app.tabBars.buttons["Inbox"].isSelected)
     XCTAssertTrue(terminateAndWait(app))
 
+    let importingReceipt = DarwinEventReceipt(
+      name: "com.spnss.player.e2e.receiver-importing"
+    )
+    let completedReceipt = DarwinEventReceipt(
+      name: "com.spnss.player.e2e.receiver-completed"
+    )
+    XCTAssertNotNil(importingReceipt)
+    XCTAssertNotNil(completedReceipt)
     app = makeApplication(
       fixture: "receiver-completion-baseline",
       additionalArguments: ["-e2e-computer-receiver-completed"]
@@ -150,6 +158,14 @@ final class LaunchUITests: PlayerUITestCase {
     app.launch()
     app.tabBars.buttons["Add"].tap()
     let completedReceiver = app.scrollViews["computer-receiver-screen"]
+    XCTAssertTrue(
+      importingReceipt?.wait(timeout: 2) == true,
+      "The receiver did not begin the production import within two seconds"
+    )
+    XCTAssertTrue(
+      completedReceipt?.wait(timeout: 2) == true,
+      "The receiver did not commit its production import within two seconds of inspection"
+    )
     XCTAssertTrue(completedReceiver.waitForStringValue("receiver:completed:1", timeout: 2))
     app.buttons["finish-computer-receiver"].tap()
     XCTAssertTrue(

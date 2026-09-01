@@ -494,6 +494,9 @@ final class ComputerReceiverController {
     case .importing(let name):
       phase = .importing(name)
       productionEvidence = "event=http-importing:name=\(name)"
+      #if E2E
+        E2EOperationEvent.postReceiverImporting()
+      #endif
     case .completed(let message, let addedBookCount):
       let newBooks = model.library.books.filter { !baselineBookIDs.contains($0.id) }
       let newBookIDs = Set(newBooks.map(\.id))
@@ -511,6 +514,9 @@ final class ComputerReceiverController {
       phase = corroborated
         ? .completed(message: message, addedBookCount: addedBookCount)
         : .failed("The receiver completion could not be confirmed in the Library.")
+      #if E2E
+        if corroborated { E2EOperationEvent.postReceiverCompleted() }
+      #endif
     case .needsReview(let message):
       phase = .needsReview(message)
       productionEvidence = "event=http-needs-review"

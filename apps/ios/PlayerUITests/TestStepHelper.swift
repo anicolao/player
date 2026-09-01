@@ -369,7 +369,7 @@ private func e2eNotifyRegisterFileDescriptor(
 @_silgen_name("notify_cancel")
 private func e2eNotifyCancel(_ token: Int32) -> UInt32
 
-private final class DarwinEventReceipt: @unchecked Sendable {
+final class DarwinEventReceipt: @unchecked Sendable {
   private var descriptor: Int32 = -1
   private var token: Int32 = 0
 
