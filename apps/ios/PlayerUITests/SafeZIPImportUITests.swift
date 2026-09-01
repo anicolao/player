@@ -23,10 +23,12 @@ final class SafeZIPImportUITests: PlayerUITestCase {
 
     let traversalApp = try makeApplication(zipCase: "traversal")
     traversalApp.launch()
-    traversalApp.buttons["choose-from-files-empty-library"].tap()
     let traversalProbe = anyElement(traversalApp, "zip-safety-probe")
-    try requireValue(
-      traversalProbe,
+    try requireZipSelectionDelivery(
+      in: traversalApp,
+      probe: traversalProbe,
+      zipCase: "traversal",
+      expected:
       "zip:traversal:rejected:path-traversal:entries=3:extracted=0:source-unchanged=true:outside-writes=0"
     )
     traversalApp.buttons["view-import-error-\(jobID)"].tap()
@@ -100,10 +102,12 @@ final class SafeZIPImportUITests: PlayerUITestCase {
     for hostileCase in hostileCases {
       let app = try makeApplication(zipCase: hostileCase.fixture)
       app.launch()
-      app.buttons["choose-from-files-empty-library"].tap()
       let probe = anyElement(app, "zip-safety-probe")
-      try requireValue(
-        probe,
+      try requireZipSelectionDelivery(
+        in: app,
+        probe: probe,
+        zipCase: hostileCase.fixture,
+        expected:
         "zip:\(hostileCase.fixture):rejected:\(hostileCase.reason):entries=\(hostileCase.entries):extracted=0:source-unchanged=true:outside-writes=0"
       )
       app.buttons["view-import-error-\(jobID)"].tap()
@@ -120,10 +124,12 @@ final class SafeZIPImportUITests: PlayerUITestCase {
 
     let validApp = try makeApplication(zipCase: "valid", failInspectionOnce: true)
     validApp.launch()
-    validApp.buttons["choose-from-files-empty-library"].tap()
     let validProbe = anyElement(validApp, "zip-safety-probe")
-    try requireValue(
-      validProbe,
+    try requireZipSelectionDelivery(
+      in: validApp,
+      probe: validProbe,
+      zipCase: "valid",
+      expected:
       "zip:valid:failed:inspection-transient:entries=2:extracted=2:source-unchanged=true:outside-writes=0"
     )
     validApp.buttons["view-import-error-\(jobID)"].tap()
@@ -243,6 +249,93 @@ final class SafeZIPImportUITests: PlayerUITestCase {
       )
       throw SafeZIPImportTestError.semanticStateUnavailable
     }
+  }
+
+  /// Delivers the injected Files selection against an exact origin state and
+  /// requires its independently published terminal ZIP receipt. The deadline
+  /// starts after synthesis. A missed gesture may be redelivered only while
+  /// the same Library button, screen, and idle safety probe remain unchanged.
+  private func requireZipSelectionDelivery(
+    in app: XCUIApplication,
+    probe: XCUIElement,
+    zipCase: String,
+    expected: String
+  ) throws {
+    let action = app.buttons["choose-from-files-empty-library"]
+    let library = app.descendants(matching: .any)["library-screen"]
+    let idle =
+      "zip:\(zipCase):idle:entries=0:extracted=0:source-unchanged=true:outside-writes=0"
+    let completion = NSPredicate(format: "exists == true AND value == %@", expected)
+    if completion.evaluate(with: probe) { return }
+
+    let interactiveOrigin = NSPredicate { _, _ in
+      guard app.state == .runningForeground,
+        action.exists,
+        action.isEnabled,
+        action.isHittable,
+        library.exists,
+        library.value.map(String.init(describing:)) == "ready:library-empty",
+        probe.exists,
+        probe.value.map(String.init(describing:)) == idle
+      else { return false }
+      let appFrame = app.frame
+      let actionFrame = action.frame
+      return !appFrame.isEmpty
+        && !actionFrame.isEmpty
+        && appFrame.contains(actionFrame)
+    }
+    guard waitForPredicate(interactiveOrigin, on: action, timeout: 2) else {
+      XCTFail("The ZIP selection origin did not become foreground-interactive for \(zipCase)")
+      throw SafeZIPImportTestError.semanticStateUnavailable
+    }
+
+    let appFrame = app.frame
+    let actionFrame = action.frame
+    let coordinate = app.coordinate(
+      withNormalizedOffset: CGVector(
+        dx: (actionFrame.midX - appFrame.minX) / appFrame.width,
+        dy: (actionFrame.midY - appFrame.minY) / appFrame.height
+      )
+    )
+    var deliveryDeadline: EventDeadline?
+
+    repeat {
+      if completion.evaluate(with: probe) { return }
+      if let deliveryDeadline {
+        let exactOriginRemains = interactiveOrigin.evaluate(with: action)
+          && action.frame == actionFrame
+        if !exactOriginRemains {
+          if waitForPredicate(completion, on: probe, timeout: deliveryDeadline.remaining) {
+            return
+          }
+          break
+        }
+        if deliveryDeadline.remaining <= 0 { break }
+      }
+
+      guard performPhysicalInteractionWithoutPostEventQuiescence(
+        in: app,
+        { coordinate.tap() }
+      ) else {
+        XCTFail("The pinned XCTest runtime could not synthesize ZIP selection")
+        throw SafeZIPImportTestError.semanticStateUnavailable
+      }
+      if deliveryDeadline == nil { deliveryDeadline = EventDeadline() }
+      guard let deliveryDeadline else {
+        throw SafeZIPImportTestError.semanticStateUnavailable
+      }
+      if waitForPredicate(
+        completion,
+        on: probe,
+        timeout: min(0.25, deliveryDeadline.remaining)
+      ) { return }
+    } while (deliveryDeadline?.remaining ?? 0) > 0
+
+    XCTFail(
+      "The ZIP selection for \(zipCase) did not publish \(expected), "
+        + "latest=\(String(describing: probe.value))"
+    )
+    throw SafeZIPImportTestError.semanticStateUnavailable
   }
 
   private func zipCaptureReadiness(

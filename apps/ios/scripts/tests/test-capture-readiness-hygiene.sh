@@ -194,6 +194,42 @@ if rg -n -U --regexp 'XCUIDevice\.shared\.press\(\.home\)\n[[:space:]]*app\.acti
   echo 'lifecycle hygiene rejected app activation before SpringBoard acknowledged Home' >&2
   exit 1
 fi
+zip_source="${ui_test_root}/SafeZIPImportUITests.swift"
+rg -Fq 'requireZipSelectionDelivery(' "${zip_source}"
+if rg -n -F 'buttons["choose-from-files-empty-library"].tap()' "${zip_source}" \
+  > "${temporary_root}/raw-zip-selection-taps.log"; then
+  cat "${temporary_root}/raw-zip-selection-taps.log" >&2
+  echo 'ZIP hygiene requires an exact terminal receipt for injected Files selection' >&2
+  exit 1
+fi
+python3 - "${zip_source}" <<'PY'
+import sys
+from pathlib import Path
+
+source = Path(sys.argv[1]).read_text()
+helper = source.index('private func requireZipSelectionDelivery(')
+synthesis = source.index(
+    'performPhysicalInteractionWithoutPostEventQuiescence(', helper
+)
+deadline = source.index(
+    'if deliveryDeadline == nil { deliveryDeadline = EventDeadline() }',
+    synthesis,
+)
+receipt = source.index('waitForPredicate(', deadline)
+if not helper < synthesis < deadline < receipt:
+    raise SystemExit(
+        'ZIP hygiene requires physical synthesis before the bounded terminal receipt deadline'
+    )
+for evidence in (
+    'ready:library-empty',
+    'zip:\\(zipCase):idle:',
+    'action.frame == actionFrame',
+):
+    if evidence not in source[helper:source.index('private func zipCaptureReadiness(', helper)]:
+        raise SystemExit(
+            f'ZIP hygiene requires unchanged-origin evidence before redelivery: {evidence}'
+        )
+PY
 rg -Fq 'backgroundReceipt.wait(timeout: 2)' \
   "${ui_test_root}/TestStepHelper.swift"
 python3 - "${ui_test_root}/TestStepHelper.swift" <<'PY'
