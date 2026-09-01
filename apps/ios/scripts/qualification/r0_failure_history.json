@@ -3089,6 +3089,54 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "The shared build did not materialize and no simulator, application, or test process began, so the infrastructure-invalid job resets no accepted formal consecutive qualification count."
+    },
+    {
+      "signature": "ui-test:PositionRestoreUITests.testLiveProgressUpdatesMiniAndFullPlayerAcrossLifecycle:visible-springboard-never-published-running-foreground",
+      "story": "005-play-and-restore",
+      "evidence": {
+        "workflowRun": 33447485617,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 005 artifact 9779671388 retains the exact xcresult, a fully rendered SpringBoard failure screen, system lifecycle logs, and complete failure evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33447485617/job/99675479684",
+        "commit": "a171dcf965f2630eb306a31864389f29731042fc",
+        "observation": "After Home visibly presented SpringBoard, springboard.activate() blocked for roughly nine seconds and the subsequent two-second runningForeground sample still returned false. The retained screenshot showed a complete Home screen; Bookshelf was never reactivated and no progress touch was attempted. System logs also showed the redundant activation initiating unrelated Calendar and background-fetch activity."
+      },
+      "rootCause": "A sampled SpringBoard XCUIApplication state was neither a necessary nor a durable receipt for the requested Bookshelf scene transition. Activating an already visible Home screen introduced unrelated system work and could still report a stale process state, even though the production app had already published a stronger completed background checkpoint.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Require Home to produce Bookshelf's completed production background checkpoint, then activate Bookshelf and require the exact intended app-contained control to become foreground-interactive. Remove SpringBoard activation and sampled process-state convergence from this lifecycle path.",
+        "commits": [
+          "f7723136ffb7c505347d1b83ab99c6b5ad52f587"
+        ],
+        "validation": "Two complete fresh-simulator Story 005 runs passed locally with all eight selectors. The formerly failing lifecycle selector passed in 20.307 and 20.346 seconds, and both runs produced all four accepted screenshots plus the exact walkthrough README. Source hygiene now requires Home, the completed production checkpoint, then application activation and rejects sampled SpringBoard convergence in that segment."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "ui-test:PositionRestoreUITests.testRestoresAnAcknowledgedPausedPositionAfterTermination:slider-adjustment-unacknowledged",
+      "story": "005-play-and-restore",
+      "evidence": {
+        "workflowRun": 33447485617,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 005 artifact 9779671388 retains the exact xcresult, semantic playback state, interaction trace, system logs, and complete failure evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33447485617/job/99675479684",
+        "commit": "a171dcf965f2630eb306a31864389f29731042fc",
+        "observation": "XCUIElement.adjust(toNormalizedSliderPosition: 0.5) completed its physical synthesis, but the independently published playback state remained player:paused at 12000 milliseconds instead of acknowledging 60000. The selector correctly failed before termination or screenshot capture rather than treating the returned XCTest call as product delivery."
+      },
+      "rootCause": "The journey treated return from XCUI's slider adjustment as proof that SwiftUI and the playback model had consumed the new value. It had no production receipt and therefore no bounded, origin-safe way to redeliver an idempotent normalized adjustment when synthesis was dropped.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Centralize every E2E slider gesture behind an exact production receipt. Start the two-second deadline only after first synthesis and redeliver only while the same foreground, enabled, hittable slider frame remains unchanged; otherwise stop without touching a new surface.",
+        "commits": [
+          "f7723136ffb7c505347d1b83ab99c6b5ad52f587"
+        ],
+        "validation": "Two complete fresh-simulator Story 005 runs passed all eight selectors; the paused-position restore selector passed in 24.883 and 24.530 seconds, and the transport slider also published its exact playback receipt. Complete Story 004 then passed both selectors, including exact crop zoom and horizontal preview receipts, relaunch persistence, rendered-cover verification, undo, four pixel-exact screenshots, and an exact README. Hygiene permits exactly one raw XCUI slider adjustment in the acknowledged helper and enforces synthesis before its delivery deadline."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
     }
   ]
 }
