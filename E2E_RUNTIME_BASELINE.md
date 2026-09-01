@@ -255,6 +255,47 @@ passed. Coverage was preserved: the eight timer choices now share one real
 replacement session, while all six launches that prove teardown and durable
 state remain.
 
+### Latest clean-boot normal observation
+
+[Run 33546561891](https://github.com/anicolao/player/actions/runs/33546561891)
+passed the complete normal matrix at exact code SHA
+`5cfc071854c81d18cbee374e0a31048029c52cea` without a rerun: all 13 stories,
+all 41 UI selectors, 377/377 core tests, fixture gates, reviewed screenshots,
+exact walkthroughs, renderer inputs, and aggregation were green. It ran from
+18:56:10Z through 19:57:47Z for **61m37s** created-to-complete. That is
+**+13m21s (+27.7%)** relative to the same-coverage 48m16s fresh-host baseline,
+and the sample is retained rather than replaced by a faster run.
+
+The one-time producer took **13m23s**, four seconds faster than the 13m27s
+producer in run 33484894430. The consumer stage instead spanned **47m55s**,
+versus 35m34s in the fresh-host baseline: **+12m21s (+34.7%)**. All five
+available macOS slots were occupied, but fresh-host execution and admission
+variance accumulated after the producer. The 13 story jobs consumed
+**2h44m18s** in aggregate, the core/fixture job consumed **6m47s**, and all
+successful macOS work, including the producer, totalled approximately
+**3h04m28s**. These summed runner durations explain resource consumption; they
+are not workflow wall clock.
+
+This is a complete, coverage-preserving normal-CI observation, not a formal
+runtime distribution. Its producer stability and consumer-stage variance are
+additional evidence that a single hosted wall-clock result must not be used to
+accept or reject the remediation. The fail-closed five-sample formal matrix
+remains the authoritative runtime and reliability gate.
+
+The focused document-ingress correction then passed the complete normal matrix
+in [run 33558509980](https://github.com/anicolao/player/actions/runs/33558509980)
+at exact branch-head SHA `fa2c47feda2d89baa602fcadf9076bce65e6cedf`,
+again without a rerun. All 13 stories, all 41 UI selectors, 377/377 core tests,
+fixture gates, reviewed screenshots, exact walkthroughs, and the App Store
+renderer passed. Created-to-complete wall clock was **48m23s**, only **+7s
+(+0.2%)** versus the same-coverage 48m16s fresh-host baseline. The producer
+took **12m25s**; consumers spanned **35m44s**, just ten seconds above the
+baseline's 35m34s; and producer plus consumers consumed **2h51m16s** in
+aggregate, nine seconds less than the baseline's 2h51m25s. This clean sample
+corroborates that maximal five-runner scheduling and reliability hardening did
+not regress runtime, while the formal repeated distribution remains the final
+acceptance gate.
+
 ### Formal qualification topology reference
 
 The pre-isolation formal

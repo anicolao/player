@@ -3755,14 +3755,14 @@
       "rootCause": "The reset helper asynchronously killed CoreSimulatorService and claimed the immediately following simctl create would act as a readiness receipt. simctl create can instead reach launchd while that service is still re-registering and fail with exit 113; it does not wait for the requested readiness event. The destructive reset was inherited from the obsolete sequential-story normal topology even though normal story jobs and formal story-attempt jobs now each own a fresh macOS host and have no stale per-user service to clear.",
       "diagnosisStatus": "confirmed",
       "fix": {
-        "status": "pending-focused-validation",
+        "status": "verified",
         "summary": "Preserve the fresh host's existing CoreSimulator service for one-story normal jobs and one-story formal attempts. Retain the bounded reset only for the still-sequential formal matrix lanes, accept exit 113 only as an already-absent launchd state, and require a real two-second-bounded CoreSimulator RPC receipt before the next lease. Source-check that exact topology without adding a retry or delay.",
         "commits": [
           "fe703e1d25d5e11596a0a172f73a88e92835fe81",
           "8c5b50538bc9a78c3709b56a6de2157756e682df",
           "1e45e3eb811b6e1978323bdfb7df4c0b687f66db"
         ],
-        "validation": "Run-support tests prove that normal fresh-story jobs do not request the destructive reset, formal fresh-story attempts likewise omit it, and only multi-story formal matrix lanes retain it. Present, absent, and unknown launchctl results are fail-closed and single-shot; the matrix helper requires a real CoreSimulator RPC within two seconds before lease creation. That complete reset, readiness RPC, exact simulator creation, durable lease publication, release, and deletion sequence passed against the local CoreSimulator service. A complete hosted-reset-mode Story 001 then passed all nine selectors in 156 seconds; all six screenshots were pixel-exact, the walkthrough matched exactly, and the evidence manifest validated. Complete run-support, capture-readiness, and E2E hygiene pass locally. Replacement hosted validation is pending."
+        "validation": "Run-support tests prove that normal fresh-story jobs do not request the destructive reset, formal fresh-story attempts likewise omit it, and only multi-story formal matrix lanes retain it. Present, absent, and unknown launchctl results are fail-closed and single-shot; the matrix helper requires a real CoreSimulator RPC within two seconds before lease creation. That complete reset, readiness RPC, exact simulator creation, durable lease publication, release, and deletion sequence passed against the local CoreSimulator service. A complete hosted-reset-mode Story 001 then passed all nine selectors in 156 seconds; all six screenshots were pixel-exact, the walkthrough matched exactly, and the evidence manifest validated. Normal run 33546561891 subsequently created fresh simulators for all 13 stories without reproducing the service-reregistration race; every story and the core gate passed without a rerun. Complete run-support, capture-readiness, and E2E hygiene pass."
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no formal consecutive qualification count."
@@ -3781,12 +3781,12 @@
       "rootCause": "The first chronod quarantine ordered launchctl kill after a successful bootout. Hosted launchctl correctly treated the removed service as absent and returned 113, while the local simulator had previously tolerated the redundant post-removal signal. This was a deterministic ordering defect in the new infrastructure code, not a product failure or a reason to retry the same SHA.",
       "diagnosisStatus": "confirmed",
       "fix": {
-        "status": "pending-hosted-validation",
+        "status": "verified",
         "summary": "Disable chronod to prevent relaunch, signal it while it is still registered, then boot out the job and require the rejected lookup plus exact disabled-state receipt. Preserve the single-shot, event-driven sequence with no fixed wait, poll, or retry.",
         "commits": [
           "a7fe6e1f207aaaae93378fab2b5234d012d38edf"
         ],
-        "validation": "Complete local Story 008 passed the corrected ordering on a newly created, twice-booted simulator. All three canonical selectors passed in 215.806 seconds, all ten screenshots matched pixel-exact, the walkthrough matched exactly, and the evidence manifest validated. Run-support source tests enforce disable before kill, kill before bootout, bootout before rejected lookup, and rejected lookup before target installation. Replacement hosted run 33540624816 is pending."
+        "validation": "Complete local Story 008 passed the corrected ordering on a newly created, twice-booted simulator. All three canonical selectors passed in 215.806 seconds, all ten screenshots matched pixel-exact, the walkthrough matched exactly, and the evidence manifest validated. Run 33540624816 crossed the corrected kill-before-bootout boundary on all 13 hosted story jobs without reproducing exit 113; its separately retained live-service reload signature was corrected by the later shutdown-boundary design. Run-support source tests enforce the final no-live-mutation topology."
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no formal consecutive qualification count."
@@ -3805,13 +3805,13 @@
         "rootCause": "Unrelated post-boot simulator system work delayed the real foreground-to-background transition across one of the helper's two-second event boundaries. The application did eventually background, but too late for the bounded contract; this is a retained timing failure, not justification for increasing the deadline. The helper's generic Boolean result also discarded which lifecycle receipt missed its boundary.",
         "diagnosisStatus": "confirmed",
         "fix": {
-          "status": "pending-hosted-validation",
+          "status": "verified",
           "summary": "Prevent simulator widget scheduling before the clean boot so the product lifecycle is not competing with post-boot extension enumeration, and emit a distinct XCTFail at every registration, inactive, background, durable-checkpoint, activation, and restored-control boundary. Keep each event deadline at two seconds and make no product persistence change.",
           "commits": [
             "c97e7626b0232eeb92742ce69ebcb24736e446f6",
             "de0e93f13e07838a8f3887c55d1142fbdfeb2ac5"
           ],
-          "validation": "A candidate product checkpoint during deactivation was rejected and fully reverted after complete Story 005 validation proved it could overwrite the next selector's reset fixture. With production checkpoint semantics unchanged and the pre-clean-boot scheduler isolation active, complete local Story 005 passed all eight canonical selectors across two XCTest workers in 166.144 seconds. The formerly failing selector passed in 18.880 seconds; the remote-interruption selector passed in 15.392 seconds; all four reviewed screenshots were exact or canonical and the walkthrough matched exactly. Run-support, capture-readiness, and complete E2E hygiene checks pass. Hosted validation is pending."
+          "validation": "A candidate product checkpoint during deactivation was rejected and fully reverted after complete Story 005 validation proved it could overwrite the next selector's reset fixture. With production checkpoint semantics unchanged and the pre-clean-boot scheduler isolation active, complete local Story 005 passed all eight canonical selectors across two XCTest workers in 166.144 seconds. The formerly failing selector passed in 18.880 seconds; the remote-interruption selector passed in 15.392 seconds; all four reviewed screenshots were exact or canonical and the walkthrough matched exactly. Normal run 33546561891 then passed complete hosted Story 005 in 14m02s without a rerun. Run-support, capture-readiness, and complete E2E hygiene checks pass."
         },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no formal consecutive qualification count."
@@ -3830,15 +3830,39 @@
         "rootCause": "Disabling and surgically removing a live system scheduler after the clean boot did not provide a durable lifecycle boundary. The simulator's active system subsystem could register or retain chronod again between successful bootout and the terminal lookup. Command ordering alone therefore could not turn live-service mutation into a deterministic absence receipt.",
         "diagnosisStatus": "confirmed",
         "fix": {
-          "status": "pending-hosted-validation",
+          "status": "verified",
           "summary": "Disable chronod during the authoritative first boot, require its disabled-state receipt, and use the simulator's real shutdown boundary to terminate the service. After the clean boot, require both the retained disabled-state receipt and rejected job lookup before target installation. Remove live kill and bootout entirely; add no fixed wait, poll, retry, or larger deadline.",
           "commits": [
             "de0e93f13e07838a8f3887c55d1142fbdfeb2ac5"
           ],
-          "validation": "A fresh local iOS 26.5 simulator retained the exact chronod disabled-state receipt across shutdown and reboot, and launchctl rejected the post-boot service lookup. Complete local Story 003 then crossed the same harness path and passed its canonical selector in 36.883 seconds; all four screenshots were exact or canonical and the walkthrough matched exactly. Complete local Story 005 independently crossed the path and passed all eight selectors. Run-support tests enforce disable and receipt before shutdown, a second disabled receipt after boot, rejected lookup before installation, exactly two disabled-state receipts, and the absence of live kill/bootout operations. Complete E2E hygiene passes. Hosted validation is pending."
+          "validation": "A fresh local iOS 26.5 simulator retained the exact chronod disabled-state receipt across shutdown and reboot, and launchctl rejected the post-boot service lookup. Complete local Story 003 then crossed the same harness path and passed its canonical selector in 36.883 seconds; all four screenshots were exact or canonical and the walkthrough matched exactly. Complete local Story 005 independently crossed the path and passed all eight selectors. Normal run 33546561891 then passed all 13 hosted stories, including the formerly affected Stories 003, 012, and 013, without a quarantine reload or rerun. Run-support tests enforce disable and receipt before shutdown, a second disabled receipt after boot, rejected lookup before installation, exactly two disabled-state receipts, and the absence of live kill/bootout operations. Complete E2E hygiene passes."
         },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no formal consecutive qualification count."
+    },
+    {
+      "signature": "infrastructure:launchservices-document-proxy-binding:nested-xctest-source-delays-url",
+      "story": "002-import-and-play",
+      "evidence": {
+        "workflowRun": 33552608750,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions artifact 9819648359 (r0-story-evidence-002-import-and-play-attempt-7-5cfc071854c81d18cbee374e0a31048029c52cea-33552608750-1) retains the exact xcresult, complete test log, LaunchServices and SpringBoard timeline, consequential Inbox failure frame, simulator diagnostics, and valid failure-evidence manifest",
+        "url": "https://github.com/anicolao/player/actions/runs/33552608750/job/100009833797",
+        "commit": "5cfc071854c81d18cbee374e0a31048029c52cea",
+        "observation": "Formal Story 002 attempt 7 reached the exact document-ingress idle probe. At 20:37:41.633 LaunchServices accepted the real file URL from testmanagerd, logged a document-proxy binding query with no resolved UTI for the source nested inside PlayerUITests.xctest, and then emitted no completion until it sent the request to SpringBoard at 20:39:12.276. XCTest had already exhausted its private 60-second launcher deadline. The delayed UIOpenURLAction reached the following single-audiobook fixture at 20:39:12.288 and produced the second, consequential nonempty-Inbox assertion. Five other selectors passed. chronod emitted no events in the interval, proving the previous scheduler quarantine crossed its intended boundary and this was a distinct failure signature."
+      },
+      "rootCause": "The synthetic document source was opened directly from the installed UI-test plug-in bundle. LaunchServices therefore entered a document-proxy binding query against a nested xctest-bundle resource before it could hand the already accepted URL to SpringBoard. On this fresh host that query held the delivery for roughly 90.6 seconds; neither Bookshelf nor its production import handler received the URL until after XCTest's launcher deadline and after the next fixture had started.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Copy the checked-in synthetic audio bytes to the UI-test runner's external temporary container before invoking the same real file-URL XCUIApplication.open path. Preserve the file extension, source-integrity assertions, LaunchServices-to-SpringBoard UIOpenURLAction, production import queue, durable restart boundaries, and every selector while removing only the nested test-bundle document-binding dependency. Source hygiene requires that external staging and adds no wait, retry, or larger deadline.",
+        "commits": [
+          "fa2c47feda2d89baa602fcadf9076bce65e6cedf"
+        ],
+        "validation": "Two complete Story 002 runs on independently created and twice-booted local iOS 26.5 simulators passed all seven selectors. The real document-open journey completed in 12.976 seconds in both runs; the following Inbox selectors remained isolated; all six screenshots were exact or canonical; both walkthroughs matched exactly; and both evidence manifests validated. The complete XCTest operations took 90.515 and 74.190 seconds. Hosted pull-request run 33558509980 then passed complete Story 002 on its first fresh-host attempt in job 100029059177. All seven selectors passed in 170.368 seconds, including the real document-open selector in 40.518 seconds and the formerly consequential Inbox selector; all six retained screenshots were exact or canonical, the walkthrough matched exactly, and evidence artifact 9821108368 validated. The run's tested merge commit 864c481d4e3f04d6e9e987ba0bdc09b57e2c9b60 contains branch-head correction fa2c47feda2d89baa602fcadf9076bce65e6cedf. Capture-readiness and complete E2E hygiene pass."
+      },
+      "qualificationResetCount": 1,
+      "resetEvidence": "Formal exact-SHA qualification run 33552608750 failed Story 002 attempt 7. Once the retained artifact made 10/10 impossible, the remaining queue was cancelled without rerunning the failed SHA; commit 5cfc071854c81d18cbee374e0a31048029c52cea cannot qualify and the formal consecutive count resets."
     }
   ]
 }
