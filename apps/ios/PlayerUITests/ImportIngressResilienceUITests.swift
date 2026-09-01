@@ -9,7 +9,7 @@ final class ImportIngressResilienceUITests: PlayerUITestCase {
   func testDocumentOpenResumesOneImportAcrossAcquireAndInspectRestarts() throws {
     continueAfterFailure = false
     XCUIDevice.shared.orientation = .portrait
-    let documentURL = try fixtureURL(
+    let documentURL = try stagedDocumentURL(
       resource: "document-open-interrupted-acquire",
       extension: "m4a"
     )
@@ -146,6 +146,30 @@ final class ImportIngressResilienceUITests: PlayerUITestCase {
       Bundle(for: Self.self).url(forResource: resource, withExtension: fileExtension),
       "The checked-in synthetic import-channel fixture must be in the UI-test bundle"
     )
+  }
+
+  private func stagedDocumentURL(
+    resource: String,
+    extension fileExtension: String
+  ) throws -> URL {
+    let bundledURL = try fixtureURL(resource: resource, extension: fileExtension)
+    let stagingDirectory = FileManager.default.temporaryDirectory.appending(
+      path: "BookshelfDocumentIngress",
+      directoryHint: .isDirectory
+    )
+    try FileManager.default.createDirectory(
+      at: stagingDirectory,
+      withIntermediateDirectories: true
+    )
+    let stagedURL = stagingDirectory.appending(
+      path: "\(resource).\(fileExtension)",
+      directoryHint: .notDirectory
+    )
+    if FileManager.default.fileExists(atPath: stagedURL.path) {
+      try FileManager.default.removeItem(at: stagedURL)
+    }
+    try FileManager.default.copyItem(at: bundledURL, to: stagedURL)
+    return stagedURL
   }
 
   private func anyElement(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {

@@ -305,6 +305,10 @@ share = source.index(
     'func testConsumesAndDeduplicatesShareExtensionAppGroupHandoff()', document
 )
 helpers = source.index('\n  private func ', share)
+if 'let documentURL = try stagedDocumentURL(' not in source[document:share]:
+    raise SystemExit(
+        'document-ingress hygiene requires an external staged source before the real system URL open'
+    )
 if 'terminateAndWait(resumedApp)' not in source[document:share]:
     raise SystemExit(
         'launch hygiene requires the document-ingress selector to finish not running'
@@ -312,6 +316,16 @@ if 'terminateAndWait(resumedApp)' not in source[document:share]:
 if 'terminateAndWait(replayApp)' not in source[share:helpers]:
     raise SystemExit(
         'launch hygiene requires the share-handoff selector to finish not running'
+    )
+staging = source.index('private func stagedDocumentURL(', helpers)
+staging_end = source.index('\n  private func ', staging + 1)
+staging_source = source[staging:staging_end]
+if (
+    'FileManager.default.temporaryDirectory' not in staging_source
+    or 'copyItem(at: bundledURL, to: stagedURL)' not in staging_source
+):
+    raise SystemExit(
+        'document-ingress hygiene rejects LaunchServices binding against a nested xctest-bundle fixture'
     )
 PY
 python3 - "${ui_test_root}/TestStepHelper.swift" <<'PY'
