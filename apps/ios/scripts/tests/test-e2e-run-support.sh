@@ -400,31 +400,34 @@ lease_line="$(rg -n -F -m 1 'simulator_lease="${simulator_lease_root}/story-' "$
   || fail "the hosted simulator control plane is not reset before the next exact lease"
 first_boot_receipt_line="$(rg -n -F -m 1 'xcrun simctl bootstatus "${simulator_id}" -b' "${run_e2e}" | cut -d: -f1)"
 configuration_line="$(rg -n -F -m 1 'xcrun simctl ui "${simulator_id}" content_size "${expected_content_size}"' "${run_e2e}" | cut -d: -f1)"
+chronod_disable_line="$(rg -n -F -m 1 'xcrun simctl spawn "${simulator_id}" launchctl disable "${chronod_service}"' "${run_e2e}" | cut -d: -f1)"
+first_disabled_receipt_line="$(rg -n -F -m 1 'xcrun simctl spawn "${simulator_id}" launchctl print-disabled user/501' "${run_e2e}" | cut -d: -f1)"
 stabilization_shutdown_line="$(rg -n -F -m 1 'xcrun simctl shutdown "${simulator_id}"' "${run_e2e}" | cut -d: -f1)"
 second_boot_receipt_line="$(rg -n -F 'xcrun simctl bootstatus "${simulator_id}" -b' "${run_e2e}" | sed -n '2p' | cut -d: -f1)"
 configuration_receipt_line="$(rg -n -F -m 1 '[[ "$(xcrun simctl ui "${simulator_id}" content_size)" == "${expected_content_size}" ]]' "${run_e2e}" | cut -d: -f1)"
-chronod_print_line="$(rg -n -F -m 1 'xcrun simctl spawn "${simulator_id}" launchctl print "${chronod_service}" >/dev/null' "${run_e2e}" | cut -d: -f1)"
-chronod_disable_line="$(rg -n -F -m 1 'xcrun simctl spawn "${simulator_id}" launchctl disable "${chronod_service}"' "${run_e2e}" | cut -d: -f1)"
-chronod_kill_line="$(rg -n -F -m 1 'xcrun simctl spawn "${simulator_id}" launchctl kill SIGKILL "${chronod_service}"' "${run_e2e}" | cut -d: -f1)"
-chronod_bootout_line="$(rg -n -F -m 1 'xcrun simctl spawn "${simulator_id}" launchctl bootout "${chronod_service}"' "${run_e2e}" | cut -d: -f1)"
+second_disabled_receipt_line="$(rg -n -F 'xcrun simctl spawn "${simulator_id}" launchctl print-disabled user/501' "${run_e2e}" | sed -n '2p' | cut -d: -f1)"
 chronod_rejection_line="$(rg -n -F -m 1 'if xcrun simctl spawn "${simulator_id}" launchctl print "${chronod_service}"' "${run_e2e}" | cut -d: -f1)"
 [[ -n "${first_boot_receipt_line}" && -n "${configuration_line}" \
+  && -n "${chronod_disable_line}" && -n "${first_disabled_receipt_line}" \
   && -n "${stabilization_shutdown_line}" && -n "${second_boot_receipt_line}" \
-  && -n "${configuration_receipt_line}" && -n "${chronod_print_line}" \
-  && -n "${chronod_disable_line}" && -n "${chronod_kill_line}" \
-  && -n "${chronod_bootout_line}" \
+  && -n "${configuration_receipt_line}" && -n "${second_disabled_receipt_line}" \
   && -n "${chronod_rejection_line}" \
   && "${first_boot_receipt_line}" -lt "${configuration_line}" \
-  && "${configuration_line}" -lt "${stabilization_shutdown_line}" \
+  && "${configuration_line}" -lt "${chronod_disable_line}" \
+  && "${chronod_disable_line}" -lt "${first_disabled_receipt_line}" \
+  && "${first_disabled_receipt_line}" -lt "${stabilization_shutdown_line}" \
   && "${stabilization_shutdown_line}" -lt "${second_boot_receipt_line}" \
   && "${second_boot_receipt_line}" -lt "${configuration_receipt_line}" \
-  && "${configuration_receipt_line}" -lt "${chronod_print_line}" \
-  && "${chronod_print_line}" -lt "${chronod_disable_line}" \
-  && "${chronod_disable_line}" -lt "${chronod_kill_line}" \
-  && "${chronod_kill_line}" -lt "${chronod_bootout_line}" \
-  && "${chronod_bootout_line}" -lt "${chronod_rejection_line}" \
+  && "${configuration_receipt_line}" -lt "${second_disabled_receipt_line}" \
+  && "${second_disabled_receipt_line}" -lt "${chronod_rejection_line}" \
   && "${chronod_rejection_line}" -lt "${target_install_line}" ]] \
-  || fail "the fresh simulator does not isolate post-boot widget scheduling before target installation"
+  || fail "the fresh simulator does not isolate widget scheduling across its clean-boot boundary"
+[[ "$(rg -F -c 'xcrun simctl spawn "${simulator_id}" launchctl print-disabled user/501' "${run_e2e}")" == 2 ]] \
+  || fail "the widget scheduler disable lacks receipts on both sides of the clean boot"
+if rg -n -F 'launchctl kill SIGKILL "${chronod_service}"' "${run_e2e}" \
+  || rg -n -F 'launchctl bootout "${chronod_service}"' "${run_e2e}"; then
+  fail "the E2E harness still races a running widget scheduler with kill or bootout"
+fi
 if rg -n '(^|[^[:alpha:]])(sleep|usleep)[[:space:](]' "${run_e2e}" >/dev/null; then
   fail "the E2E harness contains a fixed settling wait"
 fi

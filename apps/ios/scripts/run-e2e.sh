@@ -455,34 +455,33 @@ xcrun simctl ui "${simulator_id}" content_size "${expected_content_size}"
 xcrun simctl ui "${simulator_id}" increase_contrast "${expected_increase_contrast}"
 # A newly created iOS 26 simulator reaches bootstatus while its one-time
 # widget, Spotlight, and accessibility-asset work can still monopolize
-# RunningBoard. Complete that first-boot/configuration epoch, then acquire a
-# distinct clean-boot receipt before installing either test target. This is a
-# lifecycle boundary, not a launch retry or a time-based settling delay.
+# RunningBoard. Disable the unrelated widget scheduler while this first boot is
+# still authoritative, then let the simulator's real shutdown boundary
+# terminate it. The disabled-state receipt proves that the next clean boot
+# cannot race a kill/bootout operation by relaunching the service.
+chronod_service="user/501/com.apple.chronod"
+xcrun simctl spawn "${simulator_id}" launchctl disable "${chronod_service}"
+xcrun simctl spawn "${simulator_id}" launchctl print-disabled user/501 \
+  | rg -F '"com.apple.chronod" => disabled' >/dev/null
+# Complete the first-boot/configuration epoch, then acquire a distinct
+# clean-boot receipt before installing either test target. This is a lifecycle
+# boundary, not a launch retry or a time-based settling delay.
 xcrun simctl shutdown "${simulator_id}"
 xcrun simctl boot "${simulator_id}"
 xcrun simctl bootstatus "${simulator_id}" -b
 [[ "$(xcrun simctl ui "${simulator_id}" appearance)" == "light" ]]
 [[ "$(xcrun simctl ui "${simulator_id}" content_size)" == "${expected_content_size}" ]]
 [[ "$(xcrun simctl ui "${simulator_id}" increase_contrast)" == "${expected_increase_contrast}" ]]
-# iOS 26 can start enumerating every system widget after the clean-boot
-# receipt. chronod serializes that work through RunningBoard and has delayed a
-# real document UIOpenURLAction by more than five minutes. Remove only that
-# unrelated simulator service before target installation. Disable it to prevent
-# relaunch, terminate the still-registered process, then remove the job; the
-# rejected service lookup is the causal terminal receipt. This does not replace the real
-# system URL delivery exercised by Story 002 or introduce a settling delay.
-chronod_service="user/501/com.apple.chronod"
-xcrun simctl spawn "${simulator_id}" launchctl print "${chronod_service}" >/dev/null
-xcrun simctl spawn "${simulator_id}" launchctl disable "${chronod_service}"
-xcrun simctl spawn "${simulator_id}" launchctl kill SIGKILL "${chronod_service}"
-xcrun simctl spawn "${simulator_id}" launchctl bootout "${chronod_service}"
-if xcrun simctl spawn "${simulator_id}" launchctl print "${chronod_service}" \
-  >/dev/null 2>&1; then
-  echo "Simulator widget scheduler remained active after bootout." >&2
-  exit 1
-fi
+# The clean boot must retain both halves of the causal receipt: chronod is
+# disabled and its job was never loaded. This prevents post-boot system widget
+# enumeration without replacing the real URL delivery exercised by Story 002.
 xcrun simctl spawn "${simulator_id}" launchctl print-disabled user/501 \
   | rg -F '"com.apple.chronod" => disabled' >/dev/null
+if xcrun simctl spawn "${simulator_id}" launchctl print "${chronod_service}" \
+  >/dev/null 2>&1; then
+  echo "Simulator widget scheduler loaded despite its clean-boot disable receipt." >&2
+  exit 1
+fi
 xcrun simctl status_bar "${simulator_id}" override \
   --time '9:41' \
   --batteryState charged \
