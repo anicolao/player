@@ -464,6 +464,25 @@ xcrun simctl bootstatus "${simulator_id}" -b
 [[ "$(xcrun simctl ui "${simulator_id}" appearance)" == "light" ]]
 [[ "$(xcrun simctl ui "${simulator_id}" content_size)" == "${expected_content_size}" ]]
 [[ "$(xcrun simctl ui "${simulator_id}" increase_contrast)" == "${expected_increase_contrast}" ]]
+# iOS 26 can start enumerating every system widget after the clean-boot
+# receipt. chronod serializes that work through RunningBoard and has delayed a
+# real document UIOpenURLAction by more than five minutes. Remove only that
+# unrelated simulator service before target installation. launchctl first
+# removes its job, then terminates the already-running process; the rejected
+# service lookup is the causal terminal receipt. This does not replace the real
+# system URL delivery exercised by Story 002 or introduce a settling delay.
+chronod_service="user/501/com.apple.chronod"
+xcrun simctl spawn "${simulator_id}" launchctl print "${chronod_service}" >/dev/null
+xcrun simctl spawn "${simulator_id}" launchctl disable "${chronod_service}"
+xcrun simctl spawn "${simulator_id}" launchctl bootout "${chronod_service}"
+xcrun simctl spawn "${simulator_id}" launchctl kill SIGKILL "${chronod_service}"
+if xcrun simctl spawn "${simulator_id}" launchctl print "${chronod_service}" \
+  >/dev/null 2>&1; then
+  echo "Simulator widget scheduler remained active after bootout." >&2
+  exit 1
+fi
+xcrun simctl spawn "${simulator_id}" launchctl print-disabled user/501 \
+  | rg -F '"com.apple.chronod" => disabled' >/dev/null
 xcrun simctl status_bar "${simulator_id}" override \
   --time '9:41' \
   --batteryState charged \
