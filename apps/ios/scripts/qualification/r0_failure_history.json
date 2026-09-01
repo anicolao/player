@@ -3523,6 +3523,78 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This diagnostic defect was observed in a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "infrastructure:fresh-simulator-first-boot-runningboard-starvation:story-009-initial-launch",
+      "story": "009-accessible-core-journeys",
+      "evidence": {
+        "workflowRun": 33479649229,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 009 artifact 9790052973 retains the exact xcresult, testmanagerd and RunningBoard diagnostics, simulator logs, and failure screen",
+        "url": "https://github.com/anicolao/player/actions/runs/33479649229/job/99768787647",
+        "commit": "ce6e0cd07697b980b5cb8dd0be6f08e7675c2143",
+        "observation": "The first accessibility selector spent 46.085 seconds in app.launch(). testmanagerd opened the request at 07:10:36 and SpringBoard trusted it at 07:10:40, but Bookshelf was not spawned until 07:11:14. The simulator phase had already consumed 151 seconds, RunningBoard reported a queue event more than five seconds late, and chronod, Spotlight, accessibility-asset, and TTS extension work dominated the retained interval. The second selector then passed in 178.163 seconds with all seven reviewed screenshots accepted."
+      },
+      "rootCause": "On a newly created iOS 26 simulator, bootstatus is a boot-completion receipt but not a boundary for the one-time migration, widget, indexing, and accessibility-asset epoch that can continue to monopolize RunningBoard. The harness installed and launched the test product inside that first epoch, allowing pre-product control-plane work to exhaust XCTest's private launcher deadline.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "After the first boot receipt, apply the story's exact appearance and accessibility configuration, shut the simulator down cleanly, acquire a distinct second boot receipt, and verify that every configured value persisted before target installation. This adds a lifecycle boundary with no sleep, launch retry, or enlarged condition deadline.",
+        "commits": [
+          "d4f42b0930596ab8f7f7115df30eb715ab0526f7"
+        ],
+        "validation": "A canonical committed-code Story 009 run passed both selectors in 112.250 seconds. Every app automation attachment completed in less than one second, six screenshots matched pixel-exactly, the seventh matched its reviewed system-region allowance, and the walkthrough README matched exactly. The simulator phase was 25 seconds, including 16-second first and 2-second second boot receipts."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "infrastructure:fresh-simulator-first-boot-runningboard-starvation:story-002-document-url-open",
+      "story": "002-import-and-play",
+      "evidence": {
+        "workflowRun": 33479649229,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 002 artifact 9790755725 retains the exact xcresult, URL-launch timeout, unexpected subsequent import identifier, simulator logs, and complete accepted walkthrough evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33479649229/job/99773732490",
+        "commit": "ce6e0cd07697b980b5cb8dd0be6f08e7675c2143",
+        "observation": "The document-ingress selector reached its exact idle probe, then XCUIApplication.open(documentURL) blocked for 60.79 seconds and failed before the app accepted the URL. The failed launch left a production-generated ready import on that worker, so the next selector correctly rejected its random job identifier instead of the fixture's deterministic identifier. The other five selectors and all six screenshot comparisons passed."
+      },
+      "rootCause": "The same newly created simulator first-boot control-plane epoch delayed a second application-open transaction until XCTest's private URL-launch deadline. Because the failed platform transaction could relaunch outside the retained E2E argument surface, its partial import contaminated the next class scheduled on that worker; the second assertion was consequential evidence, not an independent fixture defect.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Enter and verify the clean second-boot epoch before installing either target, preserving fresh-simulator and per-story isolation while preventing first-epoch RunningBoard work from overlapping URL delivery.",
+        "commits": [
+          "d4f42b0930596ab8f7f7115df30eb715ab0526f7"
+        ],
+        "validation": "The complete seven-selector Story 002 test execution passed locally in 91.673 seconds with two workers. The formerly failing URL-open selector passed in 12.884 seconds and the following inbox-reset selector passed in 6.906 seconds; evidence export alone was prevented by the local host reaching zero free bytes after Xcode had already reported TEST EXECUTE SUCCEEDED."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "product:accessibility-preferences:overlapping-persistence-loses-mutation",
+      "story": "009-accessible-core-journeys",
+      "evidence": {
+        "workflowRun": 0,
+        "workflowAttempt": 1,
+        "artifact": "Local canonical Story 009 diagnostic retained the app error alert and mismatched accessibility-preferences-state; the focused suspended-store regression preserves the exact interleaving",
+        "url": "local://apps/ios/DerivedData/E2E/009-accessible-core-journeys",
+        "commit": "384b0a8112e8316b65065be955dec9fc3339faad",
+        "observation": "After two adjacent accessibility toggles, both optimistic switches remained visually enabled while the semantic model never reached high-contrast=true:reduce-artwork=true and Bookshelf presented Couldn't Update Library. A focused repeat could pass because the persistence tasks did not always overlap, proving that the state loss depended on scheduling rather than the requested values."
+      },
+      "rootCause": "PlayerModel is MainActor-isolated, but applyLibraryOrganizationMutation copied the library before awaiting persistence and was therefore reentrant across that suspension. Two callers could copy the same stale snapshot and the later save/assignment could overwrite the first mutation. Independent optimistic view state then displayed values that had never both committed.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Serialize the generic library-organization transaction with a MainActor FIFO continuation gate and bind the two switches to durable model state so failed or pending persistence cannot be represented as committed UI state.",
+        "commits": [
+          "45a8ac991b2dfc5ca007fa1390a33613109ad53a"
+        ],
+        "validation": "A suspended-first-save regression deterministically overlaps both mutations and passed in 0.009 seconds with both values preserved in memory and durable storage. The canonical committed-code Story 009 run passed persistence and relaunch in 18.539 seconds, the complete largest-text journey in 93.711 seconds, all screenshot policies, and the exact walkthrough."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This failure was discovered during local diagnosis of a normal pull-request failure and did not reset a formal exact-SHA qualification count."
     }
   ]
 }

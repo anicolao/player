@@ -188,6 +188,24 @@ is still the accepted coverage-preserving before/after measurement: maximal
 available parallelism reduced aggregate runner work, did not regress wall
 clock, and did not trade coverage or deadlines for speed.
 
+The current exact-tip candidate rebalances those same fresh-host jobs from the
+observed durations in run 33479649229. It keeps all 13 stories, all 41
+selectors, core/fixture gates, and renderer work, while changing only dependency
+order. The measured-input model reduces the longest chain from **2,233s** to
+**1,895s** (-338s, or **5m38s**) and reduces the five-chain spread from **703s**
+to **28s**. This is a prediction until the candidate produces a complete green
+hosted run; its created-to-complete time will be recorded beside the 48m16s
+baseline rather than substituted with the model.
+
+The same candidate adds a clean reboot after each fresh simulator's initial
+boot and exact UI configuration. On the local iOS 26.5 host, Story 009's first
+boot completed in 16 seconds, its second boot in 2 seconds, and its whole
+simulator phase in 25 seconds—about nine seconds above the prior one-boot local
+phase. That bounded lifecycle cost replaced observed hosted launch queues of
+roughly 34 seconds in Story 009 and 60 seconds for Story 002's document URL.
+It is part of the candidate wall-clock measurement and is not excluded as setup
+or offset by weaker waits.
+
 ### Formal qualification topology reference
 
 The pre-isolation formal

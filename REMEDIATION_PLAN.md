@@ -97,6 +97,11 @@ release pass while its remaining gate is listed as pending.
 | R15 | Now Playing metadata/artwork, command registration, durable position, interruptions, and route loss have deterministic adapter and E2E coverage. | Complete EP-01 through EP-07 in [EXTERNAL_PLAYBACK_ACCEPTANCE.md](EXTERNAL_PLAYBACK_ACCEPTANCE.md) on one release candidate. Apple Watch remains explicit post-MVP scope. |
 | R16 | Complete: CI selects every canonical regression, names describe the proved behavior, close controls are unambiguous, and reviewed screenshot policies survive baseline recording. | The final branch tip must pass the normal five-lane CI matrix before formal qualification is dispatched. |
 
+The R0 row summarizes the earlier accepted milestone and the chronology below
+retains the signature count at each subsequent checkpoint. The current exact
+ledger contains **152 unique signatures** and **21 formal qualification
+resets**.
+
 ### Current R0 qualification update
 
 Normal [run 33439248042](https://github.com/anicolao/player/actions/runs/33439248042)
@@ -266,8 +271,34 @@ blocked for roughly 50 seconds trying to take a failure screenshot. Failure
 capture now lives entirely in the outer harness, whose live simulator attempt
 has an enforced two-second kill boundary and whose exact recording-frame
 fallback already recovered this failure. Source hygiene rejects future
-in-process failure capture. The ledger contains 149 unique signatures and
+in-process failure capture. The ledger contains 152 unique signatures and
 retains 21 formal qualification resets; this normal run changed no formal
+count.
+
+Exact-tip normal run
+[33479649229](https://github.com/anicolao/player/actions/runs/33479649229)
+then proved the Story 005 slider and Story 007 focus redelivery repairs and
+passed eleven other stories' reviewed evidence, all 374 core tests, fixture
+gates, and renderer inputs. Story 009 exposed a pre-product first-launch stall:
+although its newly created simulator had returned from `bootstatus`, one-time
+widget, Spotlight, accessibility-asset, and TTS work continued to monopolize
+RunningBoard, delaying process creation for roughly 34 seconds. Story 002 later
+exposed the same first-boot epoch on a document-URL open; the failed platform
+transaction consequently left a non-fixture import for the next worker class.
+The harness now completes first-boot configuration, crosses a clean shutdown
+and second-boot boundary, and verifies the persisted configuration before
+installing either target. No fixed wait, retry-to-green, or deadline increase is
+used. Complete local Story 002 test execution passed all seven selectors in
+91.673 seconds, and canonical committed-code Story 009 passed both selectors in
+112.250 seconds with all seven screenshots and its walkthrough accepted.
+
+The Story 009 diagnostic also exposed a separate product transaction defect:
+two accessibility preference writes could overlap an actor suspension, copy the
+same stale library, and lose one mutation while optimistic switch state showed
+both enabled. Library-organization mutations now enter a FIFO transaction gate,
+the switches render durable model state, and a suspended-save regression proves
+both concurrent changes persist. The ledger contains 152 unique signatures and
+retains 21 formal qualification resets; the failed normal run changed no formal
 count.
 
 ## R0 — Stabilize and qualify E2E
