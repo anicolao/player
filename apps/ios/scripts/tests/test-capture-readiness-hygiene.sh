@@ -258,6 +258,27 @@ if 'terminateAndWait(app)' not in source[startup:next_selector]:
         'launch hygiene requires the startup-warning selector to publish a clean not-running handoff'
     )
 PY
+python3 - "${ui_test_root}/ImportIngressResilienceUITests.swift" <<'PY'
+import sys
+from pathlib import Path
+
+source = Path(sys.argv[1]).read_text()
+document = source.index(
+    'func testDocumentOpenResumesOneImportAcrossAcquireAndInspectRestarts()'
+)
+share = source.index(
+    'func testConsumesAndDeduplicatesShareExtensionAppGroupHandoff()', document
+)
+helpers = source.index('\n  private func ', share)
+if 'terminateAndWait(resumedApp)' not in source[document:share]:
+    raise SystemExit(
+        'launch hygiene requires the document-ingress selector to finish not running'
+    )
+if 'terminateAndWait(replayApp)' not in source[share:helpers]:
+    raise SystemExit(
+        'launch hygiene requires the share-handoff selector to finish not running'
+    )
+PY
 python3 - "${ui_test_root}/TestStepHelper.swift" <<'PY'
 import sys
 from pathlib import Path

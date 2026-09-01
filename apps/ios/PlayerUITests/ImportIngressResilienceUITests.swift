@@ -56,6 +56,7 @@ final class ImportIngressResilienceUITests: PlayerUITestCase {
       anyElement(resumedApp, "review-import-screen"),
       "proposal:ready:1-book:1-tracks:0-warnings"
     )
+    XCTAssertTrue(terminateAndWait(resumedApp))
   }
 
   func testConsumesAndDeduplicatesShareExtensionAppGroupHandoff() throws {
@@ -94,6 +95,10 @@ final class ImportIngressResilienceUITests: PlayerUITestCase {
     )
     replayApp.tabBars.buttons["Inbox"].tap()
     XCTAssertTrue(replayApp.buttons["review-import-job-\(shareJobID)"].waitForExistence(timeout: 2))
+    XCTAssertTrue(
+      terminateAndWait(replayApp),
+      "The share-handoff journey must leave a completed not-running boundary"
+    )
   }
 
   private func makeApplication(
