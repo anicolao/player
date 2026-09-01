@@ -126,8 +126,6 @@ struct AccessibilitySettingsView: View {
   @Environment(\.legibilityWeight) private var legibilityWeight
 
   @Bindable var model: PlayerModel
-  @State private var prefersHighContrast = false
-  @State private var reducesDecorativeArtwork = false
 
   var body: some View {
     ScrollViewReader { _ in
@@ -135,12 +133,12 @@ struct AccessibilitySettingsView: View {
         Section {
           Toggle(
             "Use higher contrast",
-            isOn: $prefersHighContrast
+            isOn: prefersHighContrast
           )
           .accessibilityIdentifier("accessibility-high-contrast")
           Toggle(
             "Reduce decorative artwork",
-            isOn: $reducesDecorativeArtwork
+            isOn: reducesDecorativeArtwork
           )
           .accessibilityIdentifier("accessibility-reduce-artwork")
         } header: {
@@ -184,17 +182,6 @@ struct AccessibilitySettingsView: View {
     .accessibilityElement(children: .contain)
     .accessibilityIdentifier("accessibility-settings-screen")
     .accessibilityValue(settingsValue)
-    .onAppear {
-      let preferences = model.library.accessibilityPreferences
-      prefersHighContrast = preferences.prefersHighContrast
-      reducesDecorativeArtwork = preferences.reducesDecorativeArtwork
-    }
-    .onChange(of: prefersHighContrast) { _, enabled in
-      Task { _ = await model.setPrefersHighContrast(enabled) }
-    }
-    .onChange(of: reducesDecorativeArtwork) { _, enabled in
-      Task { _ = await model.setReducesDecorativeArtwork(enabled) }
-    }
     #if E2E
       .overlay {
         StateProbe(
@@ -204,6 +191,20 @@ struct AccessibilitySettingsView: View {
         .id(modelPreferencesValue)
       }
     #endif
+  }
+
+  private var prefersHighContrast: Binding<Bool> {
+    Binding(
+      get: { model.library.accessibilityPreferences.prefersHighContrast },
+      set: { enabled in Task { _ = await model.setPrefersHighContrast(enabled) } }
+    )
+  }
+
+  private var reducesDecorativeArtwork: Binding<Bool> {
+    Binding(
+      get: { model.library.accessibilityPreferences.reducesDecorativeArtwork },
+      set: { enabled in Task { _ = await model.setReducesDecorativeArtwork(enabled) } }
+    )
   }
 
   private func systemRow(_ title: String, enabled: Bool, symbol: String) -> some View {
@@ -220,8 +221,8 @@ struct AccessibilitySettingsView: View {
   private var settingsValue: String {
     return [
       "accessibility",
-      "high-contrast=\(prefersHighContrast)",
-      "reduce-artwork=\(reducesDecorativeArtwork)",
+      "high-contrast=\(model.library.accessibilityPreferences.prefersHighContrast)",
+      "reduce-artwork=\(model.library.accessibilityPreferences.reducesDecorativeArtwork)",
       "system-reduce-motion=\(systemReducesMotion)",
       "system-increase-contrast=\(systemContrast == .increased)",
       "system-differentiate=\(systemDifferentiatesWithoutColor)",

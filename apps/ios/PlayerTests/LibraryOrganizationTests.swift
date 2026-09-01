@@ -80,6 +80,28 @@ final class LibraryOrganizationTests: XCTestCase {
     )
   }
 
+  func testConcurrentAccessibilityPreferenceMutationsPreserveBothChanges() async {
+    let store = SuspendedFirstOrganizationSaveStore(snapshot: .empty)
+    let model = makeModel(store: store)
+    await model.restore()
+
+    let highContrast = Task { await model.setPrefersHighContrast(true) }
+    await store.waitUntilFirstSaveStarts()
+    let reduceArtwork = Task { await model.setReducesDecorativeArtwork(true) }
+    await store.releaseFirstSave()
+
+    let highContrastSucceeded = await highContrast.value
+    let reduceArtworkSucceeded = await reduceArtwork.value
+    XCTAssertTrue(highContrastSucceeded)
+    XCTAssertTrue(reduceArtworkSucceeded)
+    XCTAssertEqual(
+      model.library.accessibilityPreferences,
+      AccessibilityPreferences(prefersHighContrast: true, reducesDecorativeArtwork: true)
+    )
+    let durable = await store.load()
+    XCTAssertEqual(durable.accessibilityPreferences, model.library.accessibilityPreferences)
+  }
+
   func testFinishingBookAtomicallyStoresDurationAndRemovesDailyQueues() async throws {
     let now = Date(timeIntervalSince1970: 1_800_000_000)
     let book = makeBook(
@@ -349,7 +371,7 @@ final class LibraryOrganizationTests: XCTestCase {
   }
 
   private func makeModel(
-    store: InMemoryLibraryStore,
+    store: any LibraryPersisting,
     now: Date = Date(timeIntervalSince1970: 1_800_000_000),
     ids: [UUID] = []
   ) -> PlayerModel {
@@ -408,6 +430,46 @@ final class LibraryOrganizationTests: XCTestCase {
         line: line
       )
     }
+  }
+}
+
+private actor SuspendedFirstOrganizationSaveStore: LibraryPersisting {
+  private var snapshot: LibrarySnapshot
+  private var saveCount = 0
+  private var firstSaveStarted = false
+  private var firstSaveStartedWaiters: [CheckedContinuation<Void, Never>] = []
+  private var firstSaveRelease: CheckedContinuation<Void, Never>?
+
+  init(snapshot: LibrarySnapshot) {
+    self.snapshot = snapshot
+  }
+
+  func load() async -> LibrarySnapshot { snapshot }
+
+  func save(_ candidate: LibrarySnapshot) async {
+    saveCount += 1
+    if saveCount == 1 {
+      firstSaveStarted = true
+      let waiters = firstSaveStartedWaiters
+      firstSaveStartedWaiters.removeAll()
+      waiters.forEach { $0.resume() }
+      await withCheckedContinuation { continuation in
+        firstSaveRelease = continuation
+      }
+    }
+    snapshot = candidate
+  }
+
+  func waitUntilFirstSaveStarts() async {
+    if firstSaveStarted { return }
+    await withCheckedContinuation { continuation in
+      firstSaveStartedWaiters.append(continuation)
+    }
+  }
+
+  func releaseFirstSave() {
+    firstSaveRelease?.resume()
+    firstSaveRelease = nil
   }
 }
 

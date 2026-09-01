@@ -25,6 +25,10 @@ final class PlayerModel {
   @ObservationIgnored private var cancellingImportIDs: Set<UUID> = []
   @ObservationIgnored private var mutatingTrashTransactionIDs: Set<UUID> = []
   @ObservationIgnored private var mutatingMetadataTargets: Set<MetadataTarget> = []
+  @ObservationIgnored private var libraryOrganizationMutationIsActive = false
+  @ObservationIgnored private var libraryOrganizationMutationWaiters: [
+    CheckedContinuation<Void, Never>
+  ] = []
   @ObservationIgnored private var sleepTimerMonitorTask: Task<Void, Never>?
   @ObservationIgnored private var monetizationSnapshotTask: Task<Void, Never>?
   @ObservationIgnored private var sleepTimerEvaluationInProgress = false
@@ -4000,6 +4004,8 @@ final class PlayerModel {
     owner: PlayerErrorPresentationOwner? = nil,
     _ mutation: (inout LibrarySnapshot) throws -> Void
   ) async -> Bool {
+    await acquireLibraryOrganizationMutation()
+    defer { releaseLibraryOrganizationMutation() }
     var candidate = library
     do {
       try mutation(&candidate)
@@ -4010,6 +4016,24 @@ final class PlayerModel {
       present(error, in: domain, owner: owner)
       return false
     }
+  }
+
+  private func acquireLibraryOrganizationMutation() async {
+    if !libraryOrganizationMutationIsActive {
+      libraryOrganizationMutationIsActive = true
+      return
+    }
+    await withCheckedContinuation { continuation in
+      libraryOrganizationMutationWaiters.append(continuation)
+    }
+  }
+
+  private func releaseLibraryOrganizationMutation() {
+    guard !libraryOrganizationMutationWaiters.isEmpty else {
+      libraryOrganizationMutationIsActive = false
+      return
+    }
+    libraryOrganizationMutationWaiters.removeFirst().resume()
   }
 }
 
