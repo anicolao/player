@@ -240,15 +240,15 @@ cmp "${temporary_root}/manifest-stories" "${temporary_root}/workflow-stories" \
 [[ "$(rg -c '^    needs: e2e-build$' "${workflow}")" -eq 5 ]] \
   || fail "normal CI must begin exactly five balanced macOS scheduling chains"
 for scheduling_edge in \
-  'needs: [e2e-build, story-005]' \
-  'needs: [e2e-build, story-009]' \
-  'needs: [e2e-build, story-011]' \
-  'needs: [e2e-build, story-007]' \
-  'needs: [e2e-build, story-013]' \
   'needs: [e2e-build, story-008]' \
-  'needs: [e2e-build, story-010]' \
+  'needs: [e2e-build, story-005]' \
+  'needs: [e2e-build, story-003]' \
+  'needs: [e2e-build, story-007]' \
   'needs: [e2e-build, story-006]' \
-  'needs: [e2e-build, story-001]'; do
+  'needs: [e2e-build, story-002]' \
+  'needs: [e2e-build, story-011]' \
+  'needs: [e2e-build, story-001]' \
+  'needs: [e2e-build, story-009]'; do
   [[ "$(rg -Fxc "    ${scheduling_edge}" "${workflow}")" -eq 1 ]] \
     || fail "normal CI is missing balanced scheduling edge ${scheduling_edge}"
 done
@@ -264,7 +264,7 @@ rg -Fq 'runs-on: macos-26' "${story_workflow}" \
   || fail "every reusable normal story must run on its own hosted macOS job"
 [[ "$(rg -c 'DeterminateSystems/nix-installer-action@' "${workflow}")" -eq 1 ]] \
   || fail "normal CI must install Nix only in the shared-build producer"
-e2e_build_section="$(sed -n '/^  e2e-build:/,/^  story-005:/p' "${workflow}")"
+e2e_build_section="$(sed -n '/^  e2e-build:/,/^  story-008:/p' "${workflow}")"
 [[ "$(rg -c '^[[:space:]]+PLAYER_SKIP_SIMULATOR_LAUNCH: "1"$' \
   <<< "${e2e_build_section}")" -eq 1 ]] \
   || fail "the shared-build producer must suppress the interactive Nix simulator hook"

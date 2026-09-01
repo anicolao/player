@@ -153,10 +153,25 @@ jobs:
           compression-level: 0
           retention-days: 30
 
-  # Five balanced dependency chains match the repository's observed five-runner
-  # macOS allowance. Every call still gets a fresh host. `!cancelled()` keeps later
+  # Five dependency chains match the repository's observed five-runner macOS
+  # allowance. Their order is balanced from the elapsed job times in green run
+  # 33439248042. Every call still gets a fresh host. `!cancelled()` keeps later
   # work in a chain running after an earlier test failure, so coverage is not
   # shortened on red commits.
+  story-008:
+    if: inputs.expected_sha == ''
+    needs: e2e-build
+    uses: ./.github/workflows/ios-e2e-story.yml
+    with:
+      story: 008-library-search
+
+  story-004:
+    if: ${{ !cancelled() && inputs.expected_sha == '' && needs.e2e-build.result == 'success' }}
+    needs: [e2e-build, story-008]
+    uses: ./.github/workflows/ios-e2e-story.yml
+    with:
+      story: 004-metadata-repair
+
   story-005:
     if: inputs.expected_sha == ''
     needs: e2e-build
@@ -164,26 +179,19 @@ jobs:
     with:
       story: 005-play-and-restore
 
-  story-004:
+  story-003:
     if: ${{ !cancelled() && inputs.expected_sha == '' && needs.e2e-build.result == 'success' }}
     needs: [e2e-build, story-005]
     uses: ./.github/workflows/ios-e2e-story.yml
     with:
-      story: 004-metadata-repair
+      story: 003-multifile-grouping
 
-  story-009:
-    if: inputs.expected_sha == ''
-    needs: e2e-build
-    uses: ./.github/workflows/ios-e2e-story.yml
-    with:
-      story: 009-accessible-core-journeys
-
-  story-011:
+  story-013:
     if: ${{ !cancelled() && inputs.expected_sha == '' && needs.e2e-build.result == 'success' }}
-    needs: [e2e-build, story-009]
+    needs: [e2e-build, story-003]
     uses: ./.github/workflows/ios-e2e-story.yml
     with:
-      story: 011-offline-recovery
+      story: 013-app-store-listing
 
   story-007:
     if: inputs.expected_sha == ''
@@ -192,66 +200,59 @@ jobs:
     with:
       story: 007-sleep-timer
 
-  story-013:
+  story-006:
     if: ${{ !cancelled() && inputs.expected_sha == '' && needs.e2e-build.result == 'success' }}
     needs: [e2e-build, story-007]
     uses: ./.github/workflows/ios-e2e-story.yml
     with:
-      story: 013-app-store-listing
-
-  story-003:
-    if: ${{ !cancelled() && inputs.expected_sha == '' && needs.e2e-build.result == 'success' }}
-    needs: [e2e-build, story-013]
-    uses: ./.github/workflows/ios-e2e-story.yml
-    with:
-      story: 003-multifile-grouping
-
-  story-008:
-    if: inputs.expected_sha == ''
-    needs: e2e-build
-    uses: ./.github/workflows/ios-e2e-story.yml
-    with:
-      story: 008-library-search
-
-  story-010:
-    if: ${{ !cancelled() && inputs.expected_sha == '' && needs.e2e-build.result == 'success' }}
-    needs: [e2e-build, story-008]
-    uses: ./.github/workflows/ios-e2e-story.yml
-    with:
-      story: 010-library-backup
-
-  story-012:
-    if: ${{ !cancelled() && inputs.expected_sha == '' && needs.e2e-build.result == 'success' }}
-    needs: [e2e-build, story-010]
-    uses: ./.github/workflows/ios-e2e-story.yml
-    with:
-      story: 012-monetization
-
-  story-006:
-    if: inputs.expected_sha == ''
-    needs: e2e-build
-    uses: ./.github/workflows/ios-e2e-story.yml
-    with:
       story: 006-safe-zip-import
 
-  story-001:
+  story-012:
     if: ${{ !cancelled() && inputs.expected_sha == '' && needs.e2e-build.result == 'success' }}
     needs: [e2e-build, story-006]
     uses: ./.github/workflows/ios-e2e-story.yml
     with:
-      story: 001-ios-launch
+      story: 012-monetization
 
   story-002:
-    if: ${{ !cancelled() && inputs.expected_sha == '' && needs.e2e-build.result == 'success' }}
-    needs: [e2e-build, story-001]
+    if: inputs.expected_sha == ''
+    needs: e2e-build
     uses: ./.github/workflows/ios-e2e-story.yml
     with:
       story: 002-import-and-play
 
+  story-009:
+    if: ${{ !cancelled() && inputs.expected_sha == '' && needs.e2e-build.result == 'success' }}
+    needs: [e2e-build, story-002]
+    uses: ./.github/workflows/ios-e2e-story.yml
+    with:
+      story: 009-accessible-core-journeys
+
+  story-011:
+    if: inputs.expected_sha == ''
+    needs: e2e-build
+    uses: ./.github/workflows/ios-e2e-story.yml
+    with:
+      story: 011-offline-recovery
+
+  story-001:
+    if: ${{ !cancelled() && inputs.expected_sha == '' && needs.e2e-build.result == 'success' }}
+    needs: [e2e-build, story-011]
+    uses: ./.github/workflows/ios-e2e-story.yml
+    with:
+      story: 001-ios-launch
+
+  story-010:
+    if: ${{ !cancelled() && inputs.expected_sha == '' && needs.e2e-build.result == 'success' }}
+    needs: [e2e-build, story-001]
+    uses: ./.github/workflows/ios-e2e-story.yml
+    with:
+      story: 010-library-backup
+
   core-tests:
     name: Core tests and fixture gates
     if: ${{ !cancelled() && inputs.expected_sha == '' && needs.e2e-build.result == 'success' }}
-    needs: [e2e-build, story-011]
+    needs: [e2e-build, story-009]
     runs-on: macos-26
     timeout-minutes: 30
     defaults:
