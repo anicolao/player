@@ -93,11 +93,12 @@ final class BackupUITests: PlayerUITestCase {
       )
     )
 
-    tapWalkthroughAction("e2e-fixture-clear-library", in: app)
-    try requireProbeValue(
-      "backup:books=0:bookmarks=0:position=-1:media=0:audio=false:catalog=false:files=1:kind=includingMedia:payloads=1:prepared=0",
-      in: app
+    let clearedProbe =
+      "backup:books=0:bookmarks=0:position=-1:media=0:audio=false:catalog=false:files=1:kind=includingMedia:payloads=1:prepared=0"
+    tapWalkthroughAction(
+      "e2e-fixture-clear-library", expectedProbe: clearedProbe, in: app
     )
+    try requireProbeValue(clearedProbe, in: app)
     requireBackupTopVisible(app)
     try tester.step(
       "cleared-library",
@@ -151,11 +152,12 @@ final class BackupUITests: PlayerUITestCase {
       )
     )
 
-    tapWalkthroughAction("e2e-fixture-replace-catalog", in: app)
-    try requireProbeValue(
-      "backup:books=1:bookmarks=1:position=42000:media=1:audio=true:catalog=false:files=1:kind=includingMedia:payloads=1:prepared=0",
-      in: app
+    let replacedCatalogProbe =
+      "backup:books=1:bookmarks=1:position=42000:media=1:audio=true:catalog=false:files=1:kind=includingMedia:payloads=1:prepared=0"
+    tapWalkthroughAction(
+      "e2e-fixture-replace-catalog", expectedProbe: replacedCatalogProbe, in: app
     )
+    try requireProbeValue(replacedCatalogProbe, in: app)
     let automaticRestore = app.buttons["backup-restore-automatic"]
     revealBackupAction(automaticRestore, in: app)
     automaticRestore.tap()
@@ -419,14 +421,27 @@ final class BackupUITests: PlayerUITestCase {
     )
   }
 
-  private func tapWalkthroughAction(_ identifier: String, in app: XCUIApplication) {
+  private func tapWalkthroughAction(
+    _ identifier: String,
+    expectedProbe: String,
+    in app: XCUIApplication
+  ) {
     let trigger = app.buttons["e2e-trigger-\(identifier)"]
     XCTAssertTrue(trigger.waitForExistence(timeout: 2))
     XCTAssertTrue(
       waitForPredicate(NSPredicate(format: "enabled == true"), on: trigger),
       "Expected \(identifier) to become enabled"
     )
-    trigger.tap()
+    let probe = anyElement(app, "backup-e2e-probe")
+    XCTAssertTrue(
+      deliverPhysicalActionAcknowledgedByDisabling(
+        trigger,
+        until: probe,
+        satisfies: NSPredicate(format: "exists == true AND value == %@", expectedProbe),
+        in: app
+      ),
+      "Expected \(identifier) to be accepted or publish its exact final state"
+    )
   }
 
   private func tapProductionAction(_ identifier: String, in app: XCUIApplication) {
