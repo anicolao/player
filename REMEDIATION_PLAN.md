@@ -178,6 +178,20 @@ selectors, all 11 reviewed screenshots, and all three exact walkthroughs. Story
 unique signatures and retains 21 formal qualification resets; this failed
 normal run changed no formal count.
 
+Exact-tip normal run
+[33466372451](https://github.com/anicolao/player/actions/runs/33466372451)
+proved the Story 007 sort repair, then exposed a separate Story 005 lifecycle
+false negative. After Home completed all three ordered production receipts,
+Bookshelf and its exact Progress 90 button were fully rendered, enabled, and
+unobstructed, but the helper additionally required a stale sampled
+`XCUIApplication.state`. Reactivation now skips unrelated post-event
+quiescence, freshly resolves the exact app-owned button, and uses its
+enabled/hittable/contained geometry as the completion receipt. The complete
+local Story 005 passes all eight selectors in 239.830 seconds, both shared
+lifecycle users pass, all four screenshots are pixel-exact, and the walkthrough
+is exact. The ledger contains 139 unique signatures and retains 21 formal
+qualification resets; this failed normal run changed no formal count.
+
 ## R0 — Stabilize and qualify E2E
 
 ### Goal

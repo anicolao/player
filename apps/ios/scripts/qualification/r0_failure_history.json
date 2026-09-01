@@ -3259,6 +3259,30 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "ui-test:PositionRestoreUITests.testLiveProgressUpdatesMiniAndFullPlayerAcrossLifecycle:visible-restored-control-with-stale-application-state",
+      "story": "005-play-and-restore",
+      "evidence": {
+        "workflowRun": 33466372451,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 005 artifact 9785350674 retains the exact xcresult, fully rendered Bookshelf failure screen, interaction trace, system lifecycle logs, and complete story evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33466372451/job/99728138823",
+        "commit": "2de6c34afa2267ee577c9d4b80040f96f94dda2b",
+        "observation": "Home produced all three ordered production lifecycle receipts and Bookshelf reappeared with the exact Progress 90 button visibly enabled and unobstructed, yet the foreground-interactive predicate failed. The other seven Story 005 selectors passed, including the repaired Smart Rewind switch path. The retained failure screen proves the app-owned control was restored while XCUIApplication.state had not converged to its sampled runningForeground value."
+      },
+      "rootCause": "The lifecycle helper redundantly gated a visible, enabled, hittable, geometrically contained app-owned control on XCUIApplication.state. That separately sampled process proxy can remain stale after the scene and accessibility hierarchy are already restored, converting a completed reactivation into a false negative. Post-event quiescence on activation also added an unrelated unbounded system-idle delay before the exact receipt was evaluated.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Activate without post-event quiescence, freshly resolve the exact required button after activation, and use its enabled, hittable, app-contained geometry as the causal restored-surface receipt. Remove the redundant sampled application process state; retain all three independent two-second production background stages and the two-second exact-control boundary.",
+        "commits": [
+          "d557fe103413c7258e0adb1a9ac7b46efb5e4a54"
+        ],
+        "validation": "The complete canonical Story 005 journey passed all eight selectors locally in 239.830 seconds. The formerly failing lifecycle selector passed in 17.613 seconds and the shared helper's Remote Interruption journey passed in 16.326 seconds. All four reviewed screenshots matched pixel-exactly, the walkthrough README matched exactly, a fresh E2E build succeeded, and full E2E hygiene passed."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
     }
   ]
 }
