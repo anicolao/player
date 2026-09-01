@@ -452,7 +452,14 @@ printf 'launchctl\t%s\n' "$*" >> "${PLAYER_CONTROL_PLANE_LOG}"
 [[ "$*" == "kill SIGKILL user/$(id -u)/com.apple.CoreSimulator.CoreSimulatorService" ]]
 exit "${PLAYER_CONTROL_PLANE_EXIT_CODE:-0}"
 EOF
-chmod +x "${control_plane_fake_bin}/launchctl"
+cat > "${control_plane_fake_bin}/xcrun" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'xcrun\t%s\n' "$*" >> "${PLAYER_CONTROL_PLANE_LOG}"
+[[ "$*" == "simctl list runtimes --json" ]]
+exit "${PLAYER_CONTROL_PLANE_SIMCTL_EXIT_CODE:-0}"
+EOF
+chmod +x "${control_plane_fake_bin}/launchctl" "${control_plane_fake_bin}/xcrun"
 if env PATH="${control_plane_fake_bin}:${PATH}" \
   PLAYER_CONTROL_PLANE_LOG="${control_plane_log}" \
   GITHUB_ACTIONS=false "${control_plane_reset}" >/dev/null 2>&1; then
@@ -461,22 +468,37 @@ fi
 env PATH="${control_plane_fake_bin}:${PATH}" \
   PLAYER_CONTROL_PLANE_LOG="${control_plane_log}" \
   GITHUB_ACTIONS=true "${control_plane_reset}"
-[[ "$(wc -l < "${control_plane_log}" | tr -d ' ')" == 1 ]] \
-  || fail "hosted simulator reset did not perform exactly one asynchronous termination"
-[[ "$(sed -n '1p' "${control_plane_log}")" == $'launchctl\tkill SIGKILL user/'* ]] \
-  || fail "hosted simulator reset did not target the exact per-user service"
+[[ "$(wc -l < "${control_plane_log}" | tr -d ' ')" == 2 ]] \
+  || fail "hosted simulator reset did not perform one termination and one readiness RPC"
+[[ "$(sed -n '1p' "${control_plane_log}")" == $'launchctl\tkill SIGKILL user/'* \
+  && "$(sed -n '2p' "${control_plane_log}")" == $'xcrun\tsimctl list runtimes --json' ]] \
+  || fail "hosted simulator reset is not receipted in causal order"
+: > "${control_plane_log}"
 env PATH="${control_plane_fake_bin}:${PATH}" \
   PLAYER_CONTROL_PLANE_LOG="${control_plane_log}" \
   PLAYER_CONTROL_PLANE_EXIT_CODE=113 \
   GITHUB_ACTIONS=true "${control_plane_reset}"
+[[ "$(wc -l < "${control_plane_log}" | tr -d ' ')" == 2 \
+  && "$(sed -n '2p' "${control_plane_log}")" == $'xcrun\tsimctl list runtimes --json' ]] \
+  || fail "an already absent service did not proceed to the readiness RPC"
+: > "${control_plane_log}"
 if env PATH="${control_plane_fake_bin}:${PATH}" \
   PLAYER_CONTROL_PLANE_LOG="${control_plane_log}" \
   PLAYER_CONTROL_PLANE_EXIT_CODE=1 \
   GITHUB_ACTIONS=true "${control_plane_reset}" >/dev/null 2>&1; then
   fail "hosted simulator reset accepted an unknown launchctl failure"
 fi
-[[ "$(wc -l < "${control_plane_log}" | tr -d ' ')" == 3 ]] \
-  || fail "hosted simulator reset retried instead of accepting one terminal event"
+[[ "$(wc -l < "${control_plane_log}" | tr -d ' ')" == 1 ]] \
+  || fail "hosted simulator reset continued after an unknown launchctl failure"
+: > "${control_plane_log}"
+if env PATH="${control_plane_fake_bin}:${PATH}" \
+  PLAYER_CONTROL_PLANE_LOG="${control_plane_log}" \
+  PLAYER_CONTROL_PLANE_SIMCTL_EXIT_CODE=1 \
+  GITHUB_ACTIONS=true "${control_plane_reset}" >/dev/null 2>&1; then
+  fail "hosted simulator reset accepted a missing readiness receipt"
+fi
+[[ "$(wc -l < "${control_plane_log}" | tr -d ' ')" == 2 ]] \
+  || fail "hosted simulator reset retried a failed readiness receipt"
 for destination_source in \
   "${run_e2e}" \
   "${ios_scripts}/run-e2e-shard.sh" \

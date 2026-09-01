@@ -14,10 +14,9 @@ run_with_two_second_deadline() {
 
 # Ask launchd to terminate the stale service asynchronously. A missing service
 # is already the requested terminal state; launchctl reports that state as 113.
-# Reject every other failure. The immediately following exact simulator lease
-# acquisition is the readiness event: it cannot return a simulator ID until
-# launchd has served the create request. Do not add a second blocking
-# restart/inventory phase, sleep, retry, or product prelaunch.
+# Reject every other failure, then require one real CoreSimulator RPC to prove
+# launchd re-registration has completed before the following lease creation.
+# Do not add a sleep, retry, inventory loop, or product prelaunch.
 set +e
 run_with_two_second_deadline launchctl kill SIGKILL "${service_target}"
 reset_status=$?
@@ -29,3 +28,4 @@ case "${reset_status}" in
     exit "${reset_status}"
     ;;
 esac
+run_with_two_second_deadline xcrun simctl list runtimes --json >/dev/null
