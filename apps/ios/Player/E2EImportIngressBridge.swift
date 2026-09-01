@@ -202,6 +202,28 @@
     }
   }
 
+  enum E2EImportIngressSourceReference {
+    // The system bookmark broker is independently covered by production
+    // media-manager tests and remains a physical ingress acceptance gate. This
+    // journey needs an exact, restartable reference without importing the
+    // broker's hosted-simulator I/O latency into its two-second app contract.
+    static let bookmarkAccess = ImportSourceBookmarkAccess(
+      createBookmark: { url in Data(url.absoluteString.utf8) },
+      resolveBookmark: { data in
+        guard
+          let encoded = String(data: data, encoding: .utf8),
+          let url = URL(string: encoded),
+          url.isFileURL
+        else {
+          throw PlayerCoreError.fileOperation(
+            "The Import Ingress E2E source reference is invalid."
+          )
+        }
+        return ResolvedImportSourceBookmark(url: url, isStale: false)
+      }
+    )
+  }
+
   struct E2EShareIngressSnapshot: Equatable {
     let jobIDs: Set<UUID>
     let receipt: ShareImportReceipt?
@@ -448,7 +470,10 @@
         )
       }
 
-      let media = FileSystemMediaManager(rootURL: root.appending(path: "PlayerData"))
+      let media = FileSystemMediaManager(
+        rootURL: root.appending(path: "PlayerData"),
+        bookmarkAccess: E2EImportIngressSourceReference.bookmarkAccess
+      )
       let inspected = InspectedAudio(
         title: "Synthetic Import Channel",
         authors: ["Player Test Lab"],
@@ -530,7 +555,7 @@
 
   }
 
-  private actor E2EImportPauseMediaManager: MediaManaging {
+  actor E2EImportPauseMediaManager: MediaManaging {
     let base: any MediaManaging
     let pauseAtAcquire: Bool
 
@@ -558,6 +583,22 @@
     }
 
     func discardStaging(for jobID: UUID) async { await base.discardStaging(for: jobID) }
+
+    // This wrapper changes only the acquisition suspension point. Import URLs
+    // must still pass through the concrete media manager so document-open and
+    // provider URLs retain their security-scoped lease and durable bookmark
+    // behavior. Falling through to MediaManaging's convenience defaults makes
+    // readability depend on transient simulator sandbox state.
+    func referenceImportSources(
+      _ selectedURLs: [URL],
+      displayNames: [String]?
+    ) async throws -> [DurableImportSource] {
+      try await base.referenceImportSources(selectedURLs, displayNames: displayNames)
+    }
+
+    func resolveImportSources(_ sources: [DurableImportSource]) async throws -> [URL] {
+      try await base.resolveImportSources(sources)
+    }
 
     func acquireSelection(_ selectedURLs: [URL], jobID: UUID) async throws -> [AcquiredAudioFile] {
       if pauseAtAcquire { try await suspendImportPhaseUntilCancellation() }

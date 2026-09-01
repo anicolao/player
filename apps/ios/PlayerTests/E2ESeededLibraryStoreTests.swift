@@ -1135,6 +1135,62 @@
     }
   }
 
+  final class E2EImportPauseMediaManagerTests: XCTestCase {
+    func testIngressSourceReferenceRoundTripsOneExactFileURL() throws {
+      let source = URL(filePath: "/tmp/Bookshelf E2E/Selected.m4a")
+      let data = try XCTUnwrap(
+        E2EImportIngressSourceReference.bookmarkAccess.create(for: source)
+      )
+
+      let resolved = try E2EImportIngressSourceReference.bookmarkAccess.resolve(data)
+      XCTAssertEqual(resolved.url, source)
+      XCTAssertFalse(resolved.isStale)
+      XCTAssertThrowsError(
+        try E2EImportIngressSourceReference.bookmarkAccess.resolve(Data("not a URL".utf8))
+      )
+    }
+
+    func testPauseWrapperForwardsDurableSourceReferenceAndResolution() async throws {
+      let root = FileManager.default.temporaryDirectory.appending(
+        path: "E2EImportPauseMediaManagerTests-\(UUID().uuidString)",
+        directoryHint: .isDirectory
+      )
+      defer { try? FileManager.default.removeItem(at: root) }
+      try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+      let selected = root.appending(path: "Selected.m4a")
+      let resolved = root.appending(path: "Resolved.m4a")
+      try Data("selected source".utf8).write(to: selected, options: .atomic)
+      try Data("resolved source".utf8).write(to: resolved, options: .atomic)
+      let marker = Data("concrete-media-bookmark".utf8)
+      let base = FileSystemMediaManager(
+        rootURL: root.appending(path: "Storage", directoryHint: .isDirectory),
+        resourceAccess: SecurityScopedResourceAccess(
+          startAccess: { _ in true },
+          stopAccess: { _ in }
+        ),
+        bookmarkAccess: ImportSourceBookmarkAccess(
+          createBookmark: { _ in marker },
+          resolveBookmark: { data in
+            guard data == marker else {
+              throw PlayerCoreError.fileOperation("The concrete bookmark marker was bypassed.")
+            }
+            return ResolvedImportSourceBookmark(url: resolved, isStale: false)
+          }
+        )
+      )
+      let wrapper = E2EImportPauseMediaManager(base: base, pauseAtAcquire: false)
+
+      let references = try await wrapper.referenceImportSources(
+        [selected],
+        displayNames: ["Chosen audiobook"]
+      )
+      XCTAssertEqual(references.map(\.displayName), ["Chosen audiobook"])
+      XCTAssertEqual(references.map(\.bookmarkData), [marker])
+      let resolvedURLs = try await wrapper.resolveImportSources(references)
+      XCTAssertEqual(resolvedURLs, [resolved])
+    }
+  }
+
   final class E2EImportIngressIDSequenceTests: XCTestCase {
     func testResumeRejectsMalformedDurableLibraryInsteadOfReusingCanonicalIDs() throws {
       let root = temporaryDirectory("malformed-library")
