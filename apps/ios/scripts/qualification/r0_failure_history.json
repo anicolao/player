@@ -3643,6 +3643,78 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "ui-test:CommittedMetadataEditingUITests.testPersistsCommittedMetadataUpdatesIndexesAndUndoesAtomically:clear-transaction-resigns-keyboard-focus",
+      "story": "004-metadata-repair",
+      "evidence": {
+        "workflowRun": 33496816488,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 004 artifact 9797504074 retains the exact xcresult, empty Authors provenance, missing-keyboard failure frame, accessibility hierarchy, simulator logs, and complete story evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33496816488/job/99829179442",
+        "commit": "8c6731417cfcfed92ab01e29afe73d47513cc840",
+        "observation": "The Authors field acquired exact focus and the deletion transaction committed value=empty, but severe hosted latency stretched deletion synthesis and idle acknowledgement across roughly 23 seconds. By the time the test issued the nonempty replacement, iOS had resigned keyboard focus; XCTest retried internally and failed because neither the field nor any descendant had focus. The companion metadata-repair selector passed with all four canonical screenshots accepted."
+      },
+      "rootCause": "The metadata replacement helper modeled deletion and replacement as one continuous focus transaction even though publishing the acknowledged empty model value completes a separate semantic edit. Nothing required the field to retain or reacquire exact keyboard focus before the subsequent nonempty synthesis.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "After a nonempty field publishes its exact empty-value receipt, reacquire and verify exact keyboard focus before synthesizing replacement text. Preserve the single focus transaction for initially empty fields, and source-check this ordering in E2E hygiene.",
+        "commits": [
+          "0a977a04b6d31bd2a8364a28e5c8641de35e0e29"
+        ],
+        "validation": "The exact formerly failing selector passed locally in 93.510 seconds. Complete canonical Story 004 passed both selectors in parallel in 113.204 seconds; all four screenshots were pixel-exact and the walkthrough README matched exactly. Full capture-readiness and E2E hygiene pass."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "ui-test:BookmarkUITests.testBookmarksCaptureOrganizeSearchJumpDeleteAndUndoExactly:read-only-row-reveal-requires-hittability",
+      "story": "007-sleep-timer",
+      "evidence": {
+        "workflowRun": 33501611309,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 007 artifact 9799391365 retains the exact xcresult, correlated bottom-endpoint probe, bookmark failure trace, screen recording, accessibility snapshots, and simulator logs",
+        "url": "https://github.com/anicolao/player/actions/runs/33501611309/job/99839440794",
+        "commit": "0a977a04b6d31bd2a8364a28e5c8641de35e0e29",
+        "observation": "Book Detail published a fully correlated idle bottom state at offset 351.333 with interaction=1, completion=1, geometry=9, and completion-geometry=9 after one progress-making swipe. The read-only bookmark row reveal nevertheless failed because its condition required the row container itself to become hittable; the diagnostic query observed the completed bottom receipt only after the helper had rejected the gesture."
+      },
+      "rootCause": "The reveal helper conflated complete visual framing with interactivity of a composite row container. Its row.isHittable query was neither the relevant display contract nor a reliable completion receipt, and the extra hosted accessibility traversal could outlive the independently published scroll transaction even though the row's actionable descendants remained covered by later physical taps.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Drive the reveal to the production scroll surface's exact correlated bottom endpoint, permit its existing settled-geometry receipt, then independently require the complete row frame to be visible without claiming that its noninteractive container is tappable. Preserve all later edit, jump, and delete hittability checks.",
+        "commits": [
+          "9b4aea7fc697927b2761d20172ac2bd49204738e"
+        ],
+        "validation": "The exact bookmark selector passed locally in 76.396 seconds. It crossed the formerly failing endpoint, completed edit, every sort, search, jump, delete, relaunch, undo, and library-search coverage, and captured the bookmark screen pixel-exact below the development simulator's intentionally uncontrolled status bar. Source hygiene locks the correlated endpoint and noninteractive visibility contract. Replacement normal run 33508118349 then passed the complete selector on its first fresh hosted attempt in Story 007 artifact 9801935611; the bookmark screenshot was canonical, the walkthrough was exact, and the complete evidence manifest passed."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "infrastructure:SleepTimerUITests.testSleepTimerPersistsFadesStopsAndResumesWithContextExactly:repeated-launches-exhaust-launch-control-plane",
+      "story": "007-sleep-timer",
+      "evidence": {
+        "workflowRun": 33501611309,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 007 artifact 9799391365 retains the exact xcresult, testmanagerd request, xpcproxy spawn, delayed RunningBoard transition, SpringBoard failure frame, and complete attempt logs",
+        "url": "https://github.com/anicolao/player/actions/runs/33501611309/job/99839440794",
+        "commit": "0a977a04b6d31bd2a8364a28e5c8641de35e0e29",
+        "observation": "After eleven successful app launches in the same selector, testmanagerd requested the persistent-state relaunch at 11:54:26.709 and xpcproxy spawned Bookshelf at 11:54:26.754, but the process did not enter RunningBoard's running state until 11:55:44.110. XCTest's private launcher failed after roughly 30 seconds, long before the pre-product launch channel finally completed roughly 77 seconds after spawn."
+      },
+      "rootCause": "The selector relaunched a fresh app for each of eight independent selection checks before reaching the relaunches that actually prove replacement, cancellation, and persistence. Those redundant control-plane transactions accumulated on one simulator until CoreSimulator withheld the twelfth launch transition beyond XCTest's private launcher deadline; no product code or two-second application condition was active during the stall.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Exercise all eight production timer choices in one app session through the real replacement flow, retaining every selection, fade, duration, target, position, and journal assertion while adding exact replacement-history assertions. Keep all six launches that establish selection teardown, cancellation persistence, active-timer persistence, completed-stop persistence, and single-use contextual resume.",
+        "commits": [
+          "1151132f025e77649d5f69d09af64389a407439e"
+        ],
+        "validation": "The complete sleep-timer selector passed locally in 131.554 seconds. All eight production choices completed in the first 59.25 seconds, all six meaningful app launches attached, both reviewed sleep screenshots matched pixel-exact below the development simulator's intentionally uncontrolled status bar, and the generated walkthrough content was exact. Source hygiene requires one selection-session launch and all eight choices. Replacement normal run 33508118349 then passed the complete selector on its first fresh hosted attempt in Story 007 artifact 9801935611. The hosted test completed in 244.804 seconds, both sleep screenshots were canonical, the walkthrough was exact, and the complete evidence manifest passed. The canonical Story 007 step fell from 22m31s in the retained failing attempt to 14m01s (-8m30s, -37.7%) while completing both selectors."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
     }
   ]
 }

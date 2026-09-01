@@ -225,6 +225,36 @@ roughly 34 seconds in Story 009 and 60 seconds for Story 002's document URL.
 It is part of the candidate wall-clock measurement and is not excluded as setup
 or offset by weaker waits.
 
+### Latest exact-code validation and retained variance
+
+[Run 33508118349](https://github.com/anicolao/player/actions/runs/33508118349)
+passed the complete normal matrix on exact code SHA
+`1151132f025e77649d5f69d09af64389a407439e` without a rerun: all 13 stories,
+all 41 UI selectors, 377/377 core tests, fixture gates, reviewed screenshots,
+exact walkthroughs, renderer inputs, and aggregation were green. It ran from
+12:31:04Z through 13:39:04Z for **68m00s** created-to-complete. Against the
+same-coverage 48m16s fresh-host baseline, this single sample is **+19m44s
+(+40.9%)** and is retained rather than discarded.
+
+The added time was not hidden setup. The one shared producer consumed 24m58s,
+including 1m26s installing Nix, 5m35s verifying source contracts and generating
+the project, and 17m25s building and binding the product. That producer was
+14m07s slower than the baseline producer. The consumer stage then spanned
+42m48s from producer completion to the final story, versus the baseline's
+35m34s (+7m14s); the critical dependency chain accumulated 11m44s of visible
+post-dependency GitHub runner admission delay. The formal five-sample matrix
+distribution, not this one high-variance normal sample, remains the fail-closed
+10% runtime gate.
+
+The same run provides an isolated before/after for the final Story 007 repair.
+Its retained failing predecessor spent 22m31s in the canonical story step and
+did not finish the second journey. The repaired job completed both journeys in
+14m01s on its first fresh hosted attempt, **-8m30s (-37.7%)**; all three
+screenshots were canonical and its exact walkthrough and evidence manifest
+passed. Coverage was preserved: the eight timer choices now share one real
+replacement session, while all six launches that prove teardown and durable
+state remain.
+
 ### Formal qualification topology reference
 
 The pre-isolation formal
