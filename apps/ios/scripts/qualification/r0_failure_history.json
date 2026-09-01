@@ -3403,6 +3403,30 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "ui-test:BookmarkUITests.testBookmarksCaptureOrganizeSearchJumpDeleteAndUndoExactly:accessibility-focus-probe-stale",
+      "story": "007-sleep-timer",
+      "evidence": {
+        "workflowRun": 33472901959,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 007 artifact 9787725832 retains the exact xcresult, screen recording, focused keyboard frames, stale focus-probe hierarchy, and complete story evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33472901959/job/99748235736",
+        "commit": "43abc29ad72c0b984e5d44cdb6e7314af8806fb3",
+        "observation": "The physical bookmark-search tap raised the keyboard and left the insertion caret visibly active throughout the retained recording, but the hidden SwiftUI accessibility probe still exposed value unfocused. XCTest's tap then spent roughly 38 seconds awaiting system quiescence before evaluating that stale probe and rejected the correctly focused production field."
+      },
+      "rootCause": "The journey treated an indirectly rendered accessibility value as the causal receipt for SwiftUI FocusState. Under the hosted accessibility service that probe publication can remain stale even while the production text field is first responder, and post-event quiescence delayed the check long enough to amplify the false negative.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Register a Darwin receipt before each text-input interaction, synthesize the physical tap without unrelated post-event quiescence, publish the receipt directly from each production FocusState transition, and require it within two seconds before typing. Preserve the typed-value and complete search-result assertions as independent end-to-end corroboration.",
+        "commits": [
+          "e09168882067e4658fca728586d91f3eb3fead13"
+        ],
+        "validation": "The formerly failing complete bookmark selector passed locally in 70.700 seconds; its reviewed bookmark screenshot matched pixel-exactly. A fresh E2E build-for-testing succeeded, full E2E hygiene passed, and source hygiene requires the bounded production focus receipt while rejecting the stale accessibility-focus polling contract."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
     }
   ]
 }

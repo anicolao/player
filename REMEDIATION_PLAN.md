@@ -228,7 +228,7 @@ Stories 008 and 001 pass all 12 combined selectors with all 16 screenshots
 pixel-exact and both walkthroughs exact. The repaired Story 011 path completes
 locally in about one second with its screenshot pixel-exact; its full fresh-host
 story remains the next CI gate because the local host exhausted simulator
-storage during later relaunches. The ledger contains 144 unique signatures and
+storage during later relaunches. The ledger contains 145 unique signatures and
 retains 21 formal qualification resets; this normal run changed no formal count.
 
 ## R0 — Stabilize and qualify E2E
