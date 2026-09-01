@@ -469,6 +469,14 @@ xcrun simctl spawn "${simulator_id}" launchctl print-disabled user/501 \
 xcrun simctl shutdown "${simulator_id}"
 xcrun simctl boot "${simulator_id}"
 xcrun simctl bootstatus "${simulator_id}" -b
+# The first-boot writes deliberately front-load Dynamic Type and accessibility
+# service initialization before the clean lifecycle boundary. Reassert the
+# exact values on the authoritative second boot so live UIKit traits receive
+# their notifications in this boot epoch instead of relying on a persisted
+# simctl-domain query alone.
+xcrun simctl ui "${simulator_id}" appearance light
+xcrun simctl ui "${simulator_id}" content_size "${expected_content_size}"
+xcrun simctl ui "${simulator_id}" increase_contrast "${expected_increase_contrast}"
 [[ "$(xcrun simctl ui "${simulator_id}" appearance)" == "light" ]]
 [[ "$(xcrun simctl ui "${simulator_id}" content_size)" == "${expected_content_size}" ]]
 [[ "$(xcrun simctl ui "${simulator_id}" increase_contrast)" == "${expected_increase_contrast}" ]]
