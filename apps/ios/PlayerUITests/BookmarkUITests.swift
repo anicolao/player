@@ -515,18 +515,27 @@ final class BookmarkUITests: PlayerUITestCase {
       container: scroll,
       readiness: app.descendants(matching: .any)["book-detail-scroll-readiness"],
       containerID: "book-detail-scroll",
-      axis: .vertical
+      axis: .vertical,
+      permitsGeometrySettledFallback: true
     )
     XCTAssertTrue(
       scrollUntil(
-        { row.exists && row.isHittable },
+        { surface.state()?.atBottom == true },
         on: surface,
         deadline: EventDeadline(),
         terminalEndpoint: \.atBottom
       ) {
         scroll.swipeUp(velocity: .fast)
       },
-      "Expected the bookmark row to become hittable through progress-making Book Detail scrolling"
+      "Expected Book Detail to reach its correlated bottom endpoint while revealing a bookmark row"
+    )
+    XCTAssertTrue(
+      elementIsFullyVisible(
+        row,
+        within: scroll,
+        requiresHittable: false
+      ),
+      "Expected the complete bookmark row to be visible at the proven bottom endpoint"
     )
   }
 
