@@ -260,9 +260,15 @@ helper now relies on the unchanged, enabled, hittable slider and exact app/field
 geometry while retaining the semantic playback value as completion. Complete
 local Stories 007 and 005 pass all ten combined selectors in 223.151 and
 240.471 seconds respectively, all seven screenshots are pixel-exact, both
-walkthroughs are exact, and full E2E hygiene passes. The ledger contains 148
-unique signatures and retains 21 formal qualification resets; this normal run
-changed no formal count.
+walkthroughs are exact, and full E2E hygiene passes. The same Story 005 evidence
+also exposed a diagnostic defect: XCTest's synchronous issue-recording hook
+blocked for roughly 50 seconds trying to take a failure screenshot. Failure
+capture now lives entirely in the outer harness, whose live simulator attempt
+has an enforced two-second kill boundary and whose exact recording-frame
+fallback already recovered this failure. Source hygiene rejects future
+in-process failure capture. The ledger contains 149 unique signatures and
+retains 21 formal qualification resets; this normal run changed no formal
+count.
 
 ## R0 — Stabilize and qualify E2E
 

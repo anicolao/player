@@ -3499,6 +3499,30 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "evidence:xctest-failure-record-hook:synchronous-screen-snapshot-timeout",
+      "story": "005-play-and-restore",
+      "evidence": {
+        "workflowRun": 33476262274,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 005 artifact 9788777897 retains the screenshot-request timeout, exact xcresult recording, recording-derived final failure frame, and complete evidence manifest",
+        "url": "https://github.com/anicolao/player/actions/runs/33476262274/job/99757681964",
+        "commit": "48052e5b3a9c35c073c1352bfb3bd93d68c67fad",
+        "observation": "After the restore assertion failed, PlayerUITestCase.record synchronously requested XCUIScreen.main.screenshot(). XCTest blocked for roughly 50 seconds before reporting that the screenshot request timed out. The outer harness subsequently materialized the visible 25-percent failure frame from the retained XCTest recording."
+      },
+      "rootCause": "Failure recording ran a second XCTest screen-snapshot transaction inside XCTest's synchronous issue callback after the automation channel had already failed. That private operation has its own long system timeout and cannot be constrained by the repository's two-second event deadline.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Remove in-process screenshot work from the synchronous XCTest issue hook. Retain failure images in the outer run harness, which first attempts a separately launched live simulator capture with an enforced two-second kill deadline and then derives the exact failure-associated final frame from the retained XCTest recording. Source hygiene rejects a future record override, screen snapshot, or attachment operation in the shared test superclass.",
+        "commits": [
+          "921218516f29d786b125621149fc8108a3db8d21"
+        ],
+        "validation": "The retained hosted artifact proves that the recording-derived fallback materializes a valid visible failure frame when XCTest's direct screenshot is unavailable. Dedicated extractor fixtures prove the two-second live-capture kill boundary and recording fallback; all 18 evidence-manifest tests, run-support tests, capture-readiness hygiene, and complete E2E hygiene pass."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This diagnostic defect was observed in a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
     }
   ]
 }
