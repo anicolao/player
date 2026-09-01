@@ -3427,6 +3427,30 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "ui-test:OfflineRecoveryUITests.testRecoversStartupAndExportsOnlySanitizedOfflineDiagnostics:recovery-text-query-precedes-presentation-receipt",
+      "story": "011-offline-recovery",
+      "evidence": {
+        "workflowRun": 33472901959,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 011 artifact 9787871256 retains the exact xcresult, newer-version recovery hierarchy, failure screen, interaction trace, and complete story evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33472901959/job/99750199231",
+        "commit": "43abc29ad72c0b984e5d44cdb6e7314af8806fb3",
+        "observation": "The repaired support-verification stage completed and all three reviewed screenshots matched pixel-exactly. During a later newer-schema relaunch, the first exact-text query timed out, while the retained failure hierarchy showed the complete Library Recovery surface with the requested newer-version explanation and exact recovery probe already rendered."
+      },
+      "rootCause": "Repeated recovery scenarios began accessibility polling without a causal receipt that the production recovery surface had been presented. A delayed XCTest text index could therefore reject the correct later launch even though SwiftUI had rendered the exact scenario and semantic state.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Register a Darwin receipt before every recovery-surface launch and publish it from the real StartupRecoveryView presentation. Preserve normal application-launch quiescence semantics, require the production presentation within two seconds, and then retain every exact explanation and semantic probe assertion. Explicitly exempt the distinct launch-storage-error surface, which has its own rendered contract.",
+        "commits": [
+          "77b91e9f0670e4ddc1a630c56843556285431894"
+        ],
+        "validation": "The complete canonical Story 011 selector passed locally in 63.341 seconds, including every recovery explanation, retry, fresh-library, launch-storage, and support-export outcome. All three screenshots matched pixel-exactly, the walkthrough README matched exactly, a fresh E2E build succeeded, and full E2E hygiene passed."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
     }
   ]
 }

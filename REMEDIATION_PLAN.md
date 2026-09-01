@@ -228,8 +228,23 @@ Stories 008 and 001 pass all 12 combined selectors with all 16 screenshots
 pixel-exact and both walkthroughs exact. The repaired Story 011 path completes
 locally in about one second with its screenshot pixel-exact; its full fresh-host
 story remains the next CI gate because the local host exhausted simulator
-storage during later relaunches. The ledger contains 145 unique signatures and
+storage during later relaunches. The ledger contains 146 unique signatures and
 retains 21 formal qualification resets; this normal run changed no formal count.
+
+The next exact-tip normal run
+[33472901959](https://github.com/anicolao/player/actions/runs/33472901959)
+passed the shared producer, all 374 core tests, fixture gates, renderer inputs,
+and 11 of 13 stories while exposing two additional, independent UI-test receipt
+defects. Story 007's retained recording proves the bookmark search was focused
+with its keyboard visible while an indirect accessibility focus probe remained
+stale; text input now uses a pre-registered production FocusState event and
+avoids unrelated post-event quiescence. Story 011 passed the repaired support
+operation and all three pixel-exact screenshots, then exposed a later recovery
+screen whose exact text was rendered after its polling boundary; every recovery
+launch now has a pre-registered production presentation receipt. The complete
+bookmark selector passes locally in 70.700 seconds with its screenshot exact,
+and complete Story 011 passes locally in 63.341 seconds with all screenshots and
+the walkthrough exact. These normal-run failures changed no formal count.
 
 ## R0 — Stabilize and qualify E2E
 
