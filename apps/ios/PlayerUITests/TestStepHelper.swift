@@ -381,21 +381,42 @@ func backgroundAndReactivateApplication(
 ) -> Bool {
   guard let inactiveReceipt = DarwinEventReceipt(
     name: "com.spnss.player.e2e.scene-became-inactive"
-  ) else { return false }
+  ) else {
+    XCTFail("The scene-inactive lifecycle receipt could not be registered")
+    return false
+  }
   guard let sceneBackgroundReceipt = DarwinEventReceipt(
     name: "com.spnss.player.e2e.scene-became-background"
-  ) else { return false }
+  ) else {
+    XCTFail("The scene-background lifecycle receipt could not be registered")
+    return false
+  }
   guard let backgroundReceipt = DarwinEventReceipt(
     name: "com.spnss.player.e2e.background-checkpoint-completed"
-  ) else { return false }
+  ) else {
+    XCTFail("The durable playback-checkpoint receipt could not be registered")
+    return false
+  }
   XCUIDevice.shared.press(.home)
-  guard inactiveReceipt.wait(timeout: 2) else { return false }
-  guard sceneBackgroundReceipt.wait(timeout: 2) else { return false }
-  guard backgroundReceipt.wait(timeout: 2) else { return false }
+  guard inactiveReceipt.wait(timeout: 2) else {
+    XCTFail("Bookshelf did not publish scene inactive within two seconds of Home")
+    return false
+  }
+  guard sceneBackgroundReceipt.wait(timeout: 2) else {
+    XCTFail("Bookshelf did not publish scene background within two seconds of becoming inactive")
+    return false
+  }
+  guard backgroundReceipt.wait(timeout: 2) else {
+    XCTFail("Bookshelf did not durably checkpoint playback within two seconds of scene background")
+    return false
+  }
 
   guard performPhysicalInteractionWithoutPostEventQuiescence(in: application, {
     application.activate()
-  }) else { return false }
+  }) else {
+    XCTFail("XCTest could not request acknowledged Bookshelf reactivation")
+    return false
+  }
   let interactiveElement = application.buttons[interactiveElementIdentifier]
   let interactive = NSPredicate { _, _ in
     // A visible, enabled, hittable app-owned control with contained geometry is
@@ -412,7 +433,14 @@ func backgroundAndReactivateApplication(
       && !elementFrame.isEmpty
       && applicationFrame.contains(elementFrame)
   }
-  return waitForPredicate(interactive, on: interactiveElement, timeout: 2)
+  guard waitForPredicate(interactive, on: interactiveElement, timeout: 2) else {
+    XCTFail(
+      "Bookshelf did not restore an enabled, hittable, app-contained "
+        + "\(interactiveElementIdentifier) control within two seconds"
+    )
+    return false
+  }
+  return true
 }
 
 /// Adjusts an idempotent slider until the independently published production
