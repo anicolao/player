@@ -19,6 +19,10 @@ final class LaunchUITests: PlayerUITestCase {
     XCTAssertEqual(app.alerts.count, 0)
     XCTAssertFalse(app.staticTexts["Couldn’t Complete Import"].exists)
     XCTAssertTrue(app.otherElements["library-screen"].exists)
+    XCTAssertTrue(
+      terminateAndWait(app),
+      "The startup-warning journey must leave a completed not-running handoff for the next selector"
+    )
   }
 
   func testRejectsUnknownDynamicTypeConfigurationInsteadOfUsingMedium() {

@@ -244,6 +244,20 @@ rg -Fq 'com.spnss.player.e2e.scene-became-inactive' \
   "${script_dir}/../../Player/E2ELaunchEnvironment.swift"
 rg -Fq 'com.spnss.player.e2e.scene-became-background' \
   "${script_dir}/../../Player/E2ELaunchEnvironment.swift"
+python3 - "${ui_test_root}/LaunchUITests.swift" <<'PY'
+import sys
+from pathlib import Path
+
+source = Path(sys.argv[1]).read_text()
+startup = source.index(
+    'func testAudioSessionConfigurationWarningDoesNotPresentImportAlertAtStartup()'
+)
+next_selector = source.index('\n  func test', startup + 1)
+if 'terminateAndWait(app)' not in source[startup:next_selector]:
+    raise SystemExit(
+        'launch hygiene requires the startup-warning selector to publish a clean not-running handoff'
+    )
+PY
 python3 - "${ui_test_root}/TestStepHelper.swift" <<'PY'
 import sys
 from pathlib import Path
