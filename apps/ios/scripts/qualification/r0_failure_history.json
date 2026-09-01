@@ -3331,6 +3331,78 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "ui-test:LibraryOrganizationUITests.testOrganizesDailyLibraryAndRestoresATrashedBook:clamped-shelf-endpoint-lacks-scroll-phase-receipt",
+      "story": "008-library-search",
+      "evidence": {
+        "workflowRun": 33469155674,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 008 artifact 9786432817 retains the exact xcresult, right-end shelf screen, scroll-readiness trace, and complete story evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33469155674/job/99737307046",
+        "commit": "6c4b29bdbf6ca842de21410bf9a3e0e591bda72a",
+        "observation": "The shelf reached its right endpoint with the last book and right shelf end visible. A deliberate left swipe was delivered while the ScrollView was already clamped, so SwiftUI published no new scroll phase; the helper interpreted that valid no-motion endpoint gesture as missed delivery, retried it, and exhausted the independent deadline. The other two Story 008 selectors passed."
+      },
+      "rootCause": "An already-clamped ScrollView can consume a real drag without entering a new scroll phase. The endpoint challenge incorrectly used a phase counter change as both touch-delivery receipt and endpoint-stability evidence, although no movement is the expected product result at that boundary.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Replace the no-motion challenge with an observable round trip: retreat from the endpoint with correlated offset progress, then restore the exact endpoint, offset, and tracked-element frame with a second correlated gesture. Source hygiene requires both directions and rejects the former raw endpoint interaction.",
+        "commits": [
+          "883214ff611dd5593a88a458c4dcdf955deee79f"
+        ],
+        "validation": "The complete canonical Story 008 journey passed all three selectors locally in 219.190 seconds. All ten screenshots matched pixel-exactly, the walkthrough README matched exactly, and full E2E hygiene passed."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "ui-test:LaunchUITests.testComputerReceiverRoutesTerminalOutcomes:terminal-wait-collapses-import-stages",
+      "story": "001-ios-launch",
+      "evidence": {
+        "workflowRun": 33469155674,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 001 artifact 9786523097 retains the exact xcresult, importing-state hierarchy, eventual completed receiver screen, and complete story evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33469155674/job/99738960703",
+        "commit": "6c4b29bdbf6ca842de21410bf9a3e0e591bda72a",
+        "observation": "The needs-review half and the other eight Story 001 selectors passed. In the completed half, the receiver was still at its genuine receiver:importing phase when the single terminal predicate expired; the retained failure screen later showed the correctly committed Added to Library state."
+      },
+      "rootCause": "The journey assigned one two-second terminal predicate to a multi-stage production HTTP upload and import. It had no non-polling receipt for the distinct importing and committed boundaries, so a prompt intermediate state was misclassified as terminal failure and repeated accessibility snapshots competed with the state publication under test.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Register Darwin receipts before launch for the production receiver's importing and corroborated-completion boundaries, require each independent stage within two seconds, and only then assert the exact rendered terminal state. The HTTP, import, persistence, model corroboration, and UI paths remain unchanged.",
+        "commits": [
+          "7be7d43a78c901b8e78c0ae7b5463ca2c6fdf038"
+        ],
+        "validation": "The complete canonical Story 001 journey passed all nine selectors locally in 85.677 seconds. The repaired terminal-outcomes selector passed in 8.704 seconds, all six screenshots matched pixel-exactly, the walkthrough README matched exactly, and full E2E hygiene passed."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "ui-test:OfflineRecoveryUITests.testRecoversStartupAndExportsOnlySanitizedOfflineDiagnostics:support-completion-polling",
+      "story": "011-offline-recovery",
+      "evidence": {
+        "workflowRun": 33469155674,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 011 artifact 9786508487 retains the exact xcresult, disabled accepted action, pending diagnostics hierarchy, and complete story evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33469155674/job/99739281075",
+        "commit": "6c4b29bdbf6ca842de21410bf9a3e0e591bda72a",
+        "observation": "The support-verification action synchronously disabled, proving delivery, but the test immediately resumed accessibility polling while the app's asynchronous production bundle preparation and sanitization were publishing completion. The terminal probe remained diagnostics:pending at the assertion boundary and the retained failure screen still showed the accepted disabled action."
+      },
+      "rootCause": "The journey acknowledged action delivery correctly, then used repeated accessibility snapshots as the only completion signal for Swift-concurrency work. On the hosted runner those snapshots delayed the app-side task and its SwiftUI publication beyond the independent deadline.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Publish a Darwin receipt only after the real support-bundle preparation, sanitization, discard, and SwiftUI revision finish. Wait for that non-polling event within two seconds before querying the exact rendered sanitized probe; retain the existing synchronous disabled-state delivery receipt.",
+        "commits": [
+          "56d6e6a9b77b4da29063367acf57020ac588a430"
+        ],
+        "validation": "The formerly failing path completed locally in about one second after accepted delivery and its sanitized-support-bundle screenshot matched pixel-exactly. The complete selector continued through all prior failure boundaries until the local host exhausted simulator storage during later relaunches; full fresh-host Story 011 remains an exact-tip CI gate. Full E2E hygiene passed."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
     }
   ]
 }

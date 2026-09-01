@@ -213,6 +213,24 @@ allowance, and the walkthrough is exact. Story 012 and every remaining chain in
 the diagnostic run passed. The ledger contains 141 unique signatures and
 retains 21 formal qualification resets.
 
+Exact-tip normal run
+[33469155674](https://github.com/anicolao/player/actions/runs/33469155674)
+then passed the shared producer, ten stories, all 374 core tests, fixture gates,
+and the renderer inputs while exposing three independent UI-test contracts.
+Story 008 treated a valid no-motion drag at an already-clamped shelf endpoint as
+missed delivery; the replacement proves a progress-making retreat and exact
+restoration. Story 001 collapsed the receiver's importing and committed phases
+into one terminal poll; it now waits for independent non-polling production
+receipts. Story 011 similarly resumed accessibility polling while an accepted
+support-verification task was publishing completion; it now waits for the real
+operation-finished event before reading the rendered probe. Complete local
+Stories 008 and 001 pass all 12 combined selectors with all 16 screenshots
+pixel-exact and both walkthroughs exact. The repaired Story 011 path completes
+locally in about one second with its screenshot pixel-exact; its full fresh-host
+story remains the next CI gate because the local host exhausted simulator
+storage during later relaunches. The ledger contains 144 unique signatures and
+retains 21 formal qualification resets; this normal run changed no formal count.
+
 ## R0 — Stabilize and qualify E2E
 
 ### Goal
