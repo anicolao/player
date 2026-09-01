@@ -3163,6 +3163,30 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "infrastructure:xcode-application-launch-timeout:BackupUITests.testExportsClearsAndRestoresAVerifiedPortableLibrary:exit-65",
+      "story": "010-library-backup",
+      "evidence": {
+        "workflowRun": 33460228354,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 010 artifact 9783615284 retains the exact xcresult, first-launch failure screen, Xcode session log, RunningBoard timeline, and complete story evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33460228354/job/99713533175",
+        "commit": "93fbf522530789a62e82d58e22d13a827c47fd74",
+        "observation": "The harness preinstalled Player and its test runner and obtained successful FrontBoard launch receipts. During the first selector, Xcode nevertheless rediscovered Player.app in the shared built-products directory, logged a second installation at 02:20:38Z, and launched pid 7482 one second later. Bookshelf became foreground and rendered the requested Backup screen, but XCTest's Developer testing assertion request remained queued until 02:20:52Z, after its internal ten-second acquisition deadline and after the process was terminated. The second selector then passed all production backup failure paths. Every other canonical story, all 374 core tests, fixtures, and renderer inputs passed on the same SHA."
+      },
+      "rootCause": "Removing TEST_TARGET_NAME stopped the project-declared target association but did not stop XCUIApplication(bundleIdentifier:) from discovering Player.app through Xcode's built-products environment. That runtime discovery let test-without-building reinstall an already receipted target during the selector, reopening the asynchronous deployment and RunningBoard assertion race the explicit preinstallation contract was meant to close.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "After exact simulator installation and FrontBoard receipts, move the immutable Player.app source bytes beside the products under a non-application name for the duration of XCTest, then restore them in cleanup on every exit. Fail closed if the test log contains any Xcode application installation or if restoration would overwrite a recreated path. Source hygiene requires the install-hide-test ordering and restoration guard.",
+        "commits": [
+          "8d9e16fc397de738ac4fafd810f579a350bfc7d4"
+        ],
+        "validation": "The complete two-selector Story 010 journey passed locally on a newly created iOS 26.5 simulator in 86.815 seconds. The formerly failing first selector established its automation session in 0.69 seconds and passed in 36.270 seconds; the second passed in 50.545 seconds. All four reviewed screenshots and the walkthrough README passed, the test log contained no Xcode installation event, Player.app was restored exactly after execution, and full E2E hygiene passed."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
     }
   ]
 }
