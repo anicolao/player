@@ -188,14 +188,33 @@ is still the accepted coverage-preserving before/after measurement: maximal
 available parallelism reduced aggregate runner work, did not regress wall
 clock, and did not trade coverage or deadlines for speed.
 
-The current exact-tip candidate rebalances those same fresh-host jobs from the
-observed durations in run 33479649229. It keeps all 13 stories, all 41
-selectors, core/fixture gates, and renderer work, while changing only dependency
-order. The measured-input model reduces the longest chain from **2,233s** to
-**1,895s** (-338s, or **5m38s**) and reduces the five-chain spread from **703s**
-to **28s**. This is a prediction until the candidate produces a complete green
-hosted run; its created-to-complete time will be recorded beside the 48m16s
-baseline rather than substituted with the model.
+The exact-tip candidate rebalanced those same fresh-host jobs from the observed
+durations in run 33479649229. It kept all 13 stories, all 41 selectors,
+core/fixture gates, and renderer work, while changing only dependency order.
+The measured-input model predicted a longest-chain reduction from **2,233s** to
+**1,895s** (-338s, or **5m38s**) and a five-chain spread reduction from **703s**
+to **28s**.
+
+[Run 33484894430](https://github.com/anicolao/player/actions/runs/33484894430)
+is the complete green hosted result at exact commit
+`3f129726c01a825455058b6a23f4e0090d4b0bcc`. It passed without a rerun: all 13
+stories, all 41 UI selectors, 375/375 core tests, fixture gates, reviewed
+walkthroughs, and the App Store renderer were green. Created-to-complete wall
+clock was **50m14s**, versus **48m16s** for the unscheduled fresh-host baseline:
+**+1m58s (+4.1%)**. The consumer stage ran from 08:14:23Z through 08:50:56Z,
+or **36m33s**, versus the baseline's 35m34s: **+59s (+2.8%)**. Against the
+previously accepted scheduler run's 37m22s consumer span, the rebalance saved
+**49s (-2.2%)**.
+
+The candidate occupied all five available macOS slots through every dependency
+transition. Its one-time producer took **13m27s**, versus 10m51s in the
+unscheduled baseline and 10m39s in the prior accepted scheduler run. That
+**+2m36s** baseline producer variance is larger than the overall **+1m58s**
+workflow delta, so the consumer graph recovered 38 seconds of it while also
+paying the clean-boot reliability cost. The measured result replaces the model:
+parallelism is maximal and coverage is unchanged or increased, but this sample
+does not show a wall-clock speedup over the unscheduled baseline. Its 4.1%
+increase remains inside the R0 10% complete-suite runtime contract.
 
 The same candidate adds a clean reboot after each fresh simulator's initial
 boot and exact UI configuration. On the local iOS 26.5 host, Story 009's first

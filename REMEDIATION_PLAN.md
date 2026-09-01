@@ -301,6 +301,20 @@ both concurrent changes persist. The ledger contains 152 unique signatures and
 retains 21 formal qualification resets; the failed normal run changed no formal
 count.
 
+Exact-tip normal
+[run 33484894430](https://github.com/anicolao/player/actions/runs/33484894430)
+then passed without a rerun: all 13 stories, all 41 UI selectors, 375/375 core
+tests, fixture gates, reviewed walkthroughs, and the App Store renderer were
+green. The prior Story 002 and Story 009 failures passed in 12m18s and 9m33s
+respectively. The rebalanced graph held all five available macOS slots through
+every dependency transition. Created-to-complete wall time was 50m14s versus
+the 48m16s unscheduled baseline (+1m58s, +4.1%); the consumer span was 36m33s
+versus 35m34s (+59s, +2.8%), while the one-time producer alone was 2m36s slower.
+The candidate remains within the 10% runtime contract and records a reliability
+gain rather than claiming an unmeasured speedup. The detailed timestamps are in
+[E2E_RUNTIME_BASELINE.md](E2E_RUNTIME_BASELINE.md). The exact documentation tip
+must now pass normal CI before its one permitted formal qualification dispatch.
+
 ## R0 — Stabilize and qualify E2E
 
 ### Goal
