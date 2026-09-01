@@ -62,7 +62,7 @@ final class PositionRestoreUITests: PlayerUITestCase {
     XCTAssertTrue(
       backgroundAndReactivateApplication(
         app,
-        requiring: app.buttons["e2e-engine-progress-90"]
+        requiringButton: "e2e-engine-progress-90"
       ),
       "The exact progress control must become foreground-interactive after Home"
     )

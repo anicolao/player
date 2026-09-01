@@ -201,7 +201,7 @@ final class RemoteInterruptionUITests: PlayerUITestCase {
     XCTAssertTrue(
       backgroundAndReactivateApplication(
         app,
-        requiring: app.buttons["e2e-remote-pause"]
+        requiringButton: "e2e-remote-pause"
       ),
       "The exact remote command must become foreground-interactive after Home"
     )

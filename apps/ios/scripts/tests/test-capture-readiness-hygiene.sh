@@ -253,15 +253,27 @@ home = source.index('XCUIDevice.shared.press(.home)')
 inactive = source.index('inactiveReceipt.wait(timeout: 2)', home)
 background = source.index('sceneBackgroundReceipt.wait(timeout: 2)', inactive)
 checkpoint = source.index('backgroundReceipt.wait(timeout: 2)', background)
-app_activation = source.index('application.activate()', checkpoint)
-if not home < inactive < background < checkpoint < app_activation:
+nonquiescent_activation = source.index(
+    'performPhysicalInteractionWithoutPostEventQuiescence(in: application',
+    checkpoint,
+)
+app_activation = source.index('application.activate()', nonquiescent_activation)
+fresh_control = source.index(
+    'application.buttons[interactiveElementIdentifier]', app_activation
+)
+if not home < inactive < background < checkpoint < nonquiescent_activation < app_activation < fresh_control:
     raise SystemExit(
-        'lifecycle hygiene requires Home, production inactive, production background, completed checkpoint, then app activation'
+        'lifecycle hygiene requires Home, production inactive, production background, completed checkpoint, non-quiescent app activation, then a freshly resolved exact control'
     )
 segment = source[home:inactive]
 if 'springboard.activate()' in segment or '.runningForeground' in segment:
     raise SystemExit(
         'lifecycle hygiene rejects sampled SpringBoard state before the stronger production scene receipts'
+    )
+lifecycle_end = source.index('/// Adjusts an idempotent slider', fresh_control)
+if 'application.state' in source[app_activation:lifecycle_end]:
+    raise SystemExit(
+        'lifecycle hygiene rejects sampled application process state after the exact app-owned control is interactive'
     )
 PY
 for slider_source in \

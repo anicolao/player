@@ -394,7 +394,7 @@ private final class DarwinEventReceipt: @unchecked Sendable {
 @MainActor
 func backgroundAndReactivateApplication(
   _ application: XCUIApplication,
-  requiring interactiveElement: XCUIElement
+  requiringButton interactiveElementIdentifier: String
 ) -> Bool {
   guard let inactiveReceipt = DarwinEventReceipt(
     name: "com.spnss.player.e2e.scene-became-inactive"
@@ -410,10 +410,16 @@ func backgroundAndReactivateApplication(
   guard sceneBackgroundReceipt.wait(timeout: 2) else { return false }
   guard backgroundReceipt.wait(timeout: 2) else { return false }
 
-  application.activate()
+  guard performPhysicalInteractionWithoutPostEventQuiescence(in: application, {
+    application.activate()
+  }) else { return false }
+  let interactiveElement = application.buttons[interactiveElementIdentifier]
   let interactive = NSPredicate { _, _ in
-    guard application.state == .runningForeground,
-      interactiveElement.exists,
+    // A visible, enabled, hittable app-owned control with contained geometry is
+    // the causal receipt needed by the next gesture. XCUIApplication.state is a
+    // separately sampled process proxy and can remain stale after the restored
+    // scene is already on screen.
+    guard interactiveElement.exists,
       interactiveElement.isEnabled,
       interactiveElement.isHittable
     else { return false }
