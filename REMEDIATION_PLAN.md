@@ -246,6 +246,24 @@ bookmark selector passes locally in 70.700 seconds with its screenshot exact,
 and complete Story 011 passes locally in 63.341 seconds with all screenshots and
 the walkthrough exact. These normal-run failures changed no formal count.
 
+Exact-tip normal run
+[33476262274](https://github.com/anicolao/player/actions/runs/33476262274)
+then proved the Story 011 recovery-presentation repair and passed the other ten
+unaffected stories, all 374 core tests, fixture gates, walkthrough contracts,
+and renderer inputs. Its two failures were independent delivery defects. Story
+007's first physical touch left the unchanged bookmark-label editor unfocused;
+the helper now redelivers only while the exact editor origin and app-contained
+field geometry remain unchanged, stopping on the production FocusState receipt.
+Story 005's first slider gesture reached 25 percent instead of the requested 50
+percent, but a stale sampled application state suppressed safe redelivery; the
+helper now relies on the unchanged, enabled, hittable slider and exact app/field
+geometry while retaining the semantic playback value as completion. Complete
+local Stories 007 and 005 pass all ten combined selectors in 223.151 and
+240.471 seconds respectively, all seven screenshots are pixel-exact, both
+walkthroughs are exact, and full E2E hygiene passes. The ledger contains 148
+unique signatures and retains 21 formal qualification resets; this normal run
+changed no formal count.
+
 ## R0 — Stabilize and qualify E2E
 
 ### Goal

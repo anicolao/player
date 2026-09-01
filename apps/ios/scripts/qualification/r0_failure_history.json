@@ -3451,6 +3451,54 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "ui-test:BookmarkUITests.testBookmarksCaptureOrganizeSearchJumpDeleteAndUndoExactly:focus-touch-unacknowledged",
+      "story": "007-sleep-timer",
+      "evidence": {
+        "workflowRun": 33476262274,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 007 artifact 9788749258 retains the exact xcresult, screen recording, unfocused bookmark editor, failure screen, and complete story evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33476262274/job/99757681916",
+        "commit": "48052e5b3a9c35c073c1352bfb3bd93d68c67fad",
+        "observation": "The bookmark-label editor was rendered empty, enabled, and hittable, but the synthesized one-shot focus touch missed and no keyboard appeared. The production FocusState correctly published no receipt, so the journey failed before typing. Story 007's other selector and the other 11 canonical stories passed."
+      },
+      "rootCause": "The focus helper registered the correct production receipt but treated one synthesized touch as sufficient delivery. XCTest can return from a physical coordinate interaction without the unchanged SwiftUI text field becoming first responder, so a missed touch had no safe bounded redelivery path.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Freeze the exact editor origin, app-contained field geometry, and coordinate before delivery. Redeliver at bounded intervals only while that origin and target remain present, enabled, hittable, and geometrically unchanged, stopping immediately on the production FocusState receipt or the shared two-second deadline. Preserve typed-value and result assertions as independent corroboration.",
+        "commits": [
+          "ac4c32471057c1c29bab2a96c4bad2719b8cd545"
+        ],
+        "validation": "The complete canonical Story 007 journey passed locally: the bookmark selector completed in 72.834 seconds and the sleep-timer selector in 150.317 seconds. All three reviewed screenshots matched pixel-exactly, the walkthrough README matched exactly, and full E2E hygiene passed."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "ui-test:PositionRestoreUITests.testRestoresAnAcknowledgedPausedPositionAfterTermination:stale-foreground-state-blocks-slider-redelivery",
+      "story": "005-play-and-restore",
+      "evidence": {
+        "workflowRun": 33476262274,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 005 artifact 9788777897 retains the exact xcresult, screen recording, 25-percent paused slider state, failure screen, and complete story evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33476262274/job/99757681964",
+        "commit": "48052e5b3a9c35c073c1352bfb3bd93d68c67fad",
+        "observation": "The first acknowledged 50-percent slider gesture moved paused playback from 12 to 30 seconds rather than the requested 60 seconds. Bookshelf and the slider remained visibly foreground and interactable, but the helper's stale XCUIApplication.state guard prevented the required idempotent redelivery. The retained final frame showed 30 seconds and 25 percent."
+      },
+      "rootCause": "The slider helper combined exact enabled, hittable, app-contained UI geometry with an unrelated sampled process-state property. After a partial but genuine slider delivery, that stale property could disagree with the current foreground surface and suppress safe redelivery even though the semantic receipt had not reached the requested value.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Use the exact slider and application frames as the stable foreground-interaction boundary and remove the stale sampled process state. Redeliver only while the slider remains present, enabled, hittable, and geometrically unchanged inside an unchanged application frame; retain the exact semantic production value as the completion receipt and the shared two-second deadline.",
+        "commits": [
+          "79df13fc920899ec067aefd84673ca72b9f0d30e"
+        ],
+        "validation": "The complete canonical Story 005 journey passed all eight selectors locally in 240.471 seconds on one simulator worker. The formerly failing restore selector reached and restored the exact 60-second position. All four reviewed screenshots matched pixel-exactly, the walkthrough README matched exactly, and full E2E hygiene passed."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
     }
   ]
 }
