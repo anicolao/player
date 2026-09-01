@@ -428,6 +428,15 @@ if rg -n '(^|[^[:alpha:]])(sleep|usleep)[[:space:](]' "${run_e2e}" >/dev/null; t
   fail "the E2E harness contains a fixed settling wait"
 fi
 control_plane_reset="${ios_scripts}/reset-hosted-simulator-control-plane.sh"
+normal_story_workflow="${repository_root}/.github/workflows/ios-e2e-story.yml"
+qualification_workflow="${repository_root}/.github/workflows/r0-qualification.yml"
+if rg -F 'PLAYER_RESET_HOSTED_SIMULATOR_CONTROL_PLANE: "1"' \
+  "${normal_story_workflow}" >/dev/null; then
+  fail "a one-story fresh-host normal job still destroys its CoreSimulator service"
+fi
+[[ "$(rg -F -c 'PLAYER_RESET_HOSTED_SIMULATOR_CONTROL_PLANE: "1"' \
+  "${qualification_workflow}")" == 1 ]] \
+  || fail "formal fresh-story jobs reset CoreSimulator or matrix lanes lost their between-story reset"
 rg -Fq "alarm shift; exec @ARGV or exit 127' 2" "${control_plane_reset}" \
   || fail "hosted simulator control-plane events are not hard-capped at two seconds"
 if rg -n '(^|[^[:alpha:]])(sleep|usleep)[[:space:](]' "${control_plane_reset}" >/dev/null; then
