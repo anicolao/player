@@ -296,6 +296,25 @@ corroborates that maximal five-runner scheduling and reliability hardening did
 not regress runtime, while the formal repeated distribution remains the final
 acceptance gate.
 
+The accessibility clean-boot correction subsequently passed the complete
+normal matrix in
+[run 33566621411](https://github.com/anicolao/player/actions/runs/33566621411)
+at exact branch-head SHA `277d7e4ae2268cb5c6229b521a269b4b1399e979`,
+without a rerun and with identical coverage. Created-to-complete wall clock was
+**51m36s**, or **+3m20s (+6.9%)** against the same-coverage 48m16s fresh-host
+baseline and still inside the 10% complete-suite contract. The consumer stage
+spanned **35m35s**, just **+1s** against the baseline and **-9s** against the
+previous clean validation. The one-time producer took **15m46s**, **+4m55s**
+against the baseline producer, so producer variance more than explains the
+workflow delta while the maximally parallel consumer graph remained stable.
+
+All 13 stories, all 41 UI selectors, 377/377 core tests, fixture gates,
+reviewed screenshots, exact walkthroughs, renderer inputs, and aggregation
+passed. Story 009's two selectors completed in 155.030 seconds on its first
+fresh hosted attempt and all seven screenshots matched canonically. This is a
+retained exact-code sample rather than a replacement for the formal five-sample
+distribution.
+
 ### Formal qualification topology reference
 
 The pre-isolation formal

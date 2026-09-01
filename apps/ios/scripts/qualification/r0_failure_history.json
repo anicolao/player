@@ -3863,6 +3863,30 @@
       },
       "qualificationResetCount": 1,
       "resetEvidence": "Formal exact-SHA qualification run 33552608750 failed Story 002 attempt 7. Once the retained artifact made 10/10 impossible, the remaining queue was cancelled without rerunning the failed SHA; commit 5cfc071854c81d18cbee374e0a31048029c52cea cannot qualify and the formal consecutive count resets."
+    },
+    {
+      "signature": "infrastructure:post-clean-boot-accessibility-domain:live-increase-contrast-not-reasserted",
+      "story": "009-accessible-core-journeys",
+      "evidence": {
+        "workflowRun": 33563131594,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions artifact 9823044909 (ios-e2e-009-accessible-core-journeys) retains the exact Story 009 xcresult, test log, failure frame, simulator system log, configuration receipts, phase timings, and valid complete evidence manifest",
+        "url": "https://github.com/anicolao/player/actions/runs/33563131594/job/100045369632",
+        "commit": "91ab1d566e18c3fc7b1bd60fd788c6b9c217b4ea",
+        "observation": "The first Story 009 selector passed in 36.505 seconds. The largest-accessibility-text selector then failed after 122.862 seconds because the exact production probe reported system-increase-contrast=false while the harness expected true. The harness had written appearance, content size, and Increase Contrast during the first boot, then shut down and clean-booted the simulator. Its post-boot simctl query still reported Increase Contrast enabled, but the live UIKit accessibility environment reported false. The artifact's system log retains the first-boot darken.system.colors notification and subsequent SpringBoard restart."
+      },
+      "rootCause": "The harness deliberately wrote accessibility settings during the first boot to front-load system initialization, but after the authoritative clean second boot it only queried the persisted simulator domain. That persisted CLI value did not guarantee the live UIKit trait environment had received the corresponding accessibility notification in the second boot epoch, so Story 009 began with a stale live Increase Contrast value despite a superficially correct query receipt.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Reassert appearance, Dynamic Type content size, and Increase Contrast after the authoritative second boot and before accepting the final configuration receipt. Preserve the first-boot writes that front-load service initialization, require both boot-epoch writes in source hygiene, and add no fixed wait, retry, or larger deadline.",
+        "commits": [
+          "277d7e4ae2268cb5c6229b521a269b4b1399e979"
+        ],
+        "validation": "Complete local Story 009 passed both canonical selectors on a freshly created, twice-booted iOS 26.5 simulator in 111.906 seconds. The formerly failing largest-accessibility-text selector passed in 94.884 seconds, all seven screenshots were accepted, the walkthrough matched exactly, and the evidence manifest validated. Run-support tests require the post-second-boot configuration writes before the final receipt and exactly two content-size and contrast writes across both boot epochs. Normal run 33566621411 then passed complete hosted Story 009 on the fix's first fresh-host attempt in job 100057758193 and artifact 9824345335: both selectors passed in 155.030 seconds, including the formerly failing selector in 126.019 seconds; all seven screenshots matched canonically, the walkthrough was exact, and the complete evidence manifest validated. The complete run passed all 13 stories, all 41 UI selectors, 377/377 core tests, fixture gates, renderer inputs, and aggregation without a rerun. Capture-readiness and complete E2E hygiene pass."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no formal consecutive qualification count."
     }
   ]
 }
