@@ -135,8 +135,14 @@ subsequently exposed an independent unacknowledged Files-selection gesture in
 Story 006. Its replacement requires the exact terminal ZIP receipt and permits
 redelivery only while the foreground empty-Library origin and idle ZIP probe
 remain unchanged; two complete local Story 006 runs pass. The ledger now contains 134
-unique signatures and 21 formal qualification resets; no dispatch is currently
-being represented as a qualifying result.
+unique signatures and 21 formal qualification resets. Normal run
+[33455191815](https://github.com/anicolao/player/actions/runs/33455191815)
+then proved the existing Story 005 Home-transition signature had a narrower
+cause: Home-to-inactive and inactive-to-background each completed inside two
+seconds, but their combined latency exceeded one shared deadline. The helper
+now requires those two production receipts under independent two-second
+budgets before reactivation; both lifecycle selectors pass locally. No dispatch
+is currently being represented as a qualifying result.
 
 ## R0 — Stabilize and qualify E2E
 
