@@ -536,6 +536,15 @@ deadline_line="$(sed -n "${scroll_start},${scroll_end}p" "${scroll_helper}" \
 rg -Fq 'var remainingGestureCount = max(' "${scroll_helper}"
 rg -Fq 'while remainingGestureCount > 0' "${scroll_helper}"
 rg -Fq 'remainingGestureCount -= 1' "${scroll_helper}"
+challenge_end="$(rg -n '^func waitForScrollReadiness\(' "${scroll_helper}" | cut -d: -f1)"
+challenge_source="$(sed -n "${scroll_end},${challenge_end}p" "${scroll_helper}")"
+[[ "$(rg -c 'scrollUntil\(' <<<"${challenge_source}")" == "2" ]]
+rg -Fq 'direction: .towardStart' <<<"${challenge_source}"
+rg -Fq 'direction: .towardEnd' <<<"${challenge_source}"
+if rg -q 'performPhysicalInteractionWithoutPostEventQuiescence' <<<"${challenge_source}"; then
+  echo 'endpoint challenge hygiene requires progress-making retreat and restore receipts' >&2
+  exit 1
+fi
 rg -Fq 'terminateAndDisplaceSurface(app)' \
   "${ui_test_root}/AccessibilityUITests.swift"
 if [[ "$(rg -c 'terminateAndWait\(' "${ui_test_root}/AccessibilityUITests.swift")" != "1" ]]; then

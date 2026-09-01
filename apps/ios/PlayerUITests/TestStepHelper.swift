@@ -867,54 +867,40 @@ func scrollUntil(
 func challengeSettledEnd(
   on surface: ScrollSurface,
   tracking element: XCUIElement,
-  gesture: () -> Void
+  retreat: () -> Void,
+  restore: () -> Void
 ) -> Bool {
   guard let before = surface.state(), before.isIdle, before.atEnd else { return false }
   let beforeFrame = element.frame
-  var received = false
-  var transitionDeadline: EventDeadline?
-  while transitionDeadline?.remaining ?? 2 > 0 && !received {
-    guard performPhysicalInteractionWithoutPostEventQuiescence(
-      in: surface.application,
-      gesture
-    ) else { return false }
-    if transitionDeadline == nil { transitionDeadline = EventDeadline() }
-    guard let transitionDeadline else { return false }
-    let receiptMatches: (ScrollReadinessState) -> Bool = {
-      $0.interactionID > before.interactionID
-    }
-    received = waitForScrollReadiness(
-      surface,
-      deadline: EventDeadline(timeout: min(0.25, transitionDeadline.remaining)),
-      matching: receiptMatches
-    )
-    if !received, let latest = surface.state() { received = receiptMatches(latest) }
-    if !received,
-      let latest = surface.state(),
-      latest.isIdle,
-      latest.atEnd == before.atEnd,
-      latest.interactionID == before.interactionID,
-      latest.completionID == before.completionID,
-      latest.geometryID == before.geometryID,
-      latest.completionGeometryID == before.completionGeometryID,
-      abs(latest.offset - before.offset) <= 1
+  guard scrollUntil(
     {
-      continue
-    }
-    if !received { return false }
-  }
-  guard received, let transitionDeadline else { return false }
-  guard waitForScrollReadiness(
-    surface,
-    deadline: transitionDeadline,
-    matching: { after in
-      after.isIdle && after.atEnd
-        && after.interactionID > before.interactionID
-        && after.completionID > before.completionID
-        && after.completionGeometryID == after.geometryID
-    }
-  ), let after = surface.state()
-  else { return false }
+      guard let after = surface.state() else { return false }
+      return after.isIdle && !after.atEnd && after.offset < before.offset - 1
+    },
+    on: surface,
+    deadline: EventDeadline(),
+    direction: .towardStart,
+    requiresInteraction: true,
+    requiresScrollableRange: true,
+    gesture: { retreat() }
+  ) else { return false }
+  guard scrollUntil(
+    {
+      guard let after = surface.state() else { return false }
+      return after.isIdle && after.atEnd
+        && abs(after.offset - before.offset) <= 1
+        && abs(element.frame.minX - beforeFrame.minX) <= 1
+        && abs(element.frame.minY - beforeFrame.minY) <= 1
+    },
+    on: surface,
+    deadline: EventDeadline(),
+    direction: .towardEnd,
+    requiresInteraction: true,
+    requiresScrollableRange: true,
+    terminalEndpoint: \.atEnd,
+    gesture: { restore() }
+  ) else { return false }
+  guard let after = surface.state() else { return false }
   return abs(after.offset - before.offset) <= 1
     && abs(element.frame.minX - beforeFrame.minX) <= 1
     && abs(element.frame.minY - beforeFrame.minY) <= 1

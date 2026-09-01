@@ -452,11 +452,11 @@ final class LibraryOrganizationUITests: PlayerUITestCase {
     XCTAssertTrue(
       challengeSettledEnd(
         on: recentShelfSurface,
-        tracking: oldestRecentBook
-      ) {
-        recentShelf.swipeLeft(velocity: .fast)
-      },
-      "The Recently Added shelf must remain settled after one deliberate right-end challenge"
+        tracking: oldestRecentBook,
+        retreat: { recentShelf.swipeRight(velocity: .fast) },
+        restore: { recentShelf.swipeLeft(velocity: .fast) }
+      ),
+      "The Recently Added shelf must return to the same right end after a progress-making round trip"
     )
     try tester.step(
       "square-cover-bookshelf-right-end",
@@ -619,11 +619,11 @@ final class LibraryOrganizationUITests: PlayerUITestCase {
     XCTAssertTrue(
       challengeSettledEnd(
         on: librarySurface,
-        tracking: openTrash
-      ) {
-        fullHeightUpwardDrag(in: libraryScroll)
-      },
-      "Library must remain settled after one deliberate bottom-end challenge"
+        tracking: openTrash,
+        retreat: { libraryScroll.swipeDown(velocity: .fast) },
+        restore: { fullHeightUpwardDrag(in: libraryScroll) }
+      ),
+      "Library must return to the same bottom runway after a progress-making round trip"
     )
     XCTAssertTrue(openTrash.isHittable, "Trash must remain tappable above the mini-player")
     XCTAssertLessThanOrEqual(
