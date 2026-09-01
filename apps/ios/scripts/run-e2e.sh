@@ -445,12 +445,25 @@ simulator_id="$("${script_dir}/simulator-lease.sh" acquire \
 xcrun simctl boot "${simulator_id}"
 xcrun simctl bootstatus "${simulator_id}" -b
 xcrun simctl ui "${simulator_id}" appearance light
-xcrun simctl ui "${simulator_id}" content_size large
-xcrun simctl ui "${simulator_id}" increase_contrast disabled
+expected_content_size="large"
+expected_increase_contrast="disabled"
 if [[ "${story_id}" == "009-accessible-core-journeys" ]]; then
-  xcrun simctl ui "${simulator_id}" content_size accessibility-extra-extra-extra-large
-  xcrun simctl ui "${simulator_id}" increase_contrast enabled
+  expected_content_size="accessibility-extra-extra-extra-large"
+  expected_increase_contrast="enabled"
 fi
+xcrun simctl ui "${simulator_id}" content_size "${expected_content_size}"
+xcrun simctl ui "${simulator_id}" increase_contrast "${expected_increase_contrast}"
+# A newly created iOS 26 simulator reaches bootstatus while its one-time
+# widget, Spotlight, and accessibility-asset work can still monopolize
+# RunningBoard. Complete that first-boot/configuration epoch, then acquire a
+# distinct clean-boot receipt before installing either test target. This is a
+# lifecycle boundary, not a launch retry or a time-based settling delay.
+xcrun simctl shutdown "${simulator_id}"
+xcrun simctl boot "${simulator_id}"
+xcrun simctl bootstatus "${simulator_id}" -b
+[[ "$(xcrun simctl ui "${simulator_id}" appearance)" == "light" ]]
+[[ "$(xcrun simctl ui "${simulator_id}" content_size)" == "${expected_content_size}" ]]
+[[ "$(xcrun simctl ui "${simulator_id}" increase_contrast)" == "${expected_increase_contrast}" ]]
 xcrun simctl status_bar "${simulator_id}" override \
   --time '9:41' \
   --batteryState charged \

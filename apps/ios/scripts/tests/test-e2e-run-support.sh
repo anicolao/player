@@ -398,6 +398,23 @@ reset_line="$(rg -n -m 1 'run_logged_phase simulator-control-plane-reset' "${run
 lease_line="$(rg -n -F -m 1 'simulator_lease="${simulator_lease_root}/story-' "${run_e2e}" | cut -d: -f1)"
 [[ -n "${reset_line}" && -n "${lease_line}" && "${reset_line}" -lt "${lease_line}" ]] \
   || fail "the hosted simulator control plane is not reset before the next exact lease"
+first_boot_receipt_line="$(rg -n -F -m 1 'xcrun simctl bootstatus "${simulator_id}" -b' "${run_e2e}" | cut -d: -f1)"
+configuration_line="$(rg -n -F -m 1 'xcrun simctl ui "${simulator_id}" content_size "${expected_content_size}"' "${run_e2e}" | cut -d: -f1)"
+stabilization_shutdown_line="$(rg -n -F -m 1 'xcrun simctl shutdown "${simulator_id}"' "${run_e2e}" | cut -d: -f1)"
+second_boot_receipt_line="$(rg -n -F 'xcrun simctl bootstatus "${simulator_id}" -b' "${run_e2e}" | sed -n '2p' | cut -d: -f1)"
+configuration_receipt_line="$(rg -n -F -m 1 '[[ "$(xcrun simctl ui "${simulator_id}" content_size)" == "${expected_content_size}" ]]' "${run_e2e}" | cut -d: -f1)"
+[[ -n "${first_boot_receipt_line}" && -n "${configuration_line}" \
+  && -n "${stabilization_shutdown_line}" && -n "${second_boot_receipt_line}" \
+  && -n "${configuration_receipt_line}" \
+  && "${first_boot_receipt_line}" -lt "${configuration_line}" \
+  && "${configuration_line}" -lt "${stabilization_shutdown_line}" \
+  && "${stabilization_shutdown_line}" -lt "${second_boot_receipt_line}" \
+  && "${second_boot_receipt_line}" -lt "${configuration_receipt_line}" \
+  && "${configuration_receipt_line}" -lt "${target_install_line}" ]] \
+  || fail "the fresh simulator is not cleanly rebooted after one-time configuration"
+if rg -n '(^|[^[:alpha:]])(sleep|usleep)[[:space:](]' "${run_e2e}" >/dev/null; then
+  fail "the E2E harness contains a fixed settling wait"
+fi
 control_plane_reset="${ios_scripts}/reset-hosted-simulator-control-plane.sh"
 rg -Fq "alarm shift; exec @ARGV or exit 127' 2" "${control_plane_reset}" \
   || fail "hosted simulator control-plane events are not hard-capped at two seconds"
