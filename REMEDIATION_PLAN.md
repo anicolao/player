@@ -99,7 +99,7 @@ release pass while its remaining gate is listed as pending.
 
 The R0 row summarizes the earlier accepted milestone and the chronology below
 retains the signature count at each subsequent checkpoint. The current exact
-ledger contains **153 unique signatures** and **21 formal qualification
+ledger contains **154 unique signatures** and **21 formal qualification
 resets**.
 
 ### Current R0 qualification update
@@ -331,6 +331,21 @@ walkthrough accepted. Replacement normal run
 also passed the complete Story 002 fresh-host lane in 13m15s with complete
 evidence. The ledger now contains 153 unique signatures; the normal run changed
 no formal qualification count.
+
+The same fail-open replacement run retained a separate Story 009 lifecycle
+failure. Book Detail was correct before capture, but a legacy direct
+reactivation sampled Bookshelf as foreground while the retained failure frame
+showed SpringBoard still owned the screen; the ensuing system-notification
+query traversed SpringBoard for roughly 36 seconds before the exact Book Detail
+assertion failed. The replacement requires independent inactive, background,
+and durable checkpoint receipts, then an exact enabled, hittable,
+app-contained Play control before capture. A clean committed-tip build passed
+complete Story 009, both selectors, in 112.714 seconds with all seven
+screenshots and the walkthrough accepted. Replacement normal
+[33496816488](https://github.com/anicolao/player/actions/runs/33496816488)
+passed the complete Story 009 fresh-host lane in 11m49s with complete evidence.
+The ledger now contains 154 unique
+signatures; the normal run changed no formal qualification count.
 
 ## R0 — Stabilize and qualify E2E
 

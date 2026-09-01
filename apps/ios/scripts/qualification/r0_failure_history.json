@@ -3619,6 +3619,30 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "ui-test:AccessibilityUITests.testCoreJourneysRemainCompleteAtLargestAccessibilityText:direct-reactivation-leaves-springboard-foreground",
+      "story": "009-accessible-core-journeys",
+      "evidence": {
+        "workflowRun": 33492845041,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 009 artifact 9795813919 retains the exact xcresult, lifecycle trace, SpringBoard failure frame, accessibility hierarchy, and complete story evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33492845041/job/99815028708",
+        "commit": "4b7000d2e3ecbaae21edf35e86bdced8d7a43b22",
+        "observation": "Book Detail was semantically correct through the pre-capture checkpoint. The legacy refresh then activated SpringBoard and called app.activate(); the sampled application state reported foreground even though the retained failure frame showed the Home Screen. A subsequent system-notification query consequently spent roughly 36 seconds traversing SpringBoard before the exact book-detail-screen assertion failed."
+      },
+      "rootCause": "The translucent-surface refresh treated XCUIApplication's sampled process state as proof that Bookshelf owned the foreground. That state can lead the actual composited and interactive surface after direct activation, allowing the test to continue while SpringBoard still owns input and presentation.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Replace direct activation with the shared event-driven lifecycle transaction. It independently requires scene-inactive, scene-background, and durable background-checkpoint receipts before reactivation, then requires a freshly resolved, enabled, hittable, app-contained Play control as the foreground completion receipt. Source hygiene rejects direct app activation in the accessibility journey.",
+        "commits": [
+          "8c6731417cfcfed92ab01e29afe73d47513cc840"
+        ],
+        "validation": "The exact formerly failing largest-accessibility-text selector passed locally in 105.689 seconds. A clean committed-tip build then passed complete Story 009, both selectors, in 112.714 seconds: six screenshots were pixel-exact, the seventh met its reviewed native-system-region allowance, the walkthrough matched exactly, and the EvidenceManifest was valid. Replacement run 33496816488 passed the complete Story 009 fresh-host lane in 11m49s with complete evidence. Full capture-readiness and E2E hygiene pass."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
     }
   ]
 }
