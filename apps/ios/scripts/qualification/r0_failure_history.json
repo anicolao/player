@@ -3307,6 +3307,30 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "infrastructure:accessibility-active-applications-timeout:ImportIngressResilienceUITests.testDocumentOpenResumesOneImportAcrossAcquireAndInspectRestarts:exit-65",
+      "story": "002-import-and-play",
+      "evidence": {
+        "workflowRun": 33466372451,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 002 artifact 9785745887 retains the exact xcresult, SpringBoard failure screen, accessibility timeout, preceding share-handoff journey trace, simulator logs, and complete story evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33466372451/job/99731889881",
+        "commit": "2de6c34afa2267ee577c9d4b80040f96f94dda2b",
+        "observation": "The share-extension handoff selector passed its consume, replay, and Inbox assertions but left the replay Bookshelf process running. The next document-open selector then spent 67.76 seconds in its pre-launch portrait-orientation setup before failing to enumerate active applications with kAXErrorIPCTimeout. Its product journey never began; the other six Story 002 selectors passed."
+      },
+      "rootCause": "The two ingress selectors were the only Story 002 journeys that could finish with an active application. The following selector's XCUIDevice orientation operation therefore queried the stale prior automation surface while enumerating active applications, and XCTest's private accessibility IPC call hung beyond the repository's event deadline before any new product process was launched.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "End both ingress journeys with the existing event-driven terminateAndWait helper and assert their completed not-running handoffs. Source hygiene requires both boundaries so the following selector begins orientation and launch from a clean process state.",
+        "commits": [
+          "806b033790fb580687c051dac47c4e38e3909901"
+        ],
+        "validation": "The complete canonical Story 002 journey passed all seven selectors locally in 89.470 seconds. Five reviewed screenshots matched pixel-exactly, one matched the existing reviewed channel allowance, the walkthrough README matched exactly, a fresh E2E build succeeded, and full E2E hygiene passed."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
     }
   ]
 }

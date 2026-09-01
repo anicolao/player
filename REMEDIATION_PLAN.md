@@ -202,6 +202,17 @@ the formerly failing next selector attaches in 0.1 seconds, all six screenshots
 are pixel-exact, and the walkthrough is exact. The ledger contains 140 unique
 signatures and retains 21 formal qualification resets.
 
+The run's final independent failure was a pre-product Story 002 accessibility
+timeout. The share-extension handoff selector passed its product assertions but
+left its replay process running; the next selector's orientation setup then
+hung while enumerating active applications through that stale automation
+surface. Both ingress journeys now prove completed `.notRunning` handoffs.
+Complete local Story 002 passes all seven selectors in 89.470 seconds; five
+screenshots are pixel-exact, the sixth is within its existing reviewed channel
+allowance, and the walkthrough is exact. Story 012 and every remaining chain in
+the diagnostic run passed. The ledger contains 141 unique signatures and
+retains 21 formal qualification resets.
+
 ## R0 — Stabilize and qualify E2E
 
 ### Goal
