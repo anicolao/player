@@ -223,8 +223,13 @@ final class SmartRewindUITests: PlayerUITestCase {
 
     let enabledToggle = configuring.switches["smart-rewind-enabled"]
     XCTAssertTrue(enabledToggle.waitForExistence(timeout: 2))
-    tapTrailingSwitchControl(enabledToggle)
-    try requireValue(initialSettings, settingsValue(enabled: false, maximum: 20))
+    try setTrailingSwitchControl(
+      enabledToggle,
+      to: false,
+      receipt: initialSettings,
+      expectedReceipt: settingsValue(enabled: false, maximum: 20),
+      in: configuring
+    )
     XCTAssertTrue(terminateAndWait(configuring))
 
     let disabledRestored = makeApplication(scenario: scenario.name, reset: false)
@@ -233,8 +238,13 @@ final class SmartRewindUITests: PlayerUITestCase {
     try requireValue(disabledSettings, settingsValue(enabled: false, maximum: 20))
     let restoredToggle = disabledRestored.switches["smart-rewind-enabled"]
     XCTAssertTrue(restoredToggle.waitForExistence(timeout: 2))
-    tapTrailingSwitchControl(restoredToggle)
-    try requireValue(disabledSettings, settingsValue(enabled: true, maximum: 20))
+    try setTrailingSwitchControl(
+      restoredToggle,
+      to: true,
+      receipt: disabledSettings,
+      expectedReceipt: settingsValue(enabled: true, maximum: 20),
+      in: disabledRestored
+    )
     XCTAssertTrue(terminateAndWait(disabledRestored))
 
     let enabledRestored = makeApplication(scenario: scenario.name, reset: false)
@@ -257,8 +267,106 @@ final class SmartRewindUITests: PlayerUITestCase {
     return screen
   }
 
-  private func tapTrailingSwitchControl(_ element: XCUIElement) {
-    element.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+  private func setTrailingSwitchControl(
+    _ element: XCUIElement,
+    to enabled: Bool,
+    receipt: XCUIElement,
+    expectedReceipt: String,
+    in app: XCUIApplication
+  ) throws {
+    let receiptPredicate = NSPredicate(
+      format: "exists == true AND value == %@", expectedReceipt
+    )
+    if receiptPredicate.evaluate(with: receipt) { return }
+
+    let expectedControlValue = enabled ? "1" : "0"
+    let requestedPredicate = NSPredicate(
+      format: "exists == true AND value == %@", expectedControlValue
+    )
+    let interactive = NSPredicate { _, _ in
+      guard app.state == .runningForeground,
+        element.exists,
+        element.isEnabled,
+        element.isHittable
+      else { return false }
+      let appFrame = app.frame
+      let elementFrame = element.frame
+      return !appFrame.isEmpty
+        && !elementFrame.isEmpty
+        && appFrame.contains(elementFrame)
+    }
+    guard waitForPredicate(interactive, on: element, timeout: 2) else {
+      XCTFail("The Smart Rewind switch did not expose a contained physical action")
+      throw SmartRewindUITestError.switchActionUnavailable
+    }
+
+    let elementFrame = element.frame
+    let appFrame = app.frame
+    let coordinate = app.coordinate(
+      withNormalizedOffset: CGVector(
+        dx: (elementFrame.minX + elementFrame.width * 0.9 - appFrame.minX) / appFrame.width,
+        dy: (elementFrame.midY - appFrame.minY) / appFrame.height
+      )
+    )
+    let acceptedOrCompleted = NSPredicate { _, _ in
+      requestedPredicate.evaluate(with: element)
+        || receiptPredicate.evaluate(with: receipt)
+    }
+    var deliveryDeadline: EventDeadline?
+
+    repeat {
+      if receiptPredicate.evaluate(with: receipt) { return }
+      if requestedPredicate.evaluate(with: element) {
+        guard let deliveryDeadline,
+          waitForPredicate(
+            receiptPredicate,
+            on: receipt,
+            timeout: deliveryDeadline.remaining
+          )
+        else {
+          XCTFail("The Smart Rewind switch accepted the request without persisting it")
+          throw SmartRewindUITestError.switchActionUnavailable
+        }
+        return
+      }
+      guard element.exists, element.isEnabled, element.isHittable,
+        element.frame == elementFrame
+      else {
+        guard let deliveryDeadline,
+          waitForPredicate(
+            receiptPredicate,
+            on: receipt,
+            timeout: deliveryDeadline.remaining
+          )
+        else {
+          XCTFail("The Smart Rewind switch transitioned without a durable receipt")
+          throw SmartRewindUITestError.switchActionUnavailable
+        }
+        return
+      }
+      if let deliveryDeadline, deliveryDeadline.remaining <= 0 { break }
+
+      guard performPhysicalInteractionWithoutPostEventQuiescence(
+        in: app,
+        { coordinate.tap() }
+      ) else {
+        XCTFail("The pinned XCTest runtime did not expose bounded physical synthesis")
+        throw SmartRewindUITestError.switchActionUnavailable
+      }
+      if deliveryDeadline == nil { deliveryDeadline = EventDeadline() }
+      guard let deliveryDeadline else {
+        XCTFail("The Smart Rewind switch could not establish its delivery deadline")
+        throw SmartRewindUITestError.switchActionUnavailable
+      }
+      _ = waitForPredicate(
+        acceptedOrCompleted,
+        on: element,
+        timeout: min(0.25, deliveryDeadline.remaining)
+      )
+    } while (deliveryDeadline?.remaining ?? 0) > 0
+
+    XCTFail("The Smart Rewind switch did not publish requested or durable state")
+    throw SmartRewindUITestError.switchActionUnavailable
   }
 
   private func settingsValue(enabled: Bool, maximum: Int) -> String {
@@ -510,4 +618,5 @@ private struct ProbeState {
 
 private enum SmartRewindUITestError: Error {
   case probeUnavailable
+  case switchActionUnavailable
 }
