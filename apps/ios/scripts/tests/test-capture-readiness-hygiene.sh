@@ -179,6 +179,16 @@ for lifecycle_source in \
     exit 1
   }
 done
+accessibility_source="${ui_test_root}/AccessibilityUITests.swift"
+rg -Fq 'backgroundAndReactivateApplication(app, requiringButton: "play-book")' \
+  "${accessibility_source}" || {
+  echo 'accessibility lifecycle hygiene requires the exact Book Detail background and foreground receipts' >&2
+  exit 1
+}
+if rg -Fq 'app.activate()' "${accessibility_source}"; then
+  echo 'accessibility lifecycle hygiene rejected unacknowledged direct app activation' >&2
+  exit 1
+fi
 if rg -n -U --regexp 'XCUIDevice\.shared\.press\(\.home\)\n[[:space:]]*app\.activate\(\)' \
   "${ui_test_root}" --glob '*.swift' \
   > "${temporary_root}/home-activation-race.log"; then
