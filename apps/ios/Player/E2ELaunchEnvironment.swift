@@ -41,6 +41,8 @@ import UIKit
       "com.spnss.player.e2e.receiver-importing"
     static let receiverCompleted =
       "com.spnss.player.e2e.receiver-completed"
+    static let supportVerificationFinished =
+      "com.spnss.player.e2e.support-verification-finished"
 
     static func postReceiverImporting() {
       post(name: receiverImporting)
@@ -48,6 +50,10 @@ import UIKit
 
     static func postReceiverCompleted() {
       post(name: receiverCompleted)
+    }
+
+    static func postSupportVerificationFinished() {
+      post(name: supportVerificationFinished)
     }
 
     private static func post(name: String) {

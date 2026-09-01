@@ -252,6 +252,10 @@ rg -Fq 'importingReceipt?.wait(timeout: 2)' \
   "${ui_test_root}/LaunchUITests.swift"
 rg -Fq 'completedReceipt?.wait(timeout: 2)' \
   "${ui_test_root}/LaunchUITests.swift"
+rg -Fq 'E2EOperationEvent.postSupportVerificationFinished()' \
+  "${script_dir}/../../Player/SupportDiagnosticsView.swift"
+rg -Fq 'verificationFinished?.wait(timeout: 2)' \
+  "${ui_test_root}/OfflineRecoveryUITests.swift"
 python3 - "${ui_test_root}/LaunchUITests.swift" <<'PY'
 import sys
 from pathlib import Path

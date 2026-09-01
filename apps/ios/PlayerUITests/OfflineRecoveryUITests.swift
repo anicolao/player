@@ -145,6 +145,10 @@ final class OfflineRecoveryUITests: PlayerUITestCase {
       format: "exists == true AND value == %@",
       expectedSanitized
     )
+    let verificationFinished = DarwinEventReceipt(
+      name: "com.spnss.player.e2e.support-verification-finished"
+    )
+    XCTAssertNotNil(verificationFinished)
     XCTAssertTrue(
       deliverPhysicalActionAcknowledgedByDisabling(
         verify,
@@ -153,6 +157,10 @@ final class OfflineRecoveryUITests: PlayerUITestCase {
         in: app
       ),
       "Verify sanitized support bundle did not acknowledge delivery within two seconds"
+    )
+    XCTAssertTrue(
+      verificationFinished?.wait(timeout: 2) == true,
+      "Sanitized support bundle verification did not finish within two seconds of delivery"
     )
     XCTAssertTrue(
       waitForPredicate(completed, on: sanitizedProbe, timeout: EventDeadline().remaining),

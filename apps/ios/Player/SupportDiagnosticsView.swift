@@ -398,6 +398,7 @@ struct SupportDiagnosticsView: View {
       defer {
         isWorking = false
         e2eRevision += 1
+        E2EOperationEvent.postSupportVerificationFinished()
       }
       do {
         let bundle = try await model.prepareSupportBundle()
