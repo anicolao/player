@@ -3283,6 +3283,30 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "infrastructure:xcode-application-launch-timeout:LaunchUITests.testComputerReceiverCloseWhileActiveConfirmsCleanup:exit-65",
+      "story": "001-ios-launch",
+      "evidence": {
+        "workflowRun": 33466372451,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 001 artifact 9785539691 retains the exact xcresult, SpringBoard failure screen, Xcode session diagnostics, simulator lifecycle logs, and complete story evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33466372451/job/99729643451",
+        "commit": "2de6c34afa2267ee577c9d4b80040f96f94dda2b",
+        "observation": "The startup-warning selector passed but left Bookshelf running. The next receiver-close selector began with XCTest's implicit termination of that process, created a new Bookshelf pid, but never attached its automation session and timed out after roughly 49 seconds while SpringBoard remained foreground. The next selector explicitly terminated that orphaned pid and then passed, and all other eight Story 001 selectors completed their product assertions."
+      },
+      "rootCause": "The startup-warning journey was the only preceding Story 001 selector that did not publish a completed not-running boundary. The following app.launch therefore became an opaque compound terminate-and-relaunch Xcode transaction; its new process existed, but the hosted control channel failed to acquire the automation assertion before XCTest's private launcher deadline.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "End the startup-warning selector with the existing event-driven terminateAndWait helper and assert its completed not-running handoff. The next selector now performs only a launch, while the startup warning's UI and diagnostic assertions remain unchanged.",
+        "commits": [
+          "3d4973f2b527e8f171156bf0c400dd39319244fc"
+        ],
+        "validation": "The complete canonical Story 001 journey passed all nine selectors locally in 85.660 seconds. The formerly failing next selector attached automation in 0.1 seconds and passed in 7.888 seconds without an implicit termination. All six reviewed screenshots matched pixel-exactly, the walkthrough README matched exactly, a fresh E2E build succeeded, and full E2E hygiene passed."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
     }
   ]
 }

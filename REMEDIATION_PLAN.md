@@ -192,6 +192,16 @@ lifecycle users pass, all four screenshots are pixel-exact, and the walkthrough
 is exact. The ledger contains 139 unique signatures and retains 21 formal
 qualification resets; this failed normal run changed no formal count.
 
+The same run later exposed a separate pre-product Story 001 launch failure.
+The startup-warning selector passed but left Bookshelf running; the next
+selector's opaque compound terminate-and-relaunch transaction created a process
+without acquiring its automation assertion before XCTest's private deadline.
+The startup-warning journey now proves a completed `.notRunning` handoff before
+returning. Complete local Story 001 passes all nine selectors in 85.660 seconds;
+the formerly failing next selector attaches in 0.1 seconds, all six screenshots
+are pixel-exact, and the walkthrough is exact. The ledger contains 140 unique
+signatures and retains 21 formal qualification resets.
+
 ## R0 — Stabilize and qualify E2E
 
 ### Goal
