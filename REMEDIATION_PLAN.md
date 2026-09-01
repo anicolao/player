@@ -99,7 +99,7 @@ release pass while its remaining gate is listed as pending.
 
 The R0 row summarizes the earlier accepted milestone and the chronology below
 retains the signature count at each subsequent checkpoint. The current exact
-ledger contains **152 unique signatures** and **21 formal qualification
+ledger contains **153 unique signatures** and **21 formal qualification
 resets**.
 
 ### Current R0 qualification update
@@ -271,7 +271,7 @@ blocked for roughly 50 seconds trying to take a failure screenshot. Failure
 capture now lives entirely in the outer harness, whose live simulator attempt
 has an enforced two-second kill boundary and whose exact recording-frame
 fallback already recovered this failure. Source hygiene rejects future
-in-process failure capture. The ledger contains 152 unique signatures and
+in-process failure capture. The ledger contains 153 unique signatures and
 retains 21 formal qualification resets; this normal run changed no formal
 count.
 
@@ -297,7 +297,7 @@ two accessibility preference writes could overlap an actor suspension, copy the
 same stale library, and lose one mutation while optimistic switch state showed
 both enabled. Library-organization mutations now enter a FIFO transaction gate,
 the switches render durable model state, and a suspended-save regression proves
-both concurrent changes persist. The ledger contains 152 unique signatures and
+both concurrent changes persist. The ledger contains 153 unique signatures and
 retains 21 formal qualification resets; the failed normal run changed no formal
 count.
 
@@ -314,6 +314,23 @@ The candidate remains within the 10% runtime contract and records a reliability
 gain rather than claiming an unmeasured speedup. The detailed timestamps are in
 [E2E_RUNTIME_BASELINE.md](E2E_RUNTIME_BASELINE.md). The exact documentation tip
 must now pass normal CI before its one permitted formal qualification dispatch.
+
+That documentation-tip run
+[33489458309](https://github.com/anicolao/player/actions/runs/33489458309)
+retained a new Story 002 boundary rather than being rerun: iOS delivered the
+document URL and Bookshelf navigated to Inbox, but the hosted simulator's
+system bookmark broker delayed durable job publication beyond the two-second
+application contract. The later failure frame showed the accepted source in
+Copying source, distinguishing this from the earlier URL-launch timeout. The
+synthetic restart journey now uses an exact file-URL reference, and its pause
+wrapper forwards the concrete media manager's source reference and resolution
+contracts. Focused regressions pass, and complete canonical Story 002 passed
+all seven selectors in 77.197 seconds with all six screenshots and the exact
+walkthrough accepted. Replacement normal run
+[33492845041](https://github.com/anicolao/player/actions/runs/33492845041)
+also passed the complete Story 002 fresh-host lane in 13m15s with complete
+evidence. The ledger now contains 153 unique signatures; the normal run changed
+no formal qualification count.
 
 ## R0 — Stabilize and qualify E2E
 

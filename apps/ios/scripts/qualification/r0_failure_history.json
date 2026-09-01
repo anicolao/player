@@ -3595,6 +3595,30 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This failure was discovered during local diagnosis of a normal pull-request failure and did not reset a formal exact-SHA qualification count."
+    },
+    {
+      "signature": "ui-test:ImportIngressResilienceUITests.testDocumentOpenResumesOneImportAcrossAcquireAndInspectRestarts:bookmark-broker-delays-durable-job-publication",
+      "story": "002-import-and-play",
+      "evidence": {
+        "workflowRun": 33489458309,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 002 artifact 9794016513 retains the exact xcresult, URL-open action, CFURLCreateBookmarkData interval, idle semantic probe, later acquiring-import failure frame, simulator logs, and complete story evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33489458309/job/99800054439",
+        "commit": "870b8e31dd873390705782a8875c8bf7ebc4535c",
+        "observation": "SpringBoard delivered the trusted file URL and Bookshelf received UIOpenURLAction, navigated to Inbox, and began CFURLCreateBookmarkData. The exact ingress probe nevertheless remained idle through its two-second application-state contract. The later retained failure frame showed the same source in Copying source, proving delayed job publication rather than missed URL delivery or a product rejection. The other six Story 002 selectors passed."
+      },
+      "rootCause": "The document-ingress E2E pause wrapper inherited MediaManaging's convenience source-reference methods instead of forwarding them to its concrete media manager. That silently put the hosted simulator's system bookmark broker on the journey's critical path without the concrete manager's injected reference contract; severe host I/O could delay durable job creation beyond the application contract even after the product accepted the URL.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Make the pause wrapper change only its named acquisition suspension point by forwarding both durable source reference and resolution. Inject an exact file-URL reference for this synthetic restart journey so it retains real UIOpenURL delivery, the production queue, persistence, acquisition, and inspection while leaving the independently covered system bookmark broker to production-manager tests and the physical ingress gate.",
+        "commits": [
+          "4b7000d2e3ecbaae21edf35e86bdced8d7a43b22"
+        ],
+        "validation": "Two focused unit regressions prove exact file-URL reference round-tripping and prove that the pause wrapper forwards the concrete manager's reference and resolution contracts. A focused run of the formerly failing selector passed in 11.210 seconds. The complete canonical Story 002 then passed all seven selectors in 77.197 seconds; the document-open selector crossed both process restarts in 15.907 seconds with the exact deterministic job identifier and source-integrity state, all six screenshots met policy, and the walkthrough README matched exactly. Replacement run 33492845041 passed the complete Story 002 fresh-host lane in 13m15s with complete evidence. Full E2E hygiene and capture-readiness hygiene pass."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
     }
   ]
 }
