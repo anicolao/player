@@ -399,7 +399,13 @@ rg -Fq 'DarwinEventReceipt(' \
   "${ui_test_root}/BookmarkUITests.swift"
 rg -Fq 'name: "com.spnss.player.e2e.text-input-focused"' \
   "${ui_test_root}/BookmarkUITests.swift"
-rg -Fq 'focusReceipt.wait(timeout: 2)' \
+rg -Fq 'focusReceipt.wait(timeout: min(0.25, deliveryDeadline.remaining))' \
+  "${ui_test_root}/BookmarkUITests.swift"
+rg -Fq 'exactOrigin.exists, currentField.exists, currentField.isEnabled' \
+  "${ui_test_root}/BookmarkUITests.swift"
+rg -Fq 'currentField.isHittable, currentField.frame == fieldFrame' \
+  "${ui_test_root}/BookmarkUITests.swift"
+rg -Fq 'coordinate.tap()' \
   "${ui_test_root}/BookmarkUITests.swift"
 rg -Fq 'performPhysicalInteractionWithoutPostEventQuiescence(in: app)' \
   "${ui_test_root}/BookmarkUITests.swift"

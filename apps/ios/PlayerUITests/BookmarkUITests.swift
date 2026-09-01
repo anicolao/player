@@ -586,23 +586,71 @@ final class BookmarkUITests: PlayerUITestCase {
     let elementType = field.elementType
     let currentField = app.descendants(matching: elementType)[identifier]
     XCTAssertTrue(currentField.waitForExistence(timeout: 2))
+    let originIdentifier: String
+    switch identifier {
+    case "bookmark-label-editor", "bookmark-note-editor":
+      originIdentifier = "bookmark-editor"
+    case "bookmark-search":
+      originIdentifier = "bookmarks-screen"
+    case "library-search-input":
+      originIdentifier = "library-search-screen"
+    default:
+      XCTFail("Focus delivery has no exact origin for \(identifier)")
+      return
+    }
+    let exactOrigin = app.descendants(matching: .any)[originIdentifier]
+    XCTAssertTrue(resolveAppleIntelligenceNotification(testCase: self))
+    let appFrame = app.frame
+    let fieldFrame = currentField.frame
+    guard
+      currentField.isEnabled && currentField.isHittable
+        && exactOrigin.exists && !appFrame.isEmpty && !fieldFrame.isEmpty
+        && appFrame.contains(fieldFrame)
+    else {
+      XCTFail(
+      "Expected \(identifier) to expose one contained physical focus target"
+      )
+      return
+    }
+    let coordinate = app.coordinate(
+      withNormalizedOffset: CGVector(
+        dx: (fieldFrame.midX - appFrame.minX) / appFrame.width,
+        dy: (fieldFrame.midY - appFrame.minY) / appFrame.height
+      )
+    )
     guard let focusReceipt = DarwinEventReceipt(
       name: "com.spnss.player.e2e.text-input-focused"
     ) else {
       XCTFail("Expected the Darwin focus receipt to register")
       return
     }
-    XCTAssertTrue(resolveAppleIntelligenceNotification(testCase: self))
+    var deliveryDeadline: EventDeadline?
+    var delivered = false
+    repeat {
+      if let deliveryDeadline {
+        guard exactOrigin.exists, currentField.exists, currentField.isEnabled,
+          currentField.isHittable, currentField.frame == fieldFrame
+        else {
+          delivered = focusReceipt.wait(timeout: deliveryDeadline.remaining)
+          break
+        }
+        if deliveryDeadline.remaining <= 0 { break }
+      }
+      XCTAssertTrue(
+        performPhysicalInteractionWithoutPostEventQuiescence(in: app) {
+          coordinate.tap()
+        },
+        "Expected the pinned XCTest runtime to synthesize focus for \(identifier)"
+      )
+      if deliveryDeadline == nil { deliveryDeadline = EventDeadline() }
+      guard let deliveryDeadline else { break }
+      delivered = focusReceipt.wait(timeout: min(0.25, deliveryDeadline.remaining))
+    } while !delivered && (deliveryDeadline?.remaining ?? 0) > 0
     XCTAssertTrue(
-      performPhysicalInteractionWithoutPostEventQuiescence(in: app) {
-        currentField.tap()
-      },
-      "Expected the pinned XCTest runtime to synthesize focus for \(identifier)"
+      delivered,
+      "Expected \(identifier) to publish its production focus event within two seconds while the exact editor target remained unchanged"
     )
-    XCTAssertTrue(
-      focusReceipt.wait(timeout: 2),
-      "Expected \(identifier) to publish its production focus event before typing"
-    )
+    guard delivered else { return }
     currentField.typeText(text)
 
     let valueProbeIdentifier: String?
