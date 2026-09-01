@@ -2901,23 +2901,24 @@
       "signature": "ui-test:RemoteInterruptionUITests.testRemoteInterruptionRouteLossAndBackgroundEventsJournalAcknowledgedPositions:home-animation-never-reached-background-checkpoint",
       "story": "005-play-and-restore",
       "evidence": {
-        "workflowRun": 33455191815,
+        "workflowRun": 33457933671,
         "workflowAttempt": 1,
-        "artifact": "GitHub Actions Story 005 artifact 9781682993 retains the exact XCTest result, Home-screen failure screenshot, lifecycle trace, application and system logs, valid failure-screen provenance, and complete story evidence",
-        "url": "https://github.com/anicolao/player/actions/runs/33455191815/job/99695605558",
-        "commit": "e0dde81873d2ced25591ea2357f0364ca0635d4e",
-        "observation": "The Remote Interruption selector pressed Home at 00:49:47.303. Production began deactivation at 00:49:49.080 and completed its scene-background transition around 00:49:50.5, but the test's single two-second background deadline had already expired. The retained screenshot shows the fully visible SpringBoard Home screen; Bookshelf was never reactivated and the final remote command was never sent."
+        "artifact": "GitHub Actions Story 005 artifact 9782730724 retains the exact XCTest result, fully settled Home-screen failure screenshot, lifecycle trace, application and system logs, valid failure-screen provenance, and complete story evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33457933671/job/99704229226",
+        "commit": "767f79a04b828db67d597de8ca226dada8953061",
+        "observation": "The split inactive receipt succeeded after Home. UIKit began deactivation at 01:33:50.935, SpringBoard reported the Bookshelf scene moved to background at 01:33:52.143, and the app continued its background snapshot and persistence work after that transition. The remaining combined background/checkpoint wait expired before the app's background tasks ended at 01:33:54.256. The retained failure screenshot shows fully settled SpringBoard; Bookshelf was never reactivated and the final remote command was never sent."
       },
-      "rootCause": "The helper compressed two causally distinct production transitions into one two-second deadline. On the retained fresh host, physical Home delivery to SwiftUI scene inactive took about 1.78 seconds, then inactive to the completed background checkpoint took about 1.5 seconds. Each required transition satisfied the two-second policy independently, while their combined latency correctly exceeded a single shared budget.",
+      "rootCause": "After the inactive-stage repair, the helper still compressed two causally distinct production transitions into one two-second deadline: SwiftUI entering background and the asynchronous durable playback checkpoint completing. The retained host moved the scene from inactive to background in about 1.2 seconds, then continued checkpoint-related background work independently; measuring both against one budget created another deadline-edge false negative.",
       "diagnosisStatus": "confirmed",
       "fix": {
         "status": "verified",
-        "summary": "Register independent production scene-inactive and completed-background-checkpoint receipts before the physical Home event, give each causal transition its own two-second boundary, then reactivate Bookshelf and retain the exact app-contained foreground-interactive receipt. This adds no sleep, retry, timeout increase, sampled system-process proxy, or coverage reduction.",
+        "summary": "Register production scene-inactive, scene-background-entry, and completed-background-checkpoint receipts before the physical Home event. Require those three causal stages under independent two-second boundaries, then reactivate Bookshelf and retain the exact app-contained foreground-interactive receipt. This adds no sleep, retry, timeout increase, sampled system-process proxy, or coverage reduction.",
         "commits": [
           "0e52d834427fe9f7ce6ff036ec7af375d7b13e67",
-          "78f746b805a053f794fcf3ac368f57b3606033f6"
+          "78f746b805a053f794fcf3ac368f57b3606033f6",
+          "0c7be8de599e71898db27cb9c5a63a5a63f00f65"
         ],
-        "validation": "Lifecycle hygiene requires physical Home, production scene inactive, completed production background checkpoint, and Bookshelf activation in that exact order, with independent two-second waits and no SpringBoard activation or sampled foreground state. The exact Remote Interruption selector passed its complete local command, interruption, route-loss, Home, final-command, and relaunch journey in 17.859 seconds; the exact Position Restore lifecycle selector passed in 21.327 seconds with the same production receipts. The paused durable-position selector also passed both alone and after the lifecycle selector, with both owned screenshots pixel-exact. A complete fresh-host normal Story 005 result remains required before formal dispatch."
+        "validation": "Lifecycle hygiene requires physical Home, production scene inactive, production scene background, completed durable checkpoint, and Bookshelf activation in that exact order, with independent two-second waits and no SpringBoard activation or sampled foreground state. A fresh E2E build succeeded, then the exact Position Restore lifecycle selector passed in 20.243 seconds and the exact Remote Interruption selector passed its complete command, interruption, route-loss, Home, final-command, and relaunch journey in 16.978 seconds on one fresh iOS 26.5 simulator. A complete fresh-host normal Story 005 result remains required before formal dispatch."
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run, not a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
