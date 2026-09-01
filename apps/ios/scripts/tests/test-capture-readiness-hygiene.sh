@@ -234,9 +234,15 @@ rg -Fq 'backgroundReceipt.wait(timeout: 2)' \
   "${ui_test_root}/TestStepHelper.swift"
 rg -Fq 'inactiveReceipt.wait(timeout: 2)' \
   "${ui_test_root}/TestStepHelper.swift"
+rg -Fq 'sceneBackgroundReceipt.wait(timeout: 2)' \
+  "${ui_test_root}/TestStepHelper.swift"
 rg -Fq 'E2ELifecycleEvent.postSceneBecameInactive()' \
   "${script_dir}/../../Player/ContentView.swift"
+rg -Fq 'E2ELifecycleEvent.postSceneBecameBackground()' \
+  "${script_dir}/../../Player/ContentView.swift"
 rg -Fq 'com.spnss.player.e2e.scene-became-inactive' \
+  "${script_dir}/../../Player/E2ELaunchEnvironment.swift"
+rg -Fq 'com.spnss.player.e2e.scene-became-background' \
   "${script_dir}/../../Player/E2ELaunchEnvironment.swift"
 python3 - "${ui_test_root}/TestStepHelper.swift" <<'PY'
 import sys
@@ -245,11 +251,12 @@ from pathlib import Path
 source = Path(sys.argv[1]).read_text()
 home = source.index('XCUIDevice.shared.press(.home)')
 inactive = source.index('inactiveReceipt.wait(timeout: 2)', home)
-checkpoint = source.index('backgroundReceipt.wait(timeout: 2)', inactive)
+background = source.index('sceneBackgroundReceipt.wait(timeout: 2)', inactive)
+checkpoint = source.index('backgroundReceipt.wait(timeout: 2)', background)
 app_activation = source.index('application.activate()', checkpoint)
-if not home < inactive < checkpoint < app_activation:
+if not home < inactive < background < checkpoint < app_activation:
     raise SystemExit(
-        'lifecycle hygiene requires Home, production inactive, completed background checkpoint, then app activation'
+        'lifecycle hygiene requires Home, production inactive, production background, completed checkpoint, then app activation'
     )
 segment = source[home:inactive]
 if 'springboard.activate()' in segment or '.runningForeground' in segment:

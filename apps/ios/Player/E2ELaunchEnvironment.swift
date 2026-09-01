@@ -8,11 +8,17 @@ import UIKit
   enum E2ELifecycleEvent {
     static let sceneBecameInactive =
       "com.spnss.player.e2e.scene-became-inactive"
+    static let sceneBecameBackground =
+      "com.spnss.player.e2e.scene-became-background"
     static let backgroundCheckpointCompleted =
       "com.spnss.player.e2e.background-checkpoint-completed"
 
     static func postSceneBecameInactive() {
       post(name: sceneBecameInactive)
+    }
+
+    static func postSceneBecameBackground() {
+      post(name: sceneBecameBackground)
     }
 
     static func postBackgroundCheckpointCompleted() {
