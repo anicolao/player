@@ -358,9 +358,11 @@ jq -e '
 
 run_e2e="${ios_scripts}/run-e2e.sh"
 target_install_line="$(rg -n -m 1 'run_logged_phase target-install' "${run_e2e}" | cut -d: -f1)"
+target_hide_line="$(rg -n -m 1 'run_logged_phase target-source-hiding' "${run_e2e}" | cut -d: -f1)"
 test_phase_line="$(rg -n -m 1 'run_logged_phase test xcodebuild test-without-building' "${run_e2e}" | cut -d: -f1)"
-[[ -n "${target_install_line}" && -n "${test_phase_line}" \
-  && "${target_install_line}" -lt "${test_phase_line}" ]] \
+[[ -n "${target_install_line}" && -n "${target_hide_line}" && -n "${test_phase_line}" \
+  && "${target_install_line}" -lt "${target_hide_line}" \
+  && "${target_hide_line}" -lt "${test_phase_line}" ]] \
   || fail "the exact target application is not installed before XCTest launch"
 rg -Fq 'target_application="${build_data}/Build/Products/E2E-iphonesimulator/Player.app"' "${run_e2e}" \
   || fail "target preinstallation is not bound to the exact E2E build product"
@@ -378,6 +380,10 @@ generated_project="${repository_root}/apps/ios/Player.xcodeproj/project.pbxproj"
 if rg -n 'TEST_TARGET_NAME' "${project_spec}" "${generated_project}"; then
   fail "the UI-test bundle still lets Xcode reinstall the target application during test-without-building"
 fi
+rg -Fq "Installed app at path:" "${run_e2e}" \
+  || fail "the E2E harness does not reject an Xcode-managed target reinstall"
+rg -Fq 'restore_hidden_target_application' "${run_e2e}" \
+  || fail "the immutable target source is not restored after XCTest"
 rg -Fq '        Player: all' "${project_spec}" \
   || fail "the Player scheme no longer builds the target application"
 rg -Fq '        PlayerUITests: [test]' "${project_spec}" \

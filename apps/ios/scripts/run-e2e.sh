@@ -14,6 +14,8 @@ device_type="com.apple.CoreSimulator.SimDeviceType.iPhone-17"
 runtime="com.apple.CoreSimulator.SimRuntime.iOS-26-5"
 simulator_id=""
 simulator_lease=""
+target_application=""
+hidden_target_application=""
 simulator_lease_root="${PLAYER_SIMULATOR_LEASE_ROOT:-${ios_dir}/DerivedData/SimulatorLeases}"
 recording_stage=""
 parallel_workers="${PLAYER_E2E_PARALLEL_WORKERS:-2}"
@@ -218,6 +220,30 @@ install_e2e_targets() {
   done
 }
 
+hide_preinstalled_target_from_xcode() {
+  local application="$1"
+  local hidden_application="$2"
+
+  [[ -d "${application}" && ! -e "${hidden_application}" ]]
+  # XCUIApplication(bundleIdentifier:) searches the built-products directory.
+  # Leaving Player.app there lets Xcode reinstall it after the harness has
+  # already obtained exact FrontBoard receipts, reopening an asynchronous
+  # LaunchServices/RunningBoard race. The installed simulator copy is the test
+  # target; keep the immutable source bytes beside the products under a name
+  # that is not an application bundle until XCTest has finished.
+  mv "${application}" "${hidden_application}"
+}
+
+restore_hidden_target_application() {
+  if [[ -n "${hidden_target_application}" && -d "${hidden_target_application}" ]]; then
+    if [[ -e "${target_application}" ]]; then
+      echo "Cannot restore the hidden E2E target because its original path was recreated." >&2
+      return 1
+    fi
+    mv "${hidden_target_application}" "${target_application}"
+  fi
+}
+
 capture_failure_screen() {
   local temporary_screen="${story_output}/Diagnostics/.failure-screen-live.$$.png"
   local temporary_source="${story_output}/Diagnostics/.failure-screen-source.$$.json"
@@ -349,6 +375,9 @@ cleanup() {
   if [[ "${run_status}" -ne 0 ]]; then
     capture_failure_diagnostics
   fi
+  if ! restore_hidden_target_application; then
+    if [[ "${run_status}" -eq 0 ]]; then run_status=1; fi
+  fi
   if [[ -f "${simulator_lease}" && ! -L "${simulator_lease}" ]]; then
     if ! "${script_dir}/simulator-lease.sh" release "${simulator_lease}" "$$"; then
       echo "Could not delete E2E simulator ${simulator_id}." >&2
@@ -473,6 +502,7 @@ else
 fi
 
 target_application="${build_data}/Build/Products/E2E-iphonesimulator/Player.app"
+hidden_target_application="${build_data}/Build/Products/E2E-iphonesimulator/.Player-e2e-preinstalled-$$"
 target_bundle_identifier="com.spnss.player"
 test_runner_application="${build_data}/Build/Products/E2E-iphonesimulator/PlayerUITests-Runner.app"
 test_runner_bundle_identifier="com.spnss.player.uitests.xctrunner"
@@ -489,6 +519,12 @@ if ! run_logged_phase target-install \
     "${target_bundle_identifier}" "${test_runner_application}" \
     "${test_runner_bundle_identifier}"; then
   echo "Could not register the exact E2E application and test runner before XCTest launch." >&2
+  exit 1
+fi
+if ! run_logged_phase target-source-hiding \
+  hide_preinstalled_target_from_xcode \
+    "${target_application}" "${hidden_target_application}"; then
+  echo "Could not isolate the receipted E2E target from Xcode deployment." >&2
   exit 1
 fi
 
@@ -519,6 +555,11 @@ run_logged_phase test xcodebuild test-without-building \
   "${only_testing_arguments[@]}" \
   -resultBundlePath "${result_bundle}" \
   CODE_SIGNING_ALLOWED=NO || test_status=$?
+if rg -Fq 'Installed app at path:' "${story_output}/Logs/test.log"; then
+  echo "Xcode reinstalled an application during test-without-building." \
+    | tee -a "${story_output}/Logs/test.log" >&2
+  test_status=1
+fi
 
 export_status=0
 if [[ -d "${result_bundle}" ]]; then
