@@ -196,6 +196,27 @@ if rg -n -U --regexp 'XCUIDevice\.shared\.press\(\.home\)\n[[:space:]]*app\.acti
   echo 'lifecycle hygiene rejected app activation before SpringBoard acknowledged Home' >&2
   exit 1
 fi
+metadata_editing_source="${ui_test_root}/CommittedMetadataEditingUITests.swift"
+python3 - "${metadata_editing_source}" <<'PY'
+import sys
+from pathlib import Path
+
+source = Path(sys.argv[1]).read_text()
+replacement = source.index('if !replacement.isEmpty {')
+clear_receipt = source.rindex(
+    'try requireValuePrefix(provenance, "value=empty|")', 0, replacement
+)
+cleared_guard = source.index('if clearedExistingValue {', replacement)
+focus_receipt = source.index(
+    'requireMetadataFieldFocus(field, fieldName: fieldName)', cleared_guard
+)
+text_synthesis = source.index('field.typeText(replacement)', focus_receipt)
+if not clear_receipt < replacement < cleared_guard < focus_receipt < text_synthesis:
+    raise SystemExit(
+        'metadata-editing hygiene requires an acknowledged clear and exact refocus '
+        'before replacement synthesis'
+    )
+PY
 zip_source="${ui_test_root}/SafeZIPImportUITests.swift"
 rg -Fq 'requireZipSelectionDelivery(' "${zip_source}"
 if rg -n -F 'buttons["choose-from-files-empty-library"].tap()' "${zip_source}" \

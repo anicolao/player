@@ -443,6 +443,35 @@ final class CommittedMetadataEditingUITests: PlayerUITestCase {
       revealed,
       "The metadata field must become hittable through progress-making editor scrolling"
     )
+    requireMetadataFieldFocus(field, fieldName: fieldName)
+    focusedMetadataField = fieldName
+    XCTAssertTrue(waitForExistence(app.keyboards.firstMatch, deadline: EventDeadline()))
+    let provenance = anyElement(app, ID.provenance(fieldName))
+    XCTAssertTrue(waitForExistence(provenance, deadline: EventDeadline()))
+    let currentProvenance = try stringValue(of: provenance)
+    let currentValue = try metadataValue(from: currentProvenance)
+    let clearedExistingValue = !currentValue.isEmpty
+    if clearedExistingValue {
+      field.typeText(
+        String(repeating: XCUIKeyboardKey.delete.rawValue, count: currentValue.count)
+      )
+      try requireValuePrefix(provenance, "value=empty|")
+    }
+    if !replacement.isEmpty {
+      // A completed clear is a separate keyboard transaction. Under severe
+      // host latency iOS can resign the field after publishing the empty
+      // model value, so require a fresh focus receipt before asking XCTest to
+      // synthesize the replacement transaction.
+      if clearedExistingValue {
+        requireMetadataFieldFocus(field, fieldName: fieldName)
+      }
+      field.typeText(replacement)
+    }
+    let expectedPrefix = replacement.isEmpty ? "value=empty|" : "value=\(replacement)|"
+    try requireValuePrefix(provenance, expectedPrefix)
+  }
+
+  private func requireMetadataFieldFocus(_ field: XCUIElement, fieldName: String) {
     field.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.5)).tap()
     XCTAssertTrue(
       waitForPredicate(
@@ -450,25 +479,8 @@ final class CommittedMetadataEditingUITests: PlayerUITestCase {
         on: field,
         timeout: EventDeadline().remaining
       ),
-      "The metadata field must be hittable and acquire focus before replacement text is entered"
+      "The metadata field \(fieldName) must acquire exact keyboard focus before text synthesis"
     )
-    focusedMetadataField = fieldName
-    XCTAssertTrue(waitForExistence(app.keyboards.firstMatch, deadline: EventDeadline()))
-    let provenance = anyElement(app, ID.provenance(fieldName))
-    XCTAssertTrue(waitForExistence(provenance, deadline: EventDeadline()))
-    let currentProvenance = try stringValue(of: provenance)
-    let currentValue = try metadataValue(from: currentProvenance)
-    if !currentValue.isEmpty {
-      field.typeText(
-        String(repeating: XCUIKeyboardKey.delete.rawValue, count: currentValue.count)
-      )
-      try requireValuePrefix(provenance, "value=empty|")
-    }
-    if !replacement.isEmpty {
-      field.typeText(replacement)
-    }
-    let expectedPrefix = replacement.isEmpty ? "value=empty|" : "value=\(replacement)|"
-    try requireValuePrefix(provenance, expectedPrefix)
   }
 
   private func metadataEditorSurface(_ app: XCUIApplication) -> ScrollSurface {
