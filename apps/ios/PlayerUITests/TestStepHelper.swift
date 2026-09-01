@@ -447,8 +447,7 @@ func adjustSliderAcknowledged(
   if receiptPredicate.evaluate(with: receipt) { return true }
 
   let interactive = NSPredicate { _, _ in
-    guard application.state == .runningForeground,
-      slider.exists,
+    guard slider.exists,
       slider.isEnabled,
       slider.isHittable
     else { return false }
@@ -459,17 +458,21 @@ func adjustSliderAcknowledged(
       && applicationFrame.contains(sliderFrame)
   }
   guard waitForPredicate(interactive, on: slider, timeout: 2) else { return false }
+  let applicationFrame = application.frame
   let sliderFrame = slider.frame
+  guard !applicationFrame.isEmpty, !sliderFrame.isEmpty,
+    applicationFrame.contains(sliderFrame)
+  else { return false }
   var deliveryDeadline: EventDeadline?
 
   repeat {
     if receiptPredicate.evaluate(with: receipt) { return true }
     if let deliveryDeadline {
-      guard application.state == .runningForeground,
-        slider.exists,
+      guard slider.exists,
         slider.isEnabled,
         slider.isHittable,
-        slider.frame == sliderFrame
+        slider.frame == sliderFrame,
+        application.frame == applicationFrame
       else {
         return waitForPredicate(
           receiptPredicate,
