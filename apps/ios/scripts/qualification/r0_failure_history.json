@@ -3187,6 +3187,78 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "ui-test:BookmarkUITests.testCreatesSortsSeeksAndDeletesBookmarks:stale-sort-option-frame",
+      "story": "007-sleep-timer",
+      "evidence": {
+        "workflowRun": 33463264776,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 007 artifact 9784478701 retains the exact xcresult, failure screenshot, accessibility hierarchy, interaction trace, and complete story evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33463264776/job/99719838431",
+        "commit": "2ea4ee89690ea993f60c7405f2fc1b3f3e2bb864",
+        "observation": "The bookmark sort menu was visibly open and its Position descending option had a valid 250 by 40 point frame in the retained hierarchy, but the previously cached XCUIElement resolved to an infinite zero-sized frame. XCTest retried its own hit-point computation three times and failed before the sort action reached the product."
+      },
+      "rootCause": "The journey treated existence of a cached SwiftUI menu option proxy as stable interaction geometry. Menu presentation replaced the underlying accessibility element, leaving that proxy stale even though a newly resolved option with the same identity was enabled, hittable, and correctly framed.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Resolve a unique enabled and hittable menu option after presentation, freeze its contained physical coordinate, and redeliver only while the same logical option remains present. Require the exact changed bookmark ordering as the independent semantic completion receipt.",
+        "commits": [
+          "d6cd914b349f52fc023755cac676f1367cd0fd88"
+        ],
+        "validation": "The complete canonical Story 007 journey passed both selectors locally in 218.401 seconds. All three reviewed screenshots matched pixel-exactly and the walkthrough README matched exactly; all four bookmark sort choices published their expected semantic ordering."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "ui-test:SmartRewindUITests.testSmartRewindAdaptsClampsPersistsAndUndoesExactly:toggle-gesture-unacknowledged",
+      "story": "005-play-and-restore",
+      "evidence": {
+        "workflowRun": 33463264776,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 005 artifact 9784540437 retains the exact xcresult, settings hierarchy, interaction trace, semantic settings state, and complete story evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33463264776/job/99719838315",
+        "commit": "2ea4ee89690ea993f60c7405f2fc1b3f3e2bb864",
+        "observation": "XCUI returned from tapping the trailing Smart Rewind switch, but the native switch value remained 1 and the independently published settings state remained enabled=true instead of the requested false. Every preceding position, interruption, and notice selector and every subsequent transport selector passed on the same job."
+      },
+      "rootCause": "The journey treated return from a direct XCUIElement.tap() as proof that SwiftUI consumed the switch gesture. It did not observe the native control's synchronous value transition, so a dropped event had neither an acceptance receipt nor a bounded, origin-safe redelivery path.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Deliver the switch gesture at a fixed contained coordinate, use its native 0/1 value as the synchronous acceptance signal, and require the exact durable settings value as completion. Redeliver only while the value and frame remain unchanged within the same two-second event budget.",
+        "commits": [
+          "c15165f9e4c60cbfba227c2cf938f839410b0c40"
+        ],
+        "validation": "The complete canonical Story 005 journey passed all eight selectors locally in 240.473 seconds. The repaired Smart Rewind selector passed in 79.334 seconds, all four reviewed screenshots matched pixel-exactly, and the walkthrough README matched exactly."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "ui-test:BackupUITests.testExportsClearsAndRestoresAVerifiedPortableLibrary:clear-fixture-action-unacknowledged",
+      "story": "010-library-backup",
+      "evidence": {
+        "workflowRun": 33463264776,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 010 artifact 9784694427 retains the exact xcresult, post-export screen, interaction trace, unchanged backup probe, and complete story evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33463264776/job/99722477764",
+        "commit": "2ea4ee89690ea993f60c7405f2fc1b3f3e2bb864",
+        "observation": "The first backup selector launched promptly without any Xcode application installation and completed its verified export, but return from the clear-library trigger tap left the backup probe at books=1, bookmarks=1, and position=42000. The second selector then passed every production cancellation and failure path."
+      },
+      "rootCause": "The fixture transition used to verify destructive backup restore semantics treated return from a direct XCUIElement.tap() as delivery. The E2E action already synchronously disables itself while working and publishes an exact final backup probe, but the journey observed neither receipt and could not safely redeliver a dropped gesture.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Require each fixture action either to disable synchronously or publish its exact final backup probe, then retain the final probe as the authoritative completion assertion. Redeliver only before acceptance while the same enabled action remains the origin.",
+        "commits": [
+          "2abb6967c839387ec279b64d165ccdf0ba6b7d65"
+        ],
+        "validation": "The complete canonical Story 010 journey passed both selectors locally in 87.668 seconds. Two screenshots matched pixel-exactly, two matched the reviewed channel allowance, the walkthrough README matched exactly, the test log contained no Xcode application installation, and full E2E hygiene passed."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
     }
   ]
 }

@@ -161,6 +161,23 @@ with no Xcode deployment event, all four reviewed screenshots accepted, and an
 exact walkthrough README. The ledger now contains 135 unique signatures; the
 failed normal run changed no formal qualification count.
 
+Normal run
+[33463264776](https://github.com/anicolao/player/actions/runs/33463264776)
+then exercised every successor lane and passed the other ten stories, all 374
+core tests, fixtures, and renderer inputs while exposing three independent
+missed-action mechanisms. Story 007 cached a SwiftUI menu option whose backing
+element was replaced during presentation; the replacement reacquires valid
+geometry and requires the changed bookmark order. Story 005 treated return from
+a switch tap as delivery; the replacement uses the native switch value as its
+synchronous acceptance receipt and the durable settings value as completion.
+Story 010 likewise treated return from a backup-fixture trigger tap as delivery;
+the replacement observes its synchronous disabled state and exact final backup
+probe. Complete local Stories 007, 005, and 010 now pass all 12 combined
+selectors, all 11 reviewed screenshots, and all three exact walkthroughs. Story
+010 also contains no deferred Xcode installation event. The ledger contains 138
+unique signatures and retains 21 formal qualification resets; this failed
+normal run changed no formal count.
+
 ## R0 — Stabilize and qualify E2E
 
 ### Goal
