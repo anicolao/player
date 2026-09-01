@@ -319,14 +319,95 @@ final class BookmarkUITests: PlayerUITestCase {
     try tapWhenHittable(menu, in: app)
     let options = app.buttons.matching(identifier: optionID)
     let selectedOption = options.element
-    XCTAssertTrue(selectedOption.waitForExistence(timeout: 2))
-    XCTAssertEqual(options.count, 1, "The bookmark sort option identifier must be unique.")
-    selectedOption.tap()
     XCTAssertTrue(
-      waitForPredicate(NSPredicate(format: "exists == false"), on: selectedOption),
+      waitForPredicate(
+        NSPredicate(format: "exists == true AND enabled == true AND hittable == true"),
+        on: selectedOption
+      ),
+      "The bookmark sort menu must publish a hittable \(optionID) action"
+    )
+    XCTAssertEqual(options.count, 1, "The bookmark sort option identifier must be unique.")
+    try deliverBookmarkSortSelection(options, expected: expected, in: app)
+    XCTAssertTrue(
+      waitForNoElements(options, deadline: EventDeadline()),
       "The bookmark sort menu must dismiss after selecting \(optionID)"
     )
     try requireBookmarksScreen(app, expected)
+  }
+
+  private func deliverBookmarkSortSelection(
+    _ options: XCUIElementQuery,
+    expected: String,
+    in app: XCUIApplication
+  ) throws {
+    let receipt = app.descendants(matching: .any)["bookmarks-screen"]
+    let receiptPredicate = NSPredicate(format: "exists == true AND value == %@", expected)
+    if receiptPredicate.evaluate(with: receipt) { return }
+
+    let targets = options.allElementsBoundByIndex
+    guard targets.count == 1 else {
+      XCTFail("The bookmark sort menu did not expose exactly one current action")
+      throw BookmarkUITestError.sortActionUnavailable
+    }
+    let target = targets[0]
+    let targetFrame = target.frame
+    let appFrame = app.frame
+    guard target.exists, target.isEnabled, target.isHittable,
+      !targetFrame.isEmpty, !appFrame.isEmpty, appFrame.contains(targetFrame)
+    else {
+      XCTFail("The bookmark sort menu did not expose a contained physical action")
+      throw BookmarkUITestError.sortActionUnavailable
+    }
+    let coordinate = app.coordinate(
+      withNormalizedOffset: CGVector(
+        dx: (targetFrame.midX - appFrame.minX) / appFrame.width,
+        dy: (targetFrame.midY - appFrame.minY) / appFrame.height
+      )
+    )
+
+    var deliveryDeadline: EventDeadline?
+    repeat {
+      if receiptPredicate.evaluate(with: receipt) { return }
+      if let deliveryDeadline {
+        let currentTargets = options.allElementsBoundByIndex
+        guard currentTargets.count == 1,
+          currentTargets[0].exists,
+          currentTargets[0].isEnabled,
+          currentTargets[0].isHittable,
+          currentTargets[0].frame == targetFrame
+        else {
+          if waitForPredicate(
+            receiptPredicate,
+            on: receipt,
+            timeout: deliveryDeadline.remaining
+          ) { return }
+          XCTFail("The bookmark sort menu transitioned without publishing its semantic receipt")
+          throw BookmarkUITestError.sortActionUnavailable
+        }
+        if deliveryDeadline.remaining <= 0 { break }
+      }
+
+      guard performPhysicalInteractionWithoutPostEventQuiescence(
+        in: app,
+        { coordinate.tap() }
+      ) else {
+        XCTFail("The pinned XCTest runtime did not expose bounded physical synthesis")
+        throw BookmarkUITestError.sortActionUnavailable
+      }
+      if deliveryDeadline == nil { deliveryDeadline = EventDeadline() }
+      guard let deliveryDeadline else {
+        XCTFail("The bookmark sort menu could not establish its delivery deadline")
+        throw BookmarkUITestError.sortActionUnavailable
+      }
+      if waitForPredicate(
+        receiptPredicate,
+        on: receipt,
+        timeout: min(0.25, deliveryDeadline.remaining)
+      ) { return }
+    } while (deliveryDeadline?.remaining ?? 0) > 0
+
+    XCTFail("The bookmark sort menu action did not publish its semantic receipt")
+    throw BookmarkUITestError.sortActionUnavailable
   }
 
   private func openNowPlaying(_ app: XCUIApplication) throws {
@@ -826,4 +907,7 @@ private struct BookmarkProbe {
   }
 }
 
-private enum BookmarkUITestError: Error { case probeUnavailable }
+private enum BookmarkUITestError: Error {
+  case probeUnavailable
+  case sortActionUnavailable
+}
