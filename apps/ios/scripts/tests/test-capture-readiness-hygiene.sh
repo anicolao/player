@@ -413,6 +413,12 @@ if rg -Fq 'verify.tap()' "${ui_test_root}/OfflineRecoveryUITests.swift"; then
 fi
 rg -Fq 'deliverPhysicalActionAcknowledgedByDisabling(' \
   "${ui_test_root}/OfflineRecoveryUITests.swift"
+rg -Fq 'name: "com.spnss.player.e2e.startup-recovery-presented"' \
+  "${ui_test_root}/OfflineRecoveryUITests.swift"
+rg -Fq 'presentationReceipt?.wait(timeout: 2)' \
+  "${ui_test_root}/OfflineRecoveryUITests.swift"
+rg -Fq 'expectsRecoveryPresentation: false' \
+  "${ui_test_root}/OfflineRecoveryUITests.swift"
 rg -Fq 'guard !isWorking else { return }' \
   "${ui_test_root}/../Player/SupportDiagnosticsView.swift"
 rg -Fq 'isWorking = true' \

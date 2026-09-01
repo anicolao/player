@@ -315,7 +315,10 @@ final class OfflineRecoveryUITests: PlayerUITestCase {
   }
 
   private func proveLaunchStorageRetry() throws {
-    let app = launchRecoveryApp(scenario: "launch-storage-retry")
+    let app = launchRecoveryApp(
+      scenario: "launch-storage-retry",
+      expectsRecoveryPresentation: false
+    )
     XCTAssertTrue(
       exactStaticText(
         app,
@@ -436,8 +439,17 @@ final class OfflineRecoveryUITests: PlayerUITestCase {
     }
   }
 
-  private func launchRecoveryApp(scenario: String) -> XCUIApplication {
+  private func launchRecoveryApp(
+    scenario: String,
+    expectsRecoveryPresentation: Bool = true
+  ) -> XCUIApplication {
     let app = bookshelfApplication()
+    let presentationReceipt = expectsRecoveryPresentation
+      ? DarwinEventReceipt(name: "com.spnss.player.e2e.startup-recovery-presented")
+      : nil
+    if expectsRecoveryPresentation {
+      XCTAssertNotNil(presentationReceipt)
+    }
     app.launchArguments = [
       "-e2e", "-e2e-fixture", "offline-recovery", "-e2e-reset",
       "-e2e-offline-recovery-scenario", scenario,
@@ -450,6 +462,12 @@ final class OfflineRecoveryUITests: PlayerUITestCase {
     app.launchEnvironment["TZ"] = "America/Toronto"
     app.launchEnvironment["PLAYER_E2E_DYNAMIC_TYPE"] = "medium"
     app.launch()
+    if expectsRecoveryPresentation {
+      XCTAssertTrue(
+        presentationReceipt?.wait(timeout: 2) == true,
+        "Expected the production startup-recovery surface within two seconds of launch"
+      )
+    }
     return app
   }
 

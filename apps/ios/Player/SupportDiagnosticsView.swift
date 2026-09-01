@@ -149,6 +149,9 @@ struct StartupRecoveryView: View {
     } message: {
       Text(localError?.message ?? "The local recovery operation failed.")
     }
+    #if E2E
+      .onAppear { E2EOperationEvent.postStartupRecoveryPresented() }
+    #endif
   }
 
   private var recoveryExplanation: String {

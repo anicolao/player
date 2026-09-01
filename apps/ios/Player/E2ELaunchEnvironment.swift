@@ -45,6 +45,8 @@ import UIKit
       "com.spnss.player.e2e.support-verification-finished"
     static let textInputFocused =
       "com.spnss.player.e2e.text-input-focused"
+    static let startupRecoveryPresented =
+      "com.spnss.player.e2e.startup-recovery-presented"
 
     static func postReceiverImporting() {
       post(name: receiverImporting)
@@ -60,6 +62,10 @@ import UIKit
 
     static func postTextInputFocused() {
       post(name: textInputFocused)
+    }
+
+    static func postStartupRecoveryPresented() {
+      post(name: startupRecoveryPresented)
     }
 
     private static func post(name: String) {
