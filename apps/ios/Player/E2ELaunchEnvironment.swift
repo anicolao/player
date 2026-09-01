@@ -6,13 +6,23 @@ import UIKit
 
 #if E2E
   enum E2ELifecycleEvent {
+    static let sceneBecameInactive =
+      "com.spnss.player.e2e.scene-became-inactive"
     static let backgroundCheckpointCompleted =
       "com.spnss.player.e2e.background-checkpoint-completed"
 
+    static func postSceneBecameInactive() {
+      post(name: sceneBecameInactive)
+    }
+
     static func postBackgroundCheckpointCompleted() {
+      post(name: backgroundCheckpointCompleted)
+    }
+
+    private static func post(name: String) {
       CFNotificationCenterPostNotification(
         CFNotificationCenterGetDarwinNotifyCenter(),
-        CFNotificationName(backgroundCheckpointCompleted as CFString),
+        CFNotificationName(name as CFString),
         nil,
         nil,
         true

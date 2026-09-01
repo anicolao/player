@@ -396,10 +396,14 @@ func backgroundAndReactivateApplication(
   _ application: XCUIApplication,
   requiring interactiveElement: XCUIElement
 ) -> Bool {
+  guard let inactiveReceipt = DarwinEventReceipt(
+    name: "com.spnss.player.e2e.scene-became-inactive"
+  ) else { return false }
   guard let backgroundReceipt = DarwinEventReceipt(
     name: "com.spnss.player.e2e.background-checkpoint-completed"
   ) else { return false }
   XCUIDevice.shared.press(.home)
+  guard inactiveReceipt.wait(timeout: 2) else { return false }
   guard backgroundReceipt.wait(timeout: 2) else { return false }
 
   application.activate()

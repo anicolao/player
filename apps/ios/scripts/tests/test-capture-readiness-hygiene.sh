@@ -232,22 +232,29 @@ for evidence in (
 PY
 rg -Fq 'backgroundReceipt.wait(timeout: 2)' \
   "${ui_test_root}/TestStepHelper.swift"
+rg -Fq 'inactiveReceipt.wait(timeout: 2)' \
+  "${ui_test_root}/TestStepHelper.swift"
+rg -Fq 'E2ELifecycleEvent.postSceneBecameInactive()' \
+  "${script_dir}/../../Player/ContentView.swift"
+rg -Fq 'com.spnss.player.e2e.scene-became-inactive' \
+  "${script_dir}/../../Player/E2ELaunchEnvironment.swift"
 python3 - "${ui_test_root}/TestStepHelper.swift" <<'PY'
 import sys
 from pathlib import Path
 
 source = Path(sys.argv[1]).read_text()
 home = source.index('XCUIDevice.shared.press(.home)')
-checkpoint = source.index('backgroundReceipt.wait(timeout: 2)', home)
+inactive = source.index('inactiveReceipt.wait(timeout: 2)', home)
+checkpoint = source.index('backgroundReceipt.wait(timeout: 2)', inactive)
 app_activation = source.index('application.activate()', checkpoint)
-if not home < checkpoint < app_activation:
+if not home < inactive < checkpoint < app_activation:
     raise SystemExit(
-        'lifecycle hygiene requires Home, the completed production checkpoint, then app activation'
+        'lifecycle hygiene requires Home, production inactive, completed background checkpoint, then app activation'
     )
-segment = source[home:checkpoint]
+segment = source[home:inactive]
 if 'springboard.activate()' in segment or '.runningForeground' in segment:
     raise SystemExit(
-        'lifecycle hygiene rejects sampled SpringBoard state before the stronger production checkpoint'
+        'lifecycle hygiene rejects sampled SpringBoard state before the stronger production scene receipts'
     )
 PY
 for slider_source in \

@@ -298,6 +298,10 @@ struct ContentView: View {
             E2ELifecycleEvent.postBackgroundCheckpointCompleted()
           #endif
         }
+      case .inactive:
+        #if E2E
+          E2ELifecycleEvent.postSceneBecameInactive()
+        #endif
       default:
         break
       }
