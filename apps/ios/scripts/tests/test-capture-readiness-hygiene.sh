@@ -412,6 +412,64 @@ rg -Fq 'requiresScrollableRange: true' \
   "${ui_test_root}/BookmarkUITests.swift"
 rg -Fq 'terminalEndpoint: \.atBottom' \
   "${ui_test_root}/BookmarkUITests.swift"
+python3 - "${ui_test_root}/BookmarkUITests.swift" <<'PY'
+import pathlib
+import sys
+
+source = pathlib.Path(sys.argv[1]).read_text()
+start = source.index('  private func revealBookmarkRow(')
+end = source.index('  private func bookmarkFrameIsUnobscured(', start)
+helper = source[start:end]
+required = (
+    'permitsGeometrySettledFallback: true',
+    '{ surface.state()?.atBottom == true }',
+    'requiresHittable: false',
+    'visible at the proven bottom endpoint',
+)
+missing = [pattern for pattern in required if pattern not in helper]
+if missing:
+    raise SystemExit(
+        'bookmark reveal hygiene requires correlated bottom geometry and a '
+        f'noninteractive visibility assertion; missing={missing}'
+    )
+if 'row.exists && row.isHittable' in helper:
+    raise SystemExit(
+        'bookmark reveal hygiene rejects stale hittability as a read-only row precondition'
+    )
+PY
+python3 - "${ui_test_root}/SleepTimerUITests.swift" <<'PY'
+import pathlib
+import sys
+
+source = pathlib.Path(sys.argv[1]).read_text()
+start = source.index('  private func assertEveryProductionSelection() throws {')
+end = source.index('  private func assertReplacementCancellationAndHistoryPersist()', start)
+helper = source[start:end]
+if helper.count('app.launch()') != 1:
+    raise SystemExit(
+        'sleep-timer selection hygiene requires one app launch for all production choices'
+    )
+if helper.count('SelectionCase(') != 8:
+    raise SystemExit(
+        'sleep-timer selection hygiene requires all eight production choices'
+    )
+required = (
+    'namespace: "all-selections"',
+    'for (index, selection) in selections.enumerated()',
+    'selection.fade != currentFade',
+    'historyCount: index',
+    'XCTAssertEqual(probe["latest"], "replaced")',
+    'XCTAssertTrue(terminateAndWait(app))',
+)
+missing = [pattern for pattern in required if pattern not in helper]
+if missing:
+    raise SystemExit(
+        'sleep-timer selection hygiene requires same-session production replacement '
+        f'and exact receipts; missing={missing}'
+    )
+PY
+rg -Fq 'case allSelections = "all-selections"' \
+  "${ui_test_root}/../Player/E2ELaunchEnvironment.swift"
 if rg -Fq 'add.tap()' "${ui_test_root}/BookmarkUITests.swift"; then
   echo 'bookmark hygiene rejects unacknowledged Add Bookmark taps' >&2
   exit 1

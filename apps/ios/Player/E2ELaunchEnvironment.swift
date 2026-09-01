@@ -455,6 +455,7 @@ private final class E2EFixtureResetLease: @unchecked Sendable {
   enum E2ESleepTimerNamespace: String, CaseIterable {
     static let argument = "-e2e-sleep-timer-namespace"
 
+    case allSelections = "all-selections"
     case preset10 = "preset-10"
     case preset15 = "preset-15"
     case preset30 = "preset-30"

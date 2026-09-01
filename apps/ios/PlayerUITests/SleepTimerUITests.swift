@@ -28,26 +28,33 @@ final class SleepTimerUITests: PlayerUITestCase {
 
   private func assertEveryProductionSelection() throws {
     let selections = [
-      SelectionCase(namespace: "preset-10", buttonID: "sleep-timer-preset-10", token: "preset-10", remaining: 600, target: nil, fade: true),
-      SelectionCase(namespace: "preset-15", buttonID: "sleep-timer-preset-15", token: "preset-15", remaining: 900, target: nil, fade: true),
-      SelectionCase(namespace: "preset-30", buttonID: "sleep-timer-preset-30", token: "preset-30", remaining: 1_800, target: nil, fade: true),
-      SelectionCase(namespace: "preset-45", buttonID: "sleep-timer-preset-45", token: "preset-45", remaining: 2_700, target: nil, fade: false),
-      SelectionCase(namespace: "preset-60", buttonID: "sleep-timer-preset-60", token: "preset-60", remaining: 3_600, target: nil, fade: true),
-      SelectionCase(namespace: "custom-25", buttonID: "start-custom-sleep-timer", token: "custom-1500", remaining: 1_500, target: nil, fade: true, custom: true),
-      SelectionCase(namespace: "end-chapter", buttonID: "sleep-timer-end-chapter", token: "end-chapter", remaining: 50, target: 120_000, fade: true),
-      SelectionCase(namespace: "end-track", buttonID: "sleep-timer-end-track", token: "end-track", remaining: 20, target: 90_000, fade: true),
+      SelectionCase(buttonID: "sleep-timer-preset-10", token: "preset-10", remaining: 600, target: nil, fade: true),
+      SelectionCase(buttonID: "sleep-timer-preset-15", token: "preset-15", remaining: 900, target: nil, fade: true),
+      SelectionCase(buttonID: "sleep-timer-preset-30", token: "preset-30", remaining: 1_800, target: nil, fade: true),
+      SelectionCase(buttonID: "sleep-timer-preset-45", token: "preset-45", remaining: 2_700, target: nil, fade: false),
+      SelectionCase(buttonID: "sleep-timer-preset-60", token: "preset-60", remaining: 3_600, target: nil, fade: true),
+      SelectionCase(buttonID: "start-custom-sleep-timer", token: "custom-1500", remaining: 1_500, target: nil, fade: true, custom: true),
+      SelectionCase(buttonID: "sleep-timer-end-chapter", token: "end-chapter", remaining: 50, target: 120_000, fade: true),
+      SelectionCase(buttonID: "sleep-timer-end-track", token: "end-track", remaining: 20, target: 90_000, fade: true),
     ]
 
-    for selection in selections {
-      let app = makeApplication(namespace: selection.namespace, reset: true)
-      app.launch()
-      try openNowPlaying(app)
-      let screen = try openSleepTimer(app)
-      if !selection.fade {
+    let app = makeApplication(namespace: "all-selections", reset: true)
+    app.launch()
+    try openNowPlaying(app)
+    var currentFade = true
+    var previousTimerID: String?
+
+    for (index, selection) in selections.enumerated() {
+      _ = try openSleepTimer(app)
+      if selection.fade != currentFade {
         let toggle = app.switches["sleep-timer-fade"]
         XCTAssertTrue(toggle.waitForExistence(timeout: 2))
         tapTrailingSwitchControl(toggle)
-        try requireValue(screen, "sleep-timer:active=none:fade=false:history=0")
+        XCTAssertTrue(
+          toggle.waitForStringValue(selection.fade ? "1" : "0", timeout: 2),
+          "The production fade toggle must publish its selected state"
+        )
+        currentFade = selection.fade
       }
       if selection.custom {
         let picker = app.buttons["sleep-timer-custom-picker"]
@@ -60,18 +67,27 @@ final class SleepTimerUITests: PlayerUITestCase {
         option.tap()
       }
       try tapWhenHittable(app.buttons[selection.buttonID], in: app)
-      let probe = try requireProbe(app, active: timer101)
+      let timerID = sleepTimerID(suffix: index == 0 ? 101 : 100 + (index * 2))
+      let probe = try requireProbe(app, active: timerID, historyCount: index)
       XCTAssertEqual(probe["selection"], selection.token)
       XCTAssertEqual(probe["fade"], String(selection.fade))
       XCTAssertEqual(probe["phase"], "active")
       XCTAssertEqual(probe["remaining"], String(selection.remaining))
       XCTAssertEqual(probe["target"], selection.target.map(String.init) ?? "none")
-      XCTAssertEqual(probe["history"], "0")
+      XCTAssertEqual(probe["history"], String(index))
       XCTAssertEqual(probe["rewinds"], "0")
       XCTAssertEqual(probe["position"], "70000")
       XCTAssertEqual(probe.journal, "1:pause@70000")
-      XCTAssertTrue(terminateAndWait(app))
+      if let previousTimerID {
+        XCTAssertEqual(probe["latest"], "replaced")
+        XCTAssertEqual(probe["history-id"], sleepTimerID(suffix: 101 + (index * 2)))
+        XCTAssertEqual(probe["history-timer"], previousTimerID)
+      } else {
+        XCTAssertEqual(probe["latest"], "none")
+      }
+      previousTimerID = timerID
     }
+    XCTAssertTrue(terminateAndWait(app))
   }
 
   private func assertReplacementCancellationAndHistoryPersist() throws {
@@ -506,10 +522,13 @@ final class SleepTimerUITests: PlayerUITestCase {
     app.launchEnvironment["TZ"] = "America/Toronto"
     return app
   }
+
+  private func sleepTimerID(suffix: Int) -> String {
+    String(format: "52000000-0000-0000-0000-%012d", suffix)
+  }
 }
 
 private struct SelectionCase {
-  var namespace: String
   var buttonID: String
   var token: String
   var remaining: Int
