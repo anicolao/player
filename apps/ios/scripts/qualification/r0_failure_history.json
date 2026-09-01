@@ -3137,6 +3137,30 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
+    },
+    {
+      "signature": "ui-test:SafeZIPImportUITests.testRejectsHostileZIPsThenCancelsAndRetriesAValidArchive:zip-selection-gesture-unacknowledged",
+      "story": "006-safe-zip-import",
+      "evidence": {
+        "workflowRun": 33452975911,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions Story 006 artifact 9780898828 retains the exact xcresult, failure screenshot, test interaction trace, and complete story evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33452975911/job/99688910412",
+        "commit": "f7723136ffb7c505347d1b83ab99c6b5ad52f587",
+        "observation": "For the ratio-limit archive, XCUI completed interrupt checks and synthesized the Choose from Files tap, but the production ZIP probe remained at the exact idle state until the two-second semantic deadline. No processing, rejection, import job, or navigation receipt appeared, so the selector failed before later hostile cases rather than assuming the returned tap reached SwiftUI."
+      },
+      "rootCause": "The Safe ZIP journey treated return from XCUIElement.tap() as proof that SwiftUI accepted the injected Files selection. A dropped gesture had no causal delivery receipt and no origin-safe redelivery path, even though accepted delivery synchronously leaves the empty Library before asynchronous ZIP inspection begins.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Synthesize the Files selection without post-event quiescence and require the independently published terminal ZIP probe within one two-second post-synthesis deadline. Redeliver only while the same foreground-interactive button frame, exact empty Library state, and exact case-specific idle probe all remain unchanged; otherwise wait for the original delivery's terminal receipt without touching the new surface.",
+        "commits": [
+          "b053a3f81d7c2dc41f8a0c576cf4d2bcb14d8cee"
+        ],
+        "validation": "Two complete fresh-simulator Story 006 runs passed both canonical selectors. The formerly failing hostile-archive selector passed in 42.192 and 44.393 seconds across traversal, symlink, ratio, count, size, transient-failure retry, and valid-review paths. Both runs produced all three pixel-exact screenshots and the exact walkthrough README. Source hygiene rejects raw Files-selection taps in this journey and enforces synthesis before the bounded terminal-receipt deadline plus all three unchanged-origin guards."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no accepted consecutive qualification count."
     }
   ]
 }
