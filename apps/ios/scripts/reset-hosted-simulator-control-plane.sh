@@ -12,8 +12,20 @@ run_with_two_second_deadline() {
   /usr/bin/perl -e 'alarm shift; exec @ARGV or exit 127' 2 "$@"
 }
 
-# Ask launchd to terminate the stale service asynchronously. The immediately
-# following exact simulator lease acquisition is the readiness event: it cannot
-# return a simulator ID until launchd has served the create request. Do not add
-# a second blocking restart/inventory phase, sleep, retry, or product prelaunch.
+# Ask launchd to terminate the stale service asynchronously. A missing service
+# is already the requested terminal state; launchctl reports that state as 113.
+# Reject every other failure. The immediately following exact simulator lease
+# acquisition is the readiness event: it cannot return a simulator ID until
+# launchd has served the create request. Do not add a second blocking
+# restart/inventory phase, sleep, retry, or product prelaunch.
+set +e
 run_with_two_second_deadline launchctl kill SIGKILL "${service_target}"
+reset_status=$?
+set -e
+case "${reset_status}" in
+  0|113)
+    ;;
+  *)
+    exit "${reset_status}"
+    ;;
+esac

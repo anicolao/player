@@ -441,6 +441,7 @@ cat > "${control_plane_fake_bin}/launchctl" <<'EOF'
 set -euo pipefail
 printf 'launchctl\t%s\n' "$*" >> "${PLAYER_CONTROL_PLANE_LOG}"
 [[ "$*" == "kill SIGKILL user/$(id -u)/com.apple.CoreSimulator.CoreSimulatorService" ]]
+exit "${PLAYER_CONTROL_PLANE_EXIT_CODE:-0}"
 EOF
 chmod +x "${control_plane_fake_bin}/launchctl"
 if env PATH="${control_plane_fake_bin}:${PATH}" \
@@ -455,6 +456,18 @@ env PATH="${control_plane_fake_bin}:${PATH}" \
   || fail "hosted simulator reset did not perform exactly one asynchronous termination"
 [[ "$(sed -n '1p' "${control_plane_log}")" == $'launchctl\tkill SIGKILL user/'* ]] \
   || fail "hosted simulator reset did not target the exact per-user service"
+env PATH="${control_plane_fake_bin}:${PATH}" \
+  PLAYER_CONTROL_PLANE_LOG="${control_plane_log}" \
+  PLAYER_CONTROL_PLANE_EXIT_CODE=113 \
+  GITHUB_ACTIONS=true "${control_plane_reset}"
+if env PATH="${control_plane_fake_bin}:${PATH}" \
+  PLAYER_CONTROL_PLANE_LOG="${control_plane_log}" \
+  PLAYER_CONTROL_PLANE_EXIT_CODE=1 \
+  GITHUB_ACTIONS=true "${control_plane_reset}" >/dev/null 2>&1; then
+  fail "hosted simulator reset accepted an unknown launchctl failure"
+fi
+[[ "$(wc -l < "${control_plane_log}" | tr -d ' ')" == 3 ]] \
+  || fail "hosted simulator reset retried instead of accepting one terminal event"
 for destination_source in \
   "${run_e2e}" \
   "${ios_scripts}/run-e2e-shard.sh" \
