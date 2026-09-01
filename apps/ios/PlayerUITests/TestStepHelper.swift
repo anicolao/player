@@ -1,6 +1,5 @@
 import Darwin
 import XCTest
-import UniformTypeIdentifiers
 
 @MainActor
 func bookshelfApplication() -> XCUIApplication {
@@ -9,22 +8,6 @@ func bookshelfApplication() -> XCUIApplication {
 
 @MainActor
 class PlayerUITestCase: XCTestCase {
-  private var retainedFailureScreen = false
-
-  override func record(_ issue: XCTIssue) {
-    if !retainedFailureScreen {
-      retainedFailureScreen = true
-      let screenshot = XCUIScreen.main.screenshot()
-      let attachment = XCTAttachment(
-        data: screenshot.pngRepresentation,
-        uniformTypeIdentifier: UTType.png.identifier
-      )
-      attachment.name = "xctest-failure-screen.png"
-      attachment.lifetime = .keepAlways
-      add(attachment)
-    }
-    super.record(issue)
-  }
 }
 
 enum E2EScrollAxis: String, Equatable {

@@ -69,29 +69,21 @@ if rg -n --regexp 'class [A-Za-z0-9]+UITests: ' \
   | rg -v ': PlayerUITestCase \{' \
   > "${temporary_root}/failure-screen-superclass.log"; then
   cat "${temporary_root}/failure-screen-superclass.log" >&2
-  echo 'failure-evidence hygiene requires every UI-test class to retain a failure screenshot' >&2
+  echo 'failure-evidence hygiene requires every UI-test class to use the shared failure-evidence harness' >&2
   exit 1
 fi
-for retained_failure_pattern in \
-  'class PlayerUITestCase: XCTestCase' \
-  'override func record(_ issue: XCTIssue)' \
-  'data: screenshot.pngRepresentation' \
-  'uniformTypeIdentifier: UTType.png.identifier' \
-  'attachment.name = "xctest-failure-screen.png"' \
-  'attachment.lifetime = .keepAlways' \
-  'add(attachment)' \
-  'super.record(issue)'; do
-  rg -Fq "${retained_failure_pattern}" "${ui_test_root}/TestStepHelper.swift" || {
-    echo "failure-evidence hygiene is missing: ${retained_failure_pattern}" >&2
-    exit 1
-  }
-done
+rg -Fq 'class PlayerUITestCase: XCTestCase' \
+  "${ui_test_root}/TestStepHelper.swift" || {
+  echo 'failure-evidence hygiene is missing the shared UI-test superclass' >&2
+  exit 1
+}
 player_ui_test_case="$({
   sed -n '/^class PlayerUITestCase: XCTestCase {/,/^}/p' \
     "${ui_test_root}/TestStepHelper.swift"
 })"
-if rg -Fq 'XCTAttachment(screenshot:' <<< "${player_ui_test_case}"; then
-  echo 'failure-evidence hygiene rejected an attachment whose encoded type XCTest may change' >&2
+if rg -q --regexp 'override func record|XCUIScreen\.main\.screenshot|XCTAttachment' \
+  <<< "${player_ui_test_case}"; then
+  echo 'failure-evidence hygiene rejected blocking in-process failure capture' >&2
   exit 1
 fi
 
