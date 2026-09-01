@@ -395,6 +395,18 @@ if rg -Fq 'add.tap()' "${ui_test_root}/BookmarkUITests.swift"; then
 fi
 rg -Fq 'deliverPhysicalActionAcknowledgedByDisabling(' \
   "${ui_test_root}/BookmarkUITests.swift"
+rg -Fq 'DarwinEventReceipt(' \
+  "${ui_test_root}/BookmarkUITests.swift"
+rg -Fq 'name: "com.spnss.player.e2e.text-input-focused"' \
+  "${ui_test_root}/BookmarkUITests.swift"
+rg -Fq 'focusReceipt.wait(timeout: 2)' \
+  "${ui_test_root}/BookmarkUITests.swift"
+rg -Fq 'performPhysicalInteractionWithoutPostEventQuiescence(in: app)' \
+  "${ui_test_root}/BookmarkUITests.swift"
+if rg -Fq 'focusProbe.waitForStringValue' "${ui_test_root}/BookmarkUITests.swift"; then
+  echo 'bookmark hygiene rejects accessibility polling as a text-input focus receipt' >&2
+  exit 1
+fi
 if rg -Fq 'verify.tap()' "${ui_test_root}/OfflineRecoveryUITests.swift"; then
   echo 'offline diagnostics hygiene rejects an unacknowledged verification tap' >&2
   exit 1

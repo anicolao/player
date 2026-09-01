@@ -586,23 +586,22 @@ final class BookmarkUITests: PlayerUITestCase {
     let elementType = field.elementType
     let currentField = app.descendants(matching: elementType)[identifier]
     XCTAssertTrue(currentField.waitForExistence(timeout: 2))
-    XCTAssertTrue(resolveAppleIntelligenceNotification(testCase: self))
-    currentField.tap()
-
-    let focusExpectation: (identifier: String, value: String)
-    switch identifier {
-    case "bookmark-search": focusExpectation = ("bookmark-search-focus-state", "focused")
-    case "bookmark-label-editor": focusExpectation = ("bookmark-editor-focus-state", "label")
-    case "bookmark-note-editor": focusExpectation = ("bookmark-editor-focus-state", "note")
-    case "library-search-input": focusExpectation = ("library-search-focus-state", "focused")
-    default:
-      XCTFail("No observable focus state is defined for \(identifier)")
+    guard let focusReceipt = DarwinEventReceipt(
+      name: "com.spnss.player.e2e.text-input-focused"
+    ) else {
+      XCTFail("Expected the Darwin focus receipt to register")
       return
     }
-    let focusProbe = app.descendants(matching: .any)[focusExpectation.identifier]
+    XCTAssertTrue(resolveAppleIntelligenceNotification(testCase: self))
     XCTAssertTrue(
-      focusProbe.waitForStringValue(focusExpectation.value, timeout: 2),
-      "Expected \(identifier) to acquire focus before typing"
+      performPhysicalInteractionWithoutPostEventQuiescence(in: app) {
+        currentField.tap()
+      },
+      "Expected the pinned XCTest runtime to synthesize focus for \(identifier)"
+    )
+    XCTAssertTrue(
+      focusReceipt.wait(timeout: 2),
+      "Expected \(identifier) to publish its production focus event before typing"
     )
     currentField.typeText(text)
 

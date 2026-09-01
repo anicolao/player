@@ -44,6 +44,11 @@ struct LibrarySearchView: View {
       index = build.index
       isIndexed = true
     }
+    #if E2E
+      .onChange(of: isSearchFocused) { _, focused in
+        if focused { E2EOperationEvent.postTextInputFocused() }
+      }
+    #endif
   }
 
   private var searchField: some View {

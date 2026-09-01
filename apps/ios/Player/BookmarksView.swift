@@ -59,6 +59,9 @@ struct BookmarksView: View {
           E2EBookmarkStateProbe(model: model)
         }
       }
+      .onChange(of: isSearchFocused) { _, focused in
+        if focused { E2EOperationEvent.postTextInputFocused() }
+      }
     #endif
   }
 
@@ -352,6 +355,9 @@ private struct BookmarkEditorView: View {
             )
             StateProbe(id: "bookmark-note-editor-value", value: note)
           }
+        }
+        .onChange(of: focusedField) { _, field in
+          if field != nil { E2EOperationEvent.postTextInputFocused() }
         }
       #endif
     }
