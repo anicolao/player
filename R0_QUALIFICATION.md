@@ -20,22 +20,41 @@ checkout that does not resolve to that exact SHA.
 
 The gate deliberately has two phases:
 
-1. Five macOS story lanes run every canonical story ten consecutive times.
-   Each measured attempt gets a fresh simulator and complete retained evidence.
-2. After every story reaches 10/10, five macOS lanes run five logical copies of
-   the production CI matrix. A logical matrix is the union of the same numbered
-   attempt from all five lanes. Every matrix attempt uses a fresh detached
-   worktree and fresh story simulators; lane 1 also repeats core and fixture
+1. All 130 canonical story attempts (13 stories times 10) are independently
+   scheduled. Each attempt gets a fresh hosted macOS runner, fresh simulator,
+   and complete retained evidence.
+2. After every story reaches 10/10, 25 independently scheduled matrix-lane
+   attempts run five logical copies of the production CI matrix. A logical
+   matrix is the union of the same numbered attempt from all five balanced
+   lanes. Every lane attempt gets a fresh hosted runner and fresh story
+   simulators; the lane containing the core gate repeats core and fixture
    verification. The lane containing Story 013 also runs the same App Store
    asset renderer as production CI and retains all seven rendered PNGs.
 
-Each story-qualification lane verifies and generates once, then shares one
-compiled test bundle across its stories and ten attempts. Each matrix lane
-creates a fresh build for every logical matrix and reuses it only across that
-lane's stories in that matrix. The qualification scripts hash every file in
-each shared build after its creation and again after its permitted reuse. A
-changed build invalidates the qualification. Source SHA and tracked-worktree
-cleanliness are checked between attempts.
+One exact-SHA producer creates the compiled test bundle used by every measured
+job. Each consumer verifies its checksum and provenance before use, and the
+qualification scripts hash the permitted shared product before and after each
+lane. A changed build invalidates the qualification. Source SHA and
+tracked-worktree cleanliness are checked between attempts. The repository's
+five-runner account limit controls admission; the lane partition is balanced
+from accepted green hosted timings so the complete-matrix phase has no
+arbitrary long tail.
+
+The checked-in qualification reference gives the following predicted lane
+loads. Story 013 includes its 11-second renderer phase, and lane 2 includes the
+108-second fixture plus 100-second core-test phases.
+
+| Lane | Work | Reference load |
+| --- | --- | ---: |
+| 1 | 007, 002 | 25m16s |
+| 2 | 004, 009, core/fixtures | 25m11s |
+| 3 | 005, 013/renderer, 012 | 25m26s |
+| 4 | 001, 006, 003 | 25m38s |
+| 5 | 008, 010, 011 | 25m26s |
+
+That reduces the predicted longest lane from 29m42s to 25m38s and leaves only
+27 seconds between the shortest and longest lanes, without changing any story,
+selector, core, fixture, or renderer coverage.
 
 Test failures never stop later scheduled attempts and are never retried. The
 lane records the first supported failure signature and exits unsuccessfully

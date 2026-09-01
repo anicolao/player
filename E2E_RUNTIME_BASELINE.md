@@ -276,6 +276,28 @@ gate, add a test retry, or change the two-second event deadline. The measured
 before/after result; the allocation model is retained only to document how the
 layout was selected.
 
+### Fresh-host formal matrix rebalance
+
+The independently scheduled formal matrix jobs consume one provenance-bound
+build, so their relevant lane weights are the checked-in qualification story
+and phase times rather than normal-CI job totals that each include fresh-host
+checkout and artifact setup. The exact five-bin allocation below includes all
+13 stories once, the 11-second renderer with Story 013, and the 208-second
+core/fixture gate once.
+
+| Lane | Canonical work | Reference load |
+| --- | --- | ---: |
+| 1 | 007 sleep timer; 002 import and play | 25m16s |
+| 2 | 004 metadata repair; 009 accessible core journeys; core and fixtures | 25m11s |
+| 3 | 005 play and restore; 013 App Store listing and renderer; 012 monetization | 25m26s |
+| 4 | 001 iOS launch; 006 safe ZIP import; 003 multifile grouping | 25m38s |
+| 5 | 008 library search; 010 library backup; 011 offline recovery | 25m26s |
+
+The predicted critical lane falls from the reference allocation's 29m42s to
+25m38s (-4m04s, -13.7%), and the new predicted spread is 27 seconds. This is a
+coverage-neutral scheduling change; the formal report will publish the actual
+five-matrix distribution rather than treating this model as measured fact.
+
 ## Pre-remediation CI critical path
 
 The successful [GitHub Actions run](https://github.com/anicolao/player/actions/runs/33124661556)

@@ -316,11 +316,11 @@ jobs:
           EXPECTED_SHA: ${{ inputs.expected_sha }}
         run: |
           case "${LANE}" in
-            lane-1) stories='["004-metadata-repair","012-monetization"]'; run_core=true ;;
-            lane-2) stories='["005-play-and-restore","011-offline-recovery","003-multifile-grouping"]'; run_core=false ;;
-            lane-3) stories='["007-sleep-timer","008-library-search"]'; run_core=false ;;
-            lane-4) stories='["001-ios-launch","002-import-and-play","010-library-backup"]'; run_core=false ;;
-            lane-5) stories='["006-safe-zip-import","009-accessible-core-journeys","013-app-store-listing"]'; run_core=false ;;
+            lane-1) stories='["007-sleep-timer","002-import-and-play"]'; run_core=false ;;
+            lane-2) stories='["004-metadata-repair","009-accessible-core-journeys"]'; run_core=true ;;
+            lane-3) stories='["005-play-and-restore","013-app-store-listing","012-monetization"]'; run_core=false ;;
+            lane-4) stories='["001-ios-launch","006-safe-zip-import","003-multifile-grouping"]'; run_core=false ;;
+            lane-5) stories='["008-library-search","010-library-backup","011-offline-recovery"]'; run_core=false ;;
             *) exit 2 ;;
           esac
           arguments=(--lane "${LANE}" --sha "${EXPECTED_SHA}" --matrices 1 \

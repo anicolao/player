@@ -347,6 +347,15 @@ cmp "${temporary_root}/manifest-stories" \
 [[ "$(sed -n '/^  matrix-qualification:/,/^  qualification-report:/p' \
   "${qualification_workflow}" | rg -c 'run_core=true')" -eq 1 ]] \
   || fail "core and fixture tests must run in exactly one formal matrix lane"
+for formal_lane in \
+  'lane-1) stories='\''["007-sleep-timer","002-import-and-play"]'\''; run_core=false ;;' \
+  'lane-2) stories='\''["004-metadata-repair","009-accessible-core-journeys"]'\''; run_core=true ;;' \
+  'lane-3) stories='\''["005-play-and-restore","013-app-store-listing","012-monetization"]'\''; run_core=false ;;' \
+  'lane-4) stories='\''["001-ios-launch","006-safe-zip-import","003-multifile-grouping"]'\''; run_core=false ;;' \
+  'lane-5) stories='\''["008-library-search","010-library-backup","011-offline-recovery"]'\''; run_core=false ;;'; do
+  rg -Fq "${formal_lane}" "${qualification_workflow}" \
+    || fail "formal matrix qualification is missing balanced ${formal_lane%%)*}"
+done
 story_lane_count="$(sed -n '/^  story-qualification:/,/^  story-gate:/p' \
   "${qualification_workflow}" \
   | rg -c '^[[:space:]]+- [0-9]{3}-[a-z0-9][a-z0-9-]*$')"
