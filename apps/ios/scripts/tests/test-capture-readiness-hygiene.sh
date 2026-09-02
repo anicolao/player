@@ -196,6 +196,38 @@ if rg -n -U --regexp 'XCUIDevice\.shared\.press\(\.home\)\n[[:space:]]*app\.acti
   echo 'lifecycle hygiene rejected app activation before SpringBoard acknowledged Home' >&2
   exit 1
 fi
+content_view_source="${script_dir}/../../Player/ContentView.swift"
+player_model_source="${script_dir}/../../Player/Core/PlayerModel.swift"
+rg -Fq 'model.prepareBackgroundCheckpoint()' "${content_view_source}" || {
+  echo 'lifecycle hygiene requires inactive-phase durable-checkpoint preparation' >&2
+  exit 1
+}
+rg -Fq 'if previousPhase == .active {' "${content_view_source}" || {
+  echo 'lifecycle hygiene requires checkpoint preparation only on active-to-inactive transitions' >&2
+  exit 1
+}
+rg -Fq 'await model.checkpointForBackground()' "${content_view_source}" || {
+  echo 'lifecycle hygiene requires background to join the prepared checkpoint' >&2
+  exit 1
+}
+rg -Fq 'await precedingTask?.value' "${player_model_source}" || {
+  echo 'lifecycle hygiene requires refreshed checkpoints to serialize behind prior persistence' >&2
+  exit 1
+}
+python3 - "${content_view_source}" <<'PY'
+import sys
+from pathlib import Path
+
+source = Path(sys.argv[1]).read_text()
+inactive = source.index("case .inactive:")
+prepare = source.index("model.prepareBackgroundCheckpoint()", inactive)
+background = source.index("case .background:")
+join = source.index("await model.checkpointForBackground()", background)
+if not (background < join < inactive < prepare):
+    raise SystemExit(
+        "lifecycle hygiene requires background to join and inactive to prepare the same checkpoint"
+    )
+PY
 metadata_editing_source="${ui_test_root}/CommittedMetadataEditingUITests.swift"
 python3 - "${metadata_editing_source}" <<'PY'
 import sys

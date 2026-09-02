@@ -1786,7 +1786,7 @@ final class PlayerCoreTests: XCTestCase {
       harness.model.library.positionJournal.map(\.reason),
       [.play, .pause, .play, .seek, .seek, .seek, .pause]
     )
-    let persisted = await harness.store.load()
+    let persisted = try await harness.store.load()
     XCTAssertEqual(persisted.playbackPosition?.positionMilliseconds, 42_000)
   }
 
@@ -1801,7 +1801,7 @@ final class PlayerCoreTests: XCTestCase {
 
     XCTAssertEqual(harness.model.library.positionJournal.last?.reason, .background)
     XCTAssertEqual(harness.model.library.playbackPosition?.positionMilliseconds, 63_456)
-    let persisted = await harness.store.load()
+    let persisted = try await harness.store.load()
     XCTAssertEqual(persisted.playbackPosition?.positionMilliseconds, 63_456)
     XCTAssertEqual(
       try XCTUnwrap(harness.nowPlaying.latest?.elapsedSeconds),
@@ -1809,6 +1809,44 @@ final class PlayerCoreTests: XCTestCase {
       accuracy: 0.000_1
     )
     XCTAssertEqual(harness.nowPlaying.latest?.playbackRate, 1)
+  }
+
+  func testInactivePreparationStartsTheExactBackgroundCheckpointWithoutDuplicatingIt() async throws {
+    let book = makeBook(duration: 120)
+    let saveStarted = expectation(
+      description: "The inactive phase starts durable playback persistence"
+    )
+    let store = GatedBackgroundCheckpointStore(
+      snapshot: LibrarySnapshot(books: [book], importJobs: [], currentBookID: book.id),
+      saveStarted: saveStarted
+    )
+    let harness = makeBackgroundPlaybackHarness(book: book, store: store)
+    await harness.model.restore()
+    await harness.model.play(bookID: book.id)
+    await harness.playback.seek(to: 63.4567)
+    await store.gateNextSave()
+
+    harness.model.prepareBackgroundCheckpoint()
+    await fulfillment(of: [saveStarted], timeout: 2)
+
+    XCTAssertEqual(
+      harness.model.library.positionJournal.filter { $0.reason == .background }.count,
+      1,
+      "Inactive preparation must start exactly one background position transaction"
+    )
+    let completion = Task { @MainActor in
+      await harness.model.checkpointForBackground()
+    }
+    await store.releaseSave()
+    await completion.value
+
+    XCTAssertEqual(
+      harness.model.library.positionJournal.filter { $0.reason == .background }.count,
+      1,
+      "The background phase must join the prepared transaction instead of duplicating it"
+    )
+    let persisted = await store.load()
+    XCTAssertEqual(persisted.playbackPosition?.positionMilliseconds, 63_456)
   }
 
   func testBackgroundTransitionDoesNotDuplicateAnAlreadyDurablePause() async throws {
@@ -1870,7 +1908,7 @@ final class PlayerCoreTests: XCTestCase {
       harness.model.library.positionJournal.map(\.reason),
       [.play, .interruption, .play]
     )
-    let durable = await harness.store.load()
+    let durable = try await harness.store.load()
     XCTAssertEqual(durable.playbackPosition?.positionMilliseconds, 65_000)
     XCTAssertEqual(harness.nowPlaying.latest?.elapsedSeconds, 65)
     XCTAssertEqual(harness.nowPlaying.latest?.playbackRate, 1)
@@ -1896,7 +1934,7 @@ final class PlayerCoreTests: XCTestCase {
     XCTAssertEqual(harness.model.playbackState.status, .paused)
     XCTAssertEqual(harness.model.playbackState.elapsedSeconds, 65, accuracy: 0.001)
     XCTAssertEqual(harness.model.library.positionJournal, journalBeforeRouteLoss)
-    let durable = await harness.store.load()
+    let durable = try await harness.store.load()
     XCTAssertEqual(durable.playbackPosition?.positionMilliseconds, 65_000)
     XCTAssertEqual(harness.nowPlaying.latest?.playbackRate, 0)
   }
@@ -2782,6 +2820,16 @@ final class PlayerCoreTests: XCTestCase {
     let store = InMemoryLibraryStore(
       snapshot: LibrarySnapshot(books: [book], importJobs: [], currentBookID: book.id)
     )
+    return makeBackgroundPlaybackHarness(book: book, store: store, clock: clock)
+  }
+
+  private func makeBackgroundPlaybackHarness(
+    book: Book,
+    store: any LibraryPersisting,
+    clock: any PlayerClock = FixedPlayerClock(
+      value: Date(timeIntervalSince1970: 1_700_000_000)
+    )
+  ) -> BackgroundPlaybackHarness {
     let playback = DeterministicPlaybackController()
     let audioSession = DeterministicAudioSessionController()
     let remoteCommands = DeterministicRemoteCommandController()
@@ -2818,11 +2866,45 @@ final class PlayerCoreTests: XCTestCase {
 private struct BackgroundPlaybackHarness {
   let book: Book
   let model: PlayerModel
-  let store: InMemoryLibraryStore
+  let store: any LibraryPersisting
   let playback: DeterministicPlaybackController
   let audioSession: DeterministicAudioSessionController
   let remoteCommands: DeterministicRemoteCommandController
   let nowPlaying: DeterministicNowPlayingPublisher
+}
+
+private actor GatedBackgroundCheckpointStore: LibraryPersisting {
+  private var snapshot: LibrarySnapshot
+  private let saveStarted: XCTestExpectation
+  private var shouldGateNextSave = false
+  private var releaseContinuation: CheckedContinuation<Void, Never>?
+
+  init(snapshot: LibrarySnapshot, saveStarted: XCTestExpectation) {
+    self.snapshot = snapshot
+    self.saveStarted = saveStarted
+  }
+
+  func load() -> LibrarySnapshot { snapshot }
+
+  func save(_ snapshot: LibrarySnapshot) async {
+    if shouldGateNextSave {
+      shouldGateNextSave = false
+      saveStarted.fulfill()
+      await withCheckedContinuation { continuation in
+        releaseContinuation = continuation
+      }
+    }
+    self.snapshot = snapshot
+  }
+
+  func gateNextSave() {
+    shouldGateNextSave = true
+  }
+
+  func releaseSave() {
+    releaseContinuation?.resume()
+    releaseContinuation = nil
+  }
 }
 
 private final class MutableExternalPlaybackClock: PlayerClock, @unchecked Sendable {

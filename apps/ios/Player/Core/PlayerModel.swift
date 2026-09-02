@@ -31,6 +31,9 @@ final class PlayerModel {
   ] = []
   @ObservationIgnored private var sleepTimerMonitorTask: Task<Void, Never>?
   @ObservationIgnored private var monetizationSnapshotTask: Task<Void, Never>?
+  @ObservationIgnored private var preparedBackgroundCheckpointTask: Task<Void, Never>?
+  @ObservationIgnored private var preparedBackgroundCheckpointNeedsRefresh = false
+  @ObservationIgnored private var preparedBackgroundCheckpointGeneration = 0
   @ObservationIgnored private var sleepTimerEvaluationInProgress = false
   @ObservationIgnored private var loadedAssetID: UUID?
   @ObservationIgnored private var loadedAssetTimelineStartSeconds = 0.0
@@ -2853,7 +2856,38 @@ final class PlayerModel {
     await pause(reason: .pause)
   }
 
+  func prepareBackgroundCheckpoint() {
+    guard playbackState.loadedBookID != nil,
+      playbackState.status == .playing
+    else { return }
+    let precedingTask = preparedBackgroundCheckpointTask
+    guard precedingTask == nil || preparedBackgroundCheckpointNeedsRefresh else { return }
+    preparedBackgroundCheckpointNeedsRefresh = false
+    preparedBackgroundCheckpointGeneration += 1
+    preparedBackgroundCheckpointTask = Task { @MainActor [weak self] in
+      await precedingTask?.value
+      await self?.performBackgroundCheckpoint()
+    }
+  }
+
+  func invalidatePreparedBackgroundCheckpoint() {
+    if preparedBackgroundCheckpointTask != nil {
+      preparedBackgroundCheckpointNeedsRefresh = true
+    }
+  }
+
   func checkpointForBackground() async {
+    prepareBackgroundCheckpoint()
+    guard let preparedBackgroundCheckpointTask else { return }
+    let generation = preparedBackgroundCheckpointGeneration
+    await preparedBackgroundCheckpointTask.value
+    if preparedBackgroundCheckpointGeneration == generation {
+      self.preparedBackgroundCheckpointTask = nil
+      preparedBackgroundCheckpointNeedsRefresh = false
+    }
+  }
+
+  private func performBackgroundCheckpoint() async {
     guard playbackState.loadedBookID != nil, playbackState.status == .playing else { return }
     await checkpointPlaybackMeter(force: true)
     await acknowledgePlaybackPosition(

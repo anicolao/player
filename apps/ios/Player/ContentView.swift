@@ -284,9 +284,10 @@ struct ContentView: View {
     .onOpenURL { url in
       acceptDocumentOpen(url)
     }
-    .onChange(of: scenePhase) { _, phase in
+    .onChange(of: scenePhase) { previousPhase, phase in
       switch phase {
       case .active:
+        model.invalidatePreparedBackgroundCheckpoint()
         Task {
           await model.refreshMonetization()
           await drainSharedImports()
@@ -305,6 +306,12 @@ struct ContentView: View {
         #if E2E
           E2ELifecycleEvent.postSceneBecameInactive()
         #endif
+        if previousPhase == .active {
+          // Begin the durable playback checkpoint before UIKit starts its
+          // potentially expensive background snapshot work. The background
+          // phase still awaits this exact task before reporting completion.
+          model.prepareBackgroundCheckpoint()
+        }
       default:
         break
       }
