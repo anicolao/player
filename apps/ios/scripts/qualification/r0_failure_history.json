@@ -3984,6 +3984,30 @@
       },
       "qualificationResetCount": 1,
       "resetEvidence": "Formal exact-SHA qualification run 33599914468 failed Story 003 attempt 2. Once the retained artifact made 10/10 impossible, the remaining 124 queued or active attempts were cancelled without rerunning the failed SHA; commit 5b936bc743a971d9f053cb4f8ce2e2158527020c cannot qualify and this is formal reset 25."
+    },
+    {
+      "signature": "ui-test:OfflineRecoveryUITests.testRecoversStartupAndExportsOnlySanitizedOfflineDiagnostics:support-verification-and-cleanup-share-one-deadline",
+      "story": "011-offline-recovery",
+      "evidence": {
+        "workflowRun": 33603195949,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions artifact 9836422748 (ios-e2e-011-offline-recovery) retains the exact Story 011 xcresult, disabled accepted action and preparing-report failure screen, complete test and simulator logs, phase timings, screenshot evidence, and valid failure evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33603195949/job/100162537645",
+        "commit": "abc196e85d38dbabfb16a9d2a4f95be88387948f",
+        "observation": "The support verification control accepted the physical touch and disabled synchronously. Bookshelf then remained at Preparing sanitized report through the test's single two-second terminal receipt and completed roughly 3.3 seconds after delivery. That one receipt was posted only after support-bundle preparation, on-disk sanitization verification, prepared-file deletion, and final SwiftUI publication had all finished."
+      },
+      "rootCause": "The repaired non-polling journey still assigned several independently observable operations to one deadline. It could not distinguish a slow preparation/sanitization boundary from cleanup of the already verified temporary file, and charged both actor/file boundaries plus final UI publication to the same two-second event. This produced a false aggregate deadline failure while preserving neither a phase-specific failure nor the intended per-operation two-second contract.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Publish one pre-registered Darwin receipt after the real bundle has been prepared and its on-disk allowlisted contents have passed sanitization, then a second receipt after the verified prepared file has been discarded and the idle UI state published. Require each distinct operation within its own unchanged two-second budget before reading the exact rendered probe. Retain action delivery, production bundle creation, forbidden-data inspection, cleanup, screenshots, and every recovery choice.",
+        "commits": [
+          "5be7406dffc086a5aae31beba144090199d8a094"
+        ],
+        "validation": "The complete canonical Story 011 passed locally on Xcode 26.6 and iOS 26.5 in 63.238 seconds. The formerly failing operation crossed both independent receipts, all recovery choices and support-export outcomes remained selected, all three screenshots were pixel-exact, and the walkthrough matched exactly. Capture-readiness and complete E2E hygiene pass. Hosted replacement validation remains required."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no formal consecutive qualification count."
     }
   ]
 }
