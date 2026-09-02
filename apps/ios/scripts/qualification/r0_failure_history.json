@@ -3802,16 +3802,17 @@
         "commit": "a7fe6e1f207aaaae93378fab2b5234d012d38edf",
         "observation": "The live-progress selector pressed Home at 18:14:39.999 and the physical interaction returned at 18:14:40.489. UIKit did not begin deactivation until about 18:14:41.559, and the scene-background/snapshot transition did not occur until 18:14:43.602-18:14:44.838. The bounded lifecycle helper returned false before requesting app activation, leaving the retained failure frame on SpringBoard. The original helper collapsed its three independent receipt waits into one outer assertion, so the artifact establishes the missed preactivation lifecycle boundary but cannot distinguish its exact internal guard from the failure message alone."
       },
-        "rootCause": "Unrelated post-boot simulator system work delayed the real foreground-to-background transition across one of the helper's two-second event boundaries. The application did eventually background, but too late for the bounded contract; this is a retained timing failure, not justification for increasing the deadline. The helper's generic Boolean result also discarded which lifecycle receipt missed its boundary.",
+        "rootCause": "Unrelated post-boot simulator system work and SpringBoard animation pressure can delay the real foreground-to-background transition across the scene-background receipt's two-second boundary. Normal run 33587696675 reproduced this exact signature even after chronod and apsd were disabled: Home was accepted at 03:52:58.277Z, while UIKit's terminal scene-background callback arrived around 03:53:01.703Z. The application did eventually background, but too late for the bounded contract; this is not justification for increasing the deadline. Local investigation also proved that Story 005's parallel XCTest workers could terminate the same app process and overwrite the same durable E2E playback store, independently cross-contaminating the two lifecycle classes.",
         "diagnosisStatus": "confirmed",
         "fix": {
           "status": "verified",
-          "summary": "Prevent simulator widget scheduling before the clean boot so the product lifecycle is not competing with post-boot extension enumeration, and emit a distinct XCTFail at every registration, inactive, background, durable-checkpoint, activation, and restored-control boundary. Keep each event deadline at two seconds and make no product persistence change.",
+          "summary": "Retain the simulator scheduler isolation and distinct lifecycle receipts, scope Reduce Motion to Story 005 so real Home/background callbacks do not depend on rendering a decorative SpringBoard transition, require an exact post-persist playback receipt before termination, namespace every E2E Darwin event to its launching application, and serialize Story 005's process-destructive classes while all 13 canonical stories remain parallel in CI. Keep every event deadline at two seconds and make no production persistence change.",
           "commits": [
             "c97e7626b0232eeb92742ce69ebcb24736e446f6",
-            "de0e93f13e07838a8f3887c55d1142fbdfeb2ac5"
+            "de0e93f13e07838a8f3887c55d1142fbdfeb2ac5",
+            "c6057dbe4be4fc602c9bb7e336d6d211f3224260"
           ],
-          "validation": "A candidate product checkpoint during deactivation was rejected and fully reverted after complete Story 005 validation proved it could overwrite the next selector's reset fixture. With production checkpoint semantics unchanged and the pre-clean-boot scheduler isolation active, complete local Story 005 passed all eight canonical selectors across two XCTest workers in 166.144 seconds. The formerly failing selector passed in 18.880 seconds; the remote-interruption selector passed in 15.392 seconds; all four reviewed screenshots were exact or canonical and the walkthrough matched exactly. Normal run 33546561891 then passed complete hosted Story 005 in 14m02s without a rerun. Run-support, capture-readiness, and complete E2E hygiene checks pass."
+          "validation": "The earlier scheduler-only repair passed hosted run 33546561891 but proved insufficient when normal run 33587696675 reproduced the exact scene-background signature; the failed SHA was not rerun. On the replacement, one complete local Story 005 run first passed all eight selectors concurrently and exposed only the expected reduced-motion system-material baseline delta. A second run deliberately reproduced shared-process/storage corruption between PositionRestoreUITests and RemoteInterruptionUITests, establishing that their intra-story parallelism was invalid. After serialization, an official full-story recording pass and an independent non-recording pass both passed all eight selectors in 240 seconds; the refreshed Library screenshot was accepted canonically, the other three screenshots were pixel-exact, and the walkthrough matched exactly. Normal run 33592605851 then passed Story 005 on the replacement's first hosted attempt: all eight selectors completed in a 427-second test phase and 757-second canonical story phase, all four screenshots and the walkthrough were accepted, and the job retained artifact 9832662713. The complete run passed all 13 stories, all 41 UI selectors, 377/377 core tests, fixture gates, App Store renderer, and fail-closed aggregation in 36m54s without a rerun. All 68 qualification/evidence tests plus run-support, capture-readiness, and complete E2E hygiene pass."
         },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no formal consecutive qualification count."
@@ -3911,6 +3912,30 @@
       },
       "qualificationResetCount": 1,
       "resetEvidence": "Formal exact-SHA qualification run 33575504084 failed Story 005 attempt 7. Once the retained artifact made 10/10 impossible, the remaining queue was cancelled without rerunning the failed SHA; commit 03267f0f742210148b29a63f297906d9cc1eccb2 cannot qualify and this is formal reset 24."
+    },
+    {
+      "signature": "infrastructure:qualification-shared-build:booted-simulator-disappears-before-xcode-destination-resolution",
+      "story": "core",
+      "evidence": {
+        "workflowRun": 33586578254,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions job 100112004447 retains the complete producer log, and artifact 9830466481 (r0-qualification-report-ccc575946c253d10f21c450c6e724757f846a033-33586578254-1) retains the fail-closed qualification report; no measured story or matrix attempt began",
+        "url": "https://github.com/anicolao/player/actions/runs/33586578254/job/100112004447",
+        "commit": "ccc575946c253d10f21c450c6e724757f846a033",
+        "observation": "The formal preflight passed, then the shared-build producer acquired simulator 89E67DB1-6E54-4032-A021-FC71ADA71C3B and bootstatus reached its terminal Finished receipt after 2m03s. Thirty-one seconds later, xcodebuild build-for-testing failed with exit 70 because no available device matched that exact UDID; Xcode listed only its generic iOS Simulator placeholder. The producer emitted no shared artifact, all 130 story attempts and 25 matrix attempts were suppressed by dependency gates, and both aggregators failed closed."
+      },
+      "rootCause": "The compile-only producer unnecessarily bound build-for-testing to a concrete simulator lifecycle. CoreSimulator's command-line boot receipt did not guarantee that Xcode's separate device registry would retain or resolve the same UDID on this fresh hosted machine. Because compilation needs an SDK and architecture but no running device, the concrete destination added a nondeterministic cross-service dependency and more than two minutes of unmeasured simulator initialization without exercising product behavior.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Build the one normal and formal portable E2E products against generic/platform=iOS Simulator with explicit arm64 architecture, without acquiring or booting a producer simulator. Preserve provenance, checksum, package contents, and every fresh-simulator story and matrix consumer. Source hygiene requires the same generic arm64 contract in both producers and rejects any concrete simulator lifecycle in either compile-only section.",
+        "commits": [
+          "824cd3de7cbe88c1aae3a40075644c337c5f070c"
+        ],
+        "validation": "A clean local generic arm64 build-for-testing completed in 14.7 seconds and produced arm64 Player and PlayerUITests Mach-O bundles. That exact provenance-bound portable product then ran complete Story 001 on a separate fresh twice-booted iOS 26.5 simulator: all nine selectors passed, all six screenshots matched pixel-exact, the walkthrough matched exactly, and the complete evidence manifest validated. Normal run 33587696675 verified the hosted producer on its first replacement attempt in 5m31s, versus 11m40s for the preceding concrete-simulator producer; its exact artifact was accepted and exercised by all 13 story consumers and the core gate. Twelve stories and core passed, while Story 005 reached product UI and failed only on the independently retained lifecycle recurrence. All 68 qualification/evidence tests and complete E2E hygiene pass."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "The shared-build producer failed before publishing a product, so no story or matrix qualification attempt began and no accepted consecutive measured count existed to reset. The failed SHA is not rerun; its replacement requires a new exact-tip normal gate and a new single formal dispatch."
     }
   ]
 }

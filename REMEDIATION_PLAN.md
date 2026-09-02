@@ -79,7 +79,7 @@ release pass while its remaining gate is listed as pending.
 
 | Remediation | Implementation / automated evidence | Remaining gate |
 | --- | --- | --- |
-| R0 | Event-driven two-second waits, fail-closed evidence, the canonical selector manifest, repeated-attempt tooling, five balanced fresh-host dependency chains backed by one immutable build, 130 independently scheduled formal story attempts, and 25 subsequent fresh-host matrix attempts are implemented. The ledger contains 165 unique historical failure signatures and retains 24 formal qualification resets. Run [33289300337](https://github.com/anicolao/player/actions/runs/33289300337) passed exact head `b9dc9a98e61dd2a3f808d98e8bcf7d720b4df02d` without a rerun in 32m32s: all 13 stories, 41 UI selectors, 372 core tests, and the App Store renderer passed. This is 8m24s faster than the expanded-suite reference with identical coverage. Hardened formal run [33318614812](https://github.com/anicolao/player/actions/runs/33318614812) exposed a read-only Story 007 assertion's invalid tap-geometry dependency on attempt 10 and a representation-ambiguous XCTest failure attachment; both were corrected without retrying that run. Normal run [33325350089](https://github.com/anicolao/player/actions/runs/33325350089) exposed a separate Story 008 deadline-edge false negative, run [33328578179](https://github.com/anicolao/player/actions/runs/33328578179) exposed an independently missed Story 011 recovery action, a recurring pre-product Xcode/CoreSimulator launch-channel stall, and rejected attempt-wide log timestamps, run [33330232587](https://github.com/anicolao/player/actions/runs/33330232587) proved the prior single-shot Add coordinate still lacked a delivery receipt, and run [33330908421](https://github.com/anicolao/player/actions/runs/33330908421) proved the bounded preventive kickstart must defer to its independent readiness receipt. Formal run [33336466219](https://github.com/anicolao/player/actions/runs/33336466219) then passed Story 009 attempts 01 through 09 before exposing an arbitrary three-correction framing ceiling on attempt 10; the convergent event-driven replacement is verified. Formal run [33345429470](https://github.com/anicolao/player/actions/runs/33345429470) exposed a separate pre-synthesis delivery-deadline defect in Story 003 attempt 03; the same deadline boundary in Library Add and Backup Export was corrected in the scoped delivery-loop fix. Exact-code run [33349732905](https://github.com/anicolao/player/actions/runs/33349732905) passed all five lanes without a rerun: all 13 stories, all 41 selectors, 372 core tests, fixture gates, and the renderer. Normal finalized-ledger run [33351712764](https://github.com/anicolao/player/actions/runs/33351712764) then exposed a separate unacknowledged Story 008 sort-menu item tap; the replacement correlates menu presentation and the changed production search result independently before proceeding. Normal replacement run [33354131739](https://github.com/anicolao/player/actions/runs/33354131739) verified that correction, then exposed an independent Story 005 lifecycle race: Home completed after app activation and the intended Progress90 touch was dispatched to SpringBoard. The replacement requires separate SpringBoard foreground-ownership and exact app-contained foreground-interactive receipts before bounded synthesis. Fresh-host run [33421395062](https://github.com/anicolao/player/actions/runs/33421395062) passed every current automated gate without a rerun and supplies the deterministic-scheduler baseline. Scheduler run [33426513529](https://github.com/anicolao/player/actions/runs/33426513529) exercised every successor despite two independent pre-product LaunchServices races; both exact signatures were repaired and retained rather than rerun. Its successor [33432987841](https://github.com/anicolao/player/actions/runs/33432987841) proved both registration repairs and again exercised every story and the core gate, then exposed two separate post-launch latency defects: Story 011 redundantly rescanned already validated recovery backups before support export, while Story 003 coupled its acquisition receipt to unrelated automatic-backup churn on a severely I/O-constrained host. Both signatures have focused regressions and complete canonical local validation. | Require the final branch tip to pass normal five-chain CI, then dispatch its one permitted formal gate and require 10/10 for every story plus 5/5 complete matrices. Publish the generated stability and timing report. |
+| R0 | Event-driven two-second waits, fail-closed evidence, the canonical selector manifest, repeated-attempt tooling, five balanced fresh-host dependency chains backed by one immutable build, 130 independently scheduled formal story attempts, and 25 subsequent fresh-host matrix attempts are implemented. The ledger contains 166 unique historical failure signatures and retains 24 formal qualification resets. Run [33289300337](https://github.com/anicolao/player/actions/runs/33289300337) passed exact head `b9dc9a98e61dd2a3f808d98e8bcf7d720b4df02d` without a rerun in 32m32s: all 13 stories, 41 UI selectors, 372 core tests, and the App Store renderer passed. This is 8m24s faster than the expanded-suite reference with identical coverage. Hardened formal run [33318614812](https://github.com/anicolao/player/actions/runs/33318614812) exposed a read-only Story 007 assertion's invalid tap-geometry dependency on attempt 10 and a representation-ambiguous XCTest failure attachment; both were corrected without retrying that run. Normal run [33325350089](https://github.com/anicolao/player/actions/runs/33325350089) exposed a separate Story 008 deadline-edge false negative, run [33328578179](https://github.com/anicolao/player/actions/runs/33328578179) exposed an independently missed Story 011 recovery action, a recurring pre-product Xcode/CoreSimulator launch-channel stall, and rejected attempt-wide log timestamps, run [33330232587](https://github.com/anicolao/player/actions/runs/33330232587) proved the prior single-shot Add coordinate still lacked a delivery receipt, and run [33330908421](https://github.com/anicolao/player/actions/runs/33330908421) proved the bounded preventive kickstart must defer to its independent readiness receipt. Formal run [33336466219](https://github.com/anicolao/player/actions/runs/33336466219) then passed Story 009 attempts 01 through 09 before exposing an arbitrary three-correction framing ceiling on attempt 10; the convergent event-driven replacement is verified. Formal run [33345429470](https://github.com/anicolao/player/actions/runs/33345429470) exposed a separate pre-synthesis delivery-deadline defect in Story 003 attempt 03; the same deadline boundary in Library Add and Backup Export was corrected in the scoped delivery-loop fix. Exact-code run [33349732905](https://github.com/anicolao/player/actions/runs/33349732905) passed all five lanes without a rerun: all 13 stories, all 41 selectors, 372 core tests, fixture gates, and the renderer. Normal finalized-ledger run [33351712764](https://github.com/anicolao/player/actions/runs/33351712764) then exposed a separate unacknowledged Story 008 sort-menu item tap; the replacement correlates menu presentation and the changed production search result independently before proceeding. Normal replacement run [33354131739](https://github.com/anicolao/player/actions/runs/33354131739) verified that correction, then exposed an independent Story 005 lifecycle race: Home completed after app activation and the intended Progress90 touch was dispatched to SpringBoard. The replacement requires separate SpringBoard foreground-ownership and exact app-contained foreground-interactive receipts before bounded synthesis. Fresh-host run [33421395062](https://github.com/anicolao/player/actions/runs/33421395062) passed every current automated gate without a rerun and supplies the deterministic-scheduler baseline. Scheduler run [33426513529](https://github.com/anicolao/player/actions/runs/33426513529) exercised every successor despite two independent pre-product LaunchServices races; both exact signatures were repaired and retained rather than rerun. Its successor [33432987841](https://github.com/anicolao/player/actions/runs/33432987841) proved both registration repairs and again exercised every story and the core gate, then exposed two separate post-launch latency defects: Story 011 redundantly rescanned already validated recovery backups before support export, while Story 003 coupled its acquisition receipt to unrelated automatic-backup churn on a severely I/O-constrained host. Both signatures have focused regressions and complete canonical local validation. | Require the final branch tip to pass normal five-chain CI, then dispatch its one permitted formal gate and require 10/10 for every story plus 5/5 complete matrices. Publish the generated stability and timing report. |
 | R1 | Complete: real crop rendering is covered across save, relaunch, undo, and artwork consumers. | None. |
 | R2 | Complete: presentation errors retain their owning domain and actionable copy. | None. |
 | R3 | Complete: search-result identifiers are unique, interpolated, navigable, and source-checked. | None. |
@@ -99,7 +99,7 @@ release pass while its remaining gate is listed as pending.
 
 The R0 row summarizes the earlier accepted milestone and the chronology below
 retains the signature count at each subsequent checkpoint. The current exact
-ledger contains **165 unique signatures** and **24 formal qualification
+ledger contains **166 unique signatures** and **24 formal qualification
 resets**.
 
 ### Current R0 qualification update
@@ -591,6 +591,73 @@ the valid complete manifest. The 45m34s run passed all 13 stories, all 41 UI
 selectors, 377/377 core tests, fixture gates, renderer inputs, and fail-closed
 aggregation. The finalized evidence-only tip must pass the same normal gate
 before its one permitted replacement formal dispatch.
+
+Evidence-only successor `ccc575946c253d10f21c450c6e724757f846a033` then
+passed complete normal run
+[33583568779](https://github.com/anicolao/player/actions/runs/33583568779)
+without a rerun. Its one permitted formal dispatch
+[33586578254](https://github.com/anicolao/player/actions/runs/33586578254)
+passed exact-SHA preflight but failed before any measured attempt. The
+compile-only producer's newly created simulator reached a terminal boot receipt
+after 2m03s, yet Xcode's device registry lost that UDID before
+`build-for-testing` and listed only its generic simulator placeholder. The
+shared artifact was never published, all 130 story and 25 matrix jobs were
+correctly suppressed, and both aggregators failed closed. Job 100112004447 and
+report artifact 9830466481 retain the evidence. Because no measured attempt
+began, this adds no formal reset; the failed SHA is not rerun.
+
+The replacement removes concrete simulator creation from both compile-only
+producers and builds one arm64 product against `generic/platform=iOS Simulator`.
+Every story and matrix attempt still owns a real fresh twice-booted simulator.
+Source hygiene requires this contract in both producers and rejects any future
+producer simulator lifecycle. A clean local generic build completed in 14.7
+seconds, and its exact provenance-bound output then passed all nine Story 001
+selectors on a separate fresh simulator; all six screenshots were pixel-exact
+and the walkthrough and evidence manifest validated. Commit
+`824cd3de7cbe88c1aae3a40075644c337c5f070c` is in normal hosted run
+[33587696675](https://github.com/anicolao/player/actions/runs/33587696675)
+before any replacement formal dispatch.
+
+That normal run verified the generic producer in 5m31s, versus 11m40s for the
+preceding concrete-simulator producer. Its exact artifact was consumed by all
+13 stories and the core gate; twelve stories and all core/fixture work passed.
+Story 005 reproduced the ledger's existing scene-background deadline signature:
+Home was accepted at 03:52:58.277Z, while UIKit's real terminal background
+callback arrived around 03:53:01.703Z despite both unrelated simulator
+schedulers being disabled. This is a recurrence of the existing signature, not
+a new unique signature, and the failed SHA was not rerun.
+
+The replacement keeps the real Home action, UIKit inactive/background events,
+durable checkpoint, and independent two-second receipts, but scopes Reduce
+Motion to Story 005 so the callback does not depend on rendering a decorative
+SpringBoard transition. It also exposes the exact successful atomic persistence
+edge before a restore test terminates Bookshelf and namespaces every Darwin
+receipt to its launching application. Local stress then uncovered a separate
+test-topology defect: Story 005's two XCTest workers could terminate the same
+app process and overwrite the same durable playback store. A retained run
+showed Position Restore relaunching at Remote Interruption's 27-second state
+while the sibling Remote test lost its initial command. Story 005 now serializes
+its four process-destructive classes internally; the 13 canonical stories stay
+parallel across the five hosted lanes, all selectors remain selected, and no
+deadline increased.
+
+On exact replacement commit
+`c6057dbe4be4fc602c9bb7e336d6d211f3224260`, an official full-story recording
+pass and an independent non-recording pass each passed all eight Story 005
+selectors in 240 seconds. The deterministic configuration changed exactly one
+reviewed Library image beneath translucent system tab material; the verification
+accepted that image canonically, the other three screenshots pixel-exactly, and
+the walkthrough exactly. All 68 qualification/evidence tests plus run-support,
+capture-readiness, and complete E2E hygiene pass. Normal run
+[33592605851](https://github.com/anicolao/player/actions/runs/33592605851) then
+passed the replacement on its first hosted attempt without a rerun: all 13
+stories, all 41 UI selectors, 377/377 core tests, fixture gates, reviewed
+screenshots and walkthroughs, the App Store renderer, and fail-closed
+aggregation were green. Story 005 completed in 13m26s with a 7m07s test phase
+and 12m37s canonical story phase, safely below its 14m55s reference. The whole
+workflow completed in 36m54s, including a 4m52s producer and 31m57s consumer
+stage. The finalized evidence-only tip must pass the same normal gate before
+its one permitted formal dispatch.
 
 ## R0 — Stabilize and qualify E2E
 

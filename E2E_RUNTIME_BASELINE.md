@@ -333,6 +333,54 @@ daemon did not trade coverage, event deadlines, or wall-clock performance for
 reliability. It remains a normal-CI observation rather than a replacement for
 the formal repeated distribution.
 
+The subsequent compile-only producer correction is independently measured in
+[run 33587696675](https://github.com/anicolao/player/actions/runs/33587696675).
+Its generic arm64 simulator build completed in **5m31s**, versus **11m40s** for
+the preceding accepted producer: **-6m09s (-52.7%)**. All 14 consumers accepted
+the resulting provenance-bound artifact, so this measures the intended removal
+of producer simulator creation rather than skipped downstream work. The overall
+run is not an accepted suite sample because Story 005 reproduced an existing
+lifecycle signature; all other stories and the core gate passed.
+
+The retained Story 005 job explains its 19m51s hosted job time precisely. The
+canonical story command consumed 17m10s: 4m34s creating and twice booting its
+fresh simulator, 56s verifying build provenance, 53s installing and receipting
+the app/test runner, 9m18s in XCTest (including the delayed lifecycle failure),
+and 44s exporting failure diagnostics. The remaining 2m41s was job checkout,
+artifact download, and workflow transitions. It did no image preparation and
+no product compilation. This is why a prebuilt Docker image cannot remove the
+dominant cost: iOS Simulator and Xcode require a macOS host, while GitHub-hosted
+container jobs are Linux. The reusable generic build artifact is the applicable
+preconfiguration boundary on hosted macOS.
+
+Local replacement measurements serialize Story 005's four stateful test classes
+to prevent shared-process and durable-store corruption while leaving canonical
+stories parallel. Both the official recording pass and an independent
+verification passed all eight selectors in **240 seconds** of XCTest, versus
+**164 seconds** for the last locally successful but unsafe two-worker execution:
+**+76 seconds** for deterministic intra-story isolation.
+
+[Run 33592605851](https://github.com/anicolao/player/actions/runs/33592605851)
+then passed the complete normal matrix at exact branch-head SHA
+`c6057dbe4be4fc602c9bb7e336d6d211f3224260` on its first attempt: all 13
+stories, all 41 UI selectors, 377/377 core tests, fixture gates, reviewed
+screenshots and walkthroughs, App Store renderer inputs, and fail-closed
+aggregation were green. Created-to-complete wall clock was **36m54s**, versus
+the same-coverage 48m16s fresh-host baseline: **-11m22s (-23.6%)**. The generic
+producer took **4m52s**, and the consumer/aggregation stage spanned **31m57s**,
+versus the baseline's 35m34s: **-3m37s (-10.2%)**.
+
+Hosted Story 005 completed in **13m26s** job time. Its canonical phase used
+**12m37s**: 3m41s simulator setup, 16s provenance verification, 33s target
+installation, 7m07s XCTest, 18s attachment export, and 41s screenshot
+comparison. The serialized test phase is 1m14s slower than the preceding green
+two-worker sample's 5m53s, closely matching the local +76-second measurement,
+but the canonical story remains **2m18s (-15.4%)** faster than its 14m55s
+expanded-suite reference. The complete workflow is also 8m40s faster than the
+latest preceding green run 33580527061. This is the requested coverage-neutral
+before/after normal-CI result; the formal repeated distribution remains the R0
+reliability gate.
+
 ### Formal qualification topology reference
 
 The pre-isolation formal
