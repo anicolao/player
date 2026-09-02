@@ -66,7 +66,7 @@ final class SleepTimerUITests: PlayerUITestCase {
         XCTAssertEqual(options.count, 1, "The custom-duration option identifier must be unique.")
         option.tap()
       }
-      try tapWhenHittable(app.buttons[selection.buttonID], in: app)
+      try tapWhenFullyVisible(app.buttons[selection.buttonID], in: app)
       let timerID = sleepTimerID(suffix: index == 0 ? 101 : 100 + (index * 2))
       let probe = try requireProbe(app, active: timerID, historyCount: index)
       XCTAssertEqual(probe["selection"], selection.token)
@@ -95,11 +95,11 @@ final class SleepTimerUITests: PlayerUITestCase {
     app.launch()
     try openNowPlaying(app)
     _ = try openSleepTimer(app)
-    try tapWhenHittable(app.buttons["sleep-timer-preset-10"], in: app)
+    try tapWhenFullyVisible(app.buttons["sleep-timer-preset-10"], in: app)
     _ = try requireProbe(app, active: timer101)
 
     _ = try openSleepTimer(app)
-    try tapWhenHittable(app.buttons["sleep-timer-preset-15"], in: app)
+    try tapWhenFullyVisible(app.buttons["sleep-timer-preset-15"], in: app)
     let replaced = try requireProbe(
       app,
       active: "52000000-0000-0000-0000-000000000102"
@@ -146,7 +146,7 @@ final class SleepTimerUITests: PlayerUITestCase {
     app.launch()
     try openNowPlaying(app)
     _ = try openSleepTimer(app)
-    try tapWhenHittable(app.buttons["sleep-timer-end-track"], in: app)
+    try tapWhenFullyVisible(app.buttons["sleep-timer-end-track"], in: app)
     let started = try requireProbe(app, active: timer101)
     XCTAssertEqual(started["selection"], "end-track")
     XCTAssertEqual(started["remaining"], "20")
@@ -385,13 +385,10 @@ final class SleepTimerUITests: PlayerUITestCase {
     return screen
   }
 
-  private func tapWhenHittable(_ element: XCUIElement, in app: XCUIApplication) throws {
-    if element.isHittable {
-      element.tap()
-      return
-    }
+  private func tapWhenFullyVisible(_ element: XCUIElement, in app: XCUIApplication) throws {
     let screen = app.descendants(matching: .any)["sleep-timer-screen"]
-    XCTAssertTrue(waitForExistence(screen, deadline: EventDeadline()))
+    let deadline = EventDeadline()
+    XCTAssertTrue(waitForExistence(screen, deadline: deadline))
     let surface = ScrollSurface(
       application: app,
       container: screen,
@@ -402,16 +399,31 @@ final class SleepTimerUITests: PlayerUITestCase {
     )
     XCTAssertTrue(
       scrollUntil(
-        { element.isHittable },
+        {
+          guard surface.state()?.isIdle == true else { return false }
+          return elementIsFullyVisible(
+            element,
+            within: screen,
+            requiresHittable: false
+          )
+        },
         on: surface,
-        deadline: EventDeadline(),
+        deadline: deadline,
         terminalEndpoint: \.atBottom
       ) {
         screen.swipeUp(velocity: .fast)
       },
-      "Expected \(element.identifier) to become hittable through progress-making Sleep Timer scrolling"
+      "Expected \(element.identifier) to become fully visible through progress-making Sleep Timer scrolling"
     )
-    element.tap()
+    let elementFrame = element.frame
+    let screenFrame = screen.frame
+    XCTAssertFalse(elementFrame.isEmpty)
+    XCTAssertFalse(screenFrame.isEmpty)
+    guard !elementFrame.isEmpty, !screenFrame.isEmpty else { return }
+    screen.coordinate(withNormalizedOffset: CGVector(
+      dx: (elementFrame.midX - screenFrame.minX) / screenFrame.width,
+      dy: (elementFrame.midY - screenFrame.minY) / screenFrame.height
+    )).tap()
   }
 
   private func tapTrailingSwitchControl(_ element: XCUIElement) {

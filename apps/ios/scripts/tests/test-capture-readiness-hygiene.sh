@@ -502,6 +502,7 @@ required = (
     'namespace: "all-selections"',
     'for (index, selection) in selections.enumerated()',
     'selection.fade != currentFade',
+    'tapWhenFullyVisible(app.buttons[selection.buttonID], in: app)',
     'historyCount: index',
     'XCTAssertEqual(probe["latest"], "replaced")',
     'XCTAssertTrue(terminateAndWait(app))',
@@ -511,6 +512,26 @@ if missing:
     raise SystemExit(
         'sleep-timer selection hygiene requires same-session production replacement '
         f'and exact receipts; missing={missing}'
+    )
+tap_start = source.index('  private func tapWhenFullyVisible(')
+tap_end = source.index('  private func tapTrailingSwitchControl(', tap_start)
+tap_helper = source[tap_start:tap_end]
+tap_required = (
+    'surface.state()?.isIdle == true',
+    'elementIsFullyVisible(',
+    'requiresHittable: false',
+    'screen.coordinate(withNormalizedOffset:',
+)
+missing = [pattern for pattern in tap_required if pattern not in tap_helper]
+if missing:
+    raise SystemExit(
+        'sleep-timer selection tapping requires idle correlated geometry and a '
+        f'container-relative physical action; missing={missing}'
+    )
+if '.isHittable' in tap_helper or 'element.tap()' in tap_helper:
+    raise SystemExit(
+        'sleep-timer selection tapping rejects XCTest activation-point queries '
+        'and direct element activation'
     )
 PY
 rg -Fq 'case allSelections = "all-selections"' \
