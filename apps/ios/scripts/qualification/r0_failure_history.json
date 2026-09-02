@@ -3936,6 +3936,30 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "The shared-build producer failed before publishing a product, so no story or matrix qualification attempt began and no accepted consecutive measured count existed to reset. The failed SHA is not rerun; its replacement requires a new exact-tip normal gate and a new single formal dispatch."
+    },
+    {
+      "signature": "ui-test:SleepTimerUITests.testSleepTimerPersistsFadesStopsAndResumesWithContextExactly:visible-form-row-has-invalid-xctest-activation-point",
+      "story": "007-sleep-timer",
+      "evidence": {
+        "workflowRun": 33595221556,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions artifact 9833499331 (ios-e2e-007-sleep-timer) retains the exact Story 007 xcresult, complete test log and screen recording, visible failure frame, phase timings, expected/actual/diff evidence, simulator diagnostics, and valid complete evidence manifest",
+        "url": "https://github.com/anicolao/player/actions/runs/33595221556/job/100138058391",
+        "commit": "0fdbb250d8e1180d5fd3ac88ee16d7915afb8172",
+        "observation": "The sleep-timer selector successfully applied and independently acknowledged presets 10, 15, 30, 45, and 60 plus the custom 25-minute choice in one production session. On the following End of Chapter choice, the old helper first spent 2.42 seconds asking XCTest whether the offscreen Form button was hittable, performed one correlated progress-making scroll, and then XCTest aborted while evaluating the same hittability query with 'Activation point invalid and no suggested hit points based on element frame.' The retained failure frame shows the complete End of Chapter row visibly inside the idle Sleep Timer sheet. The independent bookmark selector passed and its screenshot was pixel-exact. The pull-request merge commit contains branch head 1d63c1c5ebdea3d81b59fcfff5887aa39c895edc."
+      },
+      "rootCause": "The selection helper used XCUIElement.isHittable as both its scroll stop condition and action precondition. For a SwiftUI Form row transitioning from offscreen to visible after repeated timer replacement, XCTest can treat that property query as a demand to resolve an activation point and raise a test failure instead of returning false. The test therefore crashed inside an unreliable XCTest-derived predicate even though Bookshelf's correlated scroll probe reported idle geometry and the intended production row was visibly framed.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Frame every sleep-timer selection from the production scroll-readiness probe and require the complete row to be geometrically inside the idle sheet without querying XCTest hittability. Deliver the physical tap through a coordinate relative to that proven container, then retain the existing exact production sleep-timer state probe as the independent action receipt. Source hygiene rejects activation-point queries and direct element activation in this helper; no selector, production path, deadline, or screenshot is removed.",
+        "commits": [
+          "e31b73141e1073e0a6c420a79979689bf823c1f2"
+        ],
+        "validation": "The complete canonical Story 007 passed locally on the exact correction under Xcode 26.6 and iOS 26.5. SleepTimerUITests passed in 130.170 seconds and BookmarkUITests passed in 72.648 seconds with both selectors still selected in parallel; all three reviewed screenshots matched pixel-exactly and the walkthrough matched exactly. Capture-readiness source checks and complete E2E hygiene pass. Hosted replacement validation remains required before formal qualification."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no formal consecutive qualification count."
     }
   ]
 }
