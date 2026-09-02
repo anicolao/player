@@ -4008,6 +4008,30 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no formal consecutive qualification count."
+    },
+    {
+      "signature": "ui-test:PositionRestoreUITests.testLiveProgressUpdatesMiniAndFullPlayerAcrossLifecycle:background-checkpoint-started-after-uikit-snapshot",
+      "story": "005-play-and-restore",
+      "evidence": {
+        "workflowRun": 33609133406,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions artifact 9840839555 (r0-story-evidence-005-play-and-restore-attempt-5-4a561745878d36cdf9adb693eb3d904c1d8f15a6-33609133406-1) retains the exact Story 005 xcresult, Home-screen failure frame, complete test log, simulator unified log, phase timings, semantic probes, and valid failure-evidence manifest",
+        "url": "https://github.com/anicolao/player/actions/runs/33609133406/job/100181662650",
+        "commit": "4a561745878d36cdf9adb693eb3d904c1d8f15a6",
+        "observation": "Formal Story 005 attempt 5 failed testLiveProgressUpdatesMiniAndFullPlayerAcrossLifecycle because Bookshelf did not publish the durable background-checkpoint completion receipt within two seconds of scene background. Home was pressed at 09:36:01.910 UTC; inactive and background receipts both arrived inside their independent budgets. UIKit then occupied the app's main actor with background snapshot work from roughly 09:36:03.423 through 09:36:06.252, including a second two-second snapshot operation, so the checkpoint task enqueued only from the background callback could not begin before the unchanged deadline. Twenty-seven measured story attempts had passed before this failure made 10/10 impossible."
+      },
+      "rootCause": "The production scene-background callback created the durable playback-checkpoint Task only after entering background. UIKit immediately began synchronous background snapshot work on the same main actor and prevented that newly queued task from starting for approximately three seconds. The lifecycle receipts proved delivery was timely; the durable transaction itself was scheduled behind system snapshot work.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Start the exact durable transaction on the active-to-inactive edge, before UIKit begins its background snapshots, and make the subsequent background callback join that same task before publishing completion. Serialize a refreshed transaction when an inactive excursion returns active without background, and reject preparation on the background-to-inactive return edge so reactivation cannot duplicate the journal event. Preserve the real Home action, production persistence, all eight selectors, and every independent two-second deadline; add no wait or retry.",
+        "commits": [
+          "6af23cfb9b535fe7890c6ba3ed188749cfce5887"
+        ],
+        "validation": "A gated core regression proves inactive preparation begins the exact durable save and the background phase joins it without a duplicate. The formerly failing Remote Interruption lifecycle selector independently exposed and verified the background-to-inactive duplicate guard. Complete local Story 005 then passed all eight canonical selectors on a fresh twice-booted iOS 26.5 simulator; all four screenshots were pixel-exact, the walkthrough matched exactly, and the evidence manifest validated. All 18 E2E hygiene tests and lifecycle source contracts pass. Hosted replacement validation remains required."
+      },
+      "qualificationResetCount": 1,
+      "resetEvidence": "Formal exact-SHA qualification run 33609133406 failed Story 005 attempt 5. Once the retained artifact made 10/10 impossible, the remaining queue was cancelled without rerunning the failed SHA; commit 4a561745878d36cdf9adb693eb3d904c1d8f15a6 cannot qualify and this is formal reset 26."
     }
   ]
 }
