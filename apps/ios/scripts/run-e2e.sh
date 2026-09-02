@@ -19,6 +19,7 @@ hidden_target_application=""
 simulator_lease_root="${PLAYER_SIMULATOR_LEASE_ROOT:-${ios_dir}/DerivedData/SimulatorLeases}"
 recording_stage=""
 parallel_workers="${PLAYER_E2E_PARALLEL_WORKERS:-2}"
+effective_parallel_workers="${parallel_workers}"
 skip_project_generation="${PLAYER_SKIP_PROJECT_GENERATION:-0}"
 skip_e2e_build="${PLAYER_SKIP_E2E_BUILD:-0}"
 skip_environment_verification="${PLAYER_SKIP_E2E_ENVIRONMENT_VERIFICATION:-0}"
@@ -447,12 +448,31 @@ xcrun simctl bootstatus "${simulator_id}" -b
 xcrun simctl ui "${simulator_id}" appearance light
 expected_content_size="large"
 expected_increase_contrast="disabled"
+expected_reduce_motion="false"
+expected_reduce_motion_receipt="0"
 if [[ "${story_id}" == "009-accessible-core-journeys" ]]; then
   expected_content_size="accessibility-extra-extra-extra-large"
   expected_increase_contrast="enabled"
 fi
+if [[ "${story_id}" == "005-play-and-restore" ]]; then
+  expected_reduce_motion="true"
+  expected_reduce_motion_receipt="1"
+  # This story exercises relaunch and durable playback restoration through one
+  # application bundle. XCTest's parallel workers can terminate that shared
+  # process and overwrite that shared store from sibling classes, so serialize
+  # internally while canonical stories remain independently parallel in CI.
+  effective_parallel_workers=1
+fi
 xcrun simctl ui "${simulator_id}" content_size "${expected_content_size}"
 xcrun simctl ui "${simulator_id}" increase_contrast "${expected_increase_contrast}"
+# Exercise real Home/background lifecycle callbacks without making their
+# delivery depend on the hosted runner rendering a decorative SpringBoard
+# transition. The preference is written before the clean-boot boundary so
+# UIKit and SpringBoard both begin the authoritative epoch with the same value.
+xcrun simctl spawn "${simulator_id}" defaults write \
+  com.apple.Accessibility ReduceMotionEnabled -bool "${expected_reduce_motion}"
+[[ "$(xcrun simctl spawn "${simulator_id}" defaults read \
+  com.apple.Accessibility ReduceMotionEnabled)" == "${expected_reduce_motion_receipt}" ]]
 # A newly created iOS 26 simulator reaches bootstatus while its one-time
 # widget, Spotlight, accessibility-asset, and push-daemon work can still
 # monopolize RunningBoard and SpringBoard. Neither scheduler is part of an E2E
@@ -487,6 +507,8 @@ xcrun simctl ui "${simulator_id}" increase_contrast "${expected_increase_contras
 [[ "$(xcrun simctl ui "${simulator_id}" appearance)" == "light" ]]
 [[ "$(xcrun simctl ui "${simulator_id}" content_size)" == "${expected_content_size}" ]]
 [[ "$(xcrun simctl ui "${simulator_id}" increase_contrast)" == "${expected_increase_contrast}" ]]
+[[ "$(xcrun simctl spawn "${simulator_id}" defaults read \
+  com.apple.Accessibility ReduceMotionEnabled)" == "${expected_reduce_motion_receipt}" ]]
 # The clean boot must retain both halves of each causal receipt: both unrelated
 # schedulers are disabled and neither job was loaded. This prevents post-boot
 # widget enumeration and runaway APNS reconnect work without replacing the real
@@ -588,7 +610,7 @@ done
 
 unique_test_class_count="$(printf '%s\n' "${test_classes[@]}" | sort -u | wc -l | tr -d ' ')"
 parallel_testing="NO"
-if [[ "${parallel_workers}" -gt 1 && "${unique_test_class_count}" -gt 1 ]]; then
+if [[ "${effective_parallel_workers}" -gt 1 && "${unique_test_class_count}" -gt 1 ]]; then
   parallel_testing="YES"
 fi
 echo "E2E execution: ${unique_test_class_count} test class(es), parallel testing ${parallel_testing}."
@@ -601,7 +623,7 @@ run_logged_phase test xcodebuild test-without-building \
   -destination "platform=iOS Simulator,arch=arm64,id=${simulator_id}" \
   -derivedDataPath "${build_data}" \
   -parallel-testing-enabled "${parallel_testing}" \
-  -maximum-parallel-testing-workers "${parallel_workers}" \
+  -maximum-parallel-testing-workers "${effective_parallel_workers}" \
   "${only_testing_arguments[@]}" \
   -resultBundlePath "${result_bundle}" \
   CODE_SIGNING_ALLOWED=NO || test_status=$?

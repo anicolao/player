@@ -628,7 +628,10 @@ final class BookmarkUITests: PlayerUITestCase {
       )
     )
     guard let focusReceipt = DarwinEventReceipt(
-      name: "com.spnss.player.e2e.text-input-focused"
+      name: namespacedE2EEvent(
+        "com.spnss.player.e2e.text-input-focused",
+        for: app
+      )
     ) else {
       XCTFail("Expected the Darwin focus receipt to register")
       return

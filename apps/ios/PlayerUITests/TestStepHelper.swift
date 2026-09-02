@@ -1,9 +1,26 @@
 import Darwin
 import XCTest
 
+private let e2eEventNamespaceEnvironmentKey = "PLAYER_E2E_EVENT_NAMESPACE"
+
 @MainActor
 func bookshelfApplication() -> XCUIApplication {
-  XCUIApplication(bundleIdentifier: "com.spnss.player")
+  let application = XCUIApplication(bundleIdentifier: "com.spnss.player")
+  application.launchEnvironment[e2eEventNamespaceEnvironmentKey] =
+    UUID().uuidString.lowercased()
+  return application
+}
+
+@MainActor
+func namespacedE2EEvent(_ baseName: String, for application: XCUIApplication) -> String {
+  guard
+    let namespace = application.launchEnvironment[e2eEventNamespaceEnvironmentKey],
+    !namespace.isEmpty
+  else {
+    XCTFail("The Bookshelf application has no isolated E2E event namespace")
+    return "\(baseName).missing"
+  }
+  return "\(baseName).\(namespace)"
 }
 
 @MainActor
@@ -380,19 +397,28 @@ func backgroundAndReactivateApplication(
   requiringButton interactiveElementIdentifier: String
 ) -> Bool {
   guard let inactiveReceipt = DarwinEventReceipt(
-    name: "com.spnss.player.e2e.scene-became-inactive"
+    name: namespacedE2EEvent(
+      "com.spnss.player.e2e.scene-became-inactive",
+      for: application
+    )
   ) else {
     XCTFail("The scene-inactive lifecycle receipt could not be registered")
     return false
   }
   guard let sceneBackgroundReceipt = DarwinEventReceipt(
-    name: "com.spnss.player.e2e.scene-became-background"
+    name: namespacedE2EEvent(
+      "com.spnss.player.e2e.scene-became-background",
+      for: application
+    )
   ) else {
     XCTFail("The scene-background lifecycle receipt could not be registered")
     return false
   }
   guard let backgroundReceipt = DarwinEventReceipt(
-    name: "com.spnss.player.e2e.background-checkpoint-completed"
+    name: namespacedE2EEvent(
+      "com.spnss.player.e2e.background-checkpoint-completed",
+      for: application
+    )
   ) else {
     XCTFail("The durable playback-checkpoint receipt could not be registered")
     return false

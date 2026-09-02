@@ -3216,6 +3216,13 @@ final class PlayerModel {
     }
     do {
       try await persist()
+      #if E2E
+        E2EPlaybackPersistenceBridge.shared.record(
+          bookID: bookID,
+          positionMilliseconds: safeMilliseconds,
+          reason: reason
+        )
+      #endif
       publishNowPlaying()
       return event
     } catch {

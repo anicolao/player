@@ -146,7 +146,10 @@ final class OfflineRecoveryUITests: PlayerUITestCase {
       expectedSanitized
     )
     let verificationFinished = DarwinEventReceipt(
-      name: "com.spnss.player.e2e.support-verification-finished"
+      name: namespacedE2EEvent(
+        "com.spnss.player.e2e.support-verification-finished",
+        for: app
+      )
     )
     XCTAssertNotNil(verificationFinished)
     XCTAssertTrue(
@@ -445,7 +448,12 @@ final class OfflineRecoveryUITests: PlayerUITestCase {
   ) -> XCUIApplication {
     let app = bookshelfApplication()
     let presentationReceipt = expectsRecoveryPresentation
-      ? DarwinEventReceipt(name: "com.spnss.player.e2e.startup-recovery-presented")
+      ? DarwinEventReceipt(
+        name: namespacedE2EEvent(
+          "com.spnss.player.e2e.startup-recovery-presented",
+          for: app
+        )
+      )
       : nil
     if expectsRecoveryPresentation {
       XCTAssertNotNil(presentationReceipt)

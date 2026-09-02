@@ -5,6 +5,38 @@ import Security
 import UIKit
 
 #if E2E
+  private enum E2EEventNamespace {
+    static let environmentKey = "PLAYER_E2E_EVENT_NAMESPACE"
+
+    static func qualify(_ baseName: String) -> String {
+      let namespace = ProcessInfo.processInfo.environment[environmentKey] ?? "missing"
+      return "\(baseName).\(namespace)"
+    }
+  }
+
+  @MainActor
+  @Observable
+  final class E2EPlaybackPersistenceBridge {
+    static let shared = E2EPlaybackPersistenceBridge()
+
+    private(set) var value = "persistence|unavailable"
+
+    private init() {}
+
+    func record(
+      bookID: UUID,
+      positionMilliseconds: Int64,
+      reason: PositionEventReason
+    ) {
+      value = [
+        "persistence",
+        "book=\(bookID.uuidString.lowercased())",
+        "position=\(positionMilliseconds)",
+        "reason=\(reason.rawValue)",
+      ].joined(separator: "|")
+    }
+  }
+
   enum E2ELifecycleEvent {
     static let sceneBecameInactive =
       "com.spnss.player.e2e.scene-became-inactive"
@@ -28,7 +60,7 @@ import UIKit
     private static func post(name: String) {
       CFNotificationCenterPostNotification(
         CFNotificationCenterGetDarwinNotifyCenter(),
-        CFNotificationName(name as CFString),
+        CFNotificationName(E2EEventNamespace.qualify(name) as CFString),
         nil,
         nil,
         true
@@ -71,7 +103,7 @@ import UIKit
     private static func post(name: String) {
       CFNotificationCenterPostNotification(
         CFNotificationCenterGetDarwinNotifyCenter(),
-        CFNotificationName(name as CFString),
+        CFNotificationName(E2EEventNamespace.qualify(name) as CFString),
         nil,
         nil,
         true

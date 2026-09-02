@@ -402,6 +402,8 @@ first_boot_receipt_line="$(rg -n -F -m 1 'xcrun simctl bootstatus "${simulator_i
 configuration_line="$(rg -n -F -m 1 'xcrun simctl ui "${simulator_id}" content_size "${expected_content_size}"' "${run_e2e}" | cut -d: -f1)"
 final_configuration_line="$(rg -n -F 'xcrun simctl ui "${simulator_id}" content_size "${expected_content_size}"' "${run_e2e}" | sed -n '2p' | cut -d: -f1)"
 final_contrast_line="$(rg -n -F 'xcrun simctl ui "${simulator_id}" increase_contrast "${expected_increase_contrast}"' "${run_e2e}" | sed -n '2p' | cut -d: -f1)"
+reduce_motion_write_line="$(rg -n -F -m 1 'com.apple.Accessibility ReduceMotionEnabled -bool "${expected_reduce_motion}"' "${run_e2e}" | cut -d: -f1)"
+first_reduce_motion_receipt_line="$(rg -n -F -m 1 'com.apple.Accessibility ReduceMotionEnabled)" == "${expected_reduce_motion_receipt}" ]]' "${run_e2e}" | cut -d: -f1)"
 service_loop_line="$(rg -n -F -m 1 'for isolated_service in "${isolated_simulator_services[@]}"; do' "${run_e2e}" | cut -d: -f1)"
 chronod_service_line="$(rg -n -F -m 1 'chronod_service="user/501/com.apple.chronod"' "${run_e2e}" | cut -d: -f1)"
 apsd_service_line="$(rg -n -F -m 1 'apsd_service="user/501/com.apple.apsd"' "${run_e2e}" | cut -d: -f1)"
@@ -413,13 +415,16 @@ second_disabled_receipt_line="$(rg -n -F 'disabled_services="$(xcrun simctl spaw
 service_rejection_loop_line="$(rg -n -F 'for isolated_service in "${isolated_simulator_services[@]}"; do' "${run_e2e}" | sed -n '2p' | cut -d: -f1)"
 [[ -n "${first_boot_receipt_line}" && -n "${configuration_line}" \
   && -n "${final_configuration_line}" && -n "${final_contrast_line}" \
+  && -n "${reduce_motion_write_line}" && -n "${first_reduce_motion_receipt_line}" \
   && -n "${chronod_service_line}" && -n "${apsd_service_line}" \
   && -n "${service_loop_line}" && -n "${first_disabled_receipt_line}" \
   && -n "${stabilization_shutdown_line}" && -n "${second_boot_receipt_line}" \
   && -n "${configuration_receipt_line}" && -n "${second_disabled_receipt_line}" \
   && -n "${service_rejection_loop_line}" \
   && "${first_boot_receipt_line}" -lt "${configuration_line}" \
-  && "${configuration_line}" -lt "${chronod_service_line}" \
+  && "${configuration_line}" -lt "${reduce_motion_write_line}" \
+  && "${reduce_motion_write_line}" -lt "${first_reduce_motion_receipt_line}" \
+  && "${first_reduce_motion_receipt_line}" -lt "${chronod_service_line}" \
   && "${chronod_service_line}" -lt "${apsd_service_line}" \
   && "${apsd_service_line}" -lt "${service_loop_line}" \
   && "${service_loop_line}" -lt "${first_disabled_receipt_line}" \
@@ -435,6 +440,17 @@ service_rejection_loop_line="$(rg -n -F 'for isolated_service in "${isolated_sim
 [[ "$(rg -F -c 'xcrun simctl ui "${simulator_id}" content_size "${expected_content_size}"' "${run_e2e}")" == 2 \
   && "$(rg -F -c 'xcrun simctl ui "${simulator_id}" increase_contrast "${expected_increase_contrast}"' "${run_e2e}")" == 2 ]] \
   || fail "the exact accessibility configuration is not asserted in both boot epochs"
+[[ "$(rg -F -c 'com.apple.Accessibility ReduceMotionEnabled)" == "${expected_reduce_motion_receipt}" ]]' "${run_e2e}")" == 2 \
+  && "$(rg -F -c 'expected_reduce_motion="true"' "${run_e2e}")" == 1 \
+  && "$(rg -F -c 'expected_reduce_motion_receipt="1"' "${run_e2e}")" == 1 \
+  && "$(rg -F -c 'if [[ "${story_id}" == "005-play-and-restore" ]]' "${run_e2e}")" == 1 ]] \
+  || fail "the real lifecycle tests do not retain reduced motion across the clean boot"
+rg -Fq 'if [[ "${story_id}" == "005-play-and-restore" ]]; then' "${run_e2e}" \
+  || fail "Story 005 does not identify its shared process and durable-store boundary"
+rg -Fq 'effective_parallel_workers=1' "${run_e2e}" \
+  || fail "Story 005 can still run process-destructive classes concurrently"
+rg -Fq -- '-maximum-parallel-testing-workers "${effective_parallel_workers}"' "${run_e2e}" \
+  || fail "XCTest does not honor the story-specific worker safety boundary"
 [[ "$(rg -F -c 'disabled_services="$(xcrun simctl spawn "${simulator_id}" launchctl print-disabled user/501)"' "${run_e2e}")" == 2 \
   && "$(rg -F -c 'rg -F '\''"com.apple.chronod" => disabled' "${run_e2e}")" == 2 \
   && "$(rg -F -c 'rg -F '\''"com.apple.apsd" => disabled' "${run_e2e}")" == 2 ]] \

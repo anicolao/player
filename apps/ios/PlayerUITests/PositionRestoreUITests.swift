@@ -74,6 +74,14 @@ final class PositionRestoreUITests: PlayerUITestCase {
     _ = try requirePlaybackState(miniPlayer, status: "paused", positionMilliseconds: 90_000)
     app.buttons["e2e-engine-progress-45"].tap()
     _ = try requirePlaybackState(miniPlayer, status: "paused", positionMilliseconds: 90_000)
+    XCTAssertTrue(
+      app.descendants(matching: .any)["e2e-playback-persistence-probe"]
+        .waitForStringValue(
+          "persistence|book=\(fixtureBookID)|position=90000|reason=pause",
+          timeout: 2
+        ),
+      "The acknowledged pause must finish its atomic persistence before termination"
+    )
 
     XCTAssertTrue(terminateAndWait(app))
     let restored = makeApplication(reset: false, eventControls: true)

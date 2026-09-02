@@ -143,18 +143,24 @@ final class LaunchUITests: PlayerUITestCase {
     XCTAssertTrue(app.tabBars.buttons["Inbox"].isSelected)
     XCTAssertTrue(terminateAndWait(app))
 
-    let importingReceipt = DarwinEventReceipt(
-      name: "com.spnss.player.e2e.receiver-importing"
-    )
-    let completedReceipt = DarwinEventReceipt(
-      name: "com.spnss.player.e2e.receiver-completed"
-    )
-    XCTAssertNotNil(importingReceipt)
-    XCTAssertNotNil(completedReceipt)
     app = makeApplication(
       fixture: "receiver-completion-baseline",
       additionalArguments: ["-e2e-computer-receiver-completed"]
     )
+    let importingReceipt = DarwinEventReceipt(
+      name: namespacedE2EEvent(
+        "com.spnss.player.e2e.receiver-importing",
+        for: app
+      )
+    )
+    let completedReceipt = DarwinEventReceipt(
+      name: namespacedE2EEvent(
+        "com.spnss.player.e2e.receiver-completed",
+        for: app
+      )
+    )
+    XCTAssertNotNil(importingReceipt)
+    XCTAssertNotNil(completedReceipt)
     app.launch()
     app.tabBars.buttons["Add"].tap()
     let completedReceiver = app.scrollViews["computer-receiver-screen"]

@@ -2658,6 +2658,7 @@ func compactPlaybackTime(_ seconds: Double) -> String {
     var body: some View {
       VStack(alignment: .leading, spacing: 4) {
         probe
+        persistenceProbe
         transportConfigurationProbe
         control("Play", identifier: "e2e-remote-play") {
           E2EPlaybackEventBridge.shared.sendRemote(.play)
@@ -2732,6 +2733,17 @@ func compactPlaybackTime(_ seconds: Double) -> String {
           "seek=\(seek)",
           "source=\(source)",
         ].joined(separator: "|"))
+    }
+
+    private var persistenceProbe: some View {
+      let bridge = E2EPlaybackPersistenceBridge.shared
+      return Color.clear
+        .frame(width: 1, height: 1)
+        .id(bridge.value)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Playback persistence probe")
+        .accessibilityIdentifier("e2e-playback-persistence-probe")
+        .accessibilityValue(bridge.value)
     }
 
     private func control(

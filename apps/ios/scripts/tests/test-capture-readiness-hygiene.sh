@@ -263,6 +263,37 @@ rg -Fq 'E2ELifecycleEvent.postSceneBecameInactive()' \
   "${script_dir}/../../Player/ContentView.swift"
 rg -Fq 'E2ELifecycleEvent.postSceneBecameBackground()' \
   "${script_dir}/../../Player/ContentView.swift"
+rg -Fq '.accessibilityIdentifier("e2e-playback-persistence-probe")' \
+  "${script_dir}/../../Player/ContentView.swift"
+rg -Fq 'E2EPlaybackPersistenceBridge.shared.record(' \
+  "${script_dir}/../../Player/Core/PlayerModel.swift"
+rg -Fq 'position=90000|reason=pause' \
+  "${ui_test_root}/PositionRestoreUITests.swift"
+python3 - "${ui_test_root}" "${script_dir}/../../Player/E2ELaunchEnvironment.swift" <<'PY'
+import sys
+from pathlib import Path
+
+ui_root = Path(sys.argv[1])
+launch_environment = Path(sys.argv[2]).read_text()
+ui_source = "\n".join(path.read_text() for path in ui_root.glob("*.swift"))
+receipt_count = ui_source.count("DarwinEventReceipt(")
+qualified_receipt_count = ui_source.count("name: namespacedE2EEvent(")
+if receipt_count != qualified_receipt_count or receipt_count == 0:
+    raise SystemExit(
+        "every Darwin receipt must use the launching application's event namespace; "
+        f"receipts={receipt_count}, qualified={qualified_receipt_count}"
+    )
+for required in (
+    'private let e2eEventNamespaceEnvironmentKey = "PLAYER_E2E_EVENT_NAMESPACE"',
+    'application.launchEnvironment[e2eEventNamespaceEnvironmentKey]',
+):
+    if required not in ui_source:
+        raise SystemExit(f"the UI runner does not assign isolated event names: {required}")
+if launch_environment.count(
+    "CFNotificationName(E2EEventNamespace.qualify(name) as CFString)"
+) != 2:
+    raise SystemExit("every production E2E Darwin publisher must qualify its event name")
+PY
 rg -Fq 'com.spnss.player.e2e.scene-became-inactive' \
   "${script_dir}/../../Player/E2ELaunchEnvironment.swift"
 rg -Fq 'com.spnss.player.e2e.scene-became-background' \
@@ -492,7 +523,9 @@ rg -Fq 'deliverPhysicalActionAcknowledgedByDisabling(' \
   "${ui_test_root}/BookmarkUITests.swift"
 rg -Fq 'DarwinEventReceipt(' \
   "${ui_test_root}/BookmarkUITests.swift"
-rg -Fq 'name: "com.spnss.player.e2e.text-input-focused"' \
+rg -Fq '"com.spnss.player.e2e.text-input-focused"' \
+  "${ui_test_root}/BookmarkUITests.swift"
+rg -Fq 'name: namespacedE2EEvent(' \
   "${ui_test_root}/BookmarkUITests.swift"
 rg -Fq 'focusReceipt.wait(timeout: min(0.25, deliveryDeadline.remaining))' \
   "${ui_test_root}/BookmarkUITests.swift"
@@ -514,7 +547,9 @@ if rg -Fq 'verify.tap()' "${ui_test_root}/OfflineRecoveryUITests.swift"; then
 fi
 rg -Fq 'deliverPhysicalActionAcknowledgedByDisabling(' \
   "${ui_test_root}/OfflineRecoveryUITests.swift"
-rg -Fq 'name: "com.spnss.player.e2e.startup-recovery-presented"' \
+rg -Fq '"com.spnss.player.e2e.startup-recovery-presented"' \
+  "${ui_test_root}/OfflineRecoveryUITests.swift"
+rg -Fq 'name: namespacedE2EEvent(' \
   "${ui_test_root}/OfflineRecoveryUITests.swift"
 rg -Fq 'presentationReceipt?.wait(timeout: 2)' \
   "${ui_test_root}/OfflineRecoveryUITests.swift"
