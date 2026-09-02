@@ -2850,7 +2850,10 @@ func compactPlaybackTime(_ seconds: Double) -> String {
     }
 
     private var acquisitionValue: String {
-      guard let job = multifileJob, job.stagedAssets.count == 8 else {
+      guard let checkpoint = multifileJob?.queueCheckpoint,
+        checkpoint.acquisitionComplete,
+        checkpoint.acquired.count == 8
+      else {
         return "acquisition:pending"
       }
       return "acquisition:folder-plus-multiselect:5-selections:8-files:\(sourceState)"

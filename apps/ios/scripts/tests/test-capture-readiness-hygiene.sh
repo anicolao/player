@@ -605,6 +605,13 @@ delivery_helper_deadline="$(rg -n -m 1 \
 rg -Fq 'waitForExistence(container, deadline: EventDeadline())' \
   "${ui_test_root}/AccessibilityUITests.swift"
 multifile_grouping="${ui_test_root}/MultifileGroupingUITests.swift"
+multifile_surface="${ui_test_root}/../Player/ContentView.swift"
+rg -Fq 'checkpoint.acquisitionComplete' "${multifile_surface}"
+rg -Fq 'checkpoint.acquired.count == 8' "${multifile_surface}"
+if rg -Fq 'job.stagedAssets.count == 8' "${multifile_surface}"; then
+  echo 'multifile acquisition hygiene rejects coupling acquisition to completed review staging' >&2
+  exit 1
+fi
 if rg -n --regexp 'select(B4|Prelude|B3)\.tap\(\)' "${multifile_grouping}" \
   > "${temporary_root}/multifile-selection-tap.log"; then
   cat "${temporary_root}/multifile-selection-tap.log" >&2
