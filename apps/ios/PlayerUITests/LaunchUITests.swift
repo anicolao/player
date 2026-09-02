@@ -63,25 +63,70 @@ final class LaunchUITests: PlayerUITestCase {
 
     let app = makeApplication()
     app.launch()
-    app.buttons["receive-from-computer-empty-library"].tap()
     let receiver = app.scrollViews["computer-receiver-screen"]
+    let absent = NSPredicate(format: "exists == 0")
+    let present = NSPredicate(format: "exists == 1")
+    XCTAssertTrue(
+      deliverPhysicalActionAcknowledgedByStateTransition(
+        app.buttons["receive-from-computer-empty-library"],
+        from: absent,
+        until: present,
+        receipt: receiver,
+        in: app
+      )
+    )
     XCTAssertTrue(receiver.waitForStringValue("receiver:ready", timeout: 2))
 
-    app.buttons["copy-computer-receiver-address"].tap()
+    let copied = app.descendants(matching: .any)["computer-receiver-address-copied"]
     XCTAssertTrue(
-      app.descendants(matching: .any)["computer-receiver-address-copied"]
-        .waitForExistence(timeout: 2)
+      deliverPhysicalActionAcknowledgedByStateTransition(
+        app.buttons["copy-computer-receiver-address"],
+        from: absent,
+        until: present,
+        receipt: copied,
+        in: app
+      )
     )
 
-    app.buttons["stop-computer-receiver"].tap()
     let stopSheet = app.alerts["Stop receiving from this computer?"]
-    XCTAssertTrue(stopSheet.waitForExistence(timeout: 2))
-    app.buttons["Keep Receiving"].tap()
+    XCTAssertTrue(
+      deliverPhysicalActionAcknowledgedByStateTransition(
+        app.buttons["stop-computer-receiver"],
+        from: absent,
+        until: present,
+        receipt: stopSheet,
+        in: app
+      )
+    )
+    XCTAssertTrue(
+      deliverPhysicalActionAcknowledgedByStateTransition(
+        app.buttons["Keep Receiving"],
+        from: present,
+        until: absent,
+        receipt: stopSheet,
+        in: app
+      )
+    )
     XCTAssertTrue(receiver.waitForStringValue("receiver:ready", timeout: 2))
-    app.buttons["stop-computer-receiver"].tap()
-    XCTAssertTrue(stopSheet.waitForExistence(timeout: 2))
-    app.buttons["Stop and Clean Up"].tap()
-    XCTAssertTrue(app.otherElements["library-screen"].waitForExistence(timeout: 2))
+    XCTAssertTrue(
+      deliverPhysicalActionAcknowledgedByStateTransition(
+        app.buttons["stop-computer-receiver"],
+        from: absent,
+        until: present,
+        receipt: stopSheet,
+        in: app
+      )
+    )
+    let library = app.otherElements["library-screen"]
+    XCTAssertTrue(
+      deliverPhysicalActionAcknowledgedByStateTransition(
+        app.buttons["Stop and Clean Up"],
+        from: absent,
+        until: present,
+        receipt: library,
+        in: app
+      )
+    )
     XCTAssertTrue(terminateAndWait(app))
   }
 
@@ -90,18 +135,58 @@ final class LaunchUITests: PlayerUITestCase {
 
     let app = makeApplication(additionalArguments: ["-e2e-computer-receiver-paused"])
     app.launch()
-    app.buttons["receive-from-computer-empty-library"].tap()
     let activeReceiver = app.scrollViews["computer-receiver-screen"]
+    let absent = NSPredicate(format: "exists == 0")
+    let present = NSPredicate(format: "exists == 1")
+    XCTAssertTrue(
+      deliverPhysicalActionAcknowledgedByStateTransition(
+        app.buttons["receive-from-computer-empty-library"],
+        from: absent,
+        until: present,
+        receipt: activeReceiver,
+        in: app
+      )
+    )
     XCTAssertTrue(activeReceiver.waitForStringValue("receiver:paused", timeout: 2))
-    app.buttons["Close"].tap()
     let activeCloseSheet = app.alerts["Stop receiving from this computer?"]
-    XCTAssertTrue(activeCloseSheet.waitForExistence(timeout: 2))
-    app.buttons["Keep Receiving"].tap()
+    XCTAssertTrue(
+      deliverPhysicalActionAcknowledgedByStateTransition(
+        app.buttons["Close"],
+        from: absent,
+        until: present,
+        receipt: activeCloseSheet,
+        in: app
+      )
+    )
+    XCTAssertTrue(
+      deliverPhysicalActionAcknowledgedByStateTransition(
+        app.buttons["Keep Receiving"],
+        from: present,
+        until: absent,
+        receipt: activeCloseSheet,
+        in: app
+      )
+    )
     XCTAssertTrue(activeReceiver.waitForStringValue("receiver:paused", timeout: 2))
-    app.buttons["Close"].tap()
-    XCTAssertTrue(activeCloseSheet.waitForExistence(timeout: 2))
-    app.buttons["Stop and Clean Up"].tap()
-    XCTAssertTrue(app.otherElements["library-screen"].waitForExistence(timeout: 2))
+    XCTAssertTrue(
+      deliverPhysicalActionAcknowledgedByStateTransition(
+        app.buttons["Close"],
+        from: absent,
+        until: present,
+        receipt: activeCloseSheet,
+        in: app
+      )
+    )
+    let library = app.otherElements["library-screen"]
+    XCTAssertTrue(
+      deliverPhysicalActionAcknowledgedByStateTransition(
+        app.buttons["Stop and Clean Up"],
+        from: absent,
+        until: present,
+        receipt: library,
+        in: app
+      )
+    )
     XCTAssertTrue(terminateAndWait(app))
   }
 

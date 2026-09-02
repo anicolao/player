@@ -392,6 +392,43 @@ if 'terminateAndWait(app)' not in source[startup:next_selector]:
     raise SystemExit(
         'launch hygiene requires the startup-warning selector to publish a clean not-running handoff'
     )
+
+for selector, following_selector, minimum_acknowledged_actions in (
+    (
+        'func testComputerReceiverVisibleActionsDriveProductionState()',
+        'func testComputerReceiverCloseWhileActiveConfirmsCleanup()',
+        6,
+    ),
+    (
+        'func testComputerReceiverCloseWhileActiveConfirmsCleanup()',
+        'func testComputerReceiverRetriesListenerAndImportFailures()',
+        5,
+    ),
+):
+    start = source.index(selector)
+    end = source.index(following_selector, start)
+    journey = source[start:end]
+    acknowledged_actions = journey.count(
+        'deliverPhysicalActionAcknowledgedByStateTransition('
+    )
+    if acknowledged_actions < minimum_acknowledged_actions:
+        raise SystemExit(
+            'receiver confirmation hygiene requires every sequential presentation '
+            f'action to have an independent state-transition receipt: {selector}'
+        )
+    for raw_action in (
+        'app.buttons["receive-from-computer-empty-library"].tap()',
+        'app.buttons["copy-computer-receiver-address"].tap()',
+        'app.buttons["stop-computer-receiver"].tap()',
+        'app.buttons["Close"].tap()',
+        'app.buttons["Keep Receiving"].tap()',
+        'app.buttons["Stop and Clean Up"].tap()',
+    ):
+        if raw_action in journey:
+            raise SystemExit(
+                'receiver confirmation hygiene rejects an unacknowledged action: '
+                f'{selector}: {raw_action}'
+            )
 PY
 python3 - "${ui_test_root}/ImportIngressResilienceUITests.swift" <<'PY'
 import sys
