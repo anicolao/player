@@ -401,14 +401,16 @@ struct SupportDiagnosticsView: View {
       defer {
         isWorking = false
         e2eRevision += 1
-        E2EOperationEvent.postSupportVerificationFinished()
+        E2EOperationEvent.postSupportVerificationCleanupFinished()
       }
       do {
         let bundle = try await model.prepareSupportBundle()
         try E2EOfflineRecoveryBridge.shared.verify(bundle)
+        E2EOperationEvent.postSupportVerificationFinished()
         await model.discardPreparedSupportBundle(bundle)
       } catch {
         localError = PlayerPresentationError.presenting(error, in: .diagnostics)
+        E2EOperationEvent.postSupportVerificationFinished()
       }
     }
   #endif

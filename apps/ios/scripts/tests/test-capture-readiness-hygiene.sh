@@ -568,6 +568,14 @@ if rg -Fq 'verify.tap()' "${ui_test_root}/OfflineRecoveryUITests.swift"; then
 fi
 rg -Fq 'deliverPhysicalActionAcknowledgedByDisabling(' \
   "${ui_test_root}/OfflineRecoveryUITests.swift"
+rg -Fq '"com.spnss.player.e2e.support-verification-finished"' \
+  "${ui_test_root}/OfflineRecoveryUITests.swift"
+rg -Fq '"com.spnss.player.e2e.support-verification-cleanup-finished"' \
+  "${ui_test_root}/OfflineRecoveryUITests.swift"
+rg -Fq 'verificationFinished?.wait(timeout: 2)' \
+  "${ui_test_root}/OfflineRecoveryUITests.swift"
+rg -Fq 'verificationCleanupFinished?.wait(timeout: 2)' \
+  "${ui_test_root}/OfflineRecoveryUITests.swift"
 rg -Fq '"com.spnss.player.e2e.startup-recovery-presented"' \
   "${ui_test_root}/OfflineRecoveryUITests.swift"
 rg -Fq 'name: namespacedE2EEvent(' \

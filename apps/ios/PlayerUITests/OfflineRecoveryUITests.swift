@@ -151,7 +151,14 @@ final class OfflineRecoveryUITests: PlayerUITestCase {
         for: app
       )
     )
+    let verificationCleanupFinished = DarwinEventReceipt(
+      name: namespacedE2EEvent(
+        "com.spnss.player.e2e.support-verification-cleanup-finished",
+        for: app
+      )
+    )
     XCTAssertNotNil(verificationFinished)
+    XCTAssertNotNil(verificationCleanupFinished)
     XCTAssertTrue(
       deliverPhysicalActionAcknowledgedByDisabling(
         verify,
@@ -163,7 +170,11 @@ final class OfflineRecoveryUITests: PlayerUITestCase {
     )
     XCTAssertTrue(
       verificationFinished?.wait(timeout: 2) == true,
-      "Sanitized support bundle verification did not finish within two seconds of delivery"
+      "Sanitized support bundle preparation and verification did not finish within two seconds of delivery"
+    )
+    XCTAssertTrue(
+      verificationCleanupFinished?.wait(timeout: 2) == true,
+      "Verified support bundle cleanup did not finish within two seconds of verification"
     )
     XCTAssertTrue(
       waitForPredicate(completed, on: sanitizedProbe, timeout: EventDeadline().remaining),

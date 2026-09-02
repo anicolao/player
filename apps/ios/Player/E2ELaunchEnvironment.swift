@@ -75,6 +75,8 @@ import UIKit
       "com.spnss.player.e2e.receiver-completed"
     static let supportVerificationFinished =
       "com.spnss.player.e2e.support-verification-finished"
+    static let supportVerificationCleanupFinished =
+      "com.spnss.player.e2e.support-verification-cleanup-finished"
     static let textInputFocused =
       "com.spnss.player.e2e.text-input-focused"
     static let startupRecoveryPresented =
@@ -90,6 +92,10 @@ import UIKit
 
     static func postSupportVerificationFinished() {
       post(name: supportVerificationFinished)
+    }
+
+    static func postSupportVerificationCleanupFinished() {
+      post(name: supportVerificationCleanupFinished)
     }
 
     static func postTextInputFocused() {
