@@ -99,7 +99,7 @@ release pass while its remaining gate is listed as pending.
 
 The R0 row summarizes the earlier accepted milestone and the chronology below
 retains the signature count at each subsequent checkpoint. The current exact
-ledger contains **176 unique signatures** and **29 formal qualification
+ledger contains **177 unique signatures** and **30 formal qualification
 resets**.
 
 ### Current R0 qualification update
@@ -892,6 +892,37 @@ pixel-exact, the walkthrough matched exactly, and source hygiene passes. No
 fixed wait, extended deadline, or selector changed. The ledger now contains 176
 unique signatures and retains 29 formal resets. The replacement tip must pass
 normal CI before its one permitted formal dispatch.
+
+Replacement normal run
+[33672335212](https://github.com/anicolao/player/actions/runs/33672335212)
+passed exact commit `a0e067e182b62950745ad60f768f566cbaea4d4a`
+without a rerun in 38m46s: the immutable producer, all 13 stories, all 41 UI
+selectors, 378/378 core tests and fixtures, renderer and walkthrough evidence,
+and fail-closed aggregation were green. This is 9m30s (19.7%) faster than the
+same-coverage 48m16s fresh-host baseline. Its one permitted formal dispatch
+[33676284460](https://github.com/anicolao/player/actions/runs/33676284460)
+passed preflight, the immutable producer, and 55 independently scheduled story
+attempts before Story 007 attempt 1 retained a distinct keyboard-dismissal
+defect. The clear action settled the empty-query two-bookmark model, but three
+separate accessibility keyboard-count snapshots transiently disagreed. The
+Return fallback was skipped and the absence poll falsely passed while the
+retained frame still showed the search caret and keyboard obscuring the second
+card. Artifact 9869428806 retains the complete 289,032,824-byte result and was
+downloaded before the remaining queue was cancelled. The failed SHA was not
+rerun; this is formal reset 30.
+
+Bookmark search clearing now explicitly asks UIKit to resign first responder
+and waits for a pre-registered, namespaced acknowledgement emitted only after
+UIKit publishes keyboardDidHide with the query empty and semantic focus false.
+Final capture readiness independently requires the exact unfocused probe. The
+formerly failing selector passed locally in 73.195 seconds and its screenshot
+was pixel-exact; complete Story 007 then passed both selectors in a
+146.787-second parallel test phase, with bookmark in 73.731 seconds and sleep
+timer in 129.152 seconds. All three screenshots were pixel-exact, the
+walkthrough matched exactly, and source hygiene passes. No fixed wait, extended
+deadline, or selector changed. The ledger now contains 177 unique signatures
+and retains 30 formal resets. The replacement tip must pass normal CI before
+its one permitted formal dispatch.
 
 ## R0 — Stabilize and qualify E2E
 

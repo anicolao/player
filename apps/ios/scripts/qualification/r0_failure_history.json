@@ -4176,6 +4176,30 @@
       },
       "qualificationResetCount": 1,
       "resetEvidence": "Formal exact-SHA qualification run 33655993251 failed Story 007 attempt 3 after 56 successful isolated attempts. Artifact 9862434322 uploaded successfully and was downloaded locally before the remaining queue was cancelled; the failed SHA was not rerun, commit 1fd5ae598e1567ee2598d253a64c48fe6fbe2ad0 cannot qualify, and this is formal reset 29."
+    },
+    {
+      "signature": "ui-test:BookmarkUITests.testBookmarksCaptureOrganizeSearchJumpDeleteAndUndoExactly:keyboard-count-transient-false-dismissal",
+      "story": "007-sleep-timer",
+      "evidence": {
+        "workflowRun": 33676284460,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions artifact 9869428806 (r0-story-evidence-007-sleep-timer-attempt-1-a0e067e182b62950745ad60f768f566cbaea4d4a-33676284460-1) retains the exact 289,032,824-byte Story 007 result, bookmark failure frame and recording, complete test and simulator logs, semantic probes, phase timings, screenshot comparison, and valid complete failure-evidence manifest",
+        "url": "https://github.com/anicolao/player/actions/runs/33676284460/job/100403482663",
+        "commit": "a0e067e182b62950745ad60f768f566cbaea4d4a",
+        "observation": "Formal qualification passed preflight, the immutable producer, and 55 independently scheduled story attempts before Story 007 attempt 1 failed at final bookmark capture readiness. The clear action emptied the query and the exact sorted two-bookmark model settled, but the retained frame showed the search caret and software keyboard still present, obscuring the second card. Three separate accessibility keyboard-count snapshots transiently disagreed, so the Return fallback was skipped and the absence poll falsely passed. The neighboring sleep-timer selector passed in 248.653 seconds."
+      },
+      "rootCause": "The test treated repeated accessibility representations of keyboard presence as a causal dismissal receipt. Under formal host load a transient false-negative snapshot let both the conditional fallback and the absence assertion pass even though UIKit retained first-responder ownership and the keyboard remained visible. Setting SwiftUI FocusState false did not itself guarantee completed UIKit responder resignation.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Explicitly ask UIKit to resign first responder when clearing bookmark search, pre-register a namespaced E2E receipt emitted only after UIKit publishes keyboardDidHide with an empty query and unfocused semantic state, and require that receipt within the unchanged two-second event deadline. Capture readiness also requires the exact unfocused probe. Remove the transient keyboard-count fallback without changing waits, deadlines, selectors, or behavior coverage.",
+        "commits": [
+          "ecf1b3c7d5350343bece028b63038811cf7c2595"
+        ],
+        "validation": "The formerly failing bookmark selector passed independently on a fresh twice-booted iOS 26.5 simulator in 73.195 seconds and its screenshot was pixel-exact. Complete local Story 007 then passed both canonical selectors in a 146.787-second parallel test phase: bookmark in 73.731 seconds and sleep timer in 129.152 seconds. All three screenshots were pixel-exact, the walkthrough matched exactly, and capture-readiness hygiene passes. Hosted replacement validation remains required before another formal dispatch."
+      },
+      "qualificationResetCount": 1,
+      "resetEvidence": "Formal exact-SHA qualification run 33676284460 failed Story 007 attempt 1 after 55 successful isolated attempts. Artifact 9869428806 uploaded successfully and was downloaded locally before the remaining queue was cancelled; the failed SHA was not rerun, commit a0e067e182b62950745ad60f768f566cbaea4d4a cannot qualify, and this is formal reset 30."
     }
   ]
 }
