@@ -3887,6 +3887,30 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no formal consecutive qualification count."
+    },
+    {
+      "signature": "infrastructure:post-clean-boot-apsd-reconnect-storm:home-transition-delayed-before-scene-inactive",
+      "story": "005-play-and-restore",
+      "evidence": {
+        "workflowRun": 33575504084,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions artifact 9827883931 (r0-story-evidence-005-play-and-restore-attempt-7-03267f0f742210148b29a63f297906d9cc1eccb2-33575504084-1) retains the exact Story 005 xcresult, Home-screen failure frame, complete test log, simulator unified log, phase timings, and valid failure-evidence manifest",
+        "url": "https://github.com/anicolao/player/actions/runs/33575504084/job/100081606205",
+        "commit": "03267f0f742210148b29a63f297906d9cc1eccb2",
+        "observation": "Formal Story 005 attempt 7 failed testLiveProgressUpdatesMiniAndFullPlayerAcrossLifecycle after 30.994 seconds because Bookshelf did not publish scene inactive inside two seconds of the Home action. Backboard received the Home down/up events at 01:19:56.377-01:19:56.378 UTC, but SpringBoard did not log Home button pressed until 01:19:59.560 or execute ActivateSpringBoard until 01:20:04.074. App deactivation began at 01:20:04.103 and the scene host reached inactive at 01:20:05.670, proving that the real system transition occurred only after severe pre-application delay. In the retained 22-second window, apsd emitted 96,117 of 136,678 unified-log lines (70.3%) while repeatedly rebuilding failed APNS connections, including 460 connection cycles and TLS no-supported-ciphersuites failures. Bookshelf has no push-notification path. The story continued fail-open for evidence collection; all four canonical screenshots and the complete evidence manifest validated. Nineteen measured story attempts had passed before this first measured failure made 10/10 impossible."
+      },
+      "rootCause": "The clean simulator boot left the unrelated apsd user agent loaded. On this shared hosted runner it entered an extreme APNS reconnect storm that monopolized simulator services and delayed SpringBoard's handling of an already delivered Home event by several seconds. The application lifecycle then proceeded normally, but only after the event-driven two-second contract had correctly failed. This is a retained pre-product simulator-infrastructure failure, not a playback, persistence, or lifecycle defect and not justification for a fixed wait or larger deadline.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Disable apsd alongside chronod during the authoritative first boot, use the real shutdown boundary to terminate both unrelated services, then require each disabled-state receipt and rejected post-boot job lookup before target installation. Preserve the real Home-button lifecycle, local HTTP receiver, URL delivery, playback paths, every selector, and every two-second event deadline; add no wait, retry, or polling loop.",
+        "commits": [
+          "a4b78e8f8b8c8cbf96848f0c6311a0b80c4ba925"
+        ],
+        "validation": "Two complete local Story 005 runs passed all eight canonical selectors on independently created, twice-booted iOS 26.5 simulators. The first completed in 4m32s with a 2m46s test phase. The exact-commit run completed in 3m49s with a 2m48s test phase; the formerly failing lifecycle selector passed in 19.215 seconds. In both runs all four screenshots were accepted, the walkthrough matched exactly, and the complete evidence manifest validated. Normal run 33580527061 then passed complete hosted Story 005 on the fix's first fresh-host attempt in job 100095841988 and artifact 9828674909. All eight selectors passed in a 5m53s test phase, including the real Home-button lifecycle selector in 26.707 seconds; all four screenshots were canonical, the walkthrough matched exactly, and the complete evidence manifest validated. The complete run passed all 13 stories, all 41 UI selectors, 377/377 core tests, fixture gates, renderer inputs, and fail-closed aggregation without a rerun in 45m34s. Run-support tests require both service labels, disable operations before the clean shutdown, two disabled-state receipt epochs, rejected post-boot lookups before installation, and no live kill/bootout race. Capture-readiness and complete E2E hygiene pass."
+      },
+      "qualificationResetCount": 1,
+      "resetEvidence": "Formal exact-SHA qualification run 33575504084 failed Story 005 attempt 7. Once the retained artifact made 10/10 impossible, the remaining queue was cancelled without rerunning the failed SHA; commit 03267f0f742210148b29a63f297906d9cc1eccb2 cannot qualify and this is formal reset 24."
     }
   ]
 }

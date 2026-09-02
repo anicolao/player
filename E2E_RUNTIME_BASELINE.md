@@ -315,6 +315,24 @@ fresh hosted attempt and all seven screenshots matched canonically. This is a
 retained exact-code sample rather than a replacement for the formal five-sample
 distribution.
 
+The simulator push-reconnect isolation then passed the complete normal matrix
+in [run 33580527061](https://github.com/anicolao/player/actions/runs/33580527061)
+at exact branch-head SHA `a4b78e8f8b8c8cbf96848f0c6311a0b80c4ba925`,
+without a rerun and with identical coverage. Created-to-complete wall clock was
+**45m34s**, or **-2m42s (-5.6%)** against the same-coverage 48m16s fresh-host
+baseline. The producer completed in **11m40s**; the consumer and aggregation
+stage spanned **33m51s**, **-1m43s (-4.8%)** against the baseline's 35m34s.
+
+All 13 stories, all 41 UI selectors, 377/377 core tests, fixture gates,
+reviewed screenshots, exact walkthroughs, renderer inputs, and fail-closed
+aggregation passed. Story 005's eight selectors completed in a 5m53s test
+phase on the fix's first fresh hosted attempt, including the real Home-button
+lifecycle selector in 26.707 seconds; all four screenshots matched canonically.
+This clean sample demonstrates that isolating an unrelated post-boot simulator
+daemon did not trade coverage, event deadlines, or wall-clock performance for
+reliability. It remains a normal-CI observation rather than a replacement for
+the formal repeated distribution.
+
 ### Formal qualification topology reference
 
 The pre-isolation formal
