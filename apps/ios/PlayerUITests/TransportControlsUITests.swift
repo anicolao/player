@@ -46,8 +46,7 @@ final class TransportControlsUITests: PlayerUITestCase {
     app.staticTexts["Harbor at Dawn"].tap()
     XCTAssertTrue(app.buttons["chapter-2"].waitForExistence(timeout: 2))
     app.buttons["chapter-2"].tap()
-    XCTAssertTrue(app.buttons["player-play-pause"].waitForExistence(timeout: 2))
-    app.buttons["player-play-pause"].tap()
+    try pausePlayback(in: app, chapterIndex: 1, positionMilliseconds: 30_000)
 
     let nowPlaying = app.otherElements["now-playing-screen"]
     let transport = app.buttons["open-transport-preferences"]
@@ -361,10 +360,7 @@ final class TransportControlsUITests: PlayerUITestCase {
     app.staticTexts["Harbor at Dawn"].tap()
     XCTAssertTrue(app.buttons["chapter-2"].waitForExistence(timeout: 2))
     app.buttons["chapter-2"].tap()
-    XCTAssertTrue(app.buttons["player-play-pause"].waitForExistence(timeout: 2))
-    app.buttons["player-play-pause"].tap()
-    let nowPlaying = app.otherElements["now-playing-screen"]
-    try requireValue(nowPlaying, "player:paused:\(bookID):1:30000")
+    try pausePlayback(in: app, chapterIndex: 1, positionMilliseconds: 30_000)
 
     let transport = app.buttons["open-transport-preferences"]
     transport.tap()
@@ -386,6 +382,31 @@ final class TransportControlsUITests: PlayerUITestCase {
     )
     app.buttons["save-transport-preferences"].tap()
     try requireValue(transport, "rate=1.25:back=10:forward=30:seek=chapter:source=book")
+  }
+
+  private func pausePlayback(
+    in app: XCUIApplication,
+    chapterIndex: Int,
+    positionMilliseconds: Int
+  ) throws {
+    let nowPlaying = app.otherElements["now-playing-screen"]
+    let playing =
+      "player:playing:\(bookID):\(chapterIndex):\(positionMilliseconds)"
+    let paused =
+      "player:paused:\(bookID):\(chapterIndex):\(positionMilliseconds)"
+    try requireValue(nowPlaying, playing)
+
+    XCTAssertTrue(
+      deliverPhysicalActionAcknowledgedByStateTransition(
+        app.buttons["player-play-pause"],
+        from: NSPredicate(format: "value == %@", playing),
+        until: NSPredicate(format: "value == %@", paused),
+        receipt: nowPlaying,
+        in: app
+      ),
+      "Pause must be accepted from the exact playing state and publish its paused receipt"
+    )
+    try requireValue(nowPlaying, paused)
   }
 
   private func changeLibraryDefaults(in app: XCUIApplication) throws {

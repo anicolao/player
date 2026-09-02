@@ -569,6 +569,80 @@ func performBoundedForegroundInteraction(
   )
 }
 
+/// Delivers a state-changing action against an exact, independently rendered
+/// origin. A missed gesture may be redelivered only while that origin and the
+/// foreground control geometry remain unchanged; any other transition fails
+/// closed unless it is the requested completion state.
+@MainActor
+func deliverPhysicalActionAcknowledgedByStateTransition(
+  _ action: XCUIElement,
+  from originPredicate: NSPredicate,
+  until completionPredicate: NSPredicate,
+  receipt: XCUIElement,
+  in application: XCUIApplication
+) -> Bool {
+  if completionPredicate.evaluate(with: receipt) { return true }
+
+  let ready = NSPredicate { _, _ in
+    guard application.state == .runningForeground,
+      action.exists,
+      action.isEnabled,
+      action.isHittable,
+      originPredicate.evaluate(with: receipt)
+    else { return false }
+    let applicationFrame = application.frame
+    let actionFrame = action.frame
+    return !applicationFrame.isEmpty
+      && !actionFrame.isEmpty
+      && applicationFrame.contains(actionFrame)
+  }
+  guard waitForPredicate(ready, on: action, timeout: 2) else { return false }
+
+  let applicationFrame = application.frame
+  let actionFrame = action.frame
+  let coordinate = application.coordinate(
+    withNormalizedOffset: CGVector(
+      dx: (actionFrame.midX - applicationFrame.minX) / applicationFrame.width,
+      dy: (actionFrame.midY - applicationFrame.minY) / applicationFrame.height
+    )
+  )
+  var deliveryDeadline: EventDeadline?
+
+  repeat {
+    if completionPredicate.evaluate(with: receipt) { return true }
+    guard originPredicate.evaluate(with: receipt),
+      application.state == .runningForeground,
+      action.exists,
+      action.isEnabled,
+      action.isHittable,
+      action.frame == actionFrame,
+      application.frame == applicationFrame
+    else {
+      guard let deliveryDeadline else { return false }
+      return waitForPredicate(
+        completionPredicate,
+        on: receipt,
+        timeout: deliveryDeadline.remaining
+      )
+    }
+    if let deliveryDeadline, deliveryDeadline.remaining <= 0 { break }
+
+    guard performPhysicalInteractionWithoutPostEventQuiescence(
+      in: application,
+      { coordinate.tap() }
+    ) else { return false }
+    if deliveryDeadline == nil { deliveryDeadline = EventDeadline() }
+    guard let deliveryDeadline else { return false }
+    if waitForPredicate(
+      completionPredicate,
+      on: receipt,
+      timeout: min(0.25, deliveryDeadline.remaining)
+    ) { return true }
+  } while (deliveryDeadline?.remaining ?? 0) > 0
+
+  return completionPredicate.evaluate(with: receipt)
+}
+
 /// Delivers an asynchronous production button action without guessing whether
 /// XCTest's synthesized event reached SwiftUI. The button's synchronous
 /// disabled state acknowledges acceptance; an already-published final receipt

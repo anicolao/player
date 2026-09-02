@@ -228,6 +228,18 @@ if not (background < join < inactive < prepare):
         "lifecycle hygiene requires background to join and inactive to prepare the same checkpoint"
     )
 PY
+transport_controls_source="${ui_test_root}/TransportControlsUITests.swift"
+rg -Fq 'deliverPhysicalActionAcknowledgedByStateTransition(' \
+  "${transport_controls_source}" || {
+  echo 'transport hygiene requires an exact production receipt for play/pause delivery' >&2
+  exit 1
+}
+if rg -n -F 'buttons["player-play-pause"].tap()' "${transport_controls_source}" \
+  > "${temporary_root}/raw-transport-play-pause-taps.log"; then
+  cat "${temporary_root}/raw-transport-play-pause-taps.log" >&2
+  echo 'transport hygiene rejected an unacknowledged play/pause tap' >&2
+  exit 1
+fi
 metadata_editing_source="${ui_test_root}/CommittedMetadataEditingUITests.swift"
 python3 - "${metadata_editing_source}" <<'PY'
 import sys
