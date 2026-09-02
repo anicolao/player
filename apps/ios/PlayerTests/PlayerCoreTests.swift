@@ -1835,10 +1835,12 @@ final class PlayerCoreTests: XCTestCase {
       "Inactive preparation must start exactly one background position transaction"
     )
     let completion = Task { @MainActor in
-      await harness.model.checkpointForBackground()
+      await harness.model.waitForPreparedBackgroundCheckpoint()
     }
     await store.releaseSave()
     await completion.value
+
+    await harness.model.checkpointForBackground()
 
     XCTAssertEqual(
       harness.model.library.positionJournal.filter { $0.reason == .background }.count,

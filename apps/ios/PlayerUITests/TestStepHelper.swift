@@ -405,15 +405,6 @@ func backgroundAndReactivateApplication(
     XCTFail("The scene-inactive lifecycle receipt could not be registered")
     return false
   }
-  guard let sceneBackgroundReceipt = DarwinEventReceipt(
-    name: namespacedE2EEvent(
-      "com.spnss.player.e2e.scene-became-background",
-      for: application
-    )
-  ) else {
-    XCTFail("The scene-background lifecycle receipt could not be registered")
-    return false
-  }
   guard let backgroundReceipt = DarwinEventReceipt(
     name: namespacedE2EEvent(
       "com.spnss.player.e2e.background-checkpoint-completed",
@@ -428,12 +419,8 @@ func backgroundAndReactivateApplication(
     XCTFail("Bookshelf did not publish scene inactive within two seconds of Home")
     return false
   }
-  guard sceneBackgroundReceipt.wait(timeout: 2) else {
-    XCTFail("Bookshelf did not publish scene background within two seconds of becoming inactive")
-    return false
-  }
   guard backgroundReceipt.wait(timeout: 2) else {
-    XCTFail("Bookshelf did not durably checkpoint playback within two seconds of scene background")
+    XCTFail("Bookshelf did not durably checkpoint playback within two seconds of becoming inactive")
     return false
   }
 

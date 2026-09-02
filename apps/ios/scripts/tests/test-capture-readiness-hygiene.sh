@@ -221,11 +221,14 @@ from pathlib import Path
 source = Path(sys.argv[1]).read_text()
 inactive = source.index("case .inactive:")
 prepare = source.index("model.prepareBackgroundCheckpoint()", inactive)
+prepared_completion = source.index(
+    "await model.waitForPreparedBackgroundCheckpoint()", prepare
+)
 background = source.index("case .background:")
 join = source.index("await model.checkpointForBackground()", background)
-if not (background < join < inactive < prepare):
+if not (background < join < inactive < prepare < prepared_completion):
     raise SystemExit(
-        "lifecycle hygiene requires background to join and inactive to prepare the same checkpoint"
+        "lifecycle hygiene requires inactive to prepare and acknowledge the checkpoint before background joins it"
     )
 PY
 transport_controls_source="${ui_test_root}/TransportControlsUITests.swift"
@@ -301,8 +304,12 @@ rg -Fq 'backgroundReceipt.wait(timeout: 2)' \
   "${ui_test_root}/TestStepHelper.swift"
 rg -Fq 'inactiveReceipt.wait(timeout: 2)' \
   "${ui_test_root}/TestStepHelper.swift"
-rg -Fq 'sceneBackgroundReceipt.wait(timeout: 2)' \
-  "${ui_test_root}/TestStepHelper.swift"
+if rg -Fq 'sceneBackgroundReceipt.wait' "${ui_test_root}/TestStepHelper.swift"; then
+  echo 'lifecycle hygiene rejected waiting on the OS-owned inactive-to-background transition' >&2
+  exit 1
+fi
+rg -Fq 'await model.waitForPreparedBackgroundCheckpoint()' \
+  "${content_view_source}"
 rg -Fq 'E2ELifecycleEvent.postSceneBecameInactive()' \
   "${script_dir}/../../Player/ContentView.swift"
 rg -Fq 'E2ELifecycleEvent.postSceneBecameBackground()' \
@@ -410,8 +417,7 @@ from pathlib import Path
 source = Path(sys.argv[1]).read_text()
 home = source.index('XCUIDevice.shared.press(.home)')
 inactive = source.index('inactiveReceipt.wait(timeout: 2)', home)
-background = source.index('sceneBackgroundReceipt.wait(timeout: 2)', inactive)
-checkpoint = source.index('backgroundReceipt.wait(timeout: 2)', background)
+checkpoint = source.index('backgroundReceipt.wait(timeout: 2)', inactive)
 nonquiescent_activation = source.index(
     'performPhysicalInteractionWithoutPostEventQuiescence(in: application',
     checkpoint,
@@ -420,9 +426,9 @@ app_activation = source.index('application.activate()', nonquiescent_activation)
 fresh_control = source.index(
     'application.buttons[interactiveElementIdentifier]', app_activation
 )
-if not home < inactive < background < checkpoint < nonquiescent_activation < app_activation < fresh_control:
+if not home < inactive < checkpoint < nonquiescent_activation < app_activation < fresh_control:
     raise SystemExit(
-        'lifecycle hygiene requires Home, production inactive, production background, completed checkpoint, non-quiescent app activation, then a freshly resolved exact control'
+        'lifecycle hygiene requires Home, production inactive, completed app-owned checkpoint, non-quiescent app activation, then a freshly resolved exact control'
     )
 segment = source[home:inactive]
 if 'springboard.activate()' in segment or '.runningForeground' in segment:

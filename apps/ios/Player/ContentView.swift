@@ -311,6 +311,12 @@ struct ContentView: View {
           // potentially expensive background snapshot work. The background
           // phase still awaits this exact task before reporting completion.
           model.prepareBackgroundCheckpoint()
+          #if E2E
+            Task {
+              await model.waitForPreparedBackgroundCheckpoint()
+              E2ELifecycleEvent.postBackgroundCheckpointCompleted()
+            }
+          #endif
         }
       default:
         break

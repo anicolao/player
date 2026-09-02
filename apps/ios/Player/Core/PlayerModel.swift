@@ -2876,6 +2876,12 @@ final class PlayerModel {
     }
   }
 
+  func waitForPreparedBackgroundCheckpoint() async {
+    prepareBackgroundCheckpoint()
+    let checkpointTask = preparedBackgroundCheckpointTask
+    await checkpointTask?.value
+  }
+
   func checkpointForBackground() async {
     prepareBackgroundCheckpoint()
     guard let preparedBackgroundCheckpointTask else { return }
