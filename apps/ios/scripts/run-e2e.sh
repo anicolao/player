@@ -454,15 +454,22 @@ fi
 xcrun simctl ui "${simulator_id}" content_size "${expected_content_size}"
 xcrun simctl ui "${simulator_id}" increase_contrast "${expected_increase_contrast}"
 # A newly created iOS 26 simulator reaches bootstatus while its one-time
-# widget, Spotlight, and accessibility-asset work can still monopolize
-# RunningBoard. Disable the unrelated widget scheduler while this first boot is
-# still authoritative, then let the simulator's real shutdown boundary
-# terminate it. The disabled-state receipt proves that the next clean boot
-# cannot race a kill/bootout operation by relaunching the service.
+# widget, Spotlight, accessibility-asset, and push-daemon work can still
+# monopolize RunningBoard and SpringBoard. Neither scheduler is part of an E2E
+# product contract: Bookshelf has no push-notification path, and the receiver
+# uses its real local HTTP server. Disable both while this first boot is still
+# authoritative, then let the simulator's real shutdown boundary terminate
+# them. The disabled-state receipt proves that the next clean boot cannot race
+# a kill/bootout operation by relaunching either service.
 chronod_service="user/501/com.apple.chronod"
-xcrun simctl spawn "${simulator_id}" launchctl disable "${chronod_service}"
-xcrun simctl spawn "${simulator_id}" launchctl print-disabled user/501 \
-  | rg -F '"com.apple.chronod" => disabled' >/dev/null
+apsd_service="user/501/com.apple.apsd"
+isolated_simulator_services=("${chronod_service}" "${apsd_service}")
+for isolated_service in "${isolated_simulator_services[@]}"; do
+  xcrun simctl spawn "${simulator_id}" launchctl disable "${isolated_service}"
+done
+disabled_services="$(xcrun simctl spawn "${simulator_id}" launchctl print-disabled user/501)"
+rg -F '"com.apple.chronod" => disabled' <<<"${disabled_services}" >/dev/null
+rg -F '"com.apple.apsd" => disabled' <<<"${disabled_services}" >/dev/null
 # Complete the first-boot/configuration epoch, then acquire a distinct
 # clean-boot receipt before installing either test target. This is a lifecycle
 # boundary, not a launch retry or a time-based settling delay.
@@ -480,16 +487,20 @@ xcrun simctl ui "${simulator_id}" increase_contrast "${expected_increase_contras
 [[ "$(xcrun simctl ui "${simulator_id}" appearance)" == "light" ]]
 [[ "$(xcrun simctl ui "${simulator_id}" content_size)" == "${expected_content_size}" ]]
 [[ "$(xcrun simctl ui "${simulator_id}" increase_contrast)" == "${expected_increase_contrast}" ]]
-# The clean boot must retain both halves of the causal receipt: chronod is
-# disabled and its job was never loaded. This prevents post-boot system widget
-# enumeration without replacing the real URL delivery exercised by Story 002.
-xcrun simctl spawn "${simulator_id}" launchctl print-disabled user/501 \
-  | rg -F '"com.apple.chronod" => disabled' >/dev/null
-if xcrun simctl spawn "${simulator_id}" launchctl print "${chronod_service}" \
-  >/dev/null 2>&1; then
-  echo "Simulator widget scheduler loaded despite its clean-boot disable receipt." >&2
-  exit 1
-fi
+# The clean boot must retain both halves of each causal receipt: both unrelated
+# schedulers are disabled and neither job was loaded. This prevents post-boot
+# widget enumeration and runaway APNS reconnect work without replacing the real
+# URL, local-network, playback, or application-lifecycle paths under test.
+disabled_services="$(xcrun simctl spawn "${simulator_id}" launchctl print-disabled user/501)"
+rg -F '"com.apple.chronod" => disabled' <<<"${disabled_services}" >/dev/null
+rg -F '"com.apple.apsd" => disabled' <<<"${disabled_services}" >/dev/null
+for isolated_service in "${isolated_simulator_services[@]}"; do
+  if xcrun simctl spawn "${simulator_id}" launchctl print "${isolated_service}" \
+    >/dev/null 2>&1; then
+    echo "Simulator service ${isolated_service} loaded despite its clean-boot disable receipt." >&2
+    exit 1
+  fi
+done
 xcrun simctl status_bar "${simulator_id}" override \
   --time '9:41' \
   --batteryState charged \
