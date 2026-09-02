@@ -778,10 +778,17 @@ final class PlayerModel {
       return nil
     }
     do {
-      let sources = try await environment.media.referenceImportSources(
-        request.selectedURLs,
-        displayNames: request.sourceDisplayNames
-      )
+      let sources = if request.entryPoint == .computerReceiver {
+        try await environment.media.referenceApplicationOwnedImportSources(
+          request.selectedURLs,
+          displayNames: request.sourceDisplayNames
+        )
+      } else {
+        try await environment.media.referenceImportSources(
+          request.selectedURLs,
+          displayNames: request.sourceDisplayNames
+        )
+      }
       let entryPoint: ImportEntryPoint = request.entryPoint == .files
         && sources.contains(where: \.isDirectory)
         ? .folder : request.entryPoint

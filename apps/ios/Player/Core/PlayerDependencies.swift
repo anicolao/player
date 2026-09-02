@@ -50,6 +50,10 @@ protocol MediaManaging: Sendable {
     _ selectedURLs: [URL],
     displayNames: [String]?
   ) async throws -> [DurableImportSource]
+  func referenceApplicationOwnedImportSources(
+    _ selectedURLs: [URL],
+    displayNames: [String]?
+  ) async throws -> [DurableImportSource]
   func resolveImportSources(_ sources: [DurableImportSource]) async throws -> [URL]
   func acquireSelection(_ selectedURLs: [URL], jobID: UUID) async throws -> [AcquiredAudioFile]
   func stageArchive(sourceURL: URL, jobID: UUID) async throws -> StagedAudio
@@ -80,6 +84,22 @@ protocol MediaManaging: Sendable {
 }
 
 extension MediaManaging {
+  func referenceApplicationOwnedImportSources(
+    _ selectedURLs: [URL],
+    displayNames: [String]?
+  ) async throws -> [DurableImportSource] {
+    let names = displayNames ?? []
+    return try selectedURLs.enumerated().map { index, url in
+      let values = try url.resourceValues(forKeys: [.isDirectoryKey])
+      return DurableImportSource(
+        displayName: index < names.count ? names[index] : url.lastPathComponent,
+        bookmarkData: nil,
+        fallbackURLString: url.absoluteString,
+        isDirectory: values.isDirectory == true
+      )
+    }
+  }
+
   func referenceImportSources(
     _ selectedURLs: [URL],
     displayNames: [String]?

@@ -371,6 +371,10 @@ rg -Fq 'E2EOperationEvent.postReceiverImporting()' \
   "${script_dir}/../../Player/ComputerReceiverView.swift"
 rg -Fq 'E2EOperationEvent.postReceiverCompleted()' \
   "${script_dir}/../../Player/ComputerReceiverView.swift"
+rg -Fq 'request.entryPoint == .computerReceiver' \
+  "${script_dir}/../../Player/Core/PlayerModel.swift"
+rg -Fq 'referenceApplicationOwnedImportSources' \
+  "${script_dir}/../../Player/Core/PlayerModel.swift"
 rg -Fq 'importingReceipt?.wait(timeout: 2)' \
   "${ui_test_root}/LaunchUITests.swift"
 rg -Fq 'completedReceipt?.wait(timeout: 2)' \

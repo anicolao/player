@@ -596,6 +596,16 @@
       try await base.referenceImportSources(selectedURLs, displayNames: displayNames)
     }
 
+    func referenceApplicationOwnedImportSources(
+      _ selectedURLs: [URL],
+      displayNames: [String]?
+    ) async throws -> [DurableImportSource] {
+      try await base.referenceApplicationOwnedImportSources(
+        selectedURLs,
+        displayNames: displayNames
+      )
+    }
+
     func resolveImportSources(_ sources: [DurableImportSource]) async throws -> [URL] {
       try await base.resolveImportSources(sources)
     }

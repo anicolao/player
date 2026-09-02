@@ -338,6 +338,47 @@ final class SystemIngressTests: XCTestCase {
     XCTAssertEqual(scope.startedNames, scope.stoppedNames)
   }
 
+  func testApplicationOwnedMediaReferencesAvoidSecurityScopeAndBookmarkServices() async throws {
+    let root = temporaryRoot("application-owned-references")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let source = root.appending(path: "Computer Receiver", directoryHint: .isDirectory)
+      .appending(path: "Project Hail Mary.m4a")
+    let storage = root.appending(path: "Storage", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(
+      at: source.deletingLastPathComponent(),
+      withIntermediateDirectories: true
+    )
+    try Data("receiver-owned media".utf8).write(to: source)
+    let scope = SecurityScopeProbe(accessibleNames: [])
+    let bookmarks = ImportSourceBookmarkAccess(
+      createBookmark: { _ in
+        throw PlayerCoreError.fileOperation(
+          "Application-owned receiver media must not ask File Provider for a bookmark."
+        )
+      },
+      resolveBookmark: { _ in
+        throw PlayerCoreError.fileOperation("Resolution is not part of source referencing.")
+      }
+    )
+    let media: any MediaManaging = FileSystemMediaManager(
+      rootURL: storage,
+      resourceAccess: scope.access,
+      bookmarkAccess: bookmarks
+    )
+
+    let references = try await media.referenceApplicationOwnedImportSources(
+      [source],
+      displayNames: ["Project Hail Mary.m4a"]
+    )
+
+    XCTAssertEqual(references.map(\.displayName), ["Project Hail Mary.m4a"])
+    XCTAssertEqual(references.map(\.bookmarkData), [nil])
+    XCTAssertEqual(references.map(\.fallbackURLString), [source.absoluteString])
+    XCTAssertEqual(references.map(\.isDirectory), [false])
+    XCTAssertEqual(scope.startedNames, [])
+    XCTAssertEqual(scope.stoppedNames, [])
+  }
+
   func testSecondItemFailureRemovesTheWholeJobStagingDirectoryAndPreservesSources() async throws {
     let root = temporaryRoot("files-transaction")
     defer { try? FileManager.default.removeItem(at: root) }
