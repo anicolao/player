@@ -4152,6 +4152,30 @@
       },
       "qualificationResetCount": 1,
       "resetEvidence": "Formal exact-SHA qualification run 33647754438 failed Story 001 attempt 2. After artifact 9854271002 uploaded successfully and was downloaded locally, the remaining queue was cancelled without rerunning the failed SHA; commit 539b10a4a1bf79189fceba69a7dbe8ac0fb0fc11 cannot qualify and this is formal reset 28."
+    },
+    {
+      "signature": "ui-test:BookmarkUITests.testBookmarksCaptureOrganizeSearchJumpDeleteAndUndoExactly:focus-retry-ax-resnapshot-exhausts-deadline",
+      "story": "007-sleep-timer",
+      "evidence": {
+        "workflowRun": 33655993251,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions artifact 9862434322 (r0-story-evidence-007-sleep-timer-attempt-3-1fd5ae598e1567ee2598d253a64c48fe6fbe2ad0-33655993251-1) retains the exact 277.8 MB Story 007 xcresult, focused note-editor failure frame and recording, complete test and simulator logs, semantic probes, phase timings, screenshot comparison, and valid complete failure-evidence manifest",
+        "url": "https://github.com/anicolao/player/actions/runs/33655993251/job/100336736851",
+        "commit": "1fd5ae598e1567ee2598d253a64c48fe6fbe2ad0",
+        "observation": "Formal qualification passed preflight, the immutable producer, and 56 independently scheduled story attempts before Story 007 attempt 3 failed. The note editor existed and its exact geometry was captured before the first pinned tap at approximately 68.17 seconds, but the label editor still owned the caret and the note remained blank. The retry guard then re-resolved multiple accessibility properties at approximately 69.31, 71.15, 71.40, 71.62, and 71.92 seconds, consuming the complete two-second field-specific event deadline before the intended second focus action could be delivered. The neighboring sleep-timer selector passed in 207.764 seconds."
+      },
+      "rootCause": "The retry loop redundantly rebuilt a complete accessibility snapshot between idempotent taps even though it had already validated the exact editor identity, enabled and hittable state, containment, and geometry before pinning the coordinate. Under formal host load those synchronous accessibility queries consumed the entire bounded delivery deadline, so the retry mechanism prevented its own second delivery attempt.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Validate the exact focus target and pinned coordinate once, pre-register its field-specific Darwin receipt, and redeliver the same idempotent pinned focus action within the unchanged two-second event deadline without rebuilding accessibility snapshots between attempts. Preserve physical interaction, exact target validation, the production acknowledgement, and all selectors; add no fixed wait or extended deadline. Source hygiene rejects the deadline-consuming retry pattern.",
+        "commits": [
+          "c14d25eae05f75ae0b57af849c6c5bd69d503b7e"
+        ],
+        "validation": "The formerly failing bookmark selector passed independently on a fresh twice-booted iOS 26.5 simulator in 71.872 seconds. Complete local Story 007 then passed both canonical selectors with two parallel workers: bookmark in 72.199 seconds and sleep timer in 130.069 seconds. All three screenshots were pixel-exact, the walkthrough matched exactly, and capture-readiness hygiene passes. Hosted replacement validation remains required before another formal dispatch."
+      },
+      "qualificationResetCount": 1,
+      "resetEvidence": "Formal exact-SHA qualification run 33655993251 failed Story 007 attempt 3 after 56 successful isolated attempts. Artifact 9862434322 uploaded successfully and was downloaded locally before the remaining queue was cancelled; the failed SHA was not rerun, commit 1fd5ae598e1567ee2598d253a64c48fe6fbe2ad0 cannot qualify, and this is formal reset 29."
     }
   ]
 }
