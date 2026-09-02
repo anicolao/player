@@ -308,6 +308,16 @@ qualification_build_section="$(sed -n \
 [[ "$(rg -c '^[[:space:]]+PLAYER_SKIP_SIMULATOR_LAUNCH: "1"$' \
   <<< "${qualification_build_section}")" -eq 1 ]] \
   || fail "the qualification producer must suppress the interactive Nix simulator hook"
+for shared_build_section in "${e2e_build_section}" "${qualification_build_section}"; do
+  [[ "$(rg -F -c -- '-destination "generic/platform=iOS Simulator"' \
+    <<< "${shared_build_section}")" -eq 1 \
+    && "$(rg -F -c 'ARCHS=arm64' <<< "${shared_build_section}")" -eq 1 ]] \
+    || fail "each shared-build producer must compile one portable arm64 simulator product"
+  if rg -n 'simulator-lease\.sh|xcrun simctl (create|boot|bootstatus)' \
+    <<< "${shared_build_section}" >/dev/null; then
+    fail "a compile-only shared-build producer still depends on a concrete simulator lifecycle"
+  fi
+done
 [[ "$(rg -c 'actions/download-artifact@v8' <<< "${normal_consumer_sources}")" -eq 2 ]] \
   || fail "normal CI story and core consumers must each download the shared build"
 [[ "$(rg -c 'shasum -a 256 -c SharedBuild.tar.sha256' \

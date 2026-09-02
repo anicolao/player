@@ -104,31 +104,13 @@ jobs:
       - name: Build and bind the immutable E2E product
         run: |
           build_root="${PWD}/apps/ios/DerivedData/NormalCI/SharedBuild"
-          lease="${PWD}/apps/ios/DerivedData/SimulatorLeases/normal-ci-build-$$.json"
-          simulator_id=""
-          cleanup() {
-            status="$?"
-            trap - EXIT INT TERM
-            if [[ -n "${simulator_id}" ]]; then
-              apps/ios/scripts/simulator-lease.sh release "${lease}" "$$" || status=1
-            fi
-            exit "${status}"
-          }
-          trap cleanup EXIT
-          trap 'exit 130' INT
-          trap 'exit 143' TERM
-          simulator_id="$(apps/ios/scripts/simulator-lease.sh acquire \
-            "${lease}" 'Player normal CI shared build' \
-            com.apple.CoreSimulator.SimDeviceType.iPhone-17 \
-            com.apple.CoreSimulator.SimRuntime.iOS-26-5 "$$")"
-          xcrun simctl boot "${simulator_id}"
-          xcrun simctl bootstatus "${simulator_id}" -b
           xcodebuild build-for-testing \
             -project apps/ios/Player.xcodeproj \
             -scheme Player \
             -configuration E2E \
-            -destination "platform=iOS Simulator,arch=arm64,id=${simulator_id}" \
+            -destination "generic/platform=iOS Simulator" \
             -derivedDataPath "${build_root}" \
+            ARCHS=arm64 \
             CODE_SIGNING_ALLOWED=NO
           apps/ios/scripts/prepare-portable-e2e-tools.sh \
             "${build_root}/PortableTools"
@@ -140,8 +122,6 @@ jobs:
             Build/Products PlayerE2EBuildProvenance.json PortableTools
           (cd apps/ios/DerivedData/NormalCI \
             && shasum -a 256 SharedBuild.tar > SharedBuild.tar.sha256)
-          apps/ios/scripts/simulator-lease.sh release "${lease}" "$$"
-          simulator_id=""
       - name: Upload immutable shared E2E product
         uses: actions/upload-artifact@v7
         with:
