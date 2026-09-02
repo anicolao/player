@@ -99,7 +99,7 @@ release pass while its remaining gate is listed as pending.
 
 The R0 row summarizes the earlier accepted milestone and the chronology below
 retains the signature count at each subsequent checkpoint. The current exact
-ledger contains **177 unique signatures** and **30 formal qualification
+ledger contains **178 unique signatures** and **30 formal qualification
 resets**.
 
 ### Current R0 qualification update
@@ -923,6 +923,31 @@ walkthrough matched exactly, and source hygiene passes. No fixed wait, extended
 deadline, or selector changed. The ledger now contains 177 unique signatures
 and retains 30 formal resets. The replacement tip must pass normal CI before
 its one permitted formal dispatch.
+
+Replacement normal run
+[33691039971](https://github.com/anicolao/player/actions/runs/33691039971)
+passed the immutable producer, 11 other stories, and all 379 core and fixture
+tests before Story 001 retained a distinct receiver-import latency defect. The
+production receiver published importing at 23:09:58.151 UTC, then
+CFURLCreateBookmarkData synchronously initialized File Provider modules for the
+receiver's own sandbox file. Completion arrived at 23:10:00.548, 2.397 seconds
+later and beyond the independent two-second stage contract. Artifact 9871129218
+retains the complete 269,711,219-byte result, including the truthful completed
+failure frame, and was downloaded locally before the remaining Story 010 job
+was cancelled. The tested merge commit contains branch head
+`2950785386db90195169cbe7e64f8079f6e05c45`; this normal run changes no formal
+reset count.
+
+Computer Receiver sources now use an explicit application-owned media boundary
+that records their sandbox URLs without acquiring security scope or creating
+File Provider bookmarks. Files, folder, document-open, AirDrop, and Share
+Extension inputs retain the existing durable-bookmark path. The formerly
+failing selector passed locally in 8.606 seconds; complete Story 001 then passed
+all nine selectors in a 79.200-second test phase. All six screenshots were
+pixel-exact, the walkthrough matched exactly, all 20 SystemIngressTests passed,
+and source hygiene passes. No wait, deadline, or selector changed. The ledger
+now contains 178 unique signatures and retains 30 formal resets. The replacement
+tip must pass normal CI before its one permitted formal dispatch.
 
 ## R0 — Stabilize and qualify E2E
 

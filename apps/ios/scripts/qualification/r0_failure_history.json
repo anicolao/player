@@ -4200,6 +4200,30 @@
       },
       "qualificationResetCount": 1,
       "resetEvidence": "Formal exact-SHA qualification run 33676284460 failed Story 007 attempt 1 after 55 successful isolated attempts. Artifact 9869428806 uploaded successfully and was downloaded locally before the remaining queue was cancelled; the failed SHA was not rerun, commit a0e067e182b62950745ad60f768f566cbaea4d4a cannot qualify, and this is formal reset 30."
+    },
+    {
+      "signature": "ui-test:LaunchUITests.testComputerReceiverRoutesTerminalOutcomes:owned-source-file-provider-bookmark-initialization-exceeds-stage-deadline",
+      "story": "001-ios-launch",
+      "evidence": {
+        "workflowRun": 33691039971,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions artifact 9871129218 (ios-e2e-001-ios-launch) retains the exact 269,711,219-byte Story 001 xcresult, receiver-completion failure frame and recording, complete test and simulator logs, semantic probes, phase timings, all six canonical screenshots, and valid complete failure-evidence manifest",
+        "url": "https://github.com/anicolao/player/actions/runs/33691039971/job/100455309225",
+        "commit": "09eb0bdfecdbe6be0cfb553c886033b96982096e",
+        "observation": "Normal pull-request CI passed the immutable producer, 11 other story jobs, and all 379 core and fixture tests before Story 001 failed. The receiver published importing at 23:09:58.151 UTC, then synchronously called CFURLCreateBookmarkData and initialized File Provider modules for its own sandbox file. Completion arrived at 23:10:00.548, 2.397 seconds after importing and beyond the independent two-second stage contract. The retained frame shows the truthful completed screen after the bounded receipt had already failed. The tested merge commit contains branch head 2950785386db90195169cbe7e64f8079f6e05c45."
+      },
+      "rootCause": "PlayerModel sent every import source through the external-provider durable-bookmark path. Computer Receiver sources are already copied into a validated, application-owned transport root, so security-scope acquisition and persistent File Provider bookmark creation were unnecessary. Cold File Provider initialization made the tiny deterministic receiver import exceed its bounded production-stage contract.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Reference application-owned Computer Receiver files through a distinct media-manager boundary that records their sandbox URL directly without acquiring security scope or asking File Provider for a bookmark. Preserve durable bookmarks for Files, folder, document-open, AirDrop, and Share Extension ingress. Add a core regression and source contract for the ownership routing; change no wait, deadline, selector, or behavior coverage.",
+        "commits": [
+          "201e33cd23301461b89a8b5424f53a36446b9972"
+        ],
+        "validation": "The formerly failing receiver terminal-outcomes selector passed independently on a fresh twice-booted iOS 26.5 simulator in 8.606 seconds. Complete local Story 001 then passed all nine canonical selectors in a 79.200-second test phase; all six screenshots were pixel-exact and the walkthrough matched exactly. All 20 SystemIngressTests passed in 0.162 seconds, including the new regression proving application-owned sources invoke neither security-scope nor bookmark services. E2E and capture-readiness hygiene pass. Hosted replacement validation remains required."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no formal consecutive qualification count. Artifact 9871129218 was downloaded locally before the remaining Story 010 job was cancelled, and the failed SHA was not rerun."
     }
   ]
 }
