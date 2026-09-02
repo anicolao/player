@@ -60,7 +60,9 @@ struct BookmarksView: View {
         }
       }
       .onChange(of: isSearchFocused) { _, focused in
-        if focused { E2EOperationEvent.postTextInputFocused() }
+        if focused {
+          E2EOperationEvent.postTextInputFocused(controlID: "bookmark-search")
+        }
       }
     #endif
   }
@@ -357,7 +359,14 @@ private struct BookmarkEditorView: View {
           }
         }
         .onChange(of: focusedField) { _, field in
-          if field != nil { E2EOperationEvent.postTextInputFocused() }
+          switch field {
+          case .label:
+            E2EOperationEvent.postTextInputFocused(controlID: "bookmark-label-editor")
+          case .note:
+            E2EOperationEvent.postTextInputFocused(controlID: "bookmark-note-editor")
+          case nil:
+            break
+          }
         }
       #endif
     }

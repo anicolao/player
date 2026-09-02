@@ -98,8 +98,8 @@ import UIKit
       post(name: supportVerificationCleanupFinished)
     }
 
-    static func postTextInputFocused() {
-      post(name: textInputFocused)
+    static func postTextInputFocused(controlID: String) {
+      post(name: "\(textInputFocused).\(controlID)")
     }
 
     static func postStartupRecoveryPresented() {

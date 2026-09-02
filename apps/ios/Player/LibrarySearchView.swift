@@ -46,7 +46,9 @@ struct LibrarySearchView: View {
     }
     #if E2E
       .onChange(of: isSearchFocused) { _, focused in
-        if focused { E2EOperationEvent.postTextInputFocused() }
+        if focused {
+          E2EOperationEvent.postTextInputFocused(controlID: "library-search-input")
+        }
       }
     #endif
   }

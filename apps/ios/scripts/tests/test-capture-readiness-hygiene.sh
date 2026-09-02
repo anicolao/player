@@ -594,8 +594,23 @@ rg -Fq 'deliverPhysicalActionAcknowledgedByDisabling(' \
   "${ui_test_root}/BookmarkUITests.swift"
 rg -Fq 'DarwinEventReceipt(' \
   "${ui_test_root}/BookmarkUITests.swift"
-rg -Fq '"com.spnss.player.e2e.text-input-focused"' \
+rg -Fq '"com.spnss.player.e2e.text-input-focused.\(identifier)"' \
   "${ui_test_root}/BookmarkUITests.swift"
+for focus_id in \
+  bookmark-search \
+  bookmark-label-editor \
+  bookmark-note-editor \
+  library-search-input; do
+  rg -Fq "postTextInputFocused(controlID: \"${focus_id}\")" \
+    "${script_dir}/../../Player" || {
+    echo "bookmark hygiene requires an exact production focus event for ${focus_id}" >&2
+    exit 1
+  }
+done
+if rg -Fq 'postTextInputFocused()' "${script_dir}/../../Player"; then
+  echo 'bookmark hygiene rejects the representation-ambiguous shared focus event' >&2
+  exit 1
+fi
 rg -Fq 'name: namespacedE2EEvent(' \
   "${ui_test_root}/BookmarkUITests.swift"
 rg -Fq 'focusReceipt.wait(timeout: min(0.25, deliveryDeadline.remaining))' \

@@ -629,7 +629,7 @@ final class BookmarkUITests: PlayerUITestCase {
     )
     guard let focusReceipt = DarwinEventReceipt(
       name: namespacedE2EEvent(
-        "com.spnss.player.e2e.text-input-focused",
+        "com.spnss.player.e2e.text-input-focused.\(identifier)",
         for: app
       )
     ) else {
