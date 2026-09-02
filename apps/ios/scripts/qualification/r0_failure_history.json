@@ -4128,6 +4128,30 @@
       },
       "qualificationResetCount": 1,
       "resetEvidence": "Formal exact-SHA qualification run 33631697722 failed Story 005 attempt 7. Once retained artifact 9850737887 made 10/10 impossible, the remaining queue was cancelled without rerunning the failed SHA; commit 3c9c2f40109f71685e4008e41bc01043920fc71d cannot qualify and this is formal reset 27."
+    },
+    {
+      "signature": "ui-test:LaunchUITests.testComputerReceiverVisibleActionsDriveProductionState:keep-receiving-dismissal-unacknowledged-before-second-stop",
+      "story": "001-ios-launch",
+      "evidence": {
+        "workflowRun": 33647754438,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions artifact 9854271002 (r0-story-evidence-001-ios-launch-attempt-2-539b10a4a1bf79189fceba69a7dbe8ac0fb0fc11-33647754438-1) retains the exact 251.6 MB Story 001 xcresult, receiver-screen failure frame and recording, complete test and simulator logs, semantic probes, phase timings, canonical screenshot comparisons, and valid failure-evidence manifest",
+        "url": "https://github.com/anicolao/player/actions/runs/33647754438/job/100308937536",
+        "commit": "539b10a4a1bf79189fceba69a7dbe8ac0fb0fc11",
+        "observation": "Formal qualification passed preflight, the immutable producer, and three independently scheduled story attempts before Story 001 attempt 2 failed. The first Stop Receiving action presented its confirmation and Keep Receiving was physically tapped. The test then reasserted receiver:ready, which was already true while the confirmation was present, and immediately synthesized a second raw Stop Receiving tap without proving the first alert had dismissed. No second alert appeared within two seconds; the retained frame shows the ready receiver with no alert. All eight neighboring selectors passed and all six screenshots were accepted canonically."
+      },
+      "rootCause": "The journey used an invariant receiver-state assertion as the completion condition for dismissing the confirmation. Because Keep Receiving intentionally does not change receiver:ready, that assertion could pass before dismissal completed. The following unacknowledged raw Stop tap was then delivered across a presentation transition and could be lost, while the test had neither a dismissal receipt nor a safe redelivery origin.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Deliver every visible receiver action against an exact state-transition receipt: receiver absent to presented, copy acknowledgement absent to present, stop/close confirmation absent to present, Keep Receiving present to absent, and cleanup Library absent to present. Re-synthesize only while the exact origin and foreground control geometry remain unchanged, and require each transition within its existing two-second budget. Apply the same contract to the close-while-active journey and reject future raw versions in source hygiene; add no fixed wait, extended deadline, retry, or selector.",
+        "commits": [
+          "537dbc4ab498deea1dd2d217bb077c16f6a74ec5"
+        ],
+        "validation": "The formerly failing selector passed on a fresh twice-booted iOS 26.5 simulator in 7.045 seconds. Complete local Story 001 then passed all nine canonical selectors in a 78.866-second test phase on another fresh twice-booted simulator; the affected selector passed in 6.462 seconds and the close-while-active variant in 5.790 seconds. All six screenshots were pixel-exact, the walkthrough matched exactly, and capture-readiness source hygiene passes. Hosted replacement validation remains required before another formal dispatch."
+      },
+      "qualificationResetCount": 1,
+      "resetEvidence": "Formal exact-SHA qualification run 33647754438 failed Story 001 attempt 2. After artifact 9854271002 uploaded successfully and was downloaded locally, the remaining queue was cancelled without rerunning the failed SHA; commit 539b10a4a1bf79189fceba69a7dbe8ac0fb0fc11 cannot qualify and this is formal reset 28."
     }
   ]
 }

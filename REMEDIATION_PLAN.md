@@ -99,7 +99,7 @@ release pass while its remaining gate is listed as pending.
 
 The R0 row summarizes the earlier accepted milestone and the chronology below
 retains the signature count at each subsequent checkpoint. The current exact
-ledger contains **174 unique signatures** and **27 formal qualification
+ledger contains **175 unique signatures** and **28 formal qualification
 resets**.
 
 ### Current R0 qualification update
@@ -837,6 +837,33 @@ and lifecycle source hygiene passes. No wait, deadline, retry, or selector
 changed. The ledger now contains 174 unique signatures and retains 27 formal
 resets. The replacement tip must pass normal CI before its one permitted formal
 dispatch.
+
+Replacement normal run
+[33643258483](https://github.com/anicolao/player/actions/runs/33643258483)
+passed exact commit `539b10a4a1bf79189fceba69a7dbe8ac0fb0fc11`
+without a rerun in 40m22s: the immutable producer, all 13 stories, all 41 UI
+selectors, 378/378 core tests and fixtures, renderer and walkthrough evidence,
+and fail-closed aggregation were green. Its one permitted formal dispatch
+[33647754438](https://github.com/anicolao/player/actions/runs/33647754438)
+passed preflight, the immutable producer, and three independently scheduled
+story attempts before Story 001 attempt 2 retained a distinct sequential-alert
+delivery defect. Keep Receiving was tapped, but the test reasserted the already
+true receiver-ready state without proving the alert had dismissed; its immediate
+second raw Stop Receiving tap produced no second alert. Artifact 9854271002
+retains the complete 251.6 MB result and was downloaded before the remaining
+queue was cancelled. The failed SHA was not rerun; this is formal reset 28.
+
+Every visible action in both receiver confirmation journeys now requires its
+own exact state transition: receiver presentation, copy acknowledgement, alert
+presentation, alert dismissal, second presentation, and cleanup-to-Library.
+The bounded helper may redeliver only while the origin and foreground control
+geometry remain unchanged. The formerly failing selector passed locally in
+7.045 seconds; complete Story 001 then passed all nine selectors in a
+78.866-second test phase on another fresh twice-booted simulator. All six
+screenshots were pixel-exact, the walkthrough matched exactly, and source
+hygiene passes. No wait, deadline, retry, or selector changed. The ledger now
+contains 175 unique signatures and retains 28 formal resets. The replacement
+tip must pass normal CI before its one permitted formal dispatch.
 
 ## R0 — Stabilize and qualify E2E
 
