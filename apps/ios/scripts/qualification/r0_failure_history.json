@@ -4056,6 +4056,30 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no formal consecutive qualification count. The run was cancelled after preserving the complete Story 005 failure artifact so hosted capacity could return to the replacement."
+    },
+    {
+      "signature": "ui-test:PositionRestoreUITests.testLiveProgressUpdatesMiniAndFullPlayerAcrossLifecycle:os-background-phase-exceeds-app-deadline",
+      "story": "005-play-and-restore",
+      "evidence": {
+        "workflowRun": 33621727495,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions artifact 9843768943 (ios-e2e-005-play-and-restore) retains the exact Story 005 xcresult, Home-screen failure frame and recording, complete test log, simulator unified log, semantic probes, phase timings, screenshot comparison, and valid complete failure-evidence manifest",
+        "url": "https://github.com/anicolao/player/actions/runs/33621727495/job/100221582288",
+        "commit": "0f08420f9e26d7f02e0c4a1ef0f81e05b531f586",
+        "observation": "The repaired transport selector and every later Story 005 selector passed, as did the first inactive receipt. The lifecycle test then failed only because it required UIKit to publish the OS-owned scene-background phase within two seconds after scene inactive. The hosted log records inactive at 11:04:43.826 UTC and UIKit adding the background deactivation reason at 11:04:45.965 UTC, approximately 2.14 seconds later. The app had already started its durable background checkpoint from inactive, but the test waited for this unrelated system transition before accepting the app-owned completion receipt. The complete story continued after the failure: all seven neighboring selectors passed and all four screenshots matched their canonical baselines."
+      },
+      "rootCause": "The lifecycle helper assigned the application's two-second response contract to UIKit's inactive-to-background scheduling. That operating-system transition is neither caused nor controlled by Bookshelf and can exceed two seconds even while Bookshelf starts and completes its own durable checkpoint on time. Serially waiting for the OS phase therefore hid the stronger app-owned receipt and produced a false failure.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Publish the durable-checkpoint completion receipt as soon as the exact transaction prepared on the active-to-inactive edge finishes. Require Home, the production inactive receipt, and that app-owned durability receipt within its unchanged two-second deadline before reactivation. Let the later background callback join the same task, preserving production lifecycle behavior and duplicate protection, but explicitly reject future tests that gate app correctness on the OS-owned inactive-to-background delay. Add no fixed wait, extended deadline, retry, or selector.",
+        "commits": [
+          "b73d0f40dbdba49de0919824ef2ea7ce657d6c04"
+        ],
+        "validation": "The gated core regression passed and proves the inactive waiter observes the exact prepared transaction before the later background phase joins it without duplication. The formerly failing lifecycle selector passed on a fresh twice-booted iOS 26.5 simulator in 16.901 seconds, reactivating only 0.47 seconds after Home. Complete Story 005 then passed all eight canonical selectors in a 236.254-second test phase on another fresh twice-booted simulator. Three screenshots were pixel-exact, the restored-library screenshot stayed within its reviewed 8/255 channel allowance, the walkthrough matched exactly, and capture-readiness hygiene passes. Hosted replacement validation remains required."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no formal consecutive qualification count. The remaining jobs were cancelled only after the complete 301 MB Story 005 failure artifact was retained."
     }
   ]
 }

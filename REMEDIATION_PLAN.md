@@ -99,7 +99,7 @@ release pass while its remaining gate is listed as pending.
 
 The R0 row summarizes the earlier accepted milestone and the chronology below
 retains the signature count at each subsequent checkpoint. The current exact
-ledger contains **171 unique signatures** and **26 formal qualification
+ledger contains **172 unique signatures** and **26 formal qualification
 resets**.
 
 ### Current R0 qualification update
@@ -761,6 +761,29 @@ were pixel-exact, the walkthrough matched exactly, and the evidence manifest
 validated. The ledger now contains 171 unique signatures and retains 26 formal
 resets. The replacement tip must pass normal CI before its one permitted formal
 dispatch.
+
+Replacement normal run
+[33621727495](https://github.com/anicolao/player/actions/runs/33621727495)
+then proved the transport correction and retained a separate lifecycle-contract
+defect. The production inactive receipt arrived, but the test next required
+UIKit's OS-owned scene-background phase within two seconds. Hosted UIKit took
+approximately 2.14 seconds for that transition even though Bookshelf had already
+started its durable checkpoint. Artifact 9843768943 retains the exact 301 MB
+Story 005 result, failure frame and recording, logs, probes, screenshots, and
+valid evidence manifest. Every other selector passed, including the repaired
+transport path, and all four screenshots matched their canonical baselines.
+
+The lifecycle helper now accepts the stronger app-owned receipt: Home,
+production inactive, durable checkpoint completion within two seconds, then an
+exact foreground-interactive Bookshelf control. The OS background callback
+still joins that same transaction, but its scheduling is no longer mistaken for
+an application deadline. A gated core regression passes; the formerly failing
+selector passed locally in 16.901 seconds; and complete Story 005 passed all
+eight selectors in 236.254 seconds on a separate fresh twice-booted simulator.
+Three screenshots were pixel-exact, restored Library remained within its
+reviewed channel allowance, and the walkthrough matched exactly. The ledger
+now contains 172 unique signatures and retains 26 formal resets. The replacement
+tip must pass normal CI before its one permitted formal dispatch.
 
 ## R0 — Stabilize and qualify E2E
 
