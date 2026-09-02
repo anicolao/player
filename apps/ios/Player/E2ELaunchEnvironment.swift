@@ -79,6 +79,8 @@ import UIKit
       "com.spnss.player.e2e.support-verification-cleanup-finished"
     static let textInputFocused =
       "com.spnss.player.e2e.text-input-focused"
+    static let bookmarkSearchDismissed =
+      "com.spnss.player.e2e.bookmark-search-dismissed"
     static let startupRecoveryPresented =
       "com.spnss.player.e2e.startup-recovery-presented"
 
@@ -100,6 +102,10 @@ import UIKit
 
     static func postTextInputFocused(controlID: String) {
       post(name: "\(textInputFocused).\(controlID)")
+    }
+
+    static func postBookmarkSearchDismissed() {
+      post(name: bookmarkSearchDismissed)
     }
 
     static func postStartupRecoveryPresented() {

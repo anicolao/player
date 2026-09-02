@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct BookmarksView: View {
   @Bindable var model: PlayerModel
@@ -64,6 +65,12 @@ struct BookmarksView: View {
           E2EOperationEvent.postTextInputFocused(controlID: "bookmark-search")
         }
       }
+      .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidHideNotification)) {
+        _ in
+        if query.isEmpty && !isSearchFocused {
+          E2EOperationEvent.postBookmarkSearchDismissed()
+        }
+      }
     #endif
   }
 
@@ -82,6 +89,12 @@ struct BookmarksView: View {
         Button {
           query = ""
           isSearchFocused = false
+          UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil,
+            from: nil,
+            for: nil
+          )
         } label: {
           Image(systemName: "xmark.circle.fill")
         }

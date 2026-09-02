@@ -102,19 +102,10 @@ final class BookmarkUITests: PlayerUITestCase {
       app,
       "bookmarks:query=echo cafe:sort=label:count=1:order=\(secondBookmarkID)"
     )
-    app.buttons["clear-bookmark-search"].tap()
-    try requireBookmarksScreen(
+    try clearBookmarkSearch(
       app,
-      "bookmarks:query=:sort=label:count=2:order=\(secondBookmarkID),\(boundaryBookmarkID)"
-    )
-    let keyboards = app.keyboards
-    XCTAssertLessThanOrEqual(keyboards.count, 1, "Bookmark search must expose at most one keyboard")
-    if keyboards.count == 1 {
-      search.typeKey(.return, modifierFlags: [])
-    }
-    XCTAssertTrue(
-      waitForNoElements(keyboards),
-      "Bookmark walkthrough must not capture the search keyboard"
+      expectedScreen:
+        "bookmarks:query=:sort=label:count=2:order=\(secondBookmarkID),\(boundaryBookmarkID)"
     )
     try prepareBookmarkWalkthroughFrame(
       app,
@@ -166,6 +157,10 @@ final class BookmarkUITests: PlayerUITestCase {
           && self.hasExactValue(
             app.descendants(matching: .any)["bookmarks-screen"],
             "bookmarks:query=:sort=label:count=2:order=\(self.secondBookmarkID),\(self.boundaryBookmarkID)"
+          )
+          && self.hasExactValue(
+            app.descendants(matching: .any)["bookmark-search-focus-state"],
+            "unfocused"
           )
           && self.hasSettledScroll(
             app.descendants(matching: .any)["book-detail-scroll-readiness"],
@@ -288,6 +283,53 @@ final class BookmarkUITests: PlayerUITestCase {
         on: app.descendants(matching: .any)["bookmark-editor"]
       ),
       "The bookmark editor must finish dismissing after Save"
+    )
+  }
+
+  private func clearBookmarkSearch(
+    _ app: XCUIApplication,
+    expectedScreen: String
+  ) throws {
+    let clear = app.buttons["clear-bookmark-search"]
+    XCTAssertTrue(clear.waitForExistence(timeout: 2))
+    guard let dismissalReceipt = DarwinEventReceipt(
+      name: namespacedE2EEvent(
+        "com.spnss.player.e2e.bookmark-search-dismissed",
+        for: app
+      )
+    ) else {
+      XCTFail("Expected the bookmark search dismissal receipt to register")
+      return
+    }
+    let appFrame = app.frame
+    let clearFrame = clear.frame
+    guard clear.exists, clear.isEnabled, clear.isHittable,
+      !appFrame.isEmpty, !clearFrame.isEmpty, appFrame.contains(clearFrame)
+    else {
+      XCTFail("Expected one contained physical bookmark search clear action")
+      return
+    }
+    let coordinate = app.coordinate(
+      withNormalizedOffset: CGVector(
+        dx: (clearFrame.midX - appFrame.minX) / appFrame.width,
+        dy: (clearFrame.midY - appFrame.minY) / appFrame.height
+      )
+    )
+    XCTAssertTrue(
+      performPhysicalInteractionWithoutPostEventQuiescence(in: app) {
+        coordinate.tap()
+      },
+      "Expected the pinned XCTest runtime to synthesize bookmark search clearing"
+    )
+    let dismissalDeadline = EventDeadline()
+    XCTAssertTrue(
+      dismissalReceipt.wait(timeout: dismissalDeadline.remaining),
+      "Bookmark search clearing must empty the query, resign focus, and finish hiding UIKit's keyboard within two seconds"
+    )
+    try requireBookmarksScreen(app, expectedScreen)
+    try requireValue(
+      app.descendants(matching: .any)["bookmark-search-focus-state"],
+      "unfocused"
     )
   }
 

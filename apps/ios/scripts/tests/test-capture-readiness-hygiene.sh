@@ -685,6 +685,21 @@ if rg -Fq 'focusProbe.waitForStringValue' "${ui_test_root}/BookmarkUITests.swift
   echo 'bookmark hygiene rejects accessibility polling as a text-input focus receipt' >&2
   exit 1
 fi
+rg -Fq '"com.spnss.player.e2e.bookmark-search-dismissed"' \
+  "${ui_test_root}/BookmarkUITests.swift"
+rg -Fq 'dismissalReceipt.wait(timeout: dismissalDeadline.remaining)' \
+  "${ui_test_root}/BookmarkUITests.swift"
+rg -Fq 'E2EOperationEvent.postBookmarkSearchDismissed()' \
+  "${ui_test_root}/../Player/BookmarksView.swift"
+rg -Fq 'UIResponder.keyboardDidHideNotification' \
+  "${ui_test_root}/../Player/BookmarksView.swift"
+rg -Fq '#selector(UIResponder.resignFirstResponder)' \
+  "${ui_test_root}/../Player/BookmarksView.swift"
+if rg -Fq 'search.typeKey(.return' "${ui_test_root}/BookmarkUITests.swift" \
+  || rg -Fq 'if keyboards.count == 1' "${ui_test_root}/BookmarkUITests.swift"; then
+  echo 'bookmark hygiene rejects transient keyboard-count polling as a dismissal receipt' >&2
+  exit 1
+fi
 if rg -Fq 'verify.tap()' "${ui_test_root}/OfflineRecoveryUITests.swift"; then
   echo 'offline diagnostics hygiene rejects an unacknowledged verification tap' >&2
   exit 1
