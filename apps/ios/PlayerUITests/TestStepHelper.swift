@@ -416,7 +416,7 @@ func backgroundAndReactivateApplication(
   }
   XCUIDevice.shared.press(.home)
   guard inactiveReceipt.wait(timeout: 2) else {
-    XCTFail("Bookshelf did not publish scene inactive within two seconds of Home")
+    XCTFail("Bookshelf did not acknowledge UIKit scene inactivity after Home returned")
     return false
   }
   guard backgroundReceipt.wait(timeout: 2) else {

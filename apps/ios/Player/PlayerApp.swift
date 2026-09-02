@@ -5,6 +5,7 @@ import UIKit
 struct PlayerApp: App {
   @State private var model: PlayerModel?
   @State private var launchErrorMessage: String?
+  private let applicationLifecycle: ApplicationLifecycleCoordinator
   private let e2eLaunchConfiguration: E2ELaunchConfiguration?
   private let receiverConfiguration: E2EComputerReceiverLaunchConfiguration
   private let launchNavigation: E2ELaunchNavigationConfiguration
@@ -14,6 +15,7 @@ struct PlayerApp: App {
   #endif
 
   init() {
+    applicationLifecycle = ApplicationLifecycleCoordinator()
     #if E2E
       UIView.setAnimationsEnabled(false)
       do {
@@ -90,9 +92,9 @@ struct PlayerApp: App {
         e2eLaunchConfiguration: e2eLaunchConfiguration,
         playbackControls: playbackControls
       )
-      _model = State(
-        initialValue: PlayerModel(environment: environment)
-      )
+      let launchedModel = PlayerModel(environment: environment)
+      applicationLifecycle.bind(to: launchedModel)
+      _model = State(initialValue: launchedModel)
       _launchErrorMessage = State(initialValue: nil)
     } catch {
       _model = State(initialValue: nil)
@@ -130,16 +132,89 @@ struct PlayerApp: App {
 
   private func retryLaunchEnvironment() {
     do {
-      model = PlayerModel(environment: try PlayerEnvironment.launchEnvironment(
-        e2eLaunchConfiguration: e2eLaunchConfiguration,
-        playbackControls: playbackControls
-      ))
+      let replacementModel = PlayerModel(
+        environment: try PlayerEnvironment.launchEnvironment(
+          e2eLaunchConfiguration: e2eLaunchConfiguration,
+          playbackControls: playbackControls
+        )
+      )
+      applicationLifecycle.bind(to: replacementModel)
+      model = replacementModel
       launchErrorMessage = nil
     } catch {
       launchErrorMessage = error.localizedDescription
     }
   }
 
+}
+
+@MainActor
+private final class ApplicationLifecycleCoordinator: NSObject {
+  private weak var model: PlayerModel?
+
+  override init() {
+    super.init()
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(applicationWillResignActive(_:)),
+      name: UIApplication.willResignActiveNotification,
+      object: nil
+    )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(applicationDidEnterBackground(_:)),
+      name: UIApplication.didEnterBackgroundNotification,
+      object: nil
+    )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(applicationDidBecomeActive(_:)),
+      name: UIApplication.didBecomeActiveNotification,
+      object: nil
+    )
+  }
+
+  deinit {
+    NotificationCenter.default.removeObserver(self)
+  }
+
+  func bind(to model: PlayerModel) {
+    self.model = model
+  }
+
+  @objc private func applicationWillResignActive(_ notification: Notification) {
+    #if E2E
+      E2ELifecycleEvent.postSceneBecameInactive()
+    #endif
+    guard let model else { return }
+    // UIApplication publishes this notification synchronously before UIKit's
+    // background snapshot work. Begin durability here rather than depending on
+    // SwiftUI to render an intermediate scenePhase value under load.
+    model.prepareBackgroundCheckpoint()
+    #if E2E
+      Task { @MainActor in
+        await model.waitForPreparedBackgroundCheckpoint()
+        E2ELifecycleEvent.postBackgroundCheckpointCompleted()
+      }
+    #endif
+  }
+
+  @objc private func applicationDidEnterBackground(_ notification: Notification) {
+    #if E2E
+      E2ELifecycleEvent.postSceneBecameBackground()
+    #endif
+    guard let model else { return }
+    Task { @MainActor in
+      await model.checkpointForBackground()
+      #if E2E
+        E2ELifecycleEvent.postBackgroundCheckpointCompleted()
+      #endif
+    }
+  }
+
+  @objc private func applicationDidBecomeActive(_ notification: Notification) {
+    model?.invalidatePreparedBackgroundCheckpoint()
+  }
 }
 
 #if E2E

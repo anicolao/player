@@ -197,38 +197,56 @@ if rg -n -U --regexp 'XCUIDevice\.shared\.press\(\.home\)\n[[:space:]]*app\.acti
   exit 1
 fi
 content_view_source="${script_dir}/../../Player/ContentView.swift"
+player_app_source="${script_dir}/../../Player/PlayerApp.swift"
 player_model_source="${script_dir}/../../Player/Core/PlayerModel.swift"
-rg -Fq 'model.prepareBackgroundCheckpoint()' "${content_view_source}" || {
-  echo 'lifecycle hygiene requires inactive-phase durable-checkpoint preparation' >&2
+rg -Fq 'name: UIApplication.willResignActiveNotification' "${player_app_source}" || {
+  echo 'lifecycle hygiene requires the synchronous UIKit resign-active notification' >&2
   exit 1
 }
-rg -Fq 'if previousPhase == .active {' "${content_view_source}" || {
-  echo 'lifecycle hygiene requires checkpoint preparation only on active-to-inactive transitions' >&2
+rg -Fq 'model.prepareBackgroundCheckpoint()' "${player_app_source}" || {
+  echo 'lifecycle hygiene requires resign-active durable-checkpoint preparation' >&2
   exit 1
 }
-rg -Fq 'await model.checkpointForBackground()' "${content_view_source}" || {
+rg -Fq 'name: UIApplication.didEnterBackgroundNotification' "${player_app_source}" || {
+  echo 'lifecycle hygiene requires the synchronous UIKit background notification' >&2
+  exit 1
+}
+rg -Fq 'await model.checkpointForBackground()' "${player_app_source}" || {
   echo 'lifecycle hygiene requires background to join the prepared checkpoint' >&2
   exit 1
 }
+if rg -Fq 'model.prepareBackgroundCheckpoint()' "${content_view_source}" \
+  || rg -Fq 'await model.checkpointForBackground()' "${content_view_source}"; then
+  echo 'lifecycle hygiene rejects coalescible SwiftUI scenePhase checkpoint ownership' >&2
+  exit 1
+fi
 rg -Fq 'await precedingTask?.value' "${player_model_source}" || {
   echo 'lifecycle hygiene requires refreshed checkpoints to serialize behind prior persistence' >&2
   exit 1
 }
-python3 - "${content_view_source}" <<'PY'
+python3 - "${player_app_source}" <<'PY'
 import sys
 from pathlib import Path
 
 source = Path(sys.argv[1]).read_text()
-inactive = source.index("case .inactive:")
-prepare = source.index("model.prepareBackgroundCheckpoint()", inactive)
+inactive = source.index("applicationWillResignActive")
+inactive_receipt = source.index("E2ELifecycleEvent.postSceneBecameInactive()", inactive)
+prepare = source.index("model.prepareBackgroundCheckpoint()", inactive_receipt)
 prepared_completion = source.index(
     "await model.waitForPreparedBackgroundCheckpoint()", prepare
 )
-background = source.index("case .background:")
+background = source.index("applicationDidEnterBackground", prepared_completion)
+background_receipt = source.index(
+    "E2ELifecycleEvent.postSceneBecameBackground()", background
+)
 join = source.index("await model.checkpointForBackground()", background)
-if not (background < join < inactive < prepare < prepared_completion):
+if not (
+    inactive < inactive_receipt < prepare < prepared_completion
+    < background < background_receipt < join
+):
     raise SystemExit(
-        "lifecycle hygiene requires inactive to prepare and acknowledge the checkpoint before background joins it"
+        "lifecycle hygiene requires synchronous UIKit inactivity to prepare and "
+        "acknowledge the checkpoint before UIKit background joins it"
     )
 PY
 transport_controls_source="${ui_test_root}/TransportControlsUITests.swift"
@@ -309,11 +327,11 @@ if rg -Fq 'sceneBackgroundReceipt.wait' "${ui_test_root}/TestStepHelper.swift"; 
   exit 1
 fi
 rg -Fq 'await model.waitForPreparedBackgroundCheckpoint()' \
-  "${content_view_source}"
+  "${player_app_source}"
 rg -Fq 'E2ELifecycleEvent.postSceneBecameInactive()' \
-  "${script_dir}/../../Player/ContentView.swift"
+  "${player_app_source}"
 rg -Fq 'E2ELifecycleEvent.postSceneBecameBackground()' \
-  "${script_dir}/../../Player/ContentView.swift"
+  "${player_app_source}"
 rg -Fq '.accessibilityIdentifier("e2e-playback-persistence-probe")' \
   "${script_dir}/../../Player/ContentView.swift"
 rg -Fq 'E2EPlaybackPersistenceBridge.shared.record(' \
