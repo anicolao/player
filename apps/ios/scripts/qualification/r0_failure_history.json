@@ -4104,6 +4104,30 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no formal consecutive qualification count. The remaining jobs were cancelled only after the complete 276 MB Story 007 failure artifact was retained."
+    },
+    {
+      "signature": "ui-test:PositionRestoreUITests.testLiveProgressUpdatesMiniAndFullPlayerAcrossLifecycle:swiftui-inactive-phase-coalesced-after-home",
+      "story": "005-play-and-restore",
+      "evidence": {
+        "workflowRun": 33631697722,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions artifact 9850737887 (r0-story-evidence-005-play-and-restore-attempt-7-3c9c2f40109f71685e4008e41bc01043920fc71d-33631697722-1) retains the exact 309 MB Story 005 xcresult, Home-screen failure frame, complete test and simulator logs, semantic probes, phase timings, all four canonical screenshots, and valid failure-evidence manifest",
+        "url": "https://github.com/anicolao/player/actions/runs/33631697722/job/100254812167",
+        "commit": "3c9c2f40109f71685e4008e41bc01043920fc71d",
+        "observation": "Formal qualification passed preflight, the immutable producer, and 31 independently scheduled story attempts before Story 005 attempt 7 failed. XCTest completed the physical Home action at approximately 14:07:27.742 UTC, while UIKit did not add its Player deactivation reasons until approximately 14:07:33.825, 6.08 seconds later. SpringBoard was visibly foreground, but SwiftUI never published its intermediate inactive scenePhase callback before suspension, so the app emitted neither the inactivity acknowledgement nor its prepared-checkpoint receipt. All seven neighboring selectors passed and all four screenshots remained canonical."
+      },
+      "rootCause": "Production durability and the E2E acknowledgement were owned by a SwiftUI scenePhase view observer. Under the formal runner's concurrent snapshot pressure, UIKit completed the Home transition but delayed application deactivation and then coalesced the intermediate SwiftUI inactive render before suspension. The durable checkpoint therefore depended on an optional view-update delivery boundary instead of the synchronous UIApplication lifecycle notification.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Own lifecycle durability in an application-scoped coordinator registered for UIKit's synchronous will-resign-active, did-enter-background, and did-become-active notifications. Begin and acknowledge the exact prepared checkpoint from will-resign-active, let background join the same transaction, and leave SwiftUI scenePhase responsible only for active refresh work. Preserve the physical Home action and independent two-second app-event deadlines; add no fixed wait, extended deadline, retry, or selector.",
+        "commits": [
+          "0c8ce475153ccd245c8c2aebdca8ce5e70e1669d"
+        ],
+        "validation": "The formerly failing lifecycle selector passed on a fresh twice-booted iOS 26.5 simulator in 17.268 seconds. Complete local Story 005 then passed all eight canonical selectors in a 241.341-second test phase; the affected selector passed in 16.716 seconds, all four screenshots were pixel-exact, and the walkthrough matched exactly. Capture-readiness lifecycle source contracts pass. Hosted replacement validation remains required before another formal dispatch."
+      },
+      "qualificationResetCount": 1,
+      "resetEvidence": "Formal exact-SHA qualification run 33631697722 failed Story 005 attempt 7. Once retained artifact 9850737887 made 10/10 impossible, the remaining queue was cancelled without rerunning the failed SHA; commit 3c9c2f40109f71685e4008e41bc01043920fc71d cannot qualify and this is formal reset 27."
     }
   ]
 }

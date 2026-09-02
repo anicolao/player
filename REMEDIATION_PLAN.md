@@ -99,7 +99,7 @@ release pass while its remaining gate is listed as pending.
 
 The R0 row summarizes the earlier accepted milestone and the chronology below
 retains the signature count at each subsequent checkpoint. The current exact
-ledger contains **173 unique signatures** and **26 formal qualification
+ledger contains **174 unique signatures** and **27 formal qualification
 resets**.
 
 ### Current R0 qualification update
@@ -805,6 +805,36 @@ seconds; complete local Story 007 then passed both selectors with two workers
 in 147.356 seconds. Bookmark completed in 72.138 seconds, sleep timer in 129.252
 seconds, all three screenshots were pixel-exact, and the walkthrough matched
 exactly. The ledger now contains 173 unique signatures and retains 26 formal
+resets. The replacement tip must pass normal CI before its one permitted formal
+dispatch.
+
+Exact-tip normal run
+[33628068923](https://github.com/anicolao/player/actions/runs/33628068923)
+then passed commit `3c9c2f40109f71685e4008e41bc01043920fc71d`
+without a rerun: all 13 stories, all 41 UI selectors, 378/378 core tests and
+fixtures, the App Store renderer, screenshots, exact walkthroughs, and
+fail-closed aggregation were green. Created-to-complete wall time was 38m29s,
+9m47s (20.3%) faster than the same-coverage 48m16s fresh-host baseline. Its one
+permitted formal dispatch
+[33631697722](https://github.com/anicolao/player/actions/runs/33631697722)
+passed preflight, the immutable producer, and 31 independently scheduled story
+attempts before Story 005 attempt 7 retained a distinct lifecycle defect. The
+physical Home action completed and SpringBoard was foreground, but UIKit delayed
+Player deactivation by approximately 6.08 seconds and SwiftUI never published
+the intermediate inactive scenePhase callback before suspension. The remaining
+queue was cancelled after retaining the complete 309 MB failure artifact and
+without rerunning the failed SHA; this is formal reset 27.
+
+The replacement moves durable lifecycle ownership from the coalescible SwiftUI
+view observer to an application-scoped coordinator driven by UIKit's synchronous
+will-resign-active, did-enter-background, and did-become-active notifications.
+It begins and acknowledges the exact checkpoint at resign-active and has
+background join that transaction; SwiftUI scenePhase now performs active-only
+refresh work. The formerly failing selector passed locally in 17.268 seconds,
+then complete Story 005 passed all eight selectors in a 241.341-second test
+phase. All four screenshots were pixel-exact, the walkthrough matched exactly,
+and lifecycle source hygiene passes. No wait, deadline, retry, or selector
+changed. The ledger now contains 174 unique signatures and retains 27 formal
 resets. The replacement tip must pass normal CI before its one permitted formal
 dispatch.
 
