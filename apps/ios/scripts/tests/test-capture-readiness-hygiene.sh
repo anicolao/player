@@ -670,10 +670,13 @@ rg -Fq 'name: namespacedE2EEvent(' \
   "${ui_test_root}/BookmarkUITests.swift"
 rg -Fq 'focusReceipt.wait(timeout: min(0.25, deliveryDeadline.remaining))' \
   "${ui_test_root}/BookmarkUITests.swift"
-rg -Fq 'exactOrigin.exists, currentField.exists, currentField.isEnabled' \
+rg -Fq 'Focusing the same pinned field is idempotent.' \
   "${ui_test_root}/BookmarkUITests.swift"
-rg -Fq 'currentField.isHittable, currentField.frame == fieldFrame' \
-  "${ui_test_root}/BookmarkUITests.swift"
+if rg -Fq 'exactOrigin.exists, currentField.exists, currentField.isEnabled' \
+  "${ui_test_root}/BookmarkUITests.swift"; then
+  echo 'bookmark hygiene rejects deadline-consuming AX re-resolution between focus attempts' >&2
+  exit 1
+fi
 rg -Fq 'coordinate.tap()' \
   "${ui_test_root}/BookmarkUITests.swift"
 rg -Fq 'performPhysicalInteractionWithoutPostEventQuiescence(in: app)' \

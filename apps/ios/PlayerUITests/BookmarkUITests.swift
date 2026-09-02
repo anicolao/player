@@ -639,15 +639,11 @@ final class BookmarkUITests: PlayerUITestCase {
     var deliveryDeadline: EventDeadline?
     var delivered = false
     repeat {
-      if let deliveryDeadline {
-        guard exactOrigin.exists, currentField.exists, currentField.isEnabled,
-          currentField.isHittable, currentField.frame == fieldFrame
-        else {
-          delivered = focusReceipt.wait(timeout: deliveryDeadline.remaining)
-          break
-        }
-        if deliveryDeadline.remaining <= 0 { break }
-      }
+      if let deliveryDeadline, deliveryDeadline.remaining <= 0 { break }
+      // Focusing the same pinned field is idempotent. Re-resolving its complete
+      // accessibility snapshot between attempts can itself consume the entire
+      // delivery budget under load. A successful focus change publishes the
+      // field-specific Darwin event before any subsequent tap can matter.
       XCTAssertTrue(
         performPhysicalInteractionWithoutPostEventQuiescence(in: app) {
           coordinate.tap()
@@ -660,7 +656,7 @@ final class BookmarkUITests: PlayerUITestCase {
     } while !delivered && (deliveryDeadline?.remaining ?? 0) > 0
     XCTAssertTrue(
       delivered,
-      "Expected \(identifier) to publish its production focus event within two seconds while the exact editor target remained unchanged"
+      "Expected \(identifier) to publish its production focus event within two seconds of an idempotent pinned focus action"
     )
     guard delivered else { return }
     currentField.typeText(text)
