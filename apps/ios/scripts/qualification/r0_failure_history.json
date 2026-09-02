@@ -3960,6 +3960,30 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no formal consecutive qualification count."
+    },
+    {
+      "signature": "ui-test:MultifileGroupingUITests.testRepairsMessyMultifileGroupingAndCommitsExactlyOneBook:acquisition-probe-coupled-to-review-completion",
+      "story": "003-multifile-grouping",
+      "evidence": {
+        "workflowRun": 33599914468,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions artifact 9835465166 (r0-story-evidence-003-multifile-grouping-attempt-2-5b936bc743a971d9f053cb4f8ce2e2158527020c-33599914468-1) retains the exact Story 003 xcresult, Inspecting metadata failure screen, acquisition and import probes, complete test and simulator logs, phase timings, and valid failure evidence",
+        "url": "https://github.com/anicolao/player/actions/runs/33599914468/job/100152572268",
+        "commit": "5b936bc743a971d9f053cb4f8ce2e2158527020c",
+        "observation": "Formal Story 003 attempt 2 failed 12.574 seconds into its selector because acquisition-probe remained acquisition:pending for its independent two-second deadline. The retained screen showed the five-selection job in the production Inbox at Inspecting metadata. That phase can only be durably published after acquireSelection has returned all files and queueCheckpoint has recorded acquisitionComplete; five other formal story attempts had passed before this failure made 10/10 impossible."
+      },
+      "rootCause": "The E2E surface called acquisition-probe did not read the production acquisition checkpoint. It instead required job.stagedAssets.count == 8, a collection populated only after every file has been inspected, the recovery plan has been assessed, grouping and ordering proposals have been built, and the final review snapshot has been durably saved. The test therefore charged unrelated downstream review work to acquisition's two-second contract and reported pending after production acquisition had demonstrably completed.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Derive the acquisition receipt from queueCheckpoint.acquisitionComplete and the exact eight acquired records. Keep the immediately following Inbox assertion as the independent receipt for complete inspection and ready-for-review state, preserving all production work, selectors, screenshots, filesystem evidence, source-preservation checks, and two-second deadlines. Source hygiene rejects coupling this receipt back to review staging.",
+        "commits": [
+          "b5e20987059677b1fbd0c35a937df9d62d5cb72c"
+        ],
+        "validation": "The complete canonical Story 003 passed locally on Xcode 26.6 and iOS 26.5 in 36.458 seconds. The acquisition receipt resolved at the durable acquisition checkpoint, the separate ready-for-review receipt passed, all repair and atomic-commit assertions remained selected, three screenshots were pixel-exact, the fourth was within its existing reviewed channel allowance, and the walkthrough matched exactly. Capture-readiness source checks and complete E2E hygiene pass. Hosted replacement validation remains required before another formal dispatch."
+      },
+      "qualificationResetCount": 1,
+      "resetEvidence": "Formal exact-SHA qualification run 33599914468 failed Story 003 attempt 2. Once the retained artifact made 10/10 impossible, the remaining 124 queued or active attempts were cancelled without rerunning the failed SHA; commit 5b936bc743a971d9f053cb4f8ce2e2158527020c cannot qualify and this is formal reset 25."
     }
   ]
 }
