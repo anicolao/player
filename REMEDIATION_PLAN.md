@@ -99,7 +99,7 @@ release pass while its remaining gate is listed as pending.
 
 The R0 row summarizes the earlier accepted milestone and the chronology below
 retains the signature count at each subsequent checkpoint. The current exact
-ledger contains **172 unique signatures** and **26 formal qualification
+ledger contains **173 unique signatures** and **26 formal qualification
 resets**.
 
 ### Current R0 qualification update
@@ -784,6 +784,29 @@ Three screenshots were pixel-exact, restored Library remained within its
 reviewed channel allowance, and the walkthrough matched exactly. The ledger
 now contains 172 unique signatures and retains 26 formal resets. The replacement
 tip must pass normal CI before its one permitted formal dispatch.
+
+Replacement normal run
+[33625075342](https://github.com/anicolao/player/actions/runs/33625075342)
+proved the inactive-checkpoint correction and retained a distinct Story 007
+focus-acknowledgement defect. The label editor had already used the shared
+text-input-focused event. The later note-editor tap visibly succeeded: the
+exact editor remained unchanged, its caret was present, and the keyboard was
+shown, but no second generic receipt arrived within two seconds. Artifact
+9845101732 retains the complete 276 MB result, focused-editor failure frame,
+logs, probes, screenshots, and valid failure manifest. The neighboring sleep
+timer passed; the remaining matrix was cancelled only after preserving that
+evidence, and this normal failure changes no formal reset count.
+
+All four production focus producers now acknowledge the exact accessibility
+control identifier on field-specific channels, and the test pre-registers the
+matching receipt before delivery. Source hygiene rejects the old argument-free
+generic event. The formerly failing selector passed independently in 71.327
+seconds; complete local Story 007 then passed both selectors with two workers
+in 147.356 seconds. Bookmark completed in 72.138 seconds, sleep timer in 129.252
+seconds, all three screenshots were pixel-exact, and the walkthrough matched
+exactly. The ledger now contains 173 unique signatures and retains 26 formal
+resets. The replacement tip must pass normal CI before its one permitted formal
+dispatch.
 
 ## R0 — Stabilize and qualify E2E
 

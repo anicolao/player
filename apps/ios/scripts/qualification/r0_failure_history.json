@@ -4080,6 +4080,30 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no formal consecutive qualification count. The remaining jobs were cancelled only after the complete 301 MB Story 005 failure artifact was retained."
+    },
+    {
+      "signature": "ui-test:BookmarkUITests.testBookmarksCaptureOrganizeSearchJumpDeleteAndUndoExactly:generic-focus-event-misses-second-editor-target",
+      "story": "007-sleep-timer",
+      "evidence": {
+        "workflowRun": 33625075342,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions artifact 9845101732 (ios-e2e-007-sleep-timer) retains the exact Story 007 xcresult, focused note-editor failure frame, complete test log, simulator diagnostics, semantic probes, phase timings, screenshot comparison, and valid complete failure-evidence manifest",
+        "url": "https://github.com/anicolao/player/actions/runs/33625075342/job/100232742338",
+        "commit": "4ffe0f352bc9bdbe8aff3d5fd8dc9d6efd171e4b",
+        "observation": "The bookmark journey first focused and edited the label through the shared text-input-focused Darwin channel. Its later note-editor tap visibly succeeded: the exact note editor retained identity and geometry, the caret appeared, and the software keyboard was present in the retained failure frame. No second receipt arrived on that same generic channel within the independent two-second delivery contract, so the test failed before typing rather than inferring focus from representation. The neighboring sleep-timer selector passed in 217.761 seconds, and the tested pull-request merge commit contains branch head 0854672d0b0bf354663aa461563f1d7e6b443519."
+      },
+      "rootCause": "Bookmark label, bookmark note, bookmark search, and library search all published indistinguishable focus transitions on one generic Darwin notification name. Reusing that representation-ambiguous channel across consecutive controls allowed Darwin notification coalescing or a stale transition to erase the causal identity of the second target even though UIKit had accepted the physical action.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Namespace the production focus acknowledgement by the exact accessibility control identifier and pre-register the matching field-specific receipt before each physical action. Cover all four production producers in source hygiene and reject the former argument-free generic event. Preserve the real tap, unchanged two-second delivery contract, editor identity and geometry checks, complete bookmark behavior, screenshots, and selector coverage; add no wait or retry.",
+        "commits": [
+          "5cbc564cc6efde6353f91f7a5bd48c5ad87f9d7f"
+        ],
+        "validation": "The formerly failing bookmark selector passed independently on a fresh iOS 26.5 simulator in 71.327 seconds. Complete canonical Story 007 then passed both selectors in a 147.356-second test phase with two parallel workers: bookmark in 72.138 seconds and sleep timer in 129.252 seconds. All three screenshots were pixel-exact, the walkthrough matched exactly, and capture-readiness hygiene passes. Hosted replacement validation remains required."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no formal consecutive qualification count. The remaining jobs were cancelled only after the complete 276 MB Story 007 failure artifact was retained."
     }
   ]
 }
