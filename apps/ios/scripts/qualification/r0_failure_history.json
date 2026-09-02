@@ -4032,6 +4032,30 @@
       },
       "qualificationResetCount": 1,
       "resetEvidence": "Formal exact-SHA qualification run 33609133406 failed Story 005 attempt 5. Once the retained artifact made 10/10 impossible, the remaining queue was cancelled without rerunning the failed SHA; commit 4a561745878d36cdf9adb693eb3d904c1d8f15a6 cannot qualify and this is formal reset 26."
+    },
+    {
+      "signature": "ui-test:TransportControlsUITests.testUsesCurrentLibraryDefaultsAcrossPlaybackRemoteControlsAndRelaunch:unacknowledged-play-pause-tap",
+      "story": "005-play-and-restore",
+      "evidence": {
+        "workflowRun": 33618746978,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions artifact 9842662848 (ios-e2e-005-play-and-restore) retains the exact Story 005 xcresult, playing-state failure frame, complete test log, simulator diagnostics, semantic probes, phase timings, and valid complete failure-evidence manifest",
+        "url": "https://github.com/anicolao/player/actions/runs/33618746978/job/100212031775",
+        "commit": "f7bc18fee828c8d78b5764707d337cc88fabb945",
+        "observation": "Both repaired lifecycle selectors passed on the hosted runner, as did Remote Interruption and the earlier transport selectors. In testUsesCurrentLibraryDefaultsAcrossPlaybackRemoteControlsAndRelaunch, chapter 2 was playing at 30 seconds and XCTest returned from a raw player-play-pause element tap. The exact production Now Playing receipt remained player:playing through the independent two-second assertion instead of becoming player:paused, proving the physical touch was not accepted. The failure occurred before any preference mutation; all four story screenshots still matched exactly and the complete failure-evidence manifest validated. The tested pull-request merge commit contains branch head 2bb334c9512d058157063dd94ed62350746103a3."
+      },
+      "rootCause": "The shared setup treated return from XCUIElement.tap() as delivery of a state-changing play/pause action. It established neither the exact playing origin nor stable foreground geometry, and it had no synchronous or semantic acceptance receipt before expecting the paused state. A dropped synthesized touch was therefore indistinguishable from a slow product transition until the final assertion failed.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Require the exact rendered playing origin, stable foreground app and control geometry, and deliver the pause through the pinned coordinate path that skips unrelated post-event quiescence. Accept only the exact paused production receipt; permit redelivery only while the exact playing origin and geometry remain unchanged, and fail closed on any other transition. Apply the contract to both transport setup paths and reject future raw play/pause taps in this suite. Add no wait, retry-to-green, deadline, or selector.",
+        "commits": [
+          "d8d1ac0dad0b402172579e5f99a6c3d40441c44c"
+        ],
+        "validation": "The formerly failing selector passed on a fresh twice-booted local iOS 26.5 simulator in 35.788 seconds. Complete Story 005 then passed all eight canonical selectors in a 236.332-second test phase on another fresh twice-booted simulator. Both lifecycle selectors, all three transport selectors, and neighboring Smart Rewind coverage passed; all four screenshots were pixel-exact, the walkthrough matched exactly, and the evidence manifest validated. All 18 E2E hygiene tests and the raw-transport-tap source guard pass. Hosted replacement validation remains required."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no formal consecutive qualification count. The run was cancelled after preserving the complete Story 005 failure artifact so hosted capacity could return to the replacement."
     }
   ]
 }
