@@ -527,6 +527,13 @@ import sys
 from pathlib import Path
 
 source = Path(sys.argv[1]).read_text()
+reactivation = source.index('func backgroundAndReactivateApplication(')
+foreground_geometry = source.index(
+    'let foregroundApplicationFrame = application.frame', reactivation
+)
+foreground_geometry_guard = source.index(
+    'guard finiteNonemptyFrame(foregroundApplicationFrame)', foreground_geometry
+)
 home = source.index('XCUIDevice.shared.press(.home)')
 inactive = source.index('inactiveReceipt.wait(timeout: 2)', home)
 checkpoint = source.index('backgroundReceipt.wait(timeout: 2)', inactive)
@@ -538,9 +545,12 @@ app_activation = source.index('application.activate()', nonquiescent_activation)
 fresh_control = source.index(
     'application.buttons[interactiveElementIdentifier]', app_activation
 )
-if not home < inactive < checkpoint < nonquiescent_activation < app_activation < fresh_control:
+if not (
+    reactivation < foreground_geometry < foreground_geometry_guard < home < inactive
+    < checkpoint < nonquiescent_activation < app_activation < fresh_control
+):
     raise SystemExit(
-        'lifecycle hygiene requires Home, production inactive, completed app-owned checkpoint, non-quiescent app activation, then a freshly resolved exact control'
+        'lifecycle hygiene requires valid foreground geometry, Home, production inactive, completed app-owned checkpoint, non-quiescent app activation, then a freshly resolved exact control'
     )
 segment = source[home:inactive]
 if 'springboard.activate()' in segment or '.runningForeground' in segment:
@@ -551,6 +561,65 @@ lifecycle_end = source.index('/// Adjusts an idempotent slider', fresh_control)
 if 'application.state' in source[app_activation:lifecycle_end]:
     raise SystemExit(
         'lifecycle hygiene rejects sampled application process state after the exact app-owned control is interactive'
+    )
+restored_application_geometry = source.index(
+    'let applicationFrame = application.frame', fresh_control, lifecycle_end
+)
+restored_element_geometry = source.index(
+    'let elementFrame = interactiveElement.frame', restored_application_geometry, lifecycle_end
+)
+restored_geometry_guard = source.index(
+    'guard applicationFrame == foregroundApplicationFrame,',
+    restored_element_geometry,
+    lifecycle_end,
+)
+restored_finite_element = source.index(
+    'finiteNonemptyFrame(elementFrame)', restored_geometry_guard, lifecycle_end
+)
+restored_containment = source.index(
+    'applicationFrame.contains(elementFrame)', restored_finite_element, lifecycle_end
+)
+restored_hittability = source.index(
+    'return interactiveElement.isHittable', restored_containment, lifecycle_end
+)
+if not (
+    fresh_control < restored_application_geometry < restored_element_geometry
+    < restored_geometry_guard < restored_finite_element < restored_containment
+    < restored_hittability
+):
+    raise SystemExit(
+        'lifecycle hygiene requires exact restored app geometry and finite contained control geometry before querying hittability'
+    )
+
+bounded = source.index('func performBoundedForegroundInteraction(')
+bounded_end = source.index('private func finiteNonemptyFrame(', bounded)
+bounded_application_geometry = source.index(
+    'let applicationFrame = application.frame', bounded, bounded_end
+)
+bounded_element_geometry = source.index(
+    'let elementFrame = interactiveElement.frame',
+    bounded_application_geometry,
+    bounded_end,
+)
+bounded_finite_application = source.index(
+    'guard finiteNonemptyFrame(applicationFrame)', bounded_element_geometry, bounded_end
+)
+bounded_finite_element = source.index(
+    'finiteNonemptyFrame(elementFrame)', bounded_finite_application, bounded_end
+)
+bounded_containment = source.index(
+    'applicationFrame.contains(elementFrame)', bounded_finite_element, bounded_end
+)
+bounded_hittability = source.index(
+    'return interactiveElement.isHittable', bounded_containment, bounded_end
+)
+if not (
+    bounded < bounded_application_geometry < bounded_element_geometry
+    < bounded_finite_application < bounded_finite_element < bounded_containment
+    < bounded_hittability < bounded_end
+):
+    raise SystemExit(
+        'foreground-interaction hygiene requires finite contained geometry before querying hittability'
     )
 PY
 for slider_source in \

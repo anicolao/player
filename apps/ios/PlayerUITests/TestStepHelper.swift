@@ -475,6 +475,11 @@ func backgroundAndReactivateApplication(
   _ application: XCUIApplication,
   requiringButton interactiveElementIdentifier: String
 ) -> Bool {
+  let foregroundApplicationFrame = application.frame
+  guard finiteNonemptyFrame(foregroundApplicationFrame) else {
+    XCTFail("Bookshelf did not expose finite foreground geometry before Home")
+    return false
+  }
   guard let inactiveReceipt = DarwinEventReceipt(
     name: namespacedE2EEvent(
       "com.spnss.player.e2e.scene-became-inactive",
@@ -516,14 +521,21 @@ func backgroundAndReactivateApplication(
     // separately sampled process proxy and can remain stale after the restored
     // scene is already on screen.
     guard interactiveElement.exists,
-      interactiveElement.isEnabled,
-      interactiveElement.isHittable
+      interactiveElement.isEnabled
     else { return false }
     let applicationFrame = application.frame
     let elementFrame = interactiveElement.frame
-    return !applicationFrame.isEmpty
-      && !elementFrame.isEmpty
-      && applicationFrame.contains(elementFrame)
+    // During SpringBoard's reactivation transaction XCTest can publish an
+    // accessibility snapshot with infinite geometry, followed by a scaled
+    // launch-transition frame. Asking isHittable on the invalid snapshot makes
+    // XCTest raise an activation-point error instead of returning false. Reject
+    // every transitional frame before making that query, and require the exact
+    // foreground geometry observed before Home.
+    guard applicationFrame == foregroundApplicationFrame,
+      finiteNonemptyFrame(elementFrame),
+      applicationFrame.contains(elementFrame)
+    else { return false }
+    return interactiveElement.isHittable
   }
   guard waitForPredicate(interactive, on: interactiveElement, timeout: 2) else {
     XCTFail(
@@ -610,14 +622,15 @@ func performBoundedForegroundInteraction(
   let interactive = NSPredicate { _, _ in
     guard application.state == .runningForeground,
       interactiveElement.exists,
-      interactiveElement.isEnabled,
-      interactiveElement.isHittable
+      interactiveElement.isEnabled
     else { return false }
     let applicationFrame = application.frame
     let elementFrame = interactiveElement.frame
-    return !applicationFrame.isEmpty
-      && !elementFrame.isEmpty
-      && applicationFrame.contains(elementFrame)
+    guard finiteNonemptyFrame(applicationFrame),
+      finiteNonemptyFrame(elementFrame),
+      applicationFrame.contains(elementFrame)
+    else { return false }
+    return interactiveElement.isHittable
   }
   guard waitForPredicate(interactive, on: interactiveElement, timeout: 2) else { return false }
 
@@ -633,6 +646,15 @@ func performBoundedForegroundInteraction(
     in: application,
     { coordinate.tap() }
   )
+}
+
+private func finiteNonemptyFrame(_ frame: CGRect) -> Bool {
+  frame.origin.x.isFinite
+    && frame.origin.y.isFinite
+    && frame.width.isFinite
+    && frame.height.isFinite
+    && frame.width > 0
+    && frame.height > 0
 }
 
 /// Delivers a state-changing action against an exact, independently rendered
