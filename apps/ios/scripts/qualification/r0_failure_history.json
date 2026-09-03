@@ -4365,10 +4365,34 @@
         "commits": [
           "2000a4fc1465e7165fea215b5d29cba35c9fd388"
         ],
-        "validation": "The formerly failing bookmark selector passed locally in 71.801 seconds and successfully focused the bookmark label, bookmark note, bookmark search, and library search through the same live-element helper. Complete Story 007 then passed both canonical selectors in a 147.472-second parallel test operation: bookmark coverage in 73.024 seconds and sleep-timer coverage in 129.471 seconds. All three screenshots were pixel-exact, the walkthrough matched exactly, all 68 qualification/evidence tests passed, and full E2E hygiene passed. Hosted replacement validation remains required."
+        "validation": "The formerly failing bookmark selector passed locally in 71.801 seconds and successfully focused the bookmark label, bookmark note, bookmark search, and library search through the same live-element helper. Complete Story 007 then passed both canonical selectors in a 147.472-second parallel test operation: bookmark coverage in 73.024 seconds and sleep-timer coverage in 129.471 seconds. All three screenshots were pixel-exact, the walkthrough matched exactly, all 68 qualification/evidence tests passed, and full E2E hygiene passed. Hosted successor run 33720780346 proved the live-element touch landed and focused the label, then exposed the separate premature touch-delivery deadline retained in its own ledger entry."
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no formal consecutive qualification count. Artifact 9879768211 was downloaded to /tmp/player-normal-33718592784-story007.R4nMxf, and the failed SHA will not be rerun."
+    },
+    {
+      "signature": "ui-test:BookmarkUITests.testBookmarksCaptureOrganizeSearchJumpDeleteAndUndoExactly:keyboard-touch-delivery-precedes-receipt-deadline",
+      "story": "007-sleep-timer",
+      "evidence": {
+        "workflowRun": 33720780346,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions artifact 9880622905 (ios-e2e-007-sleep-timer) retains the exact 279,871,432-byte Story 007 result, focused-field failure frame and recording, complete test and simulator logs, semantic probes, phase timings, screenshot comparison, and complete failure-evidence manifest",
+        "url": "https://github.com/anicolao/player/actions/runs/33720780346/job/100540406904",
+        "commit": "68608e46f60d0adf289a11e74fcc1954d1beb9b2",
+        "observation": "Normal pull-request CI synthesized the live bookmark-label element touch at test time 47.19 seconds. Because the helper disabled XCTest post-event quiescence, it immediately began the two-second production receipt deadline before iOS had delivered the keyboard touch. UIKit began presenting the keyboard roughly 3.2 seconds after synthesis on the loaded host; the retained final XCTest frame shows the label focused and the keyboard fully visible, but the prematurely started receipt deadline had already expired. The neighboring sleep-timer selector passed in 201.870 seconds."
+      },
+      "rootCause": "The focus helper used XCUIApplicationInteractionOptionSkipPostEventQuiescence for a keyboard interaction. That option is appropriate when a separately observed product transition follows an already delivered state-only touch, but keyboard services can accept the synthesized touch after the automation call returns. The helper therefore measured host input delivery latency as product focus latency and could time out before the physical event reached the app.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Arm the exact Darwin descriptor source and XCTest expectation before the physical action, then use the live XCUIElement's normal tap completion boundary for keyboard focus. Once that delivered action returns, await the already armed field-specific production receipt for at most two seconds. Source hygiene rejects skipped post-event quiescence inside focusAndType while retaining it for state-only actions with independent receipts. Add no fixed wait, retry, timeout increase, selector change, or coverage reduction.",
+        "commits": [
+          "13ed3c66d65ae94b772d4cff3f1e70fa4c39eb8c"
+        ],
+        "validation": "Complete Story 007 passed both canonical selectors locally in a 147.460-second parallel test operation: bookmark coverage in 72.956 seconds and sleep-timer coverage in 129.476 seconds. All three screenshots were pixel-exact, the walkthrough matched exactly, and full E2E hygiene passed. An immediately preceding focused run of the armed-listener implementation passed the bookmark selector in 72.209 seconds. Hosted replacement validation remains required."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no formal consecutive qualification count. Artifact 9880622905 was downloaded to /tmp/player-normal-33720780346-story007.S1SnPu, and the failed SHA will not be rerun."
     }
   ]
 }
