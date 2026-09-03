@@ -4417,6 +4417,30 @@
       },
       "qualificationResetCount": 1,
       "resetEvidence": "Formal exact-SHA qualification run 33726996948 failed Story 012 attempt 1 after 102 successful isolated story attempts. Artifact 9890807087 uploaded successfully and was downloaded to /tmp/player-r0-33726996948-story012.OMwzdZ before the remaining queue was cancelled; the failed SHA was not rerun, commit 9b794ac0af677d0326bb9fa0b62cad3d4aa13e46 cannot qualify, and this is formal reset 33."
+    },
+    {
+      "signature": "screenshot:pixel-difference:006-full-unlock.png",
+      "story": "013-app-store-listing",
+      "evidence": {
+        "workflowRun": 33750608862,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions artifact 9892756680 (ios-e2e-013-app-store-listing) retains the exact 54,493,400-byte result, expected/actual/diff Full Unlock images, complete XCTest and simulator logs, semantic probes, phase timings, screenshot comparison, and valid failure-evidence manifest",
+        "url": "https://github.com/anicolao/player/actions/runs/33750608862/job/100641454197",
+        "commit": "fee5985a5ed501c8406dc2207249793d20340a42",
+        "observation": "Normal pull-request CI passed the complete Story 013 XCTest journey and six preceding screenshot comparisons, then rejected only 006-full-unlock.png. The retained actual image shows that the new 44-point Restore Purchases and Redeem a Code targets pushed the final two lines of the library-safety statement behind the persistent mini-player; the retained expected image keeps that statement completely visible."
+      },
+      "rootCause": "The prior Restore delivery repair enlarged the secondary button labels without requalifying the duplicate Full Unlock marketing surface in Story 013. Story 012's newly recorded baseline also accepted the resulting occlusion because both capture-readiness contracts proved the purchase actions but neither treated the persistent mini-player as an obstruction to the library-safety statement.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Compact the Full Unlock stack and purchase-action spacing while preserving both real 44-point targets. Give the library-safety statement a stable identifier and require it to be fully visible above the live mini-player in both Story 012 and Story 013 before capture.",
+        "commits": [
+          "7f29044021c9b4053c1685b0faaaec0e4a1eece5"
+        ],
+        "validation": "The reviewed Full Unlock composition was recorded from a complete local Story 013 pass in 59.309 seconds; an independent fresh-simulator Story 013 pass completed in 60.577 seconds with all seven screenshots pixel-exact and the walkthrough exact. Complete Story 012 then passed independently in 19.567 seconds, including physical Restore delivery, with both screenshots pixel-exact and its walkthrough exact. Full E2E hygiene passed all 18 source-contract tests and all 63 capture-readiness call sites before recording."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no formal consecutive qualification count. Artifact 9892756680 was downloaded to /tmp/player-normal-33750608862-story013.mDidxb, and the failed merge SHA will not be rerun."
     }
   ]
 }

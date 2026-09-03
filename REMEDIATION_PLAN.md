@@ -1143,6 +1143,28 @@ retry, timeout increase, selector change, or coverage reduction was introduced.
 The ledger now contains 186 unique signatures and 33 formal resets. The
 replacement tip must pass normal CI before its one permitted formal dispatch.
 
+Normal replacement run
+[33750608862](https://github.com/anicolao/player/actions/runs/33750608862)
+passed the repaired Story 012 journey and every other product/core gate, then
+failed only Story 013's final screenshot comparison. The retained expected,
+actual, and diff images show that enlarging the secondary Full Unlock actions
+had pushed two lines of the library-safety statement behind the mini-player.
+The earlier Story 012 baseline had incorrectly accepted that occlusion because
+neither capture-readiness contract treated the mini-player as an obstruction.
+Artifact 9892756680 was downloaded to
+`/tmp/player-normal-33750608862-story013.mDidxb`; the failed merge SHA will not
+be rerun, and the normal failure changes no formal reset count.
+
+The Full Unlock stack is now compact enough to retain both real 44-point action
+targets while showing the complete safety statement above the mini-player.
+Both Story 012 and Story 013 require that unobscured geometry before capture.
+A reviewed complete Story 013 recording passed in 59.309 seconds; an
+independent fresh-simulator Story 013 pass then completed in 60.577 seconds
+with all seven screenshots pixel-exact and its walkthrough exact. Complete
+Story 012 passed independently in 19.567 seconds with both screenshots and its
+walkthrough exact. The ledger now contains 187 unique signatures and retains
+33 formal resets.
+
 ## R0 — Stabilize and qualify E2E
 
 ### Goal
