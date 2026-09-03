@@ -4317,7 +4317,7 @@
         "commits": [
           "bc5ac00b003aa763ed162692252fbacb1a2faa0e"
         ],
-        "validation": "The formerly failing bookmark selector passed locally in 72.320 seconds. Complete Story 007 then passed both selectors in a 147.964-second parallel test operation: bookmark coverage in 74.149 seconds and sleep-timer coverage in 129.555 seconds. All three screenshots were pixel-exact, the walkthrough matched exactly, and full E2E hygiene passed. Hosted replacement validation remains required."
+        "validation": "The formerly failing bookmark selector passed locally in 72.320 seconds. Complete Story 007 then passed both selectors in a 147.964-second parallel test operation: bookmark coverage in 74.149 seconds and sleep-timer coverage in 129.555 seconds. All three screenshots were pixel-exact, the walkthrough matched exactly, and full E2E hygiene passed. Hosted successor run 33718592784 exercised the one-action/full-deadline contract without resynthesizing focus, then exposed the separate stale-coordinate defect retained in its own ledger entry."
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no formal consecutive qualification count. Artifact 9878956019 was downloaded to /tmp/player-normal-33715802724-story007.Nlf59l, and the failed SHA will not be rerun."
@@ -4341,10 +4341,34 @@
         "commits": [
           "bc5ac00b003aa763ed162692252fbacb1a2faa0e"
         ],
-        "validation": "The formerly failing remote-interruption selector passed locally in 13.417 seconds. Complete Story 005 then passed all eight selectors in a 237.039-second test operation, including the repaired lifecycle and remote-interruption paths. All four screenshots were pixel-exact, the walkthrough matched exactly, and full E2E hygiene passed. Hosted replacement validation remains required."
+        "validation": "The formerly failing remote-interruption selector passed locally in 13.417 seconds. Complete Story 005 then passed all eight selectors in a 237.039-second test operation, including the repaired lifecycle and remote-interruption paths. All four screenshots were pixel-exact, the walkthrough matched exactly, and full E2E hygiene passed. Hosted successor run 33718592784 passed all eight Story 005 selectors and its complete evidence gate, confirming the adapter-readiness repair under normal CI load."
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no formal consecutive qualification count. Artifact 9879008764 was downloaded to /tmp/player-normal-33715802724-story005.a4gOUP, and the failed SHA will not be rerun."
+    },
+    {
+      "signature": "ui-test:BookmarkUITests.testBookmarksCaptureOrganizeSearchJumpDeleteAndUndoExactly:stale-app-normalized-focus-coordinate-misses-field",
+      "story": "007-sleep-timer",
+      "evidence": {
+        "workflowRun": 33718592784,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions artifact 9879768211 (ios-e2e-007-sleep-timer) retains the exact 278,288,533-byte Story 007 result, unfocused-field failure frame and recording, complete test and simulator logs, semantic probes, phase timings, screenshot comparison, and complete failure-evidence manifest",
+        "url": "https://github.com/anicolao/player/actions/runs/33718592784/job/100533891541",
+        "commit": "a249aaa300aa3cc599bcb239f6983881dfcd6942",
+        "observation": "Normal pull-request CI opened the bookmark editor and cleared its label. The helper resolved the field frame before XCTest's Apple Intelligence interruption check, then synthesized the cached app-normalized coordinate after that accessibility work completed. The touch at normalized position [0.50, 0.23] missed the current label control, so no field-specific focus event arrived. The retained final recording frame shows the empty label without a caret or keyboard, and the log repeatedly reports that the TextField is no longer a child of its cached accessibility container. The neighboring sleep-timer selector passed in 182.968 seconds."
+      },
+      "rootCause": "The focus helper converted an accessibility snapshot's field frame into an application-relative coordinate before physical synthesis. SwiftUI replaced or moved that accessibility representation while XCTest resolved system interruptions, leaving the cached geometry stale. A one-shot coordinate tap therefore targeted empty space even though the queried text field was enabled and hittable when sampled.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Bind the single physical focus action to the live XCUIElement so XCTest resolves the text field at synthesis time, then await the existing field-specific production Darwin receipt for the same post-synthesis two-second contract. Source hygiene requires currentField.tap() inside the no-post-quiescence action and rejects app-normalized coordinates inside focusAndType. Add no fixed wait, retry, timeout increase, selector change, or coverage reduction.",
+        "commits": [
+          "2000a4fc1465e7165fea215b5d29cba35c9fd388"
+        ],
+        "validation": "The formerly failing bookmark selector passed locally in 71.801 seconds and successfully focused the bookmark label, bookmark note, bookmark search, and library search through the same live-element helper. Complete Story 007 then passed both canonical selectors in a 147.472-second parallel test operation: bookmark coverage in 73.024 seconds and sleep-timer coverage in 129.471 seconds. All three screenshots were pixel-exact, the walkthrough matched exactly, all 68 qualification/evidence tests passed, and full E2E hygiene passed. Hosted replacement validation remains required."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no formal consecutive qualification count. Artifact 9879768211 was downloaded to /tmp/player-normal-33718592784-story007.R4nMxf, and the failed SHA will not be rerun."
     }
   ]
 }
