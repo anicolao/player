@@ -127,13 +127,21 @@ struct FullUnlockView: View {
         .foregroundStyle(PlayerColor.secondary)
 
       HStack(spacing: 18) {
-        Button("Restore Purchases") {
+        Button {
           Task { await model.restorePurchases() }
+        } label: {
+          Text("Restore Purchases")
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
         }
         .accessibilityIdentifier("full-unlock-restore")
 
-        Button("Redeem a Code") {
+        Button {
           beginOfferCodeRedemption()
+        } label: {
+          Text("Redeem a Code")
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
         }
         .accessibilityIdentifier("full-unlock-redeem-code")
       }

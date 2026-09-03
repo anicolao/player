@@ -773,6 +773,20 @@ if grep -Fq 'app.coordinate(' <<<"${focus_helper}"; then
   echo 'bookmark hygiene rejects stale app-normalized text-field focus coordinates' >&2
   exit 1
 fi
+
+monetization_source="$(cat apps/ios/PlayerUITests/MonetizationUITests.swift)"
+full_unlock_source="$(cat apps/ios/Player/FullUnlockView.swift)"
+if ! grep -Fq 'actionFrame.height >= 44' <<<"${monetization_source}"; then
+  echo 'monetization hygiene requires a verified 44-point physical action target' >&2
+  exit 1
+fi
+for action_label in 'Text("Restore Purchases")' 'Text("Redeem a Code")'; do
+  action_block="$(grep -F -A3 "${action_label}" <<<"${full_unlock_source}")"
+  if ! grep -Fq '.frame(minHeight: 44)' <<<"${action_block}"; then
+    echo "monetization hygiene requires a 44-point target for ${action_label}" >&2
+    exit 1
+  fi
+done
 if grep -Fq 'performPhysicalInteractionWithoutPostEventQuiescence' <<<"${focus_helper}"; then
   echo 'bookmark hygiene rejects bypassing the keyboard touch-delivery boundary' >&2
   exit 1

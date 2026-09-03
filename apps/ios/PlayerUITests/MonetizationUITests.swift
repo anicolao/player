@@ -182,16 +182,21 @@ final class MonetizationUITests: PlayerUITestCase {
     within container: XCUIElement,
     in app: XCUIApplication
   ) {
-    let actionFrame = action.frame
-    let appFrame = app.frame
     guard action.exists,
       action.isEnabled,
-      elementIsFullyVisible(action, within: container),
+      elementIsFullyVisible(action, within: container)
+    else {
+      XCTFail("Expected the monetization action to be enabled and fully visible")
+      return
+    }
+    let actionFrame = action.frame
+    let appFrame = app.frame
+    guard actionFrame.height >= 44,
       !actionFrame.isEmpty,
       !appFrame.isEmpty,
       appFrame.contains(actionFrame)
     else {
-      XCTFail("Expected the monetization action to be enabled and fully visible")
+      XCTFail("Expected the monetization action to expose a contained 44-point target")
       return
     }
     app.coordinate(
