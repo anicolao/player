@@ -333,20 +333,34 @@ func waitForPredicate(
   return predicate.evaluate(with: element)
 }
 
-/// Synthesizes only text that an independently rendered semantic value has
-/// not yet acknowledged. XCTest can report a bulk `typeText` transaction as
-/// complete after delivering only a prefix under host pressure. A strict
-/// prefix is safe to continue; an unchanged, corrupted, or duplicated value
-/// fails closed rather than guessing what the app received.
+/// Synthesizes only text that the edited field has not yet acknowledged.
+/// XCTest can report a bulk `typeText` transaction as complete after delivering
+/// only a prefix under host pressure. Reading the same field avoids comparing
+/// accessibility snapshots from different render generations. A strict prefix
+/// is safe to continue; an unchanged, corrupted, or duplicated value fails
+/// closed rather than guessing what the app received. The caller must still
+/// require the independently rendered model receipt after this returns.
 @MainActor
-func typeTextAcknowledgedBySemanticValue(
+func typeTextAcknowledgedByEditedField(
   _ target: String,
   into field: XCUIElement,
   focusBeforeFirstSynthesis: Bool,
-  acquireFocus: () -> Bool,
-  acceptedText: @escaping () -> String?
+  acquireFocus: () -> Bool
 ) -> Bool {
-  guard var accepted = acceptedText(), target.hasPrefix(accepted) else { return false }
+  func observedText() -> String? {
+    guard field.exists,
+      let encoded = field.value.map(String.init(describing:))
+    else { return nil }
+    if encoded == field.placeholderValue { return "" }
+    return encoded
+  }
+
+  let empty = NSPredicate { _, _ in observedText() == "" }
+  guard waitForPredicate(empty, on: field, timeout: EventDeadline().remaining) else {
+    return false
+  }
+
+  var accepted = ""
   var shouldAcquireFocus = focusBeforeFirstSynthesis
 
   while accepted != target {
@@ -355,16 +369,16 @@ func typeTextAcknowledgedBySemanticValue(
     field.typeText(missingSuffix)
 
     let prior = accepted
-    var current = acceptedText()
+    var current = observedText()
     if current == prior {
       let receipt = NSPredicate { _, _ in
-        guard let current = acceptedText() else { return false }
+        guard let current = observedText() else { return false }
         return current != prior
       }
       let expectation = XCTNSPredicateExpectation(predicate: receipt, object: nil)
       let deadline = EventDeadline()
       _ = XCTWaiter.wait(for: [expectation], timeout: deadline.remaining)
-      current = acceptedText()
+      current = observedText()
     }
 
     guard let current,

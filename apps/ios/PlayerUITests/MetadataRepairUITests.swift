@@ -499,7 +499,7 @@ final class MetadataRepairUITests: PlayerUITestCase {
       "Deleting the observed title must clear the metadata field"
     )
     XCTAssertTrue(
-      typeTextAcknowledgedBySemanticValue(
+      typeTextAcknowledgedByEditedField(
         replacement,
         into: field,
         focusBeforeFirstSynthesis: true,
@@ -512,17 +512,13 @@ final class MetadataRepairUITests: PlayerUITestCase {
             on: field,
             timeout: EventDeadline().remaining
           )
-        },
-        acceptedText: {
-          guard titleValue.exists,
-            let encoded = titleValue.value.map(String.init(describing:))
-          else { return nil }
-          if encoded == "empty" { return "" }
-          guard encoded.hasPrefix("value=") else { return nil }
-          return String(encoded.dropFirst("value=".count))
         }
       ),
       "The metadata draft must acknowledge the exact replacement title without dropped keyboard input"
+    )
+    XCTAssertTrue(
+      titleValue.waitForStringValue("value=\(replacement)", timeout: 2),
+      "The metadata model must publish the exact replacement title"
     )
     try requireValue(field, replacement)
   }

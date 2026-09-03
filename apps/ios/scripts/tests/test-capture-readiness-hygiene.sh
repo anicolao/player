@@ -277,12 +277,14 @@ clear_receipt = source.rindex(
     'try requireValuePrefix(provenance, "value=empty|")', 0, replacement
 )
 acknowledged_entry = source.index(
-    'typeTextAcknowledgedBySemanticValue(', replacement
+    'typeTextAcknowledgedByEditedField(', replacement
 )
 focus_receipt = source.index(
     'self.requireMetadataFieldFocus(field, fieldName: fieldName)', acknowledged_entry
 )
-semantic_receipt = source.index('acceptedText:', focus_receipt)
+semantic_receipt = source.index(
+    'try requireValuePrefix(provenance, expectedPrefix)', focus_receipt
+)
 if not clear_receipt < replacement < acknowledged_entry < focus_receipt < semantic_receipt:
     raise SystemExit(
         'metadata-editing hygiene requires an acknowledged clear, exact refocus, '
@@ -294,17 +296,25 @@ if 'field.typeText(replacement)' in source or 'field.typeText(replacement)' in r
     raise SystemExit(
         'metadata-editing hygiene rejects unacknowledged bulk replacement synthesis'
     )
-if 'typeTextAcknowledgedBySemanticValue(' not in repair:
+repair_entry = repair.index('typeTextAcknowledgedByEditedField(')
+repair_model_receipt = repair.index(
+    'titleValue.waitForStringValue("value=\\(replacement)", timeout: 2)',
+    repair_entry,
+)
+repair_field_receipt = repair.index('try requireValue(field, replacement)', repair_model_receipt)
+if not repair_entry < repair_model_receipt < repair_field_receipt:
     raise SystemExit(
-        'metadata-repair hygiene requires semantically acknowledged replacement input'
+        'metadata-repair hygiene requires edited-field delivery followed by '
+        'independent model and final field receipts'
     )
 
 helper = Path(sys.argv[3]).read_text()
-start = helper.index('func typeTextAcknowledgedBySemanticValue(')
+start = helper.index('func typeTextAcknowledgedByEditedField(')
 end = helper.index('\n@MainActor\nfunc performPhysicalInteractionWithoutPostEventQuiescence', start)
 body = helper[start:end]
 ordered = [
-    'target.hasPrefix(accepted)',
+    'let empty = NSPredicate { _, _ in observedText() == "" }',
+    'guard waitForPredicate(empty, on: field, timeout: EventDeadline().remaining)',
     'let missingSuffix = String(target.dropFirst(accepted.count))',
     'field.typeText(missingSuffix)',
     'let deadline = EventDeadline()',

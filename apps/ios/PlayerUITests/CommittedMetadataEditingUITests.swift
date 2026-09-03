@@ -461,20 +461,15 @@ final class CommittedMetadataEditingUITests: PlayerUITestCase {
       // A completed clear is a separate keyboard transaction. Under severe
       // host latency iOS can resign the field after publishing the empty
       // model value. Require a fresh focus receipt for every synthesis and
-      // continue only a strict prefix acknowledged by the model probe.
+      // continue only a strict prefix acknowledged by the edited field. The
+      // independent model receipt below verifies that the edit propagated.
       XCTAssertTrue(
-        typeTextAcknowledgedBySemanticValue(
+        typeTextAcknowledgedByEditedField(
           replacement,
           into: field,
           focusBeforeFirstSynthesis: clearedExistingValue,
           acquireFocus: {
             self.requireMetadataFieldFocus(field, fieldName: fieldName)
-          },
-          acceptedText: {
-            guard provenance.exists,
-              let encoded = provenance.value.map(String.init(describing:))
-            else { return nil }
-            return try? self.metadataValue(from: encoded)
           }
         ),
         "The metadata field \(fieldName) must acknowledge the exact replacement without dropped keyboard input"
