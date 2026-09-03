@@ -393,7 +393,8 @@ final class AppStoreListingUITests: PlayerUITestCase {
         specification: "At capture, the exhausted allowance and exact $9.99 one-time unlock are settled with all purchase actions visible",
         anchor: purchase
       ) {
-        purchase.exists
+        let librarySafety = unlock.staticTexts["full-unlock-library-safety"]
+        return purchase.exists
           && purchase.label == "Unlock Forever — $9.99"
           && unlock.staticTexts[
             "0m remaining from the 50 hours included with Bookshelf. Pay once to keep listening without a limit."
@@ -413,6 +414,12 @@ final class AppStoreListingUITests: PlayerUITestCase {
           )
           && elementIsFullyVisible(
             unlock.buttons["full-unlock-redeem-code"], within: unlockScreen
+          )
+          && elementIsFullyVisible(
+            librarySafety,
+            within: unlock.windows.element,
+            obscuredBelow: unlock.otherElements["mini-player"],
+            requiresHittable: false
           )
       }
     )

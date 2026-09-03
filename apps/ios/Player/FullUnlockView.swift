@@ -7,7 +7,7 @@ struct FullUnlockView: View {
 
   var body: some View {
     ScrollView {
-      VStack(spacing: 24) {
+      VStack(spacing: 20) {
         Image(systemName: model.monetization.isUnlocked ? "checkmark.seal.fill" : "books.vertical.fill")
           .font(.system(size: 54, weight: .semibold))
           .foregroundStyle(PlayerColor.accent)
@@ -54,6 +54,7 @@ struct FullUnlockView: View {
           .font(.footnote)
           .foregroundStyle(PlayerColor.secondary)
           .multilineTextAlignment(.center)
+          .accessibilityIdentifier("full-unlock-library-safety")
 
         Link("Bookshelf Support", destination: URL(string: "https://bookshelf.spnss.com/#support")!)
           .font(.footnote.weight(.semibold))
@@ -101,7 +102,7 @@ struct FullUnlockView: View {
   }
 
   private var purchaseActions: some View {
-    VStack(spacing: 12) {
+    VStack(spacing: 8) {
       Button {
         Task { await model.purchaseFullUnlock() }
       } label: {

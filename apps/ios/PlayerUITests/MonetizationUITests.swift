@@ -67,12 +67,19 @@ final class MonetizationUITests: PlayerUITestCase {
           "At capture, the exhausted 50-hour allowance and exact $9.99 one-time purchase actions are settled at the top with no transient UI"
       ) {
         let purchase = app.buttons["full-unlock-purchase"]
+        let librarySafety = app.staticTexts["full-unlock-library-safety"]
         return purchase.exists
           && purchase.isEnabled
           && purchase.label == "Unlock Forever — $9.99"
           && elementIsFullyVisible(purchase, within: unlockScreen)
           && elementIsFullyVisible(app.buttons["full-unlock-restore"], within: unlockScreen)
           && elementIsFullyVisible(app.buttons["full-unlock-redeem-code"], within: unlockScreen)
+          && elementIsFullyVisible(
+            librarySafety,
+            within: app.windows.element,
+            obscuredBelow: app.otherElements["mini-player"],
+            requiresHittable: false
+          )
           && app.staticTexts[
             "0m remaining from the 50 hours included with Bookshelf. Pay once to keep listening without a limit."
           ].exists
