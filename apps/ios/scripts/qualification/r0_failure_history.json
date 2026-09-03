@@ -4224,6 +4224,30 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no formal consecutive qualification count. Artifact 9871129218 was downloaded locally before the remaining Story 010 job was cancelled, and the failed SHA was not rerun."
+    },
+    {
+      "signature": "ui-test:CommittedMetadataEditingUITests.testPersistsCommittedMetadataUpdatesIndexesAndUndoesAtomically:bulk-type-text-drops-unacknowledged-suffix",
+      "story": "004-metadata-repair",
+      "evidence": {
+        "workflowRun": 33698774577,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions artifact 9873617079 (r0-story-evidence-004-metadata-repair-attempt-9-e9aa63d722d41fbd71ae9fa4ce989fd3dd99a04e-33698774577-1) retains the exact 269,966,833-byte Story 004 xcresult, metadata-editor failure frame and recording, complete test and simulator logs, semantic probes, phase timings, screenshot comparison, and valid complete failure-evidence manifest",
+        "url": "https://github.com/anicolao/player/actions/runs/33698774577/job/100474872226",
+        "commit": "e9aa63d722d41fbd71ae9fa4ce989fd3dd99a04e",
+        "observation": "Formal qualification passed preflight, the immutable producer, and nine independently scheduled story attempts before Story 004 attempt 9 failed. XCTest logged synthesis of the complete replacement title The Amber Archive, then the production metadata provenance probe settled at value=The Amber |source=user|confidence=user|locked=false|cleared=false. The requested transaction therefore delivered and persisted only a strict ten-character prefix before the test's exact two-second receipt failed. The neighboring cover-repair selector passed in 89.502 seconds."
+      },
+      "rootCause": "The metadata journeys treated return from one bulk XCUIElement.typeText call as proof that every requested character had reached the SwiftUI binding. Under formal host pressure XCTest completed the synthetic transaction after delivering only a strict prefix. The app correctly published the partial model value, but the test had no acknowledged continuation path for the demonstrably missing suffix.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Route metadata replacement text through one shared semantic-delivery helper. After each synthesis, read the independently rendered model probe immediately and continue only a strict missing suffix after exact focus is re-established. Fail closed on no progress, corruption, duplication, or lost focus, and bound every receipt to the existing two-second event deadline. Apply the same contract to both metadata journeys and reject future raw bulk replacement synthesis in source hygiene; add no fixed wait, extended deadline, retry-to-green, or selector change.",
+        "commits": [
+          "09b1fbe94e0835bcfbf9db515a6fd86c957e9859"
+        ],
+        "validation": "The formerly failing selector passed independently on a fresh iOS 26.5 simulator in 96.230 seconds. Complete local Story 004 then passed both canonical selectors in a 129.562-second parallel test phase: cover repair in 46.984 seconds and committed metadata editing in 98.833 seconds. All four screenshots were pixel-exact, the walkthrough matched exactly, all 68 qualification contract tests passed, and full E2E hygiene passed. Hosted replacement validation remains required before another formal dispatch."
+      },
+      "qualificationResetCount": 1,
+      "resetEvidence": "Formal exact-SHA qualification run 33698774577 failed Story 004 attempt 9 after nine successful isolated story attempts. Artifact 9873617079 uploaded successfully and was downloaded to /tmp/player-formal-33698774577.ya91Pb before the remaining queue was cancelled; the failed SHA was not rerun, commit e9aa63d722d41fbd71ae9fa4ce989fd3dd99a04e cannot qualify, and this is formal reset 31."
     }
   ]
 }

@@ -99,7 +99,7 @@ release pass while its remaining gate is listed as pending.
 
 The R0 row summarizes the earlier accepted milestone and the chronology below
 retains the signature count at each subsequent checkpoint. The current exact
-ledger contains **178 unique signatures** and **30 formal qualification
+ledger contains **179 unique signatures** and **31 formal qualification
 resets**.
 
 ### Current R0 qualification update
@@ -948,6 +948,36 @@ pixel-exact, the walkthrough matched exactly, all 20 SystemIngressTests passed,
 and source hygiene passes. No wait, deadline, or selector changed. The ledger
 now contains 178 unique signatures and retains 30 formal resets. The replacement
 tip must pass normal CI before its one permitted formal dispatch.
+
+Replacement normal run
+[33695549820](https://github.com/anicolao/player/actions/runs/33695549820)
+passed exact commit `e9aa63d722d41fbd71ae9fa4ce989fd3dd99a04e`
+without a rerun in 41m43s: the immutable producer, all 13 stories, all 41 UI
+selectors, 379/379 core tests and fixtures, renderer and walkthrough evidence,
+and fail-closed aggregation were green. This is 6m33s (13.6%) faster than the
+same-coverage 48m16s fresh-host baseline. Its one permitted formal dispatch
+[33698774577](https://github.com/anicolao/player/actions/runs/33698774577)
+passed preflight, the immutable producer, and nine independently scheduled
+story attempts before Story 004 attempt 9 retained a distinct keyboard-delivery
+defect. XCTest logged synthesis of `The Amber Archive`, but the production
+metadata provenance probe settled at `The Amber `; the bulk transaction had
+delivered and persisted only a strict prefix before the exact two-second
+receipt failed. Artifact 9873617079 retains the complete 269,966,833-byte
+result and was downloaded before the remaining queue was cancelled. The failed
+SHA was not rerun; this is formal reset 31.
+
+Both metadata journeys now synthesize only text not yet acknowledged by their
+independently rendered model probes. A strict delivered prefix permits only its
+missing suffix after exact focus is re-established; no progress, corruption,
+duplication, or lost focus fails closed. The formerly failing selector passed
+locally in 96.230 seconds; complete Story 004 then passed both selectors in a
+129.562-second parallel test phase, with cover repair in 46.984 seconds and
+committed editing in 98.833 seconds. All four screenshots were pixel-exact, the
+walkthrough matched exactly, all 68 qualification contract tests passed, and
+full E2E hygiene passed. No fixed wait, extended deadline, rerun, or selector
+changed. The ledger now contains 179 unique signatures and retains 31 formal
+resets. The replacement tip must pass normal CI before its one permitted formal
+dispatch.
 
 ## R0 — Stabilize and qualify E2E
 
