@@ -669,12 +669,12 @@ final class BookmarkUITests: PlayerUITestCase {
       XCTFail("Expected the Darwin focus receipt to register")
       return
     }
-    XCTAssertTrue(
-      performPhysicalInteractionWithoutPostEventQuiescence(in: app) {
-        currentField.tap()
-      },
-      "Expected the pinned XCTest runtime to synthesize element-bound focus for \(identifier)"
-    )
+    // Keep XCTest's normal post-event delivery boundary for keyboard focus.
+    // Unlike state-only actions, UIKit can accept the synthesized touch several
+    // seconds after the automation service returns when keyboard services are
+    // cold. The exact production receipt is already armed and remains the
+    // product-completion signal after the physical tap returns.
+    currentField.tap()
     let deliveryDeadline = EventDeadline()
     let delivered = focusReceipt.wait(timeout: deliveryDeadline.remaining)
     XCTAssertTrue(

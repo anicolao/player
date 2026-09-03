@@ -431,31 +431,37 @@ private func e2eNotifyCancel(_ token: Int32) -> UInt32
 final class DarwinEventReceipt: @unchecked Sendable {
   private var descriptor: Int32 = -1
   private var token: Int32 = 0
+  private let receipt = XCTestExpectation(description: "Darwin event")
+  private var source: DispatchSourceRead?
 
   init?(name: String) {
     let status = name.withCString { notificationName in
       e2eNotifyRegisterFileDescriptor(notificationName, &descriptor, 0, &token)
     }
     guard status == 0, descriptor >= 0 else { return nil }
+
+    // Arm the descriptor before the physical action. Text-input focus can be
+    // acknowledged while XCUIElement.tap() is still returning, so the event
+    // source and expectation must already be able to record that completion
+    // before the caller enters wait().
+    let source = DispatchSource.makeReadSource(
+      fileDescriptor: descriptor,
+      queue: .main
+    )
+    source.setEventHandler { [receipt] in
+      receipt.fulfill()
+    }
+    self.source = source
+    source.resume()
   }
 
   deinit {
+    source?.cancel()
     _ = e2eNotifyCancel(token)
   }
 
   @MainActor
   func wait(timeout: TimeInterval) -> Bool {
-    let receipt = XCTestExpectation(description: "Darwin event \(token)")
-    let source = DispatchSource.makeReadSource(
-      fileDescriptor: descriptor,
-      queue: .main
-    )
-    source.setEventHandler {
-      receipt.fulfill()
-    }
-    source.resume()
-    defer { source.cancel() }
-
     // Keep the XCTest runner's run loop available while the physical system
     // interaction completes. A synchronous poll here can prevent XCTest from
     // advancing a pending SpringBoard Home transaction, manufacturing the

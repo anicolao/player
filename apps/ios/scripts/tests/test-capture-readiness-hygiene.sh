@@ -711,6 +711,16 @@ rg -Fq 'DispatchSource.makeReadSource(' \
   echo 'Darwin receipt hygiene requires an event-driven descriptor source' >&2
   exit 1
 }
+rg -Fq 'self.source = source' \
+  "${ui_test_root}/TestStepHelper.swift" || {
+  echo 'Darwin receipt hygiene requires the descriptor source to be retained before synthesis' >&2
+  exit 1
+}
+rg -Fq 'source.resume()' \
+  "${ui_test_root}/TestStepHelper.swift" || {
+  echo 'Darwin receipt hygiene requires the descriptor source to be armed before synthesis' >&2
+  exit 1
+}
 rg -Fq 'XCTWaiter.wait(for: [receipt], timeout: timeout)' \
   "${ui_test_root}/TestStepHelper.swift" || {
   echo 'Darwin receipt hygiene requires a bounded XCTest event receipt' >&2
@@ -761,6 +771,10 @@ focus_helper="$({
 })"
 if grep -Fq 'app.coordinate(' <<<"${focus_helper}"; then
   echo 'bookmark hygiene rejects stale app-normalized text-field focus coordinates' >&2
+  exit 1
+fi
+if grep -Fq 'performPhysicalInteractionWithoutPostEventQuiescence' <<<"${focus_helper}"; then
+  echo 'bookmark hygiene rejects bypassing the keyboard touch-delivery boundary' >&2
   exit 1
 fi
 rg -Fq 'performPhysicalInteractionWithoutPostEventQuiescence(in: app)' \
