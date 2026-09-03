@@ -4297,6 +4297,54 @@
       },
       "qualificationResetCount": 1,
       "resetEvidence": "Formal exact-SHA qualification run 33708574591 failed Story 005 attempt 9 after 38 successful isolated story attempts. Artifact 9878022282 uploaded successfully and was downloaded to /tmp/player-formal-33708574591-story005-attempt9.K4bEdh before the remaining queue was cancelled; the failed SHA was not rerun, commit 3a8ed68cdfe3972ed3db597a108f34c056f1a132 cannot qualify, and this is formal reset 32."
+    },
+    {
+      "signature": "ui-test:BookmarkUITests.testBookmarksCaptureOrganizeSearchJumpDeleteAndUndoExactly:second-focus-synthesis-consumes-event-deadline",
+      "story": "007-sleep-timer",
+      "evidence": {
+        "workflowRun": 33715802724,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions artifact 9878956019 (ios-e2e-007-sleep-timer) retains the exact 284,696,204-byte Story 007 xcresult, focused-field failure frame and recording, complete test and simulator logs, semantic probes, phase timings, screenshot comparison, and complete failure-evidence manifest",
+        "url": "https://github.com/anicolao/player/actions/runs/33715802724/job/100525593896",
+        "commit": "fb978ba1b040b0d1c6c651a028028dc0097d42e4",
+        "observation": "Normal pull-request CI opened the bookmark editor, cleared its label, and synthesized focus at 04:58:09 UTC. The first 250-millisecond receipt slice expired, so the delivery loop began a second tap. XCTest spent roughly 1.8 seconds checking system interruptions before dispatching that second touch, exhausting the original two-second budget before the focus receipt could be observed. The retained failure frame shows the label cursor and keyboard, while the neighboring 180.168-second sleep-timer selector passed."
+      },
+      "rootCause": "The focus helper subdivided one two-second action contract into 250-millisecond slices and resynthesized the already delivered physical tap after the first slice. On a loaded host, XCTest's own second-gesture preflight consumed the remaining budget. The test then rejected a visibly focused production field because it had manufactured a redundant interaction instead of awaiting the exact event from the original action.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Synthesize the pinned focus coordinate once, start a fresh post-synthesis EventDeadline, and await the existing field-specific production Darwin receipt for the complete two-second contract. Source hygiene rejects a focus retry loop. Add no fixed wait, timeout increase, selector change, or coverage reduction.",
+        "commits": [
+          "bc5ac00b003aa763ed162692252fbacb1a2faa0e"
+        ],
+        "validation": "The formerly failing bookmark selector passed locally in 72.320 seconds. Complete Story 007 then passed both selectors in a 147.964-second parallel test operation: bookmark coverage in 74.149 seconds and sleep-timer coverage in 129.555 seconds. All three screenshots were pixel-exact, the walkthrough matched exactly, and full E2E hygiene passed. Hosted replacement validation remains required."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no formal consecutive qualification count. Artifact 9878956019 was downloaded to /tmp/player-normal-33715802724-story007.Nlf59l, and the failed SHA will not be rerun."
+    },
+    {
+      "signature": "ui-test:RemoteInterruptionUITests.testRemoteInterruptionRouteLossAndBackgroundEventsJournalAcknowledgedPositions:restored-playback-precedes-adapter-readiness",
+      "story": "005-play-and-restore",
+      "evidence": {
+        "workflowRun": 33715802724,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions artifact 9879008764 (ios-e2e-005-play-and-restore) retains the exact 332,622,083-byte Story 005 xcresult, relaunch failure frame and recording, complete test and simulator logs, semantic probes, phase timings, screenshot comparison, and complete failure-evidence manifest",
+        "url": "https://github.com/anicolao/player/actions/runs/33715802724/job/100525593911",
+        "commit": "fb978ba1b040b0d1c6c651a028028dc0097d42e4",
+        "observation": "Normal pull-request CI completed the lifecycle regression and six other Story 005 selectors, then the remote-interruption selector relaunched at 04:58:35 UTC. Its persisted paused playback tuple was visible before ContentView's asynchronous launch task reinstalled the remote-command adapters, so requireProbe returned a state with registeredCommands=[] and the following direct assertion failed."
+      },
+      "rootCause": "The relaunch receipt matched only persisted playback status, position, sequence, and reason. Those values can render before the asynchronous launch task finishes configurePlaybackIntegrations. Remote-command and audio-session registration were asserted after the wait rather than included in it, creating an observation race despite correct production startup behavior.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Make the initial-launch and relaunch playback predicates require the complete production adapter state: all nine remote commands, one audio-session configuration, and both interruption observers. Preserve the same event-driven probe and two-second deadline; source hygiene requires both adapter-readiness receipts. Add no fixed wait, timeout increase, retry, selector change, or coverage reduction.",
+        "commits": [
+          "bc5ac00b003aa763ed162692252fbacb1a2faa0e"
+        ],
+        "validation": "The formerly failing remote-interruption selector passed locally in 13.417 seconds. Complete Story 005 then passed all eight selectors in a 237.039-second test operation, including the repaired lifecycle and remote-interruption paths. All four screenshots were pixel-exact, the walkthrough matched exactly, and full E2E hygiene passed. Hosted replacement validation remains required."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no formal consecutive qualification count. Artifact 9879008764 was downloaded to /tmp/player-normal-33715802724-story005.a4gOUP, and the failed SHA will not be rerun."
     }
   ]
 }
