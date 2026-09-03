@@ -443,10 +443,24 @@ final class DarwinEventReceipt: @unchecked Sendable {
     _ = e2eNotifyCancel(token)
   }
 
+  @MainActor
   func wait(timeout: TimeInterval) -> Bool {
-    var event = pollfd(fd: descriptor, events: Int16(POLLIN), revents: 0)
-    return Darwin.poll(&event, 1, Int32(timeout * 1_000)) == 1
-      && event.revents & Int16(POLLIN) != 0
+    let receipt = XCTestExpectation(description: "Darwin event \(token)")
+    let source = DispatchSource.makeReadSource(
+      fileDescriptor: descriptor,
+      queue: .main
+    )
+    source.setEventHandler {
+      receipt.fulfill()
+    }
+    source.resume()
+    defer { source.cancel() }
+
+    // Keep the XCTest runner's run loop available while the physical system
+    // interaction completes. A synchronous poll here can prevent XCTest from
+    // advancing a pending SpringBoard Home transaction, manufacturing the
+    // lifecycle timeout that this receipt is intended to measure.
+    return XCTWaiter.wait(for: [receipt], timeout: timeout) == .completed
   }
 }
 

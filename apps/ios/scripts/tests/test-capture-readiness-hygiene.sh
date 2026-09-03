@@ -700,6 +700,20 @@ rg -Fq 'deliverPhysicalActionAcknowledgedByDisabling(' \
   "${ui_test_root}/BookmarkUITests.swift"
 rg -Fq 'DarwinEventReceipt(' \
   "${ui_test_root}/BookmarkUITests.swift"
+rg -Fq 'DispatchSource.makeReadSource(' \
+  "${ui_test_root}/TestStepHelper.swift" || {
+  echo 'Darwin receipt hygiene requires an event-driven descriptor source' >&2
+  exit 1
+}
+rg -Fq 'XCTWaiter.wait(for: [receipt], timeout: timeout)' \
+  "${ui_test_root}/TestStepHelper.swift" || {
+  echo 'Darwin receipt hygiene requires a bounded XCTest event receipt' >&2
+  exit 1
+}
+if rg -Fq 'Darwin.poll(' "${ui_test_root}/TestStepHelper.swift"; then
+  echo 'Darwin receipt hygiene rejects a runner-main-thread blocking poll' >&2
+  exit 1
+fi
 rg -Fq '"com.spnss.player.e2e.text-input-focused.\(identifier)"' \
   "${ui_test_root}/BookmarkUITests.swift"
 for focus_id in \
