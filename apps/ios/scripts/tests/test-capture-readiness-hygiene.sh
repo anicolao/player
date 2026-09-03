@@ -750,8 +750,19 @@ if rg -Fq 'exactOrigin.exists, currentField.exists, currentField.isEnabled' \
   echo 'bookmark hygiene rejects deadline-consuming AX re-resolution between focus attempts' >&2
   exit 1
 fi
-rg -Fq 'coordinate.tap()' \
-  "${ui_test_root}/BookmarkUITests.swift"
+rg -Fq 'currentField.tap()' \
+  "${ui_test_root}/BookmarkUITests.swift" || {
+  echo 'bookmark hygiene requires element-bound text-field focus synthesis' >&2
+  exit 1
+}
+focus_helper="$({
+  sed -n '/private func focusAndType(/,/private func requireProbe(/p' \
+    "${ui_test_root}/BookmarkUITests.swift"
+})"
+if grep -Fq 'app.coordinate(' <<<"${focus_helper}"; then
+  echo 'bookmark hygiene rejects stale app-normalized text-field focus coordinates' >&2
+  exit 1
+fi
 rg -Fq 'performPhysicalInteractionWithoutPostEventQuiescence(in: app)' \
   "${ui_test_root}/BookmarkUITests.swift"
 if rg -Fq 'focusProbe.waitForStringValue' "${ui_test_root}/BookmarkUITests.swift"; then

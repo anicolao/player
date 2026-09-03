@@ -651,24 +651,15 @@ final class BookmarkUITests: PlayerUITestCase {
     }
     let exactOrigin = app.descendants(matching: .any)[originIdentifier]
     XCTAssertTrue(resolveAppleIntelligenceNotification(testCase: self))
-    let appFrame = app.frame
-    let fieldFrame = currentField.frame
     guard
       currentField.isEnabled && currentField.isHittable
-        && exactOrigin.exists && !appFrame.isEmpty && !fieldFrame.isEmpty
-        && appFrame.contains(fieldFrame)
+        && exactOrigin.exists
     else {
       XCTFail(
-      "Expected \(identifier) to expose one contained physical focus target"
+      "Expected \(identifier) to expose one physical focus target"
       )
       return
     }
-    let coordinate = app.coordinate(
-      withNormalizedOffset: CGVector(
-        dx: (fieldFrame.midX - appFrame.minX) / appFrame.width,
-        dy: (fieldFrame.midY - appFrame.minY) / appFrame.height
-      )
-    )
     guard let focusReceipt = DarwinEventReceipt(
       name: namespacedE2EEvent(
         "com.spnss.player.e2e.text-input-focused.\(identifier)",
@@ -680,9 +671,9 @@ final class BookmarkUITests: PlayerUITestCase {
     }
     XCTAssertTrue(
       performPhysicalInteractionWithoutPostEventQuiescence(in: app) {
-        coordinate.tap()
+        currentField.tap()
       },
-      "Expected the pinned XCTest runtime to synthesize focus for \(identifier)"
+      "Expected the pinned XCTest runtime to synthesize element-bound focus for \(identifier)"
     )
     let deliveryDeadline = EventDeadline()
     let delivered = focusReceipt.wait(timeout: deliveryDeadline.remaining)
