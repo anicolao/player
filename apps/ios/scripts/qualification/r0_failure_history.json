@@ -4441,6 +4441,30 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no formal consecutive qualification count. Artifact 9892756680 was downloaded to /tmp/player-normal-33750608862-story013.mDidxb, and the failed merge SHA will not be rerun."
+    },
+    {
+      "signature": "ui-test:RemoteInterruptionUITests.testRemoteInterruptionRouteLossAndBackgroundEventsJournalAcknowledgedPositions:exit-65",
+      "story": "005-play-and-restore",
+      "evidence": {
+        "workflowRun": 33760224628,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions artifact 9898385712 (r0-matrix-lane-3-attempt-1-74c1ee3178b4755bf863764cd902e2b5d9cd8746-33760224628-1) retains the exact 340,106,223-byte lane result, invalid-geometry failure frame and recording, accessibility snapshots, complete XCTest and simulator logs, semantic probes, phase timings, screenshot comparison, and valid failure-evidence manifest",
+        "url": "https://github.com/anicolao/player/actions/runs/33760224628",
+        "commit": "74c1ee3178b4755bf863764cd902e2b5d9cd8746",
+        "observation": "The strategic formal run first passed Story 012 and Story 013 on all 20 independent focused fresh hosts. Four of five complete-matrix lanes then passed. In lane 3, the remote-interruption selector returned from Home and queried e2e-remote-pause while XCTest's first reactivation snapshot exposed infinite zero-area application and button frames; the following snapshot exposed a one-third-scale 134-by-291-point transition frame. XCTest raised an invalid activation-point error while determining button hittability instead of returning false."
+      },
+      "rootCause": "The lifecycle helper queried XCUIElement.isHittable before rejecting invalid or transitional accessibility geometry after application reactivation. XCTest can raise an activation-point exception for the infinite snapshot, and the helper also had no contract requiring the application to regain its exact pre-Home frame before accepting the control as interactive.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Capture and validate the foreground application frame before Home, then after activation reject non-finite, empty, scaled, or non-contained application/control geometry before querying hittability. Apply the same finite-geometry-before-hittability ordering to the following bounded foreground interaction, and lock both contracts into source hygiene. Preserve the existing event receipts and two-second deadline with no fixed wait, retry, selector change, or coverage reduction.",
+        "commits": [
+          "8af01e2b218366017dfe5ebcb6b60c8abed449ba"
+        ],
+        "validation": "The formerly failing remote-interruption selector passed locally in 13.530 seconds. The complete canonical Story 005 journey then passed all eight selectors in a 234.461-second test operation, including the same remote-interruption path again in 14.342 seconds. All four screenshots matched their reviewed baselines, the walkthrough README matched exactly, and full E2E hygiene passed all 18 source-contract tests and all 63 capture-readiness call sites. Hosted replacement validation remains required."
+      },
+      "qualificationResetCount": 1,
+      "resetEvidence": "Formal exact-SHA qualification run 33760224628 passed the targeted Story 012 and Story 013 gate 20/20 and four of five complete-matrix lanes before lane 3 failed. Artifact 9898385712 was downloaded to /tmp/player-formal-33760224628-lane3.fKaLPb, commit 74c1ee3178b4755bf863764cd902e2b5d9cd8746 cannot qualify and will not be rerun, and this is formal reset 34."
     }
   ]
 }

@@ -1179,6 +1179,35 @@ App Store rendering. Normal CI remains the unchanged all-story breadth gate.
 This reduces the final formal fan-out from 155 macOS jobs to 25 without
 removing any selector or behavioral coverage.
 
+Normal final-SHA run
+[33756036266](https://github.com/anicolao/player/actions/runs/33756036266)
+passed all 13 canonical stories, core tests, fixture validation, screenshots,
+walkthroughs, and App Store rendering on commit `74c1ee3`. Its permitted
+strategic formal dispatch
+[33760224628](https://github.com/anicolao/player/actions/runs/33760224628)
+then passed the least-sampled Story 012 and Story 013 attempts 20/20. Four of
+the five complete-matrix lanes also passed, but lane 3 failed the Story 005
+remote-interruption selector after Home reactivation. Artifact 9898385712 was
+downloaded to `/tmp/player-formal-33760224628-lane3.fKaLPb`; its retained
+accessibility snapshots show an initial infinite, zero-area application/button
+frame followed by a one-third-scale 134-by-291-point launch-transition frame.
+The helper asked XCTest for button hittability while that geometry was invalid,
+which raised an invalid activation-point error instead of returning false. The
+failed SHA will not be rerun, and this is formal reset 34.
+
+The reactivation helper now captures the valid foreground application frame
+before Home, requires that exact frame after activation, and rejects non-finite,
+empty, or non-contained control geometry before querying hittability. The same
+ordering protects the immediately following foreground interaction, and source
+hygiene locks both contracts in place. The formerly failing selector passed
+locally in 13.530 seconds. Complete Story 005 then passed all eight selectors in
+a 234.461-second test operation, including the repaired path again in 14.342
+seconds; all four screenshots and the walkthrough matched exactly, and full
+E2E hygiene passed. No fixed wait, retry, timeout increase, selector change, or
+coverage reduction was introduced. The ledger now contains 188 unique
+signatures and 34 formal resets. The replacement tip must pass normal CI before
+its one permitted formal dispatch.
+
 ## R0 — Stabilize and qualify E2E
 
 ### Goal
