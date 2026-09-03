@@ -262,7 +262,12 @@ if rg -n -F 'buttons["player-play-pause"].tap()' "${transport_controls_source}" 
   exit 1
 fi
 metadata_editing_source="${ui_test_root}/CommittedMetadataEditingUITests.swift"
-python3 - "${metadata_editing_source}" <<'PY'
+metadata_repair_source="${ui_test_root}/MetadataRepairUITests.swift"
+test_step_helper_source="${ui_test_root}/TestStepHelper.swift"
+python3 - \
+  "${metadata_editing_source}" \
+  "${metadata_repair_source}" \
+  "${test_step_helper_source}" <<'PY'
 import sys
 from pathlib import Path
 
@@ -271,15 +276,47 @@ replacement = source.index('if !replacement.isEmpty {')
 clear_receipt = source.rindex(
     'try requireValuePrefix(provenance, "value=empty|")', 0, replacement
 )
-cleared_guard = source.index('if clearedExistingValue {', replacement)
-focus_receipt = source.index(
-    'requireMetadataFieldFocus(field, fieldName: fieldName)', cleared_guard
+acknowledged_entry = source.index(
+    'typeTextAcknowledgedBySemanticValue(', replacement
 )
-text_synthesis = source.index('field.typeText(replacement)', focus_receipt)
-if not clear_receipt < replacement < cleared_guard < focus_receipt < text_synthesis:
+focus_receipt = source.index(
+    'self.requireMetadataFieldFocus(field, fieldName: fieldName)', acknowledged_entry
+)
+semantic_receipt = source.index('acceptedText:', focus_receipt)
+if not clear_receipt < replacement < acknowledged_entry < focus_receipt < semantic_receipt:
     raise SystemExit(
-        'metadata-editing hygiene requires an acknowledged clear and exact refocus '
-        'before replacement synthesis'
+        'metadata-editing hygiene requires an acknowledged clear, exact refocus, '
+        'and semantic receipt around replacement synthesis'
+    )
+
+repair = Path(sys.argv[2]).read_text()
+if 'field.typeText(replacement)' in source or 'field.typeText(replacement)' in repair:
+    raise SystemExit(
+        'metadata-editing hygiene rejects unacknowledged bulk replacement synthesis'
+    )
+if 'typeTextAcknowledgedBySemanticValue(' not in repair:
+    raise SystemExit(
+        'metadata-repair hygiene requires semantically acknowledged replacement input'
+    )
+
+helper = Path(sys.argv[3]).read_text()
+start = helper.index('func typeTextAcknowledgedBySemanticValue(')
+end = helper.index('\n@MainActor\nfunc performPhysicalInteractionWithoutPostEventQuiescence', start)
+body = helper[start:end]
+ordered = [
+    'target.hasPrefix(accepted)',
+    'let missingSuffix = String(target.dropFirst(accepted.count))',
+    'field.typeText(missingSuffix)',
+    'let deadline = EventDeadline()',
+    'XCTWaiter.wait(for: [expectation], timeout: deadline.remaining)',
+    'current.count > prior.count',
+    'target.hasPrefix(current)',
+]
+positions = [body.index(marker) for marker in ordered]
+if positions != sorted(positions):
+    raise SystemExit(
+        'acknowledged text-entry hygiene requires strict-prefix synthesis followed '
+        'by a bounded semantic progress receipt'
     )
 PY
 zip_source="${ui_test_root}/SafeZIPImportUITests.swift"

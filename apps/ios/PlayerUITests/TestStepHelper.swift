@@ -333,6 +333,51 @@ func waitForPredicate(
   return predicate.evaluate(with: element)
 }
 
+/// Synthesizes only text that an independently rendered semantic value has
+/// not yet acknowledged. XCTest can report a bulk `typeText` transaction as
+/// complete after delivering only a prefix under host pressure. A strict
+/// prefix is safe to continue; an unchanged, corrupted, or duplicated value
+/// fails closed rather than guessing what the app received.
+@MainActor
+func typeTextAcknowledgedBySemanticValue(
+  _ target: String,
+  into field: XCUIElement,
+  focusBeforeFirstSynthesis: Bool,
+  acquireFocus: () -> Bool,
+  acceptedText: @escaping () -> String?
+) -> Bool {
+  guard var accepted = acceptedText(), target.hasPrefix(accepted) else { return false }
+  var shouldAcquireFocus = focusBeforeFirstSynthesis
+
+  while accepted != target {
+    if shouldAcquireFocus, !acquireFocus() { return false }
+    let missingSuffix = String(target.dropFirst(accepted.count))
+    field.typeText(missingSuffix)
+
+    let prior = accepted
+    var current = acceptedText()
+    if current == prior {
+      let receipt = NSPredicate { _, _ in
+        guard let current = acceptedText() else { return false }
+        return current != prior
+      }
+      let expectation = XCTNSPredicateExpectation(predicate: receipt, object: nil)
+      let deadline = EventDeadline()
+      _ = XCTWaiter.wait(for: [expectation], timeout: deadline.remaining)
+      current = acceptedText()
+    }
+
+    guard let current,
+      current.count > prior.count,
+      target.hasPrefix(current)
+    else { return false }
+    accepted = current
+    shouldAcquireFocus = true
+  }
+
+  return true
+}
+
 @MainActor
 func performPhysicalInteractionWithoutPostEventQuiescence(
   in application: XCUIApplication,

@@ -460,27 +460,43 @@ final class CommittedMetadataEditingUITests: PlayerUITestCase {
     if !replacement.isEmpty {
       // A completed clear is a separate keyboard transaction. Under severe
       // host latency iOS can resign the field after publishing the empty
-      // model value, so require a fresh focus receipt before asking XCTest to
-      // synthesize the replacement transaction.
-      if clearedExistingValue {
-        requireMetadataFieldFocus(field, fieldName: fieldName)
-      }
-      field.typeText(replacement)
+      // model value. Require a fresh focus receipt for every synthesis and
+      // continue only a strict prefix acknowledged by the model probe.
+      XCTAssertTrue(
+        typeTextAcknowledgedBySemanticValue(
+          replacement,
+          into: field,
+          focusBeforeFirstSynthesis: clearedExistingValue,
+          acquireFocus: {
+            self.requireMetadataFieldFocus(field, fieldName: fieldName)
+          },
+          acceptedText: {
+            guard provenance.exists,
+              let encoded = provenance.value.map(String.init(describing:))
+            else { return nil }
+            return try? self.metadataValue(from: encoded)
+          }
+        ),
+        "The metadata field \(fieldName) must acknowledge the exact replacement without dropped keyboard input"
+      )
     }
     let expectedPrefix = replacement.isEmpty ? "value=empty|" : "value=\(replacement)|"
     try requireValuePrefix(provenance, expectedPrefix)
   }
 
-  private func requireMetadataFieldFocus(_ field: XCUIElement, fieldName: String) {
+  @discardableResult
+  private func requireMetadataFieldFocus(_ field: XCUIElement, fieldName: String) -> Bool {
     field.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.5)).tap()
+    let focused = waitForPredicate(
+      NSPredicate(format: "exists == true AND hittable == true AND hasKeyboardFocus == true"),
+      on: field,
+      timeout: EventDeadline().remaining
+    )
     XCTAssertTrue(
-      waitForPredicate(
-        NSPredicate(format: "exists == true AND hittable == true AND hasKeyboardFocus == true"),
-        on: field,
-        timeout: EventDeadline().remaining
-      ),
+      focused,
       "The metadata field \(fieldName) must acquire exact keyboard focus before text synthesis"
     )
+    return focused
   }
 
   private func metadataEditorSurface(_ app: XCUIApplication) -> ScrollSurface {

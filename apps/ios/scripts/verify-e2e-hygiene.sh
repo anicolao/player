@@ -411,10 +411,11 @@ step_dismiss_lines="$(rg -n \
   "${step_helper}" | cut -d: -f1)"
 step_dismiss_line="$(head -n 1 <<<"${step_dismiss_lines}")"
 capture_boundary_dismiss_line="$(tail -n 1 <<<"${step_dismiss_lines}")"
-step_deadline_line="$(rg -n '^[[:space:]]{6}let deadline = EventDeadline\(\)$' \
-  "${step_helper}" | cut -d: -f1)"
 step_readiness_line="$(rg -n 'let isReady = waitForCaptureReadiness\(' \
   "${step_helper}" | head -n 1 | cut -d: -f1)"
+step_deadline_line="$(head -n "${step_readiness_line}" "${step_helper}" \
+  | rg -n '^[[:space:]]{6}let deadline = EventDeadline\(\)$' \
+  | tail -n 1 | cut -d: -f1)"
 step_screenshot_line="$(rg -n '^[[:space:]]{4}let screenshot = preparedScreenshot \?\? XCUIScreen\.main\.screenshot\(\)$' \
   "${step_helper}" | cut -d: -f1)"
 [[ "$(wc -l <<<"${step_dismiss_lines}" | tr -d ' ')" == "2" \
