@@ -179,6 +179,12 @@ for lifecycle_source in \
     exit 1
   }
 done
+remote_interruption="${ui_test_root}/RemoteInterruptionUITests.swift"
+[[ "$(rg -c 'requiresProductionAdapters: true' "${remote_interruption}")" == "2" ]] || {
+  echo 'remote interruption hygiene requires launch and relaunch adapter readiness receipts' >&2
+  exit 1
+}
+rg -Fq 'state.registeredCommands == registeredCommands' "${remote_interruption}"
 accessibility_source="${ui_test_root}/AccessibilityUITests.swift"
 rg -Fq 'backgroundAndReactivateApplication(app, requiringButton: "play-book")' \
   "${accessibility_source}" || {
@@ -733,10 +739,12 @@ if rg -Fq 'postTextInputFocused()' "${script_dir}/../../Player"; then
 fi
 rg -Fq 'name: namespacedE2EEvent(' \
   "${ui_test_root}/BookmarkUITests.swift"
-rg -Fq 'focusReceipt.wait(timeout: min(0.25, deliveryDeadline.remaining))' \
+rg -Fq 'let delivered = focusReceipt.wait(timeout: deliveryDeadline.remaining)' \
   "${ui_test_root}/BookmarkUITests.swift"
-rg -Fq 'Focusing the same pinned field is idempotent.' \
-  "${ui_test_root}/BookmarkUITests.swift"
+if rg -Fq 'while !delivered' "${ui_test_root}/BookmarkUITests.swift"; then
+  echo 'bookmark hygiene rejects retrying an already delivered physical focus action' >&2
+  exit 1
+fi
 if rg -Fq 'exactOrigin.exists, currentField.exists, currentField.isEnabled' \
   "${ui_test_root}/BookmarkUITests.swift"; then
   echo 'bookmark hygiene rejects deadline-consuming AX re-resolution between focus attempts' >&2

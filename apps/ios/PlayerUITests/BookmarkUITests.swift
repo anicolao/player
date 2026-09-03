@@ -678,27 +678,17 @@ final class BookmarkUITests: PlayerUITestCase {
       XCTFail("Expected the Darwin focus receipt to register")
       return
     }
-    var deliveryDeadline: EventDeadline?
-    var delivered = false
-    repeat {
-      if let deliveryDeadline, deliveryDeadline.remaining <= 0 { break }
-      // Focusing the same pinned field is idempotent. Re-resolving its complete
-      // accessibility snapshot between attempts can itself consume the entire
-      // delivery budget under load. A successful focus change publishes the
-      // field-specific Darwin event before any subsequent tap can matter.
-      XCTAssertTrue(
-        performPhysicalInteractionWithoutPostEventQuiescence(in: app) {
-          coordinate.tap()
-        },
-        "Expected the pinned XCTest runtime to synthesize focus for \(identifier)"
-      )
-      if deliveryDeadline == nil { deliveryDeadline = EventDeadline() }
-      guard let deliveryDeadline else { break }
-      delivered = focusReceipt.wait(timeout: min(0.25, deliveryDeadline.remaining))
-    } while !delivered && (deliveryDeadline?.remaining ?? 0) > 0
+    XCTAssertTrue(
+      performPhysicalInteractionWithoutPostEventQuiescence(in: app) {
+        coordinate.tap()
+      },
+      "Expected the pinned XCTest runtime to synthesize focus for \(identifier)"
+    )
+    let deliveryDeadline = EventDeadline()
+    let delivered = focusReceipt.wait(timeout: deliveryDeadline.remaining)
     XCTAssertTrue(
       delivered,
-      "Expected \(identifier) to publish its production focus event within two seconds of an idempotent pinned focus action"
+      "Expected \(identifier) to publish its production focus event within two seconds of the pinned focus action"
     )
     guard delivered else { return }
     currentField.typeText(text)

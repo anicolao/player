@@ -23,7 +23,8 @@ final class RemoteInterruptionUITests: PlayerUITestCase {
       status: "paused",
       positionMilliseconds: 12_000,
       sequence: 1,
-      reason: "pause"
+      reason: "pause",
+      requiresProductionAdapters: true
     )
     assertIdentityAndPersistence(initial, expectedPositionMilliseconds: 12_000)
     XCTAssertEqual(initial.registeredCommands, registeredCommands)
@@ -237,7 +238,8 @@ final class RemoteInterruptionUITests: PlayerUITestCase {
       status: "paused",
       positionMilliseconds: 27_000,
       sequence: 16,
-      reason: "pause"
+      reason: "pause",
+      requiresProductionAdapters: true
     )
     assertIdentityAndPersistence(restored, expectedPositionMilliseconds: 27_000)
     XCTAssertEqual(restored.registeredCommands, registeredCommands)
@@ -268,7 +270,8 @@ final class RemoteInterruptionUITests: PlayerUITestCase {
     positionMilliseconds: Int,
     sequence: Int,
     reason: String,
-    postedAudioEvent: String? = nil
+    postedAudioEvent: String? = nil,
+    requiresProductionAdapters: Bool = false
   ) throws -> PlaybackJournalProbe {
     func matches(_ state: PlaybackJournalProbe) -> Bool {
       state.status == status
@@ -276,6 +279,10 @@ final class RemoteInterruptionUITests: PlayerUITestCase {
         && state.sequence == sequence
         && state.reason == reason
         && (postedAudioEvent == nil || state.audioSession.latestPostedEvent == postedAudioEvent)
+        && (!requiresProductionAdapters
+          || (state.registeredCommands == registeredCommands
+            && state.audioSession.configureCount == 1
+            && state.audioSession.registeredNotifications == registeredAudioNotifications))
     }
     let predicate = NSPredicate { object, _ in
       guard let element = object as? XCUIElement,
