@@ -4393,6 +4393,30 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no formal consecutive qualification count. Artifact 9880622905 was downloaded to /tmp/player-normal-33720780346-story007.S1SnPu, and the failed SHA will not be rerun."
+    },
+    {
+      "signature": "ui-test:MonetizationUITests.testExplainsExhaustionAndCompletesAOneTimeUnlock:undersized-restore-target-not-delivered",
+      "story": "012-monetization",
+      "evidence": {
+        "workflowRun": 33726996948,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions artifact 9890807087 (r0-story-evidence-012-monetization-attempt-1) retains the exact 230,333,559-byte result, failure frame and recording, accessibility hierarchy, complete XCTest and simulator logs, phase timings, screenshot comparison, and valid failure-evidence manifest",
+        "url": "https://github.com/anicolao/player/actions/runs/33726996948/job/100560052938",
+        "commit": "9b794ac0af677d0326bb9fa0b62cad3d4aa13e46",
+        "observation": "Formal Story 012 attempt 1 reached the pixel-canonical exhausted-unlock screen, resolved Restore Purchases as visible and enabled, and synthesized one physical touch at application coordinate [0.35, 0.73]. The exact two-second receipt then expired without e2e-monetization-complete-restore-empty appearing. The retained final hierarchy still exposes the ready-phase control and reports the Restore Purchases accessibility frame as only 126.3 by 17 points. The formal run had already passed 102 independent fresh-host story attempts."
+      },
+      "rootCause": "The production Restore Purchases and Redeem a Code controls exposed only their 17-point text bounds as touch targets inside a ScrollView. The test's prior coordinate workaround touched the exact center, but the undersized SwiftUI button still failed to accept one hosted physical delivery. The earlier ledger entry incorrectly claimed the implementation verified a 44-point target; neither the production view nor its test guard enforced that contract.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Give both secondary Full Unlock actions real 44-point label hit areas, require the Restore accessibility frame to be at least 44 points tall before its single physical coordinate tap, and make source hygiene reject either target or guard being removed. Retain the exact post-synthesis two-second state receipt, with no wait increase, retry, selector change, or coverage reduction.",
+        "commits": [
+          "b7258a3d9cfa787164789d2f637b2ca51a3d8528"
+        ],
+        "validation": "The complete Story 012 journey passed on three newly created, twice-booted iOS 26.5 simulators in 19.498, 19.344, and 19.612 seconds. Every run delivered Restore immediately and completed restore-empty, offer-code failure, purchase, and offline relaunch. The reviewed 44-point presentation was recorded once; the independent successor run matched both screenshots pixel-exact and the walkthrough exactly. Full E2E hygiene passed all 18 source-contract tests and all 63 capture-readiness call sites."
+      },
+      "qualificationResetCount": 1,
+      "resetEvidence": "Formal exact-SHA qualification run 33726996948 failed Story 012 attempt 1 after 102 successful isolated story attempts. Artifact 9890807087 uploaded successfully and was downloaded to /tmp/player-r0-33726996948-story012.OMwzdZ before the remaining queue was cancelled; the failed SHA was not rerun, commit 9b794ac0af677d0326bb9fa0b62cad3d4aa13e46 cannot qualify, and this is formal reset 33."
     }
   ]
 }

@@ -1110,6 +1110,39 @@ increase, selector change, or coverage reduction was introduced. The ledger
 now contains 185 unique signatures and retains 32 formal resets. The
 replacement tip must pass normal CI before its one permitted formal dispatch.
 
+Normal run
+[33723516902](https://github.com/anicolao/player/actions/runs/33723516902)
+then passed the exact `9b794ac0af677d0326bb9fa0b62cad3d4aa13e46`
+tip without a rerun. All 13 canonical stories, every core and fixture gate,
+the App Store renderer, screenshot and walkthrough evidence, and fail-closed
+aggregation passed in 40m44s. That is 7m32s, or about 15.6%, faster than the
+same-coverage 48m16s fresh-host baseline.
+
+Its one permitted formal dispatch
+[33726996948](https://github.com/anicolao/player/actions/runs/33726996948)
+passed exact-SHA preflight, built one immutable product, and then passed 102
+independent fresh-host story attempts before Story 012 attempt 1 exposed a
+distinct physical delivery defect. XCTest resolved Restore Purchases as visible
+and enabled, synthesized one touch at its center, and received no scripted
+restore transition within the exact two-second deadline. The retained hierarchy
+still reported the ready phase and showed that the production Restore control
+exposed only a 126.3-by-17-point target. Artifact 9890807087 retains the exact
+230,333,559-byte result and was downloaded to
+`/tmp/player-r0-33726996948-story012.OMwzdZ`; the remaining queue was cancelled,
+the failed SHA will not be rerun, and this is formal reset 33.
+
+Both secondary Full Unlock actions now expose real 44-point hit areas, and the
+Story 012 helper refuses to synthesize unless Restore presents that geometry.
+Source hygiene requires the production targets and test guard. The complete
+journey passed on three newly created, twice-booted iOS 26.5 simulators in
+19.498, 19.344, and 19.612 seconds, delivering restore, offer-code failure,
+purchase, and offline relaunch on every run. After reviewing and recording the
+larger controls, the independent successor matched both screenshots pixel-exact
+and the walkthrough exactly; full E2E hygiene also passed. No fixed wait,
+retry, timeout increase, selector change, or coverage reduction was introduced.
+The ledger now contains 186 unique signatures and 33 formal resets. The
+replacement tip must pass normal CI before its one permitted formal dispatch.
+
 ## R0 — Stabilize and qualify E2E
 
 ### Goal
