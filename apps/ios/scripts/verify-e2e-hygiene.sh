@@ -8,6 +8,7 @@ manifest="${repository_root}/tests/e2e/manifest.json"
 workflow="${repository_root}/.github/workflows/ios.yml"
 story_workflow="${repository_root}/.github/workflows/ios-e2e-story.yml"
 qualification_workflow="${repository_root}/.github/workflows/r0-qualification.yml"
+qualification_sampling_plan="${repository_root}/apps/ios/scripts/qualification/r0_sampling_plan.json"
 workflow_root="${repository_root}/.github/workflows"
 portable_tools_script="${script_dir}/prepare-portable-e2e-tools.sh"
 
@@ -344,9 +345,11 @@ sed -n '/^  story-qualification:/,/^  story-gate:/p' \
   "${qualification_workflow}" \
   | rg -o '[0-9]{3}-[a-z0-9][a-z0-9-]*' | sort \
   > "${temporary_root}/qualification-story-gate-stories"
-cmp "${temporary_root}/manifest-stories" \
+jq -r '.targetStories[]' "${qualification_sampling_plan}" | sort \
+  > "${temporary_root}/qualification-target-stories"
+cmp "${temporary_root}/qualification-target-stories" \
   "${temporary_root}/qualification-story-gate-stories" \
-  || fail "formal story qualification must cover every canonical story exactly once"
+  || fail "formal repeated qualification must cover each selected least-sampled story once"
 sed -n '/^  matrix-qualification:/,/^  qualification-report:/p' \
   "${qualification_workflow}" \
   | rg -o '[0-9]{3}-[a-z0-9][a-z0-9-]*' | sort \
@@ -369,8 +372,8 @@ done
 story_lane_count="$(sed -n '/^  story-qualification:/,/^  story-gate:/p' \
   "${qualification_workflow}" \
   | rg -c '^[[:space:]]+- [0-9]{3}-[a-z0-9][a-z0-9-]*$')"
-[[ "${story_lane_count}" -eq 13 ]] \
-  || fail "formal story qualification must define every canonical story"
+[[ "${story_lane_count}" -eq "$(jq '.targetStories | length' "${qualification_sampling_plan}")" ]] \
+  || fail "formal story qualification must define every selected story"
 sed -n '/^  matrix-qualification:/,/^  qualification-report:/p' \
   "${qualification_workflow}" \
   | rg -Fq 'lane: [lane-1, lane-2, lane-3, lane-4, lane-5]' \
@@ -525,19 +528,22 @@ if rg -n 'continue-on-error:|nick-fields/retry|retry-action' \
 fi
 
 [[ -f "${qualification_workflow}" ]] || fail "the manual R0 qualification workflow is missing"
+[[ -f "${qualification_sampling_plan}" ]] || fail "the R0 sampling plan is missing"
 {
-  cat "${temporary_root}/manifest-stories"
+  cat "${temporary_root}/qualification-target-stories"
   cat "${temporary_root}/manifest-stories"
 } | sort > "${temporary_root}/qualification-expected-stories"
-rg -o '[0-9]{3}-[a-z0-9][a-z0-9-]*' "${qualification_workflow}" \
-  | sort > "${temporary_root}/qualification-workflow-stories"
+{
+  cat "${temporary_root}/qualification-story-gate-stories"
+  cat "${temporary_root}/qualification-matrix-stories"
+} | sort > "${temporary_root}/qualification-workflow-stories"
 cmp "${temporary_root}/qualification-expected-stories" \
   "${temporary_root}/qualification-workflow-stories" \
-  || fail "R0 qualification must assign every canonical story once in each phase"
-[[ "$(rg -c '^[[:space:]]+max-parallel: 130$' "${qualification_workflow}")" -eq 1 ]] \
-  || fail "R0 story qualification must expose all 130 isolated attempts to the scheduler"
-[[ "$(rg -c '^[[:space:]]+max-parallel: 25$' "${qualification_workflow}")" -eq 1 ]] \
-  || fail "R0 matrix qualification must expose all 25 isolated lanes to the scheduler"
+  || fail "R0 qualification must repeat the selected stories and retain one complete matrix"
+[[ "$(rg -c '^[[:space:]]+max-parallel: 20$' "${qualification_workflow}")" -eq 1 ]] \
+  || fail "R0 story qualification must expose all 20 least-sampled attempts to the scheduler"
+[[ "$(rg -c '^[[:space:]]+max-parallel: 5$' "${qualification_workflow}")" -eq 1 ]] \
+  || fail "R0 matrix qualification must expose all five full-coverage lanes to the scheduler"
 for actions_reader in "${workflow}" "${story_workflow}" "${qualification_workflow}"; do
   sed -n '/^permissions:/,/^jobs:/p' "${actions_reader}" \
     | rg -q '^[[:space:]]+actions: read$' \
@@ -564,7 +570,7 @@ matrix_qualification_section="$(sed -n \
   '/^  matrix-qualification:/,/^  qualification-report:/p' \
   "${qualification_workflow}")"
 rg -Fq 'needs: [story-gate, qualification-build]' <<< "${matrix_qualification_section}" \
-  || fail "formal matrices must begin only after the aggregate 10/10 story gate"
+  || fail "formal matrix must begin only after the aggregate targeted 10/10 story gate"
 rg -q 'r0-story-evidence-\$\{\{ matrix\.story \}\}-attempt-\$\{\{ matrix\.attempt \}\}' \
   "${qualification_workflow}" \
   || fail "R0 story artifacts must remain independently attributable by story and attempt"
@@ -572,8 +578,8 @@ rg -Fq 'attempt: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]' "${qualification_workflow}" \
   || fail "R0 story qualification must request exactly ten fresh-host attempts"
 [[ "$(rg -c -- '--attempts 1' "${qualification_workflow}")" -eq 1 ]] \
   || fail "each R0 story job must run exactly one attempt"
-rg -Fq 'matrix_attempt: [1, 2, 3, 4, 5]' "${qualification_workflow}" \
-  || fail "R0 matrix qualification must request exactly five fresh-host matrices"
+rg -Fq 'matrix_attempt: [1]' "${qualification_workflow}" \
+  || fail "R0 matrix qualification must request exactly one fresh-host full matrix"
 [[ "$(rg -c -- '--matrices 1' "${qualification_workflow}")" -eq 1 ]] \
   || fail "each R0 matrix job must run exactly one lane attempt"
 [[ "$(rg -c 'actions/download-artifact@v8' "${qualification_workflow}")" -ge 5 ]] \

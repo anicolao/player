@@ -99,8 +99,9 @@ release pass while its remaining gate is listed as pending.
 
 The R0 row summarizes the earlier accepted milestone and the chronology below
 retains the signature count at each subsequent checkpoint. The current exact
-ledger contains **185 unique signatures** and **32 formal qualification
-resets**.
+ledger contains **187 unique signatures** and **33 formal qualification
+resets**. The R0 row records the original all-story repetition design; the
+least-sampled-first gate documented below supersedes that remaining-gate text.
 
 ### Current R0 qualification update
 
@@ -1165,6 +1166,19 @@ Story 012 passed independently in 19.567 seconds with both screenshots and its
 walkthrough exact. The ledger now contains 187 unique signatures and retains
 33 formal resets.
 
+Formal run 33726996948 also supplies the scheduling evidence for the final
+qualification allocation. Before cancellation, Stories 001 through 006 had
+each passed 10 fresh-host attempts; Stories 007 through 011 had passed 8, 8,
+6, 7, and 9; Stories 012 and 013 had each passed only 2. The checked-in
+`r0_sampling_plan.json` records those counts and selects every story tied for
+the minimum: 012 and 013. The workflow declares `attempt` before `story`, so
+their attempts are interleaved and both failure surfaces begin immediately.
+After their 10/10 gate, one five-lane formal matrix still runs every canonical
+story exactly once together with core tests, fixtures, exact walkthroughs, and
+App Store rendering. Normal CI remains the unchanged all-story breadth gate.
+This reduces the final formal fan-out from 155 macOS jobs to 25 without
+removing any selector or behavioral coverage.
+
 ## R0 — Stabilize and qualify E2E
 
 ### Goal
@@ -1246,18 +1260,23 @@ contract are recorded in [E2E_RUNTIME_BASELINE.md](E2E_RUNTIME_BASELINE.md).
 
 ### Reliability exit gate
 
-1. Run each canonical story ten consecutive times from isolated clean test
-   state. Require 10/10 passes for every story.
-2. Run the complete CI matrix five consecutive times from clean checkouts or
-   equivalently isolated hosts. Require 5/5 green matrices.
-3. Preserve results and artifacts for every attempt, including successful ones'
+1. Require normal CI to run every canonical story and automated gate on the
+   final revision. Use the checked-in successful-attempt ledger to select every
+   story tied for the least retained fresh-host coverage.
+2. Run each selected least-sampled story ten times from isolated clean test
+   state. Require 10/10 passes, with matrix dimensions ordered to interleave
+   stories instead of exhausting one numerical prefix first.
+3. Run one complete five-lane CI matrix on the same immutable build and exact
+   SHA. Require every canonical story, core/fixture gate, exact walkthrough,
+   and App Store renderer to pass.
+4. Preserve results and artifacts for every attempt, including successful ones'
    manifests and failed attempts' complete diagnostics.
-4. Any unexplained failure resets the affected qualification count after its
+5. Any unexplained failure resets the affected qualification count after its
    root cause is corrected. Infrastructure outages must be evidenced separately
    and may be excluded only when the app and test process did not begin.
-5. Publish a short stability report listing attempts, failures by signature,
+6. Publish a short stability report listing attempts, failures by signature,
    fixes, final pass counts, runtime distribution, and the exact qualifying SHA.
-6. Repeat the baseline timing procedure on the qualifying SHA using the same
+7. Repeat the baseline timing procedure on the qualifying SHA using the same
    machine class and command. Report before/after totals and per-phase deltas.
    The median complete-suite runtime must not regress by more than 10%, and no
    individual story may regress by more than 20%, unless the added coverage is

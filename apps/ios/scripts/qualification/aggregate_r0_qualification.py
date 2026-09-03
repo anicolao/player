@@ -31,6 +31,46 @@ def canonical_stories(manifest: Path):
     return [entry["story"] for entry in load_json(manifest)]
 
 
+def validate_sampling_plan(path: Path, expected_stories):
+    plan = load_json(path)
+    required = {
+        "schemaVersion", "strategy", "source", "successfulFreshHostAttempts",
+        "targetStories", "storyAttempts", "fullMatrixAttempts", "coveragePolicy",
+    }
+    if not isinstance(plan, dict) or set(plan) != required:
+        raise ValueError("sampling plan must contain the exact required fields")
+    if plan["schemaVersion"] != 1 or plan["strategy"] != "least-sampled-first":
+        raise ValueError("sampling plan must use the supported least-sampled-first schema")
+    source = plan["source"]
+    if not isinstance(source, dict) or set(source) != {"workflowRun", "url", "commit"}:
+        raise ValueError("sampling plan source is invalid")
+    if (not isinstance(source["workflowRun"], int) or source["workflowRun"] <= 0
+            or not isinstance(source["url"], str)
+            or not re.fullmatch(r"https://github\.com/[^/]+/[^/]+/actions/runs/[0-9]+", source["url"])
+            or not isinstance(source["commit"], str)
+            or not re.fullmatch(r"[0-9a-f]{40}", source["commit"])):
+        raise ValueError("sampling plan source must identify one retained exact-SHA run")
+    counts = plan["successfulFreshHostAttempts"]
+    if (not isinstance(counts, dict) or set(counts) != set(expected_stories)
+            or any(not nonnegative_integer(value) for value in counts.values())):
+        raise ValueError("sampling plan must count every canonical story exactly once")
+    targets = plan["targetStories"]
+    if (not isinstance(targets, list) or not targets
+            or any(not isinstance(story, str) for story in targets)
+            or len(targets) != len(set(targets))
+            or any(story not in counts for story in targets)):
+        raise ValueError("sampling plan targetStories must be a unique canonical subset")
+    minimum = min(counts.values())
+    expected_targets = [story for story in expected_stories if counts[story] == minimum]
+    if targets != expected_targets:
+        raise ValueError("sampling plan must target every least-sampled story in canonical order")
+    if plan["storyAttempts"] != 10 or plan["fullMatrixAttempts"] != 1:
+        raise ValueError("sampling plan must request ten targeted attempts and one full matrix")
+    if not isinstance(plan["coveragePolicy"], str) or not plan["coveragePolicy"].strip():
+        raise ValueError("sampling plan must explain how full coverage is retained")
+    return plan
+
+
 def distribution(values):
     if not values:
         return {"count": 0, "minimum": None, "median": None, "maximum": None, "p95": None}
@@ -908,6 +948,7 @@ def main(argv=None):
     parser.add_argument("--story-input", type=Path, required=True)
     parser.add_argument("--matrix-input", type=Path)
     parser.add_argument("--manifest", type=Path, required=True)
+    parser.add_argument("--sampling-plan", type=Path)
     parser.add_argument("--runtime-baseline", type=Path,
                         default=Path(__file__).with_name("r0_runtime_baseline.json"))
     parser.add_argument("--failure-history", type=Path,
@@ -925,12 +966,23 @@ def main(argv=None):
             raise ValueError("canonical manifest must contain unique story identifiers")
         baseline = validate_baseline(args.runtime_baseline, stories)
         failure_history = validate_failure_history(args.failure_history, stories)
+        sampling_plan = None
+        qualified_stories = stories
+        if args.sampling_plan is not None:
+            sampling_plan = validate_sampling_plan(args.sampling_plan, stories)
+            qualified_stories = sampling_plan["targetStories"]
+            if args.story_attempts != sampling_plan["storyAttempts"]:
+                raise ValueError("requested story attempts disagree with the sampling plan")
+            if (args.matrix_input is not None
+                    and args.matrix_attempts != sampling_plan["fullMatrixAttempts"]):
+                raise ValueError("requested matrix attempts disagree with the sampling plan")
     except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError) as error:
         print(f"Invalid qualification contract: {error}", file=sys.stderr)
         return 2
     canonical_root = args.manifest.parent
     story_result = validate_story(
-        args.story_input, canonical_root, stories, args.sha, args.story_attempts)
+        args.story_input, canonical_root, qualified_stories, args.sha, args.story_attempts)
+    story_result["samplingPlan"] = sampling_plan
     matrix_result = None
     if args.matrix_input is not None:
         matrix_result = validate_matrices(

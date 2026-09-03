@@ -149,6 +149,21 @@ class QualificationAggregatorTests(unittest.TestCase):
         }]})
         self.story_root = self.root / "stories"
         self.matrix_root = self.root / "matrices"
+        self.sampling_plan = self.root / "sampling-plan.json"
+        sample_counts = {story: 10 for story in STORIES}
+        sample_counts["012-monetization"] = 2
+        sample_counts["013-app-store-listing"] = 2
+        write_json(self.sampling_plan, {
+            "schemaVersion": 1,
+            "strategy": "least-sampled-first",
+            "source": {"workflowRun": 2, "url": "https://github.com/example/repo/actions/runs/2",
+                       "commit": SHA},
+            "successfulFreshHostAttempts": sample_counts,
+            "targetStories": ["012-monetization", "013-app-store-listing"],
+            "storyAttempts": 10,
+            "fullMatrixAttempts": 1,
+            "coveragePolicy": "Normal CI and one full matrix retain canonical breadth.",
+        })
         for lane_index, lane_stories in enumerate(STORY_QUALIFICATION_LANES, 1):
             lane_root = self.story_root / f"artifact-{lane_index}"
             summaries = []
@@ -319,6 +334,35 @@ class QualificationAggregatorTests(unittest.TestCase):
             fragmented_matrices, self.root, STORIES, SHA, 5, baseline
         )["errors"])
 
+    def test_least_sampled_plan_focuses_repetition_without_accepting_extra_stories(self):
+        plan = aggregate.validate_sampling_plan(self.sampling_plan, STORIES)
+        focused = self.root / "focused-stories"
+        for story in plan["targetStories"]:
+            lane = self.story_root / f"artifact-{STORIES.index(story) + 1}"
+            shutil.copytree(lane, focused / lane.name)
+        output = self.root / "focused-report"
+        arguments = [
+            "--story-input", str(focused), "--manifest", str(self.manifest),
+            "--sampling-plan", str(self.sampling_plan),
+            "--runtime-baseline", str(self.baseline),
+            "--failure-history", str(self.history), "--sha", SHA,
+            "--story-attempts", "10", "--output", str(output),
+        ]
+        self.assertEqual(aggregate.main(arguments), 0)
+        summary = json.loads((output / "QualificationSummary.json").read_text())
+        self.assertEqual(summary["storyQualification"]["stories"], 2)
+        self.assertEqual(summary["storyQualification"]["durations"]["count"], 20)
+        self.assertEqual(summary["storyQualification"]["samplingPlan"], plan)
+        shutil.copytree(self.story_root / "artifact-1", focused / "artifact-1")
+        self.assertEqual(aggregate.main(arguments), 1)
+
+    def test_sampling_plan_rejects_omitting_a_tied_least_sampled_story(self):
+        payload = json.loads(self.sampling_plan.read_text())
+        payload["targetStories"].pop()
+        write_json(self.sampling_plan, payload)
+        with self.assertRaisesRegex(ValueError, "every least-sampled story"):
+            aggregate.validate_sampling_plan(self.sampling_plan, STORIES)
+
     def test_accepts_complete_green_evidence_and_reports_timings(self):
         self.assertEqual(self.run_aggregate(), 0)
         summary = json.loads((self.root / "report/QualificationSummary.json").read_text())
@@ -364,6 +408,13 @@ class QualificationAggregatorTests(unittest.TestCase):
         self.assertEqual(validated["schemaVersion"], 2)
         self.assertEqual(set(validated["qualificationReference"]["phases"]),
                          aggregate.REQUIRED_PHASES)
+
+    def test_checked_in_sampling_plan_targets_the_retained_minimum(self):
+        checked_in = Path(__file__).with_name("r0_sampling_plan.json")
+        validated = aggregate.validate_sampling_plan(checked_in, STORIES)
+        self.assertEqual(validated["targetStories"], [
+            "012-monetization", "013-app-store-listing",
+        ])
 
     def test_rejects_a_baseline_that_omits_required_gate_phases(self):
         payload = json.loads(self.baseline.read_text())

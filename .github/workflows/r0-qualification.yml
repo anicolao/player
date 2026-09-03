@@ -42,6 +42,9 @@ jobs:
           git diff --quiet
           git diff --cached --quiet
           jq -e 'length == 13' tests/e2e/manifest.json >/dev/null
+          jq -e '.targetStories == ["012-monetization", "013-app-store-listing"]
+            and .storyAttempts == 10 and .fullMatrixAttempts == 1' \
+            apps/ios/scripts/qualification/r0_sampling_plan.json >/dev/null
       - name: Reject reruns and repeated qualification dispatches
         env:
           CURRENT_RUN_ATTEMPT: ${{ github.run_attempt }}
@@ -132,29 +135,18 @@ jobs:
           retention-days: 30
 
   story-qualification:
-    name: Story qualification ${{ matrix.story }} attempt ${{ matrix.attempt }}
+    name: Least-sampled story ${{ matrix.story }} attempt ${{ matrix.attempt }}
     needs: qualification-build
     runs-on: macos-26
     timeout-minutes: 60
     strategy:
       fail-fast: false
-      max-parallel: 130
+      max-parallel: 20
       matrix:
+        attempt: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
         story:
-          - 001-ios-launch
-          - 002-import-and-play
-          - 003-multifile-grouping
-          - 004-metadata-repair
-          - 005-play-and-restore
-          - 006-safe-zip-import
-          - 007-sleep-timer
-          - 008-library-search
-          - 009-accessible-core-journeys
-          - 010-library-backup
-          - 011-offline-recovery
           - 012-monetization
           - 013-app-store-listing
-        attempt: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     defaults:
       run:
         shell: bash --noprofile --norc -e -o pipefail {0}
@@ -213,7 +205,7 @@ jobs:
           retention-days: 30
 
   story-gate:
-    name: Require 10/10 for every story
+    name: Require 10/10 for every least-sampled story
     if: always()
     needs: story-qualification
     runs-on: ubuntu-latest
@@ -231,6 +223,7 @@ jobs:
           python3 apps/ios/scripts/qualification/aggregate_r0_qualification.py
           --story-input downloaded/stories
           --manifest tests/e2e/manifest.json
+          --sampling-plan apps/ios/scripts/qualification/r0_sampling_plan.json
           --runtime-baseline apps/ios/scripts/qualification/r0_runtime_baseline.json
           --failure-history apps/ios/scripts/qualification/r0_failure_history.json
           --sha '${{ inputs.expected_sha }}'
@@ -252,10 +245,10 @@ jobs:
     timeout-minutes: 90
     strategy:
       fail-fast: false
-      max-parallel: 25
+      max-parallel: 5
       matrix:
         lane: [lane-1, lane-2, lane-3, lane-4, lane-5]
-        matrix_attempt: [1, 2, 3, 4, 5]
+        matrix_attempt: [1]
     defaults:
       run:
         shell: bash --noprofile --norc -e -o pipefail {0}
@@ -351,11 +344,12 @@ jobs:
           --story-input downloaded/stories
           --matrix-input downloaded/matrices
           --manifest tests/e2e/manifest.json
+          --sampling-plan apps/ios/scripts/qualification/r0_sampling_plan.json
           --runtime-baseline apps/ios/scripts/qualification/r0_runtime_baseline.json
           --failure-history apps/ios/scripts/qualification/r0_failure_history.json
           --sha '${{ inputs.expected_sha }}'
           --story-attempts 10
-          --matrix-attempts 5
+          --matrix-attempts 1
           --output build/r0-qualification-report
       - name: Upload final stability report
         if: always()

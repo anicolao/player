@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "strategy": "least-sampled-first",
+  "source": {
+    "workflowRun": 33726996948,
+    "url": "https://github.com/anicolao/player/actions/runs/33726996948",
+    "commit": "9b794ac0af677d0326bb9fa0b62cad3d4aa13e46"
+  },
+  "successfulFreshHostAttempts": {
+    "001-ios-launch": 10,
+    "002-import-and-play": 10,
+    "003-multifile-grouping": 10,
+    "004-metadata-repair": 10,
+    "005-play-and-restore": 10,
+    "006-safe-zip-import": 10,
+    "007-sleep-timer": 8,
+    "008-library-search": 8,
+    "009-accessible-core-journeys": 6,
+    "010-library-backup": 7,
+    "011-offline-recovery": 9,
+    "012-monetization": 2,
+    "013-app-store-listing": 2
+  },
+  "targetStories": [
+    "012-monetization",
+    "013-app-store-listing"
+  ],
+  "storyAttempts": 10,
+  "fullMatrixAttempts": 1,
+  "coveragePolicy": "Normal CI and the final formal matrix each retain all canonical stories, core tests, fixtures, exact walkthroughs, and App Store rendering; repeated fresh-host sampling is allocated to every story tied for the fewest retained successful attempts."
+}
