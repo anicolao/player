@@ -4240,14 +4240,39 @@
       "diagnosisStatus": "confirmed",
       "fix": {
         "status": "verified",
-        "summary": "Route metadata replacement text through one shared semantic-delivery helper. After each synthesis, read the independently rendered model probe immediately and continue only a strict missing suffix after exact focus is re-established. Fail closed on no progress, corruption, duplication, or lost focus, and bound every receipt to the existing two-second event deadline. Apply the same contract to both metadata journeys and reject future raw bulk replacement synthesis in source hygiene; add no fixed wait, extended deadline, retry-to-green, or selector change.",
+        "summary": "Route metadata replacement text through one shared acknowledged-delivery helper. After each synthesis, read the edited field itself and continue only a strict missing suffix after exact focus is re-established; then independently require the app's rendered model receipt. Reading one element for delivery avoids cross-generation accessibility skew while preserving independent product-state verification. Fail closed on no progress, corruption, duplication, lost focus, or missing model publication, and bound every receipt to the existing two-second event deadline. Apply the same contract to both metadata journeys and reject future raw bulk replacement synthesis in source hygiene; add no fixed wait, extended deadline, retry-to-green, or selector change.",
         "commits": [
-          "09b1fbe94e0835bcfbf9db515a6fd86c957e9859"
+          "09b1fbe94e0835bcfbf9db515a6fd86c957e9859",
+          "be105e6652ae584a539851421ffa290704d115de"
         ],
-        "validation": "The formerly failing selector passed independently on a fresh iOS 26.5 simulator in 96.230 seconds. Complete local Story 004 then passed both canonical selectors in a 129.562-second parallel test phase: cover repair in 46.984 seconds and committed metadata editing in 98.833 seconds. All four screenshots were pixel-exact, the walkthrough matched exactly, all 68 qualification contract tests passed, and full E2E hygiene passed. Hosted replacement validation remains required before another formal dispatch."
+        "validation": "The initial model-probe implementation passed the formerly failing selector and complete Story 004 locally, but normal hosted run 33702975029 exposed cross-element accessibility skew and is retained separately. With same-field acknowledgement and independent final model verification, the formerly failing committed-editing selector passed locally in 96.722 seconds. Complete Story 004 then passed both canonical selectors in a 119.200-second parallel operation: cover repair in 48.408 seconds and committed metadata editing in 101.970 seconds. All four screenshots were pixel-exact, the walkthrough matched exactly, all 68 qualification contract tests passed, and full E2E hygiene passed. Hosted replacement validation remains required before another formal dispatch."
       },
       "qualificationResetCount": 1,
       "resetEvidence": "Formal exact-SHA qualification run 33698774577 failed Story 004 attempt 9 after nine successful isolated story attempts. Artifact 9873617079 uploaded successfully and was downloaded to /tmp/player-formal-33698774577.ya91Pb before the remaining queue was cancelled; the failed SHA was not rerun, commit e9aa63d722d41fbd71ae9fa4ce989fd3dd99a04e cannot qualify, and this is formal reset 31."
+    },
+    {
+      "signature": "ui-test:CommittedMetadataEditingUITests.testPersistsCommittedMetadataUpdatesIndexesAndUndoesAtomically:cross-element-ax-skew-duplicates-delivered-suffix",
+      "story": "004-metadata-repair",
+      "evidence": {
+        "workflowRun": 33702975029,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions artifact 9874935361 (ios-e2e-004-metadata-repair) retains the exact 304,553,835-byte Story 004 xcresult, duplicated-series-name failure frame and recording, complete test and simulator logs, semantic probes, phase timings, screenshot comparison, and valid complete failure-evidence manifest",
+        "url": "https://github.com/anicolao/player/actions/runs/33702975029/job/100490096153",
+        "commit": "b1a5055478a6727be98a739a67e98d31ad9f9a48",
+        "observation": "Normal pull-request CI passed the immutable producer and nine complete story jobs before Story 004 failed while replacing seriesName. XCTest first synthesized Copper Meridian. The separate metadata provenance probe still reported Copper, so the first acknowledged-input implementation reacquired focus and synthesized the apparent missing suffix. The exact XCTest session log, however, shows the edited TextField already exposed value Copper Meridian before that second synthesis; the retained failure frame then shows Copper Meridian Meridian. The run tested merge commit da707eac64720b48ae504fd391bdf29511d4d953 containing branch head b1a5055478a6727be98a739a67e98d31ad9f9a48."
+      },
+      "rootCause": "The first prefix-recovery helper used one accessibility element for input and a separate offscreen semantic probe for per-transaction acknowledgement. Under hosted load XCTest observed those elements from different SwiftUI render generations: the TextField had accepted the full value while the probe remained stale. Treating that cross-element mismatch as dropped input caused a valid suffix to be synthesized twice.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Use only the edited TextField's own accessibility value to acknowledge text delivery and calculate a demonstrably missing strict suffix. After exact field delivery, independently require the semantic metadata probe to publish the complete value. Source hygiene locks in the same-element delivery rule and the separate model receipt. Add no fixed wait, extended deadline, workflow rerun, or selector change.",
+        "commits": [
+          "be105e6652ae584a539851421ffa290704d115de"
+        ],
+        "validation": "The formerly failing committed-editing selector passed locally in 96.722 seconds. Complete Story 004 then passed both canonical selectors in a 119.200-second parallel operation: cover repair in 48.408 seconds and committed metadata editing in 101.970 seconds. All four screenshots were pixel-exact, the walkthrough matched exactly, all 68 qualification/evidence tests passed, and full E2E hygiene passed. Hosted replacement validation remains required."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no formal consecutive qualification count. Artifact 9874935361 was downloaded to /tmp/player-normal-33702975029.GHR15R before the remaining queue was cancelled, and the failed SHA was not rerun."
     }
   ]
 }

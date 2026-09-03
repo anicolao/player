@@ -99,7 +99,7 @@ release pass while its remaining gate is listed as pending.
 
 The R0 row summarizes the earlier accepted milestone and the chronology below
 retains the signature count at each subsequent checkpoint. The current exact
-ledger contains **179 unique signatures** and **31 formal qualification
+ledger contains **180 unique signatures** and **31 formal qualification
 resets**.
 
 ### Current R0 qualification update
@@ -966,18 +966,30 @@ receipt failed. Artifact 9873617079 retains the complete 269,966,833-byte
 result and was downloaded before the remaining queue was cancelled. The failed
 SHA was not rerun; this is formal reset 31.
 
-Both metadata journeys now synthesize only text not yet acknowledged by their
-independently rendered model probes. A strict delivered prefix permits only its
-missing suffix after exact focus is re-established; no progress, corruption,
-duplication, or lost focus fails closed. The formerly failing selector passed
-locally in 96.230 seconds; complete Story 004 then passed both selectors in a
-129.562-second parallel test phase, with cover repair in 46.984 seconds and
-committed editing in 98.833 seconds. All four screenshots were pixel-exact, the
-walkthrough matched exactly, all 68 qualification contract tests passed, and
-full E2E hygiene passed. No fixed wait, extended deadline, rerun, or selector
-changed. The ledger now contains 179 unique signatures and retains 31 formal
-resets. The replacement tip must pass normal CI before its one permitted formal
-dispatch.
+The first acknowledged-input replacement passed complete Story 004 locally,
+but replacement normal run
+[33702975029](https://github.com/anicolao/player/actions/runs/33702975029)
+retained a separate cross-element accessibility-snapshot defect. XCTest first
+synthesized `Copper Meridian`; the offscreen provenance probe still exposed
+`Copper`, even though the exact session log shows the edited field itself had
+already exposed `Copper Meridian` before the helper appended ` Meridian`.
+Artifact 9874935361 retains the resulting `Copper Meridian Meridian` frame and
+complete 304,553,835-byte evidence bundle and was downloaded locally before
+the remaining queue was cancelled. The failed SHA was not rerun, and this
+normal run changes no formal reset count.
+
+Both metadata journeys now use the edited field itself to acknowledge delivery
+and calculate any demonstrably missing strict suffix. They then independently
+require the production metadata probe to publish the complete value, avoiding
+cross-generation accessibility comparisons without weakening product-state
+coverage. The formerly failing selector passed locally in 96.722 seconds;
+complete Story 004 passed both selectors in a 119.200-second parallel
+operation, with cover repair in 48.408 seconds and committed editing in 101.970
+seconds. All four screenshots were pixel-exact, the walkthrough matched
+exactly, all 68 qualification/evidence tests passed, and full E2E hygiene
+passed. No fixed wait, extended deadline, rerun, or selector changed. The
+ledger now contains 180 unique signatures and retains 31 formal resets. The
+replacement tip must pass normal CI before its one permitted formal dispatch.
 
 ## R0 — Stabilize and qualify E2E
 
