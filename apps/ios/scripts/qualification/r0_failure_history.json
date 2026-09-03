@@ -4269,10 +4269,34 @@
         "commits": [
           "be105e6652ae584a539851421ffa290704d115de"
         ],
-        "validation": "The formerly failing committed-editing selector passed locally in 96.722 seconds. Complete Story 004 then passed both canonical selectors in a 119.200-second parallel operation: cover repair in 48.408 seconds and committed metadata editing in 101.970 seconds. All four screenshots were pixel-exact, the walkthrough matched exactly, all 68 qualification/evidence tests passed, and full E2E hygiene passed. Hosted replacement validation remains required."
+        "validation": "The formerly failing committed-editing selector passed locally in 96.722 seconds. Complete Story 004 then passed both canonical selectors in a 119.200-second parallel operation: cover repair in 48.408 seconds and committed metadata editing in 101.970 seconds. All four screenshots were pixel-exact, the walkthrough matched exactly, all 68 qualification/evidence tests passed, and full E2E hygiene passed. Normal hosted run 33706238606 then passed exact branch commit 3a8ed68cdfe3972ed3db597a108f34c056f1a132 without a rerun: Story 004 and all other stories, all 41 UI selectors, 379 core tests and fixtures, screenshots, walkthroughs, renderer inputs, and fail-closed aggregation were green in 35m44s."
       },
       "qualificationResetCount": 0,
       "resetEvidence": "This was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it reset no formal consecutive qualification count. Artifact 9874935361 was downloaded to /tmp/player-normal-33702975029.GHR15R before the remaining queue was cancelled, and the failed SHA was not rerun."
+    },
+    {
+      "signature": "ui-test:PositionRestoreUITests.testLiveProgressUpdatesMiniAndFullPlayerAcrossLifecycle:blocking-darwin-receipt-stalls-pending-home-transaction",
+      "story": "005-play-and-restore",
+      "evidence": {
+        "workflowRun": 33708574591,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions artifact 9878022282 (r0-story-evidence-005-play-and-restore-attempt-9-3a8ed68cdfe3972ed3db597a108f34c056f1a132-33708574591-1) retains the exact 307,088,186-byte Story 005 xcresult, SpringBoard failure frame and recording, complete test and simulator logs, semantic probes, phase timings, screenshot comparison, and valid complete failure-evidence manifest",
+        "url": "https://github.com/anicolao/player/actions/runs/33708574591/job/100504010459",
+        "commit": "3a8ed68cdfe3972ed3db597a108f34c056f1a132",
+        "observation": "Formal qualification passed preflight and the immutable producer, then 38 independently scheduled story attempts passed before Story 005 attempt 9 failed. XCTest completed physical Home synthesis at 04:09:50.224 UTC and immediately entered the synchronous two-second Darwin poll. SpringBoard did not execute ActivateSpringBoard until 04:09:52.981, then deactivated Bookshelf normally; the retained frame shows SpringBoard Home and the simulator log shows the app in background. The other seven Story 005 selectors passed."
+      },
+      "rootCause": "DarwinEventReceipt synchronously polled its file descriptor on the UI-test runner's main actor. When UIKit had already delivered the app lifecycle before Home synthesis returned, the descriptor was readable immediately and concealed the coupling. On this attempt the Home workspace transaction was still pending, and blocking the runner run loop prevented XCTest from advancing the transaction while the receipt deadline elapsed. The test therefore manufactured the lifecycle timeout it intended to measure even though the physical Home transition and app backgrounding completed immediately after the blocked waiter released.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Drive each registered Darwin file descriptor with a main-queue DispatchSource and await it through XCTest's event waiter. This keeps the UI-test runner run loop available to advance the pending physical system transaction while retaining the exact Darwin app receipt and two-second deadline. Source hygiene requires the event-driven descriptor source and rejects a synchronous Darwin.poll; add no sleep, retry, timeout increase, selector change, or coverage reduction.",
+        "commits": [
+          "dc7c044e7d9c9ffc0ad5e4b13944d9e6bcb00f34"
+        ],
+        "validation": "The formerly failing lifecycle selector passed locally in 16.889 seconds on a fresh twice-booted iOS 26.5 simulator. Complete Story 005 then passed all eight canonical selectors in a 235.507-second test phase on another fresh twice-booted simulator. Three screenshots were pixel-exact, restored Library remained within its reviewed channel allowance, the walkthrough matched exactly, the complete evidence manifest validated, all 68 qualification/evidence tests passed, and full E2E hygiene passed. Hosted replacement validation remains required."
+      },
+      "qualificationResetCount": 1,
+      "resetEvidence": "Formal exact-SHA qualification run 33708574591 failed Story 005 attempt 9 after 38 successful isolated story attempts. Artifact 9878022282 uploaded successfully and was downloaded to /tmp/player-formal-33708574591-story005-attempt9.K4bEdh before the remaining queue was cancelled; the failed SHA was not rerun, commit 3a8ed68cdfe3972ed3db597a108f34c056f1a132 cannot qualify, and this is formal reset 32."
     }
   ]
 }
