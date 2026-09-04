@@ -445,18 +445,24 @@ final class TransportControlsUITests: PlayerUITestCase {
     preferences: XCUIElement,
     expected: String
   ) throws {
-    let deadline = EventDeadline()
+    let pickerDeadline = EventDeadline()
     let pickers = app.buttons.matching(identifier: identifier)
     let picker = pickers.element
-    XCTAssertTrue(waitForExistence(picker, deadline: deadline), "Missing picker \(identifier)")
+    XCTAssertTrue(
+      waitForExistence(picker, deadline: pickerDeadline),
+      "Missing picker \(identifier)"
+    )
     XCTAssertEqual(pickers.count, 1, "Picker \(identifier) must be unique")
     picker.tap()
     let choices = app.buttons.matching(NSPredicate(format: "label == %@", option))
     let choice = choices.element
-    XCTAssertTrue(waitForExistence(choice, deadline: deadline), "Missing picker option \(option)")
+    XCTAssertTrue(
+      waitForExistence(choice, deadline: EventDeadline()),
+      "Missing picker option \(option)"
+    )
     XCTAssertEqual(choices.count, 1, "Picker option \(option) must be unique")
     choice.tap()
-    guard preferences.waitForStringValue(expected, timeout: deadline.remaining) else {
+    guard preferences.waitForStringValue(expected, timeout: EventDeadline().remaining) else {
       XCTFail("Picker \(identifier) did not publish \(expected); actual=\(preferences.value ?? "nil")")
       throw TransportControlsTestError.valueUnavailable
     }

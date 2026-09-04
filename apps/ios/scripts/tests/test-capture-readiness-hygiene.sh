@@ -267,6 +267,25 @@ if rg -n -F 'buttons["player-play-pause"].tap()' "${transport_controls_source}" 
   echo 'transport hygiene rejected an unacknowledged play/pause tap' >&2
   exit 1
 fi
+for picker_source in \
+  "${transport_controls_source}" \
+  "${ui_test_root}/AppStoreListingUITests.swift"; do
+  rg -Fq 'waitForExistence(picker, deadline: pickerDeadline)' "${picker_source}" \
+    || {
+      echo "picker hygiene requires a dedicated picker-readiness deadline: ${picker_source}" >&2
+      exit 1
+    }
+  rg -Fq 'waitForExistence(choice, deadline: EventDeadline())' "${picker_source}" \
+    || {
+      echo "picker hygiene requires a fresh menu-presentation deadline: ${picker_source}" >&2
+      exit 1
+    }
+  rg -Fq 'preferences.waitForStringValue(expected, timeout: EventDeadline().remaining)' \
+    "${picker_source}" || {
+      echo "picker hygiene requires a fresh selection-receipt deadline: ${picker_source}" >&2
+      exit 1
+    }
+done
 metadata_editing_source="${ui_test_root}/CommittedMetadataEditingUITests.swift"
 metadata_repair_source="${ui_test_root}/MetadataRepairUITests.swift"
 test_step_helper_source="${ui_test_root}/TestStepHelper.swift"
