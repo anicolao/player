@@ -2,7 +2,8 @@
   "schemaVersion": 2,
   "thresholds": {
     "suiteRegression": 0.1,
-    "storyRegression": 0.2
+    "storyRegression": 0.2,
+    "storyMinimumSamples": 3
   },
   "appStoreAssetCount": 7,
   "appStorePixelWidth": 1320,

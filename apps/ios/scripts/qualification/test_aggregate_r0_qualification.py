@@ -123,7 +123,8 @@ class QualificationAggregatorTests(unittest.TestCase):
                   "stories": {story: 10 for story in STORIES},
                   "phases": phase_reference}
         write_json(self.baseline, {"schemaVersion": 2,
-                                  "thresholds": {"suiteRegression": .1, "storyRegression": .2},
+                                  "thresholds": {"suiteRegression": .1, "storyRegression": .2,
+                                                 "storyMinimumSamples": 3},
                                   "appStoreAssetCount": 2,
                                   "appStorePixelWidth": 1,
                                   "appStorePixelHeight": 1,
@@ -750,6 +751,22 @@ class QualificationAggregatorTests(unittest.TestCase):
         self.assertEqual(self.run_aggregate(), 1)
         errors = json.loads((self.root / "report/QualificationSummary.json").read_text())["errors"]
         self.assertTrue(any(target in error and "regressed" in error for error in errors))
+
+    def test_reports_but_does_not_reject_story_regression_without_three_samples(self):
+        baseline = json.loads(self.baseline.read_text())
+        baseline["thresholds"]["storyMinimumSamples"] = 6
+        write_json(self.baseline, baseline)
+        target = MATRIX_QUALIFICATION_LANES[0][0]
+        payload = json.loads(self.matrix_summary().read_text())
+        for matrix in payload["matrices"]:
+            next(story for story in matrix["stories"] if story["story"] == target)["durationSeconds"] = 13
+        write_json(self.matrix_summary(), payload)
+        self.assertEqual(self.run_aggregate(), 0)
+        summary = json.loads((self.root / "report/QualificationSummary.json").read_text())
+        timing = summary["matrixQualification"]["storyTimings"][target]
+        self.assertFalse(timing["regressionGate"]["enforced"])
+        self.assertTrue(any(target in warning and "advisory" in warning
+                            for warning in summary["matrixQualification"]["warnings"]))
 
     def test_rejects_a_recorded_failure(self):
         path = self.story_summary()

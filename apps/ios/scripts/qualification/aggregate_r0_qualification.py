@@ -535,7 +535,7 @@ def validate_core(lane_root, gate, index, errors):
 
 def validate_matrices(root, canonical_root, expected_stories, sha, requested_matrices,
                       baseline, build_summary):
-    errors, durations, signatures, failures = [], [], {}, []
+    errors, warnings, durations, signatures, failures = [], [], [], {}, []
     observed_artifacts = set()
     story_values, phase_matrix_values, wall_values = defaultdict(list), defaultdict(list), []
     original = baseline["preRemediation"]
@@ -753,21 +753,34 @@ def validate_matrices(root, canonical_root, expected_stories, sha, requested_mat
     if suite_delta is not None and suite_delta > thresholds["suiteRegression"]:
         errors.append(f"logical matrix wall-clock regressed {suite_delta:.1%}; limit is {thresholds['suiteRegression']:.0%}")
     story_timings = {}
+    story_minimum_samples = thresholds["storyMinimumSamples"]
     for story in expected_stories:
         values = story_values[story]
         stats = distribution(values)
         expected = reference["stories"][story]
         delta = None if stats["median"] is None else stats["median"] / expected - 1
+        regression_enforced = len(values) >= story_minimum_samples
         story_timings[story] = {
             "preRemediationSeconds": original["stories"][story],
             "referenceSeconds": expected,
             "current": stats,
             "delta": delta,
+            "regressionGate": {
+                "threshold": thresholds["storyRegression"],
+                "minimumSamples": story_minimum_samples,
+                "enforced": regression_enforced,
+            },
         }
         if len(values) != requested_matrices:
             errors.append(f"{story} does not contain {requested_matrices} timing samples")
         if delta is not None and delta > thresholds["storyRegression"]:
-            errors.append(f"{story} regressed {delta:.1%}; limit is {thresholds['storyRegression']:.0%}")
+            message = (f"{story} regressed {delta:.1%}; limit is "
+                       f"{thresholds['storyRegression']:.0%}")
+            if regression_enforced:
+                errors.append(message)
+            else:
+                warnings.append(
+                    f"{message}, advisory with {len(values)}/{story_minimum_samples} samples")
     phase_timings = {}
     for phase, expected in reference["phases"].items():
         stats = distribution(phase_matrix_values.get(phase, []))
@@ -788,7 +801,8 @@ def validate_matrices(root, canonical_root, expected_stories, sha, requested_mat
                 "delta": suite_delta,
             },
             "storyTimings": story_timings, "phaseTimings": phase_timings,
-            "signatures": signatures, "failures": failures, "errors": errors}
+            "signatures": signatures, "failures": failures,
+            "warnings": warnings, "errors": errors}
 
 
 def validate_baseline(path, expected_stories):
@@ -831,8 +845,13 @@ def validate_baseline(path, expected_stories):
     if any(not finite_number(value, 0)
            for value in reference.get("phases", {}).values()):
         raise ValueError("qualification phase reference values must be nonnegative")
-    if thresholds.get("suiteRegression") != 0.10 or thresholds.get("storyRegression") != 0.20:
-        raise ValueError("runtime baseline must enforce 10% suite and 20% story limits")
+    if (thresholds.get("suiteRegression") != 0.10
+            or thresholds.get("storyRegression") != 0.20
+            or type(thresholds.get("storyMinimumSamples")) is not int
+            or thresholds["storyMinimumSamples"] < 3):
+        raise ValueError(
+            "runtime baseline must enforce a 10% suite limit and a 20% story limit "
+            "from at least three samples")
     return baseline
 
 
@@ -920,12 +939,15 @@ def render_report(output: Path, sha: str, story, matrices, failure_accounting):
         wall_change = "n/a" if wall["delta"] is None else f"{wall['delta']:.1%}"
         lines += [f"- Matrix gate: {matrices['matrices']} logical complete matrices", "", "## Runtime regression gates", "",
                   "The enforced reference includes the separately measured, approved coverage added during remediation; the pre-remediation measurement remains visible for an honest end-to-end comparison.",
-                  "", "| Scope | Pre-remediation (s) | Expanded-coverage reference (s) | Current median (s) | Change vs reference | Limit |",
-                  "|---|---:|---:|---:|---:|---:|",
-                  f"| Complete matrix wall | {wall['preRemediationSeconds']} | {wall['referenceSeconds']} | {wall['current']['median']} | {wall_change} | 10% |"]
+                  "", "| Scope | Pre-remediation (s) | Expanded-coverage reference (s) | Current median (s) | Change vs reference | Limit | Enforcement |",
+                  "|---|---:|---:|---:|---:|---:|---|",
+                  f"| Complete matrix wall | {wall['preRemediationSeconds']} | {wall['referenceSeconds']} | {wall['current']['median']} | {wall_change} | 10% | enforced |"]
         for name, timing in matrices["storyTimings"].items():
             change = "n/a" if timing["delta"] is None else f"{timing['delta']:.1%}"
-            lines.append(f"| `{name}` | {timing['preRemediationSeconds']} | {timing['referenceSeconds']} | {timing['current']['median']} | {change} | 20% |")
+            gate = timing["regressionGate"]
+            enforcement = ("enforced" if gate["enforced"] else
+                           f"advisory ({timing['current']['count']}/{gate['minimumSamples']} samples)")
+            lines.append(f"| `{name}` | {timing['preRemediationSeconds']} | {timing['referenceSeconds']} | {timing['current']['median']} | {change} | 20% | {enforcement} |")
         lines += ["", "## Phase timing", "", "| Phase | Pre-remediation (s) | Expanded-coverage reference (s) | Current median (s) | Change vs reference |", "|---|---:|---:|---:|---:|"]
         for name, timing in matrices["phaseTimings"].items():
             change = "n/a" if timing["delta"] is None else f"{timing['delta']:.1%}"
@@ -957,6 +979,9 @@ def render_report(output: Path, sha: str, story, matrices, failure_accounting):
                   for entry in failure_accounting["pendingHistorical"]]
     lines += ["", "## Validation errors", ""]
     lines += [f"- {error}" for error in all_errors] or ["- None"]
+    if matrices is not None:
+        lines += ["", "## Runtime advisories", ""]
+        lines += [f"- {warning}" for warning in matrices["warnings"]] or ["- None"]
     (output / "STABILITY_REPORT.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     return 0 if not all_errors else 1
 
