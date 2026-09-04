@@ -1208,6 +1208,35 @@ coverage reduction was introduced. The ledger now contains 188 unique
 signatures and 34 formal resets. The replacement tip must pass normal CI before
 its one permitted formal dispatch.
 
+Normal final-SHA run
+[33797830994](https://github.com/anicolao/player/actions/runs/33797830994)
+then passed all 13 canonical stories, core tests, fixture validation,
+screenshots, walkthroughs, and App Store rendering on commit `84bdf23`. Its
+permitted strategic formal dispatch
+[33801880785](https://github.com/anicolao/player/actions/runs/33801880785)
+passed Story 012 and Story 013 on all 20 independent focused hosts and passed
+all five complete-matrix lanes. The only failure was the authoritative report:
+its stale schema rejected the new `simulator-control-plane-reset` and
+`target-source-hiding` rows, still demanded a per-story `build` row despite the
+single upstream shared build, and compared the expanded deterministic suite
+against pre-R0 timings. The old allocation also placed Stories 008, 010, and
+011 together, producing a 2,317-second slowest lane. Artifact 9914376605 and all
+five lane artifacts were downloaded and retained; the failed SHA will not be
+rerun, and this is formal reset 35.
+
+The report now consumes an exact-SHA shared-build timing artifact and counts
+that predecessor once on the critical path, accepts both deterministic setup
+phases, and uses the complete all-green run as the explicit R0-R16 coverage
+reference. Replaying the retained evidence through the corrected validator
+produced zero errors and exactly reproduced its 2,431-second logical wall time,
+all 13 story timings, and every phase total. The five lanes are rebalanced from
+those measurements while retaining every selector, core and fixture test,
+screenshot, walkthrough, and renderer gate; their projected critical path is
+approximately 1,971 seconds. All 55 aggregation tests and full E2E hygiene pass.
+The ledger now contains 189 unique signatures and 35 formal resets. Commit
+`0c5e7c52819824ad7f42ff0511d124b107301f50` must pass normal CI before the
+replacement tip receives its one permitted formal dispatch.
+
 ## R0 — Stabilize and qualify E2E
 
 ### Goal

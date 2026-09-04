@@ -4465,6 +4465,30 @@
       },
       "qualificationResetCount": 1,
       "resetEvidence": "Formal exact-SHA qualification run 33760224628 passed the targeted Story 012 and Story 013 gate 20/20 and four of five complete-matrix lanes before lane 3 failed. Artifact 9898385712 was downloaded to /tmp/player-formal-33760224628-lane3.fKaLPb, commit 74c1ee3178b4755bf863764cd902e2b5d9cd8746 cannot qualify and will not be rerun, and this is formal reset 34."
+    },
+    {
+      "signature": "qualification-report:stale-shared-build-phase-contract-and-unbalanced-lanes",
+      "story": "core",
+      "evidence": {
+        "workflowRun": 33801880785,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions artifact 9914376605 (r0-qualification-report-84bdf2387c0c932421b0712aa73db9a5ac284baa-33801880785-1) retains the exact qualification summary and stability report; all five complete lane artifacts were downloaded to /tmp/player-r0-matrices-33801880785.iCAGCl",
+        "url": "https://github.com/anicolao/player/actions/runs/33801880785/job/100829024815",
+        "commit": "84bdf2387c0c932421b0712aa73db9a5ac284baa",
+        "observation": "The focused qualification passed Story 012 and Story 013 on all 20 independent fresh hosts, and all five complete matrix lanes passed every canonical story, core tests, fixtures, exact screenshot and walkthrough comparison, and App Store rendering. Only the aggregate report failed: it rejected newly emitted simulator-control-plane-reset and target-source-hiding phases, demanded a per-story build phase even though the product was built once upstream, and compared the intentionally expanded deterministic suite and an imbalanced 2,317-second lane against an obsolete runtime reference."
+      },
+      "rootCause": "The qualification schema and timing reference predated R0's shared-build architecture, deterministic simulator reset and target-source isolation, while the five lanes were still allocated from older story timings. Consequently valid exact-SHA evidence could not satisfy the stale phase contract, the shared build was neither measured nor counted once on the critical path, and the slowest lane combined the three longest current stories.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Record one exact-SHA shared-build duration artifact, validate and count it once per logical matrix, recognize the two deterministic setup phases as story evidence, baseline the complete retained all-green R0-R16 coverage from run 33801880785, and rebalance all 13 stories plus core and renderer across five lanes from those measured durations.",
+        "commits": [
+          "0c5e7c52819824ad7f42ff0511d124b107301f50"
+        ],
+        "validation": "All 55 qualification-aggregator tests passed, including malformed and wrong-SHA shared-build evidence. Full E2E hygiene passed all 18 source-contract tests and all 63 capture-readiness call sites. Replaying the five downloaded all-green matrix artifacts with the exact 114-second shared build produced zero validation errors and reproduced the 2,431-second reference critical path and every retained story and phase timing. The measured rebalance projects a roughly 1,971-second critical path without removing coverage; hosted replacement validation remains required."
+      },
+      "qualificationResetCount": 1,
+      "resetEvidence": "Formal exact-SHA qualification run 33801880785 completed all 20 focused attempts and all five full-coverage lanes successfully, but its authoritative aggregate report rejected the stale timing contract. The failed SHA will not be rerun, and this is formal reset 35."
     }
   ]
 }
