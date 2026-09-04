@@ -255,14 +255,15 @@ actor DeterministicAudioInspector: AudioInspecting {
 final class AVPlayerPlaybackController: AudioPlaybackControlling {
   private static let progressInterval = CMTime(seconds: 0.25, preferredTimescale: 1_000)
 
-  private var player: AVPlayer?
+  private var player: AVQueuePlayer?
   private(set) var state: PlaybackState = .unloaded
   private(set) var playbackRate = 1.0
   private var eventHandler: (@MainActor @Sendable (PlaybackEngineEvent) async -> Void)?
   private var eventDeliveryTask: Task<Void, Never>?
   private var observerGeneration = 0
   private var periodicTimeObserver: Any?
-  private var endObserver: NSObjectProtocol?
+  private var endObservers: [NSObjectProtocol] = []
+  private var queueItems: [AVPlayerItem] = []
   private var sleepFadeTask: Task<Void, Never>?
   private var sleepFadeOriginalVolume: Float?
 
@@ -284,29 +285,40 @@ final class AVPlayerPlaybackController: AudioPlaybackControlling {
   }
 
   func load(url: URL, bookID: UUID, at seconds: Double = 0) async throws {
+    try await load(queueURLs: [url], bookID: bookID, at: seconds)
+  }
+
+  func load(queueURLs: [URL], bookID: UUID, at seconds: Double = 0) async throws {
     cancelSleepFade()
     removePlaybackObservers()
-    let asset = AVURLAsset(url: url)
-    guard try await asset.load(.isPlayable) else {
-      throw PlayerCoreError.unreadableAudio(url.lastPathComponent)
+    guard let firstURL = queueURLs.first else {
+      throw PlayerCoreError.invalidAssetSelection
     }
-
-    let item = AVPlayerItem(asset: asset)
-    let player = AVPlayer(playerItem: item)
+    let firstAsset = AVURLAsset(url: firstURL)
+    guard try await firstAsset.load(.isPlayable) else {
+      throw PlayerCoreError.unreadableAudio(firstURL.lastPathComponent)
+    }
+    let items = [AVPlayerItem(asset: firstAsset)] + queueURLs.dropFirst().map {
+      AVPlayerItem(asset: AVURLAsset(url: $0))
+    }
+    let player = AVQueuePlayer(items: items)
+    player.actionAtItemEnd = .advance
     if seconds > 0 {
       await player.seek(to: CMTime(seconds: seconds, preferredTimescale: 1_000))
     }
     self.player = player
+    queueItems = items
     state = PlaybackState(status: .paused, loadedBookID: bookID, elapsedSeconds: seconds)
-    installPlaybackObservers(for: player, item: item)
+    installPlaybackObservers(for: player, items: items)
   }
 
   func unload() {
     cancelSleepFade()
     removePlaybackObservers()
     player?.pause()
-    player?.replaceCurrentItem(with: nil)
+    player?.removeAllItems()
     player = nil
+    queueItems = []
     state = .unloaded
   }
 
@@ -380,7 +392,7 @@ final class AVPlayerPlaybackController: AudioPlaybackControlling {
     sleepFadeOriginalVolume = nil
   }
 
-  private func installPlaybackObservers(for player: AVPlayer, item: AVPlayerItem) {
+  private func installPlaybackObservers(for player: AVQueuePlayer, items: [AVPlayerItem]) {
     let generation = observerGeneration
     periodicTimeObserver = player.addPeriodicTimeObserver(
       forInterval: Self.progressInterval,
@@ -397,17 +409,26 @@ final class AVPlayerPlaybackController: AudioPlaybackControlling {
         )
       }
     }
-    endObserver = NotificationCenter.default.addObserver(
-      forName: .AVPlayerItemDidPlayToEndTime,
-      object: item,
-      queue: .main
-    ) { [weak self, weak item] _ in
-      MainActor.assumeIsolated {
-        guard let self,
-          self.player?.currentItem === item
-        else { return }
-        self.state.status = .paused
-        self.enqueueEvent(.reachedEnd, generation: generation)
+    endObservers = items.enumerated().map { index, item in
+      NotificationCenter.default.addObserver(
+        forName: .AVPlayerItemDidPlayToEndTime,
+        object: item,
+        queue: .main
+      ) { [weak self, weak item] _ in
+        MainActor.assumeIsolated {
+          guard let self,
+            let item,
+            self.queueItems.indices.contains(index),
+            self.queueItems[index] === item
+          else { return }
+          if self.queueItems.indices.contains(index + 1) {
+            self.state.elapsedSeconds = 0
+            self.enqueueEvent(.advancedToNextItem, generation: generation)
+          } else {
+            self.state.status = .paused
+            self.enqueueEvent(.reachedEnd, generation: generation)
+          }
+        }
       }
     }
   }
@@ -428,10 +449,11 @@ final class AVPlayerPlaybackController: AudioPlaybackControlling {
       player.removeTimeObserver(periodicTimeObserver)
     }
     periodicTimeObserver = nil
-    if let endObserver {
+    for endObserver in endObservers {
       NotificationCenter.default.removeObserver(endObserver)
     }
-    endObserver = nil
+    endObservers = []
+    queueItems = []
   }
 }
 
@@ -490,6 +512,9 @@ final class DeterministicPlaybackController: AudioPlaybackControlling {
     case .progress(let seconds):
       guard state.status == .playing, seconds.isFinite else { return }
       state.elapsedSeconds = max(0, seconds)
+    case .advancedToNextItem:
+      guard state.status == .playing else { return }
+      state.elapsedSeconds = 0
     case .reachedEnd:
       state.status = .paused
     }
