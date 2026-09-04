@@ -10,7 +10,12 @@
     "description": "Your books. Your files. Your place.\n\nBookshelf is a private, offline audiobook player for the MP3, M4A, and M4B files you own. Bring books in from any computer, then listen exactly your way.\n\nFROM ANY COMPUTER\nOpen Bookshelf’s private receiver, enter its local address in a browser, and drop in your books. It works from Mac, Windows, Linux, or Chromebook, and the transfer stays on your local network.\n\nFASTEST ON A MAC\nWith iPhone Mirroring, drag an audiobook straight from Finder onto Bookshelf. No upload form and no cable—just drag, drop, and listen.\n\nYou can also import through Files, AirDrop, the share sheet, or ZIP archives when those fit better. Bookshelf preserves embedded chapters, metadata, and cover artwork, and lets you review details before adding a book.\n\nA LIBRARY THAT FEELS LIKE YOURS\n• See cover art on warm wooden shelves\n• Keep multi-part books together\n• Search by title, author, narrator, or series\n• Pick up at the exact place you stopped\n\nLISTEN YOUR WAY\n• Set playback speed from 0.5× to 3×\n• Choose your own forward and backward skips\n• Move by chapter or across the whole book\n• Use a sleep timer with presets, custom times, chapter and track endings, and a gentle fade\n• Save bookmarks and notes for moments worth keeping\n\nPRIVATE BY DESIGN\nYour library and listening history stay on your device. Bookshelf needs no account and includes no advertising or tracking.\n\nTRY THE WHOLE EXPERIENCE\nBookshelf includes 50 hours of playback. A one-time in-app purchase unlocks unlimited playback. No subscription.\n\nBookshelf does not sell or provide audiobooks. Only import recordings you are legally permitted to use.",
     "keywords": "m4a,files,import,airdrop,chapters,bookmark,sleep,timer,speed,local,library,listen,reader,drm-free",
     "marketingUrl": "https://bookshelf.spnss.com/",
-    "supportUrl": "https://bookshelf.spnss.com/#support"
+    "supportUrl": "https://bookshelf.spnss.com/#support",
+    "privacyPolicyUrl": "https://bookshelf.spnss.com/privacy/"
+  },
+  "fullUnlock": {
+    "productId": "com.spnss.player.fullunlock",
+    "reviewScreenshot": "tests/e2e/012-monetization/screenshots/ios/000-included-playback-exhausted.png"
   },
   "slides": [
     {

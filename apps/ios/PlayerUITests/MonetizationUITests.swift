@@ -58,6 +58,12 @@ final class MonetizationUITests: PlayerUITestCase {
         .exists(app.buttons["full-unlock-restore"], "Purchase restoration is available"),
         .exists(app.buttons["full-unlock-redeem-code"], "Offer-code redemption is available"),
         .exists(app.staticTexts["One-time purchase · No subscription"], "The purchase model is explicit"),
+        .exists(
+          app.buttons["full-unlock-support"], "Support is available before purchase"
+        ),
+        .exists(
+          app.buttons["full-unlock-privacy"], "The privacy policy is available before purchase"
+        ),
       ],
       captureReadiness: fullUnlockCaptureReadiness(
         app,

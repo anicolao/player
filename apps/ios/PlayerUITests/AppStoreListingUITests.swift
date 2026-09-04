@@ -387,6 +387,12 @@ final class AppStoreListingUITests: PlayerUITestCase {
         .exists(purchase, "The one-time purchase is available"),
         .exists(unlock.staticTexts["One-time purchase · No subscription"], "The purchase model is explicit"),
         .exists(unlock.buttons["full-unlock-restore"], "Purchase restoration is available"),
+        .exists(
+          unlock.buttons["full-unlock-support"], "Support is available before purchase"
+        ),
+        .exists(
+          unlock.buttons["full-unlock-privacy"], "The privacy policy is available before purchase"
+        ),
       ],
       captureReadiness: marketingCaptureReadiness(
         app: unlock,

@@ -187,7 +187,7 @@ class ListingSync
     @version_string = version
   end
 
-  def run(apply:)
+  def run(apply:, replace_screenshots: true)
     app = only!(@api.all("/v1/apps", "filter[bundleId]" => @listing.fetch("bundleId")), "app")
     app_id = app.fetch("id")
     versions = @api.all(
@@ -208,14 +208,19 @@ class ListingSync
       "#{@listing.fetch("locale")} version localization"
     )
     app_info, info_localization = find_app_info_localization(app_id)
-    screenshot_set = find_screenshot_set(version_localization.fetch("id"))
-    existing_screenshots = screenshot_set ? @api.all("/v1/appScreenshotSets/#{screenshot_set.fetch("id")}/appScreenshots", "limit" => 200) : []
+    screenshot_set = replace_screenshots ? find_screenshot_set(version_localization.fetch("id")) : nil
+    existing_screenshots = if screenshot_set
+      @api.all("/v1/appScreenshotSets/#{screenshot_set.fetch("id")}/appScreenshots", "limit" => 200)
+    else
+      []
+    end
 
     print_plan(
       app: app, version: version, state: state,
       info_localization: info_localization,
       version_localization: version_localization,
       existing_screenshots: existing_screenshots,
+      replace_screenshots: replace_screenshots,
       apply: apply
     )
     return unless apply
@@ -224,7 +229,11 @@ class ListingSync
       "/v1/appInfoLocalizations/#{info_localization.fetch("id")}",
       data: {
         type: "appInfoLocalizations", id: info_localization.fetch("id"),
-        attributes: { name: @metadata.fetch("name"), subtitle: @metadata.fetch("subtitle") },
+        attributes: {
+          name: @metadata.fetch("name"),
+          subtitle: @metadata.fetch("subtitle"),
+          privacyPolicyUrl: @metadata.fetch("privacyPolicyUrl"),
+        },
       }
     )
     @api.patch(
@@ -240,6 +249,10 @@ class ListingSync
         },
       }
     )
+
+    unless replace_screenshots
+      return puts("\nUpdated App Store Connect metadata for version #{@version_string}.")
+    end
 
     screenshot_set ||= @api.post(
       "/v1/appScreenshotSets",
@@ -344,16 +357,21 @@ class ListingSync
     abort("Timed out waiting for App Store Connect to process #{filename}")
   end
 
-  def print_plan(app:, version:, state:, info_localization:, version_localization:, existing_screenshots:, apply:)
+  def print_plan(app:, version:, state:, info_localization:, version_localization:, existing_screenshots:, replace_screenshots:, apply:)
     puts "# App Store Connect listing #{apply ? "update" : "preview"}"
     puts
     puts "- App: #{app.dig("attributes", "name")} (#{@listing.fetch("bundleId")})"
     puts "- Version: #{version.dig("attributes", "versionString")} (#{state})"
     puts "- Locale: #{@listing.fetch("locale")}"
-    puts "- Screenshot set: #{@listing.fetch("screenshotDisplayType")}"
-    puts "- Screenshots: replace #{existing_screenshots.length} with #{@screenshots.length} fresh images"
+    if replace_screenshots
+      puts "- Screenshot set: #{@listing.fetch("screenshotDisplayType")}"
+      puts "- Screenshots: replace #{existing_screenshots.length} with #{@screenshots.length} fresh images"
+    else
+      puts "- Screenshots: leave the current gallery unchanged"
+    end
     puts "- Name: #{info_localization.dig("attributes", "name").inspect} → #{@metadata.fetch("name").inspect}"
     puts "- Subtitle: #{info_localization.dig("attributes", "subtitle").inspect} → #{@metadata.fetch("subtitle").inspect}"
+    puts "- privacyPolicyUrl: #{info_localization.dig("attributes", "privacyPolicyUrl").inspect} → #{@metadata.fetch("privacyPolicyUrl").inspect}"
     %w[promotionalText description keywords marketingUrl supportUrl].each do |field|
       current = version_localization.dig("attributes", field).to_s
       proposed = @metadata.fetch(field).to_s
@@ -362,6 +380,158 @@ class ListingSync
     end
     puts
     puts(apply ? "Applying changes…" : "Read-only preview. Add --apply to make these changes.")
+  end
+
+  def only!(items, label)
+    return items.first if items.length == 1
+
+    abort("Expected exactly one #{label}; found #{items.length}.")
+  end
+end
+
+class FullUnlockSync
+  ACCEPTED_SCREENSHOT_PROPERTIES = {
+    "pixelWidth" => "1206",
+    "pixelHeight" => "2622",
+    "hasAlpha" => "no",
+  }.freeze
+
+  def initialize(api:, listing:)
+    @api = api
+    @listing = listing
+    @configuration = listing.fetch("fullUnlock")
+    @screenshot = File.expand_path(@configuration.fetch("reviewScreenshot"), REPOSITORY_ROOT)
+  end
+
+  def run(apply:)
+    validate_screenshot!
+    app = only!(
+      @api.all("/v1/apps", "filter[bundleId]" => @listing.fetch("bundleId")),
+      "app"
+    )
+    purchase = only!(
+      @api.all(
+        "/v1/apps/#{app.fetch("id")}/inAppPurchasesV2",
+        "filter[productId]" => @configuration.fetch("productId"),
+        "limit" => 200
+      ),
+      "Full Unlock in-app purchase"
+    )
+    review_screenshot = current_review_screenshot(purchase.fetch("id"))
+    failed_promotional_images = failed_promotional_images(purchase.fetch("id"))
+    source_checksum = Digest::MD5.file(@screenshot).hexdigest
+    review_state = review_screenshot&.dig("attributes", "assetDeliveryState", "state")
+    review_is_current = review_screenshot&.dig("attributes", "sourceFileChecksum") == source_checksum
+
+    puts "# App Store Connect Full Unlock #{apply ? "update" : "preview"}"
+    puts
+    puts "- Product: #{purchase.dig("attributes", "name")} (#{purchase.dig("attributes", "productId")})"
+    puts "- State: #{purchase.dig("attributes", "state")}"
+    puts "- Review screenshot: #{review_state || "missing"}#{review_is_current ? " (source matches)" : " (source update needed)"}"
+    puts "- Source: #{@configuration.fetch("reviewScreenshot")} (1206×2622 RGB PNG)"
+    puts "- Failed promotional images to remove: #{failed_promotional_images.length}"
+    puts
+    return puts("Read-only preview. Add --apply to make these changes.") unless apply
+
+    review_screenshot = replace_review_screenshot(purchase.fetch("id"), review_screenshot)
+    failed_promotional_images.each do |image|
+      @api.delete("/v2/inAppPurchaseImages/#{image.fetch("id")}")
+      puts "Removed failed promotional image #{image.dig("attributes", "fileName")}"
+    end
+    state = wait_for_purchase_metadata(purchase.fetch("id"))
+    puts "Full Unlock review screenshot #{review_screenshot.fetch("id")} is complete."
+    puts "Full Unlock state: #{state}"
+  end
+
+  private
+
+  def validate_screenshot!
+    abort("Full Unlock review screenshot is missing: #{@screenshot}") unless File.file?(@screenshot)
+    output, error, status = Open3.capture3(
+      "sips", "-g", "pixelWidth", "-g", "pixelHeight", "-g", "hasAlpha", @screenshot
+    )
+    abort("Could not inspect Full Unlock review screenshot: #{error.strip}") unless status.success?
+    ACCEPTED_SCREENSHOT_PROPERTIES.each do |property, expected|
+      abort("Full Unlock review screenshot must have #{property} #{expected}:\n#{output}") unless output.include?("#{property}: #{expected}")
+    end
+  end
+
+  def current_review_screenshot(purchase_id)
+    @api.get("/v2/inAppPurchases/#{purchase_id}/appStoreReviewScreenshot")["data"]
+  end
+
+  def failed_promotional_images(purchase_id)
+    @api.all("/v2/inAppPurchases/#{purchase_id}/versions", "limit" => 200).flat_map do |version|
+      @api.all("/v1/inAppPurchaseVersions/#{version.fetch("id")}/images", "limit" => 200)
+    end.select do |image|
+      %w[FAILED REJECTED].include?(image.dig("attributes", "assetDeliveryState", "state"))
+    end
+  end
+
+  def replace_review_screenshot(purchase_id, existing)
+    bytes = File.binread(@screenshot)
+    source_checksum = Digest::MD5.hexdigest(bytes)
+    if existing
+      state = existing.dig("attributes", "assetDeliveryState", "state")
+      current_checksum = existing.dig("attributes", "sourceFileChecksum")
+      return existing if state == "COMPLETE" && current_checksum == source_checksum
+      abort("Existing Full Unlock review screenshot is still processing (#{state}).") unless %w[COMPLETE FAILED REJECTED].include?(state)
+
+      @api.delete("/v1/inAppPurchaseAppStoreReviewScreenshots/#{existing.fetch("id")}")
+    end
+
+    reservation = @api.post(
+      "/v1/inAppPurchaseAppStoreReviewScreenshots",
+      data: {
+        type: "inAppPurchaseAppStoreReviewScreenshots",
+        attributes: { fileSize: bytes.bytesize, fileName: File.basename(@screenshot) },
+        relationships: {
+          inAppPurchaseV2: {
+            data: { type: "inAppPurchases", id: purchase_id },
+          },
+        },
+      }
+    ).fetch("data")
+    Array(reservation.dig("attributes", "uploadOperations")).each do |operation|
+      @api.upload(operation, bytes)
+    end
+    screenshot_id = reservation.fetch("id")
+    @api.patch(
+      "/v1/inAppPurchaseAppStoreReviewScreenshots/#{screenshot_id}",
+      data: {
+        type: "inAppPurchaseAppStoreReviewScreenshots",
+        id: screenshot_id,
+        attributes: {
+          uploaded: true,
+          sourceFileChecksum: source_checksum,
+        },
+      }
+    )
+    wait_for_review_screenshot(screenshot_id)
+  end
+
+  def wait_for_review_screenshot(screenshot_id)
+    30.times do
+      screenshot = @api.get("/v1/inAppPurchaseAppStoreReviewScreenshots/#{screenshot_id}").fetch("data")
+      state = screenshot.dig("attributes", "assetDeliveryState", "state")
+      return screenshot if state == "COMPLETE"
+      if %w[FAILED REJECTED].include?(state)
+        errors = screenshot.dig("attributes", "assetDeliveryState", "errors")
+        abort("App Store Connect rejected the Full Unlock review screenshot: #{errors}")
+      end
+      sleep 2
+    end
+    abort("Timed out waiting for App Store Connect to process the Full Unlock review screenshot.")
+  end
+
+  def wait_for_purchase_metadata(purchase_id)
+    30.times do
+      purchase = @api.get("/v2/inAppPurchases/#{purchase_id}").fetch("data")
+      state = purchase.dig("attributes", "state")
+      return state unless state == "MISSING_METADATA"
+      sleep 2
+    end
+    abort("Full Unlock still reports MISSING_METADATA after its review screenshot completed.")
   end
 
   def only!(items, label)
@@ -402,6 +572,10 @@ def validate_listing!(listing)
   keyword_bytes = metadata.fetch("keywords").bytesize
   abort("keywords are #{keyword_bytes} bytes; maximum is 100.") if keyword_bytes > 100
   abort("Use comma-separated keywords without spaces after commas.") if metadata.fetch("keywords").include?(", ")
+  privacy_policy = URI(metadata.fetch("privacyPolicyUrl"))
+  abort("privacyPolicyUrl must use HTTPS.") unless privacy_policy.is_a?(URI::HTTPS) && privacy_policy.host
+  full_unlock = listing.fetch("fullUnlock")
+  abort("Full Unlock product ID does not match Bookshelf.") unless full_unlock.fetch("productId") == "com.spnss.player.fullunlock"
   slides = listing.fetch("slides")
   abort("App Store Connect requires one to ten screenshots.") unless (1..10).cover?(slides.length)
   sources = slides.flat_map { |slide| slide.fetch("sources") }.uniq
@@ -444,7 +618,7 @@ options = {
   version: nil,
 }
 parser = OptionParser.new do |option_parser|
-  option_parser.banner = "usage: scripts/app-store-listing <prepare|upload> [options]"
+  option_parser.banner = "usage: scripts/app-store-listing <prepare|metadata|upload|full-unlock> [options]"
   option_parser.on("--version VERSION", "Editable App Store version (default: listing.json)") { |value| options[:version] = value }
   option_parser.on("--config PATH", "Credential env file") { |value| options[:credentials] = File.expand_path(value) }
   option_parser.on("--apply", "Apply metadata and replace screenshots in App Store Connect") { options[:apply] = true }
@@ -457,8 +631,17 @@ validate_listing!(listing)
 
 case command
 when "prepare"
-  abort("--apply is only valid with upload.") if options[:apply]
+  abort("--apply is not valid with prepare.") if options[:apply]
   prepare(listing)
+when "metadata"
+  issuer_id, key_id, key_path = load_credentials(options[:credentials])
+  api = AppStoreConnect.new(issuer_id: issuer_id, key_id: key_id, key_path: key_path)
+  ListingSync.new(
+    api: api,
+    listing: listing,
+    screenshots: [],
+    version: options[:version] || listing.fetch("version")
+  ).run(apply: options[:apply], replace_screenshots: false)
 when "upload"
   prepare(listing)
   issuer_id, key_id, key_path = load_credentials(options[:credentials])
@@ -471,7 +654,12 @@ when "upload"
     listing: listing,
     screenshots: screenshots,
     version: options[:version] || listing.fetch("version")
-  ).run(apply: options[:apply])
+  ).run(apply: options[:apply], replace_screenshots: true)
+when "full-unlock"
+  abort("--version is not valid with full-unlock.") if options[:version]
+  issuer_id, key_id, key_path = load_credentials(options[:credentials])
+  api = AppStoreConnect.new(issuer_id: issuer_id, key_id: key_id, key_path: key_path)
+  FullUnlockSync.new(api: api, listing: listing).run(apply: options[:apply])
 when "help"
   puts parser
 else

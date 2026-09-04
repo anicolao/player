@@ -56,8 +56,19 @@ struct FullUnlockView: View {
           .multilineTextAlignment(.center)
           .accessibilityIdentifier("full-unlock-library-safety")
 
-        Link("Bookshelf Support", destination: URL(string: "https://bookshelf.spnss.com/#support")!)
-          .font(.footnote.weight(.semibold))
+        HStack(spacing: 20) {
+          Link(
+            "Bookshelf Support",
+            destination: URL(string: "https://bookshelf.spnss.com/#support")!
+          )
+            .accessibilityIdentifier("full-unlock-support")
+          Link(
+            "Privacy Policy",
+            destination: URL(string: "https://bookshelf.spnss.com/privacy/")!
+          )
+            .accessibilityIdentifier("full-unlock-privacy")
+        }
+        .font(.footnote.weight(.semibold))
       }
       .padding(.horizontal, 24)
       .padding(.vertical, 32)

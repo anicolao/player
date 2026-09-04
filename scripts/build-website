@@ -35,6 +35,7 @@ listing="${repository_root}/app-store/listing.json"
 
 rm -rf "${output}"
 mkdir -p "${output}/assets/generated"
+mkdir -p "${output}/privacy"
 cp \
   "${repository_root}/docs/index.html" \
   "${repository_root}/docs/styles.css" \
@@ -44,6 +45,7 @@ cp \
   "${repository_root}/docs/CNAME" \
   "${repository_root}/docs/.nojekyll" \
   "${output}/"
+cp "${repository_root}/docs/privacy/index.html" "${output}/privacy/"
 cp "${repository_root}/docs/assets/bookshelf-icon.png" "${output}/assets/"
 cp -R "${repository_root}/docs/community-assets" "${output}/"
 
