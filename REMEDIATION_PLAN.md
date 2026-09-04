@@ -1237,6 +1237,30 @@ The ledger now contains 189 unique signatures and 35 formal resets. Commit
 `0c5e7c52819824ad7f42ff0511d124b107301f50` must pass normal CI before the
 replacement tip receives its one permitted formal dispatch.
 
+Normal pull-request run
+[33822633712](https://github.com/anicolao/player/actions/runs/33822633712)
+then failed Story 005 on branch commit `3551af67`. The retained artifact
+9919192933 shows the failing transport selector successfully selected playback
+speed and tapped the backward picker, but its helper reused one two-second
+deadline across picker lookup, match counting, physical delivery, menu
+presentation, and selected-value publication. Hosted accessibility work had
+already consumed about 1.6 seconds, leaving only 0.4 seconds for the “10
+seconds” option to appear. The final hierarchy retained an intact settings
+screen with the picker closed, and all four screenshot comparisons passed.
+This was a normal run, so it changes no formal reset count.
+
+Both duplicated picker helpers now give picker readiness, menu presentation,
+and state publication independent event-driven deadlines, each capped at two
+seconds. Source hygiene requires all three boundaries. The formerly failing
+selector passed locally in 23.107 seconds, then a separate complete Story 005
+run passed all eight selectors in 241.355 seconds, including the repaired path
+again in 23.864 seconds. All four screenshots and the walkthrough matched
+exactly. No sleep, retry, timeout increase, selector change, or coverage
+reduction was added. The ledger now contains 190 unique signatures and retains
+35 formal resets. Commit `22ac995514dd4b89cf607b8a037271da3c4c353a`
+must pass normal CI before the replacement tip receives its one permitted
+formal dispatch.
+
 ## R0 — Stabilize and qualify E2E
 
 ### Goal

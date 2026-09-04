@@ -4489,6 +4489,30 @@
       },
       "qualificationResetCount": 1,
       "resetEvidence": "Formal exact-SHA qualification run 33801880785 completed all 20 focused attempts and all five full-coverage lanes successfully, but its authoritative aggregate report rejected the stale timing contract. The failed SHA will not be rerun, and this is formal reset 35."
+    },
+    {
+      "signature": "ui-test:TransportControlsUITests.testFailedLibraryDefaultsClearKeepsEditorAndOverrideTruthful:exit-65",
+      "story": "005-play-and-restore",
+      "evidence": {
+        "workflowRun": 33822633712,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions artifact 9919192933 (ios-e2e-005-play-and-restore) retains the exact 305,153,008-byte result, failure frame and recording, accessibility hierarchy, complete XCTest and simulator logs, phase timings, four successful screenshot comparisons, and valid failure-evidence manifest",
+        "url": "https://github.com/anicolao/player/actions/runs/33822633712/job/100869247212",
+        "commit": "3551af67b2a24c4e78f98a1d3367097f22ad3a50",
+        "observation": "Normal pull-request CI ran merge commit 435e3f3b46ae4ecc165549a09f43721b66b9e4dd for branch commit 3551af67b2a24c4e78f98a1d3367097f22ad3a50. The failed transport test opened Playback Settings, successfully selected 1.25x, and tapped the backward picker. Its one shared two-second EventDeadline had already spent about 1.6 seconds resolving the picker, counting matches, delivering the tap, and waiting for idle, so the menu's 10 seconds option received only a 0.4-second existence check. The retained final hierarchy shows the intact settings screen and closed backward picker; all four story screenshot comparisons were canonical."
+      },
+      "rootCause": "Both transport picker helpers reused one EventDeadline across three independent asynchronous transitions: finding the picker, presenting its menu after a physical tap, and publishing the selected value. Expensive hosted accessibility snapshots could consume most of the shared budget before the menu transition began, making a valid menu animation fail an unintentionally sub-second check.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Give picker readiness, menu presentation, and selected-value publication their own event-driven deadlines, each capped at two seconds, in both the canonical transport journey and duplicate App Store listing helper. Lock the three-deadline contract into source hygiene without adding sleeps, retries, timeout increases, selector changes, or coverage reductions.",
+        "commits": [
+          "22ac995514dd4b89cf607b8a037271da3c4c353a"
+        ],
+        "validation": "The formerly failing selector passed locally in 23.107 seconds. A separate complete canonical Story 005 run then passed all eight selectors in 241.355 seconds, including the repaired selector again in 23.864 seconds. All four screenshots matched pixel-exactly, the walkthrough README matched exactly, and full E2E hygiene passed all 18 source-contract tests and all 63 capture-readiness call sites."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "Run 33822633712 was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it changed no formal reset count. Artifact 9919192933 was downloaded to /tmp/player-normal-33822633712-story005.5pkrZ5, and the failed branch SHA will not be rerun."
     }
   ]
 }
