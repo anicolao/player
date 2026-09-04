@@ -94,3 +94,5 @@
 - [x] The one-time purchase is available
 - [x] The purchase model is explicit
 - [x] Purchase restoration is available
+- [x] Support is available before purchase
+- [x] The privacy policy is available before purchase

@@ -27,6 +27,8 @@
 - [x] Purchase restoration is available
 - [x] Offer-code redemption is available
 - [x] The purchase model is explicit
+- [x] Support is available before purchase
+- [x] The privacy policy is available before purchase
 
 ## A successful non-consumable transaction permanently unlocks playback
 
