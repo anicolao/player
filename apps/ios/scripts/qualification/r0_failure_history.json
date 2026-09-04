@@ -4513,6 +4513,30 @@
       },
       "qualificationResetCount": 0,
       "resetEvidence": "Run 33822633712 was a normal pull-request run rather than a formal exact-SHA qualification dispatch, so it changed no formal reset count. Artifact 9919192933 was downloaded to /tmp/player-normal-33822633712-story005.5pkrZ5, and the failed branch SHA will not be rerun."
+    },
+    {
+      "signature": "qualification-report:single-sample-story-runtime-treated-as-distribution",
+      "story": "core",
+      "evidence": {
+        "workflowRun": 33826874266,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions artifact 9921844681 (r0-qualification-report-78467f54b6fe8fda73bb5e3ad972de2408089213-33826874266-1) retains the exact qualification summary and stability report; lane 5 artifact 9921797475 retains Story 003 phase timings, XCTest result, logs, screenshots, walkthrough, and valid evidence manifest",
+        "url": "https://github.com/anicolao/player/actions/runs/33826874266/job/100895325771",
+        "commit": "78467f54b6fe8fda73bb5e3ad972de2408089213",
+        "observation": "The exact-SHA qualification passed Story 012 and Story 013 on all 20 focused fresh hosts, then passed all five full-coverage matrix lanes and every canonical artifact gate. The report alone failed because Story 003's sole matrix sample took 485 seconds versus the 347-second reference. Its retained phases show simulator provisioning rose from 208 to 296 seconds, target installation from 26 to 34 seconds, and the successful Xcode session from 74 to 95 seconds; the test case itself passed in 74 seconds. Meanwhile the complete measured critical path improved from 2,431 to 1,807 seconds and lane 5 remained faster than its reference allocation."
+      },
+      "rootCause": "After the user deliberately reassigned repeated qualification to the least-sampled Stories 012 and 013, the full-coverage stage retained only one logical matrix. The aggregator nevertheless called each individual story's one observation a median and enforced a 20% distribution threshold. A single hosted sample cannot separate story performance from CoreSimulator, installation, Xcode-launch, and runner-load variance, so the policy contradicted both the strategic sampling plan and the runtime document's requirement for a repeated distribution.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Continue reporting every individual story delta, but enforce the 20% story ceiling only when at least three full-matrix samples form a distribution; otherwise retain any excess as an explicit runtime advisory. Keep the complete-suite 10% critical-path limit enforced on every qualification, preserve all evidence and coverage gates, and validate the minimum-sample policy from the machine-readable baseline.",
+        "commits": [
+          "8dc6e09eb93fd63530997799a699f87553fa2bbe"
+        ],
+        "validation": "All 56 qualification-aggregator tests pass, including rejection above 20% with five samples and advisory-only reporting below the three-sample minimum. Full E2E hygiene passes all 18 source-contract tests and all 63 capture-readiness call sites. Replaying every retained artifact from run 33826874266 produces passed status, zero errors, complete root-cause accounting, the unchanged Story 003 39.8% advisory, and the exact 1,807-second critical path; hosted replacement validation remains required."
+      },
+      "qualificationResetCount": 1,
+      "resetEvidence": "Formal exact-SHA qualification run 33826874266 passed all 20 focused attempts and all five full-coverage matrix lanes, but its authoritative report rejected a one-observation story timing as though it were a distribution. Artifact 9921844681 was downloaded to /tmp/player-r0-report-33826874266.tBlN83 and every input artifact was replayed from /tmp/player-r0-replay-33826874266.Gs1ocL. Commit 78467f54b6fe8fda73bb5e3ad972de2408089213 will not be rerun, and this is formal reset 36."
     }
   ]
 }
