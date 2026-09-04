@@ -100,7 +100,7 @@ release pass while its remaining gate is listed as pending.
 
 The R0 row summarizes the earlier accepted milestone and the chronology below
 retains the signature count at each subsequent checkpoint. The current exact
-ledger contains **191 unique signatures** and **36 formal qualification
+ledger contains **192 unique signatures** and **36 formal qualification
 resets**. The R0 row records the original all-story repetition design; the
 least-sampled-first gate documented below supersedes that remaining-gate text.
 
@@ -1288,6 +1288,29 @@ hygiene pass. Replaying every artifact from run 33826874266 produces zero
 errors, complete root-cause accounting, the visible Story 003 advisory, and the
 exact 1,807-second critical path. The replacement tip must pass normal CI before
 its one permitted formal dispatch.
+
+Normal replacement run
+[33832267006](https://github.com/anicolao/player/actions/runs/33832267006)
+passed the shared build and six stories before exposing an independent Story
+009 framing defect. The retained 254,549,874-byte artifact 9922581196 shows a
+correlated, idle metadata-editor correction moving the Identity anchor in the
+requested direction from y=247.667 across the y=135 target to y=3.333. The
+helper rejected the first overshoot because absolute error grew even though the
+two observations now bracketed the target. The artifact was downloaded before
+the obsolete remainder was cancelled; this normal run changes no formal reset
+count and its SHA will not be rerun.
+
+The framing helper now continues only when a same-side correction strictly
+reduces error or a target crossing establishes or strictly narrows a measured
+bracket. This preserves finite event-driven convergence without a fixed attempt
+ceiling. The formerly failing selector passed independently in 95.988 seconds
+with all seven screenshots pixel-exact. A separate exact-commit complete Story
+009 run passed both selectors in 113.111 seconds; six screenshots were
+pixel-exact, Book Detail met its reviewed system-material allowance, and the
+walkthrough was exact. Full E2E hygiene passes. The ledger now contains 192
+unique signatures and retains 36 formal resets. Commit `7b3e98378e71c4a3f859452c6b2beb1ef0d7a80e`
+must pass normal CI before the replacement tip receives its one permitted
+formal dispatch.
 
 ## R0 — Stabilize and qualify E2E
 

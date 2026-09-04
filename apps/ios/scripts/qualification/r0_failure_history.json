@@ -4537,6 +4537,30 @@
       },
       "qualificationResetCount": 1,
       "resetEvidence": "Formal exact-SHA qualification run 33826874266 passed all 20 focused attempts and all five full-coverage matrix lanes, but its authoritative report rejected a one-observation story timing as though it were a distribution. Artifact 9921844681 was downloaded to /tmp/player-r0-report-33826874266.tBlN83 and every input artifact was replayed from /tmp/player-r0-replay-33826874266.Gs1ocL. Commit 78467f54b6fe8fda73bb5e3ad972de2408089213 will not be rerun, and this is formal reset 36."
+    },
+    {
+      "signature": "ui-test:AccessibilityUITests.testCoreJourneysRemainCompleteAtLargestAccessibilityText:framing-overshoot-rejected-before-bracketing",
+      "story": "009-accessible-core-journeys",
+      "evidence": {
+        "workflowRun": 33832267006,
+        "workflowAttempt": 1,
+        "artifact": "GitHub Actions artifact 9922581196 (ios-e2e-009-accessible-core-journeys) retains the complete 254,549,874-byte XCTest result, screen recording and derived failure frame, accessibility snapshots, semantic scroll probe, logs, phase timings, first successful screenshot, and valid failure-evidence manifest",
+        "url": "https://github.com/anicolao/player/actions/runs/33832267006/job/100900357201",
+        "commit": "c766bac594dca9428ef3e6aa9fd4fa8e487b3e42",
+        "observation": "The large-text journey reached the metadata editor and made a correlated idle framing correction toward y=135. The anchor moved in the requested direction from y=247.667 to y=3.333 and the production probe published interaction=2, completion=2, geometry=166, completion-geometry=166, idle=true. The helper failed immediately because absolute error grew from 112.667 to 131.667 even though the gesture had crossed and therefore bracketed the target."
+      },
+      "rootCause": "The prior replacement for an arbitrary three-correction ceiling required every correction to reduce absolute error. XCTest scroll recognizers can legitimately overshoot the target on a large correction. A first overshoot establishes two observed bounds around the target and permits a smaller reverse correction, but the helper discarded that new convergence information and reported false non-convergence.",
+      "diagnosisStatus": "confirmed",
+      "fix": {
+        "status": "verified",
+        "summary": "Track the nearest observed anchor on each side of the requested y-coordinate. Continue only when a same-side correction strictly reduces absolute error or a crossing establishes or strictly narrows that measured bracket; fail on no progress, a widening repeated crossing, missing readiness, or an endpoint. Keep every physical gesture and correlated idle-geometry receipt independently capped at two seconds, with no fixed wait or attempt ceiling.",
+        "commits": [
+          "7b3e98378e71c4a3f859452c6b2beb1ef0d7a80e"
+        ],
+        "validation": "The formerly failing selector passed independently in 95.988 seconds and all seven screenshots matched pixel-exactly. A separate exact-commit complete Story 009 run passed both canonical selectors in 113.111 seconds; six screenshots were pixel-exact, Book Detail matched its reviewed native-system-region allowance, and the walkthrough README matched exactly. Swift parsing and full E2E hygiene pass all 18 source-contract tests and all 63 capture-readiness call sites."
+      },
+      "qualificationResetCount": 0,
+      "resetEvidence": "Run 33832267006 was normal pull-request CI rather than formal exact-SHA qualification, so it changed no formal reset count. Artifact 9922581196 was downloaded to /tmp/player-normal-33832267006-story009.nDCmjn before the obsolete remainder was cancelled, and the failed branch SHA will not be rerun."
     }
   ]
 }
