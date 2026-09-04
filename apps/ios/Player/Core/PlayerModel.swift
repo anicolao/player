@@ -2404,9 +2404,26 @@ final class PlayerModel {
     case .progress(let assetSeconds):
       guard playbackState.status == .playing, assetSeconds.isFinite else { return }
       await applyPlaybackProgress(loadedAssetTimelineStartSeconds + max(0, assetSeconds))
+    case .advancedToNextItem:
+      await handlePlaybackAdvancedToNextItem()
     case .reachedEnd:
       await handlePlaybackReachedEnd()
     }
+  }
+
+  private func handlePlaybackAdvancedToNextItem() async {
+    guard let book = currentBook, let loadedAssetID else { return }
+    let orderedAssets = orderedPlaybackAssets(in: book)
+    guard let currentIndex = orderedAssets.firstIndex(where: { $0.id == loadedAssetID }),
+      orderedAssets.indices.contains(currentIndex + 1)
+    else { return }
+    let next = orderedAssets[currentIndex + 1]
+    self.loadedAssetID = next.id
+    loadedAssetTimelineStartSeconds = next.timelineStartSeconds
+    playbackState = environment.playback.state
+    await applyPlaybackProgress(
+      next.timelineStartSeconds + environment.playback.currentPositionSeconds
+    )
   }
 
   private func applyPlaybackProgress(_ requestedPosition: Double) async {
@@ -2423,12 +2440,7 @@ final class PlayerModel {
 
   private func handlePlaybackReachedEnd() async {
     guard let book = currentBook, let loadedAssetID else { return }
-    let orderedAssets = book.assets.sorted {
-      if $0.timelineStartSeconds != $1.timelineStartSeconds {
-        return $0.timelineStartSeconds < $1.timelineStartSeconds
-      }
-      return $0.importOrder < $1.importOrder
-    }
+    let orderedAssets = orderedPlaybackAssets(in: book)
     guard let currentIndex = orderedAssets.firstIndex(where: { $0.id == loadedAssetID }) else {
       return
     }
@@ -3088,9 +3100,18 @@ final class PlayerModel {
     guard let location = PlaybackTimeline.location(in: book, at: bookSeconds) else {
       throw TransportPreferencesError.missingPlaybackTimeline(book.id)
     }
-    let url = try await environment.media.managedURL(for: location.asset.managedRelativePath)
+    let orderedAssets = orderedPlaybackAssets(in: book)
+    guard let assetIndex = orderedAssets.firstIndex(where: { $0.id == location.asset.id }) else {
+      throw TransportPreferencesError.missingPlaybackTimeline(book.id)
+    }
+    var queueURLs: [URL] = []
+    for asset in orderedAssets[assetIndex...] {
+      queueURLs.append(
+        try await environment.media.managedURL(for: asset.managedRelativePath)
+      )
+    }
     try await environment.playback.load(
-      url: url,
+      queueURLs: queueURLs,
       bookID: book.id,
       at: location.assetSeconds
     )
@@ -3098,6 +3119,18 @@ final class PlayerModel {
     loadedAssetTimelineStartSeconds = location.asset.timelineStartSeconds
     playbackState = environment.playback.state
     playbackState.elapsedSeconds = location.bookSeconds
+  }
+
+  private func orderedPlaybackAssets(in book: Book) -> [AudioAsset] {
+    book.assets.sorted {
+      if $0.timelineStartSeconds != $1.timelineStartSeconds {
+        return $0.timelineStartSeconds < $1.timelineStartSeconds
+      }
+      if $0.importOrder != $1.importOrder {
+        return $0.importOrder < $1.importOrder
+      }
+      return $0.id.uuidString < $1.id.uuidString
+    }
   }
 
   @discardableResult

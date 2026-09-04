@@ -223,6 +223,7 @@ protocol AudioPlaybackControlling: AnyObject {
     _ handler: @escaping @MainActor @Sendable (PlaybackEngineEvent) async -> Void
   )
   func load(url: URL, bookID: UUID, at seconds: Double) async throws
+  func load(queueURLs: [URL], bookID: UUID, at seconds: Double) async throws
   func unload()
   func seek(to seconds: Double) async
   func setPlaybackRate(_ rate: Double)
@@ -235,6 +236,13 @@ protocol AudioPlaybackControlling: AnyObject {
 
 @MainActor
 extension AudioPlaybackControlling {
+  func load(queueURLs: [URL], bookID: UUID, at seconds: Double) async throws {
+    guard let url = queueURLs.first else {
+      throw PlayerCoreError.invalidAssetSelection
+    }
+    try await load(url: url, bookID: bookID, at: seconds)
+  }
+
   func installEventHandler(
     _ handler: @escaping @MainActor @Sendable (PlaybackEngineEvent) async -> Void
   ) {}

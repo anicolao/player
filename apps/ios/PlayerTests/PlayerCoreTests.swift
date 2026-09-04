@@ -1287,6 +1287,47 @@ final class PlayerCoreTests: XCTestCase {
     XCTAssertEqual(inspectedM4B.chapters.map(\.source), [.file])
   }
 
+  func testProductionPlaybackQueueAdvancesBetweenMP3FilesWithoutPausing() async throws {
+    let mp3 = try XCTUnwrap(
+      Bundle(for: PlayerCoreTests.self).url(
+        forResource: "01-synthetic-chapter",
+        withExtension: "mp3"
+      )
+    )
+    let controller = AVPlayerPlaybackController()
+    let advanced = expectation(description: "The queue advances to the second MP3")
+    let secondFileProgress = expectation(
+      description: "The second MP3 publishes progress while playback remains active"
+    )
+    var didAdvance = false
+    var didObserveSecondFileProgress = false
+    controller.installEventHandler { event in
+      switch event {
+      case .advancedToNextItem:
+        didAdvance = true
+        advanced.fulfill()
+      case .progress(let seconds)
+        where didAdvance && !didObserveSecondFileProgress && seconds > 0:
+        didObserveSecondFileProgress = true
+        secondFileProgress.fulfill()
+      case .progress, .reachedEnd:
+        break
+      }
+    }
+
+    try await controller.load(
+      queueURLs: [mp3, mp3],
+      bookID: UUID(uuidString: "91000000-0000-0000-0000-000000000099")!,
+      at: 1.5
+    )
+    controller.play()
+    await fulfillment(of: [advanced, secondFileProgress], timeout: 2)
+
+    XCTAssertEqual(controller.state.status, .playing)
+    XCTAssertTrue(controller.isPlaybackAdvancing)
+    controller.unload()
+  }
+
   func testEmbeddedChapterTimelineIsStableOrderedAndClamped() throws {
     let chapters = ChapterTimeline.embeddedChapters(
       [
@@ -2063,6 +2104,50 @@ final class PlayerCoreTests: XCTestCase {
     XCTAssertEqual(harness.playback.loadedURL, URL(filePath: "/tmp/Media/background-02.m4b"))
     XCTAssertEqual(harness.model.library.positionJournal, journal)
 
+    await harness.playback.send(.progress(seconds: 5))
+    XCTAssertEqual(harness.model.playbackState.elapsedSeconds, 65)
+    XCTAssertEqual(harness.nowPlaying.latest?.elapsedSeconds, 65)
+  }
+
+  func testPreloadedEngineAdvanceKeepsPlayingAcrossTheNextMP3Boundary() async throws {
+    var book = makeBackgroundPlaybackHarness().book
+    let firstAssetID = UUID(uuidString: "90000000-0000-0000-0000-000000000021")!
+    let secondAssetID = UUID(uuidString: "90000000-0000-0000-0000-000000000022")!
+    book.assets = [
+      AudioAsset(
+        id: firstAssetID,
+        originalFilename: "background-01.mp3",
+        managedRelativePath: "Media/background-01.mp3",
+        checksumSHA256: "fixture-1",
+        byteCount: 1,
+        durationSeconds: 60,
+        container: "MP3",
+        timelineStartSeconds: 0,
+        importOrder: 0
+      ),
+      AudioAsset(
+        id: secondAssetID,
+        originalFilename: "background-02.mp3",
+        managedRelativePath: "Media/background-02.mp3",
+        checksumSHA256: "fixture-2",
+        byteCount: 1,
+        durationSeconds: 60,
+        container: "MP3",
+        timelineStartSeconds: 60,
+        importOrder: 1
+      ),
+    ]
+    let harness = makeBackgroundPlaybackHarness(book: book)
+    await harness.model.restore()
+    harness.model.configurePlaybackIntegrations()
+    await harness.model.play(bookID: book.id)
+    let journal = harness.model.library.positionJournal
+
+    await harness.playback.send(.advancedToNextItem)
+
+    XCTAssertEqual(harness.model.playbackState.status, .playing)
+    XCTAssertEqual(harness.model.playbackState.elapsedSeconds, 60)
+    XCTAssertEqual(harness.model.library.positionJournal, journal)
     await harness.playback.send(.progress(seconds: 5))
     XCTAssertEqual(harness.model.playbackState.elapsedSeconds, 65)
     XCTAssertEqual(harness.nowPlaying.latest?.elapsedSeconds, 65)

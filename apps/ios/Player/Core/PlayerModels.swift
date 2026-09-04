@@ -738,6 +738,7 @@ enum AudioSessionEvent: Equatable, Sendable {
 
 enum PlaybackEngineEvent: Equatable, Sendable {
   case progress(seconds: Double)
+  case advancedToNextItem
   case reachedEnd
 }
 
