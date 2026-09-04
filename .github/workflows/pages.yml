@@ -4,19 +4,6 @@ on:
   push:
     branches:
       - main
-    paths:
-      - "docs/**"
-      - "app-store/listing.json"
-      - "scripts/build-website"
-      - "scripts/capture-marketing-screenshots"
-      - "apps/ios/Player/**"
-      - "apps/ios/PlayerUITests/**"
-      - "apps/ios/scripts/**"
-      - "apps/ios/project.yml"
-      - "tests/e2e/013-app-store-listing/**"
-      - "flake.nix"
-      - "flake.lock"
-      - ".github/workflows/pages.yml"
   workflow_dispatch:
 
 permissions:
