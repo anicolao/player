@@ -1089,10 +1089,24 @@ final class AccessibilityUITests: PlayerUITestCase {
 
     // Readiness and each user gesture are distinct observable events. A slow
     // accessibility query must not consume the correction gesture's budget.
-    // Continue only while each settled correction strictly reduces the
-    // remaining framing error. That gives this loop a finite, observable
-    // termination condition without guessing how many recognizer corrections
-    // a particular hosted simulator will need.
+    // Continue only while each settled correction either reduces the current
+    // error or crosses the target and establishes/narrows an observed bracket.
+    // The bracket gives overshooting recognizers a finite, observable
+    // convergence condition without guessing how many corrections a hosted
+    // simulator will need.
+    var lowerAnchorY: CGFloat?
+    var upperAnchorY: CGFloat?
+    func recordBracketCandidate(_ value: CGFloat) {
+      if value < framing.targetMinY {
+        lowerAnchorY = max(lowerAnchorY ?? -.greatestFiniteMagnitude, value)
+      } else if value > framing.targetMinY {
+        upperAnchorY = min(upperAnchorY ?? .greatestFiniteMagnitude, value)
+      }
+    }
+    func bracketSpan() -> CGFloat? {
+      guard let lowerAnchorY, let upperAnchorY else { return nil }
+      return upperAnchorY - lowerAnchorY
+    }
     while true {
       guard let before = surface.state(), before.isIdle else { return false }
       let anchor = framing.anchor()
@@ -1101,6 +1115,8 @@ final class AccessibilityUITests: PlayerUITestCase {
       }
       let displacement = screenY - framing.targetMinY
       if abs(displacement) <= framing.tolerance { return true }
+      recordBracketCandidate(screenY)
+      let bracketSpanBefore = bracketSpan()
       let direction: ScrollProbeDirection
       if displacement > 0 {
         if before.atBottom {
@@ -1172,10 +1188,21 @@ final class AccessibilityUITests: PlayerUITestCase {
         return true
       }
       let updatedError = abs(updatedY - framing.targetMinY)
-      guard updatedError < abs(displacement) - 0.5 else {
+      let updatedDisplacement = updatedY - framing.targetMinY
+      let crossedTarget = displacement * updatedDisplacement < 0
+      recordBracketCandidate(updatedY)
+      let bracketSpanAfter = bracketSpan()
+      let firstBracket = bracketSpanBefore == nil && bracketSpanAfter != nil
+      let narrowedBracket = bracketSpanBefore.map { previousSpan in
+        bracketSpanAfter.map { $0 < previousSpan - 0.5 } ?? false
+      } ?? false
+      let bracketConverged = crossedTarget && (firstBracket || narrowedBracket)
+      guard updatedError < abs(displacement) - 0.5 || bracketConverged else {
         print(
           "Capture framing stopped because the settled correction did not converge: "
             + "target=\(framing.targetMinY), before=\(screenY), after=\(updatedY), "
+            + "bracket-before=\(String(describing: bracketSpanBefore)), "
+            + "bracket-after=\(String(describing: bracketSpanAfter)), "
             + "container=\(surface.containerID), "
             + "probe=\(String(describing: settledState))"
         )

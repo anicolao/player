@@ -1103,7 +1103,11 @@ if rg -q 'for _ in 0\.\.<[0-9]+' <<<"${framing_source}"; then
   exit 1
 fi
 rg -Fq 'while true {' <<<"${framing_source}"
-rg -Fq 'updatedError < abs(displacement) - 0.5' <<<"${framing_source}"
+rg -Fq 'let crossedTarget = displacement * updatedDisplacement < 0' <<<"${framing_source}"
+rg -Fq 'let bracketConverged = crossedTarget && (firstBracket || narrowedBracket)' \
+  <<<"${framing_source}"
+rg -Fq 'updatedError < abs(displacement) - 0.5 || bracketConverged' \
+  <<<"${framing_source}"
 rg -Fq 'let actionDeadline = EventDeadline()' <<<"${framing_source}"
 rg -Fq 'let settledGeometryReceipt = after.completionGeometryID == after.geometryID' \
   <<<"${framing_source}"
