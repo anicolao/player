@@ -419,7 +419,10 @@
         queueCheckpoint: checkpoint(sourceURLs: sourceURLs, files: files, inspected: inspected),
         recoveryPlan: plan
       )
-      return try snapshot(books: [existing], jobs: [job, orphanStagingJob()], existing: existing)
+      return try snapshot(
+        books: [existing], jobs: [job, orphanStagingJob()], existing: existing,
+        currentBookID: existing.id
+      )
     }
 
     private static func allCorruptSnapshot(
@@ -461,7 +464,8 @@
     }
 
     private static func snapshot(
-      books: [Book], jobs: [ImportJob], existing: Book
+      books: [Book], jobs: [ImportJob], existing: Book,
+      currentBookID: UUID? = nil
     ) throws -> LibrarySnapshot {
       let discarded = Book(
         id: uuid(202), title: "Discarded Synthetic Sample", authors: ["Open Fixture Lab"],
@@ -485,7 +489,7 @@
         removedAt: date, status: .recoverable, restoredAt: nil
       )
       return LibrarySnapshot(
-        books: books, importJobs: jobs, currentBookID: nil,
+        books: books, importJobs: jobs, currentBookID: currentBookID,
         trashTransactions: [trash], storageManifests: try storageManifests(existing: existing)
       )
     }

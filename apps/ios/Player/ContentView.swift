@@ -855,6 +855,7 @@ private struct ImportErrorView: View {
 struct ReviewImportView: View {
   @Environment(\.dismiss) private var dismiss
   @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+  @Environment(\.playerMiniPlayerScrollRunway) private var miniPlayerScrollRunway
   @Bindable var model: PlayerModel
   let jobID: UUID
   let didCommit: () -> Void
@@ -924,6 +925,7 @@ struct ReviewImportView: View {
       if let job = model.library.importJobs.first(where: { $0.id == jobID }),
          job.proposal != nil {
         primaryAction(job: job)
+          .padding(.bottom, miniPlayerClearance)
       }
     }
     .overlay {
@@ -940,6 +942,10 @@ struct ReviewImportView: View {
           )
       }
     }
+  }
+
+  private var miniPlayerClearance: CGFloat {
+    miniPlayerScrollRunway > 0 ? PlayerLayout.miniPlayerObstructionHeight : 0
   }
 
   private var reviewAccessibilityValue: String {
@@ -2575,6 +2581,9 @@ enum PlayerColor {
 }
 
 enum PlayerLayout {
+  /// The mini-player's 60-point control plus its five-point lower spacing.
+  static let miniPlayerObstructionHeight: CGFloat = 65
+
   /// Every vertical scroll container under the tab player reserves this much
   /// real content length so its final control can move fully above the player.
   static let miniPlayerScrollRunway: CGFloat = 104

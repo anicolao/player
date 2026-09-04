@@ -216,7 +216,11 @@ final class ImportRecoveryStorageUITests: PlayerUITestCase {
       "scenario=mixed:state=staged:accepted=2:excluded=3:managed-files=2:managed-duplicates=0:duplicate-evidence=none:source-unchanged=true:order=\(validFileID),\(corruptFileID)"
     )
     let addToLibrary = app.buttons["add-import-to-library"]
+    let miniPlayer = anyElement(app, "mini-player")
     XCTAssertTrue(addToLibrary.exists)
+    XCTAssertTrue(addToLibrary.isHittable)
+    XCTAssertTrue(miniPlayer.exists)
+    XCTAssertLessThanOrEqual(addToLibrary.frame.maxY, miniPlayer.frame.minY - 4)
     addToLibrary.tap()
     try requireValue(
       anyElement(app, "import-recovery-probe"),
