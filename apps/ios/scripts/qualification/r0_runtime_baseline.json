@@ -44,7 +44,9 @@
       "readme-comparison": 2,
       "screenshot-comparison": 271,
       "simulator": 1767,
+      "simulator-control-plane-reset": null,
       "target-install": null,
+      "target-source-hiding": null,
       "test": 2334,
       "walkthrough-materialization": 3,
       "core-fixtures": 17,
@@ -54,55 +56,57 @@
   },
   "qualificationReference": {
     "source": {
-      "workflowRun": 33289300337,
-      "url": "https://github.com/anicolao/player/actions/runs/33289300337",
-      "headCommit": "b9dc9a98e61dd2a3f808d98e8bcf7d720b4df02d",
-      "checkoutCommit": "ab5a541881b17c665ed5f7d1f88335fa17b55289",
+      "workflowRun": 33801880785,
+      "url": "https://github.com/anicolao/player/actions/runs/33801880785",
+      "headCommit": "84bdf2387c0c932421b0712aa73db9a5ac284baa",
+      "checkoutCommit": "84bdf2387c0c932421b0712aa73db9a5ac284baa",
       "runner": "macos-26-arm64",
       "xcode": "26.6 (17F113)",
       "runtime": "iOS 26.5"
     },
     "coverageAdjustment": {
-      "reason": "R1-R16 intentionally expanded the canonical E2E suite from 26 to 41 selectors; this reference retains all added coverage while measuring the final five-lane rebalance.",
+      "reason": "R0-R16 intentionally expanded the canonical E2E suite from 26 to 41 selectors and added deterministic simulator-control and target-install isolation; this retained all-green run measures the complete final coverage before the evidence-driven five-lane rebalance.",
       "approvedBy": "REMEDIATION_PLAN.md delivery and runtime contract",
       "remediationItems": [
-        "R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8",
+        "R0", "R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8",
         "R9", "R10", "R11", "R12", "R13", "R14", "R15", "R16"
       ]
     },
     "suite": {
-      "logicalWallSeconds": 1782
+      "logicalWallSeconds": 2431
     },
     "stories": {
-      "001-ios-launch": 723,
-      "002-import-and-play": 570,
-      "003-multifile-grouping": 286,
-      "004-metadata-repair": 900,
-      "005-play-and-restore": 895,
-      "006-safe-zip-import": 529,
-      "007-sleep-timer": 946,
-      "008-library-search": 692,
-      "009-accessible-core-journeys": 403,
-      "010-library-backup": 489,
-      "011-offline-recovery": 345,
-      "012-monetization": 260,
-      "013-app-store-listing": 360
+      "001-ios-launch": 607,
+      "002-import-and-play": 597,
+      "003-multifile-grouping": 347,
+      "004-metadata-repair": 734,
+      "005-play-and-restore": 832,
+      "006-safe-zip-import": 479,
+      "007-sleep-timer": 771,
+      "008-library-search": 935,
+      "009-accessible-core-journeys": 597,
+      "010-library-backup": 716,
+      "011-offline-recovery": 664,
+      "012-monetization": 389,
+      "013-app-store-listing": 554
     },
     "phases": {
-      "attachment-export": 33,
-      "build": 1009,
-      "build-provenance": 184,
+      "attachment-export": 27,
+      "build": 114,
+      "build-provenance": 292,
       "build-reuse": 0,
       "environment-reuse": 0,
       "readme-comparison": 0,
-      "screenshot-comparison": 337,
-      "simulator": 1671,
-      "target-install": 292,
-      "test": 3755,
-      "walkthrough-materialization": 4,
-      "core-fixtures": 108,
-      "core-tests": 100,
-      "app-store-renderer": 11
+      "screenshot-comparison": 330,
+      "simulator": 3517,
+      "simulator-control-plane-reset": 12,
+      "target-install": 559,
+      "target-source-hiding": 4,
+      "test": 3368,
+      "walkthrough-materialization": 1,
+      "core-fixtures": 153,
+      "core-tests": 125,
+      "app-store-renderer": 7
     }
   }
 }

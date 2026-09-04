@@ -104,6 +104,7 @@ jobs:
           git diff --exit-code -- apps/ios/Player.xcodeproj
       - name: Build and bind the shared E2E product
         run: |
+          build_started_at="${SECONDS}"
           build_root="${PWD}/apps/ios/DerivedData/R0Qualification/SharedBuild"
           xcodebuild build-for-testing \
             -project apps/ios/Player.xcodeproj \
@@ -118,6 +119,10 @@ jobs:
           apps/ios/scripts/e2e-build-provenance.sh write "${build_root}" \
             com.apple.CoreSimulator.SimDeviceType.iPhone-17 \
             com.apple.CoreSimulator.SimRuntime.iOS-26-5
+          jq -n --arg commit '${{ inputs.expected_sha }}' \
+            --argjson durationSeconds "$((SECONDS - build_started_at))" \
+            '{schemaVersion: 1, commit: $commit, durationSeconds: $durationSeconds}' \
+            > "${PWD}/apps/ios/DerivedData/R0Qualification/BuildSummary.json"
           tar -C "${build_root}" -cf \
             "${PWD}/apps/ios/DerivedData/R0Qualification/SharedBuild.tar" \
             Build/Products PlayerE2EBuildProvenance.json PortableTools
@@ -133,6 +138,13 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 30
+      - name: Upload shared-build timing evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: r0-build-summary-${{ inputs.expected_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: apps/ios/DerivedData/R0Qualification/BuildSummary.json
+          if-no-files-found: error
+          retention-days: 90
 
   story-qualification:
     name: Least-sampled story ${{ matrix.story }} attempt ${{ matrix.attempt }}
@@ -288,11 +300,11 @@ jobs:
           EXPECTED_SHA: ${{ inputs.expected_sha }}
         run: |
           case "${LANE}" in
-            lane-1) stories='["007-sleep-timer","002-import-and-play"]'; run_core=false ;;
-            lane-2) stories='["004-metadata-repair","009-accessible-core-journeys"]'; run_core=true ;;
-            lane-3) stories='["005-play-and-restore","013-app-store-listing","012-monetization"]'; run_core=false ;;
-            lane-4) stories='["001-ios-launch","006-safe-zip-import","003-multifile-grouping"]'; run_core=false ;;
-            lane-5) stories='["008-library-search","010-library-backup","011-offline-recovery"]'; run_core=false ;;
+            lane-1) stories='["008-library-search","013-app-store-listing"]'; run_core=false ;;
+            lane-2) stories='["005-play-and-restore","009-accessible-core-journeys","012-monetization"]'; run_core=false ;;
+            lane-3) stories='["007-sleep-timer","001-ios-launch","006-safe-zip-import"]'; run_core=false ;;
+            lane-4) stories='["004-metadata-repair","011-offline-recovery"]'; run_core=true ;;
+            lane-5) stories='["010-library-backup","002-import-and-play","003-multifile-grouping"]'; run_core=false ;;
             *) exit 2 ;;
           esac
           arguments=(--lane "${LANE}" --sha "${EXPECTED_SHA}" --matrices 1 \
@@ -317,7 +329,7 @@ jobs:
   qualification-report:
     name: Exact-SHA R0 qualification report
     if: always()
-    needs: [story-gate, matrix-qualification]
+    needs: [qualification-build, story-gate, matrix-qualification]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -337,12 +349,19 @@ jobs:
         with:
           pattern: r0-matrix-*-${{ inputs.expected_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: downloaded/matrices
+      - name: Download shared-build timing evidence
+        if: always() && needs.qualification-build.result == 'success'
+        uses: actions/download-artifact@v8
+        with:
+          name: r0-build-summary-${{ inputs.expected_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: downloaded/build
       - name: Validate all five logical matrices and render stability report
         if: always()
         run: >-
           python3 apps/ios/scripts/qualification/aggregate_r0_qualification.py
           --story-input downloaded/stories
           --matrix-input downloaded/matrices
+          --build-summary downloaded/build/BuildSummary.json
           --manifest tests/e2e/manifest.json
           --sampling-plan apps/ios/scripts/qualification/r0_sampling_plan.json
           --runtime-baseline apps/ios/scripts/qualification/r0_runtime_baseline.json
@@ -362,8 +381,10 @@ jobs:
       - name: Require successful qualification dependencies
         if: always()
         env:
+          BUILD_RESULT: ${{ needs.qualification-build.result }}
           STORY_GATE_RESULT: ${{ needs.story-gate.result }}
           MATRIX_RESULT: ${{ needs.matrix-qualification.result }}
         run: |
+          test "${BUILD_RESULT}" = success
           test "${STORY_GATE_RESULT}" = success
           test "${MATRIX_RESULT}" = success

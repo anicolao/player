@@ -361,11 +361,11 @@ cmp "${temporary_root}/manifest-stories" \
   "${qualification_workflow}" | rg -c 'run_core=true')" -eq 1 ]] \
   || fail "core and fixture tests must run in exactly one formal matrix lane"
 for formal_lane in \
-  'lane-1) stories='\''["007-sleep-timer","002-import-and-play"]'\''; run_core=false ;;' \
-  'lane-2) stories='\''["004-metadata-repair","009-accessible-core-journeys"]'\''; run_core=true ;;' \
-  'lane-3) stories='\''["005-play-and-restore","013-app-store-listing","012-monetization"]'\''; run_core=false ;;' \
-  'lane-4) stories='\''["001-ios-launch","006-safe-zip-import","003-multifile-grouping"]'\''; run_core=false ;;' \
-  'lane-5) stories='\''["008-library-search","010-library-backup","011-offline-recovery"]'\''; run_core=false ;;'; do
+  'lane-1) stories='\''["008-library-search","013-app-store-listing"]'\''; run_core=false ;;' \
+  'lane-2) stories='\''["005-play-and-restore","009-accessible-core-journeys","012-monetization"]'\''; run_core=false ;;' \
+  'lane-3) stories='\''["007-sleep-timer","001-ios-launch","006-safe-zip-import"]'\''; run_core=false ;;' \
+  'lane-4) stories='\''["004-metadata-repair","011-offline-recovery"]'\''; run_core=true ;;' \
+  'lane-5) stories='\''["010-library-backup","002-import-and-play","003-multifile-grouping"]'\''; run_core=false ;;'; do
   rg -Fq "${formal_lane}" "${qualification_workflow}" \
     || fail "formal matrix qualification is missing balanced ${formal_lane%%)*}"
 done
@@ -608,6 +608,7 @@ ordered = [
     "- uses: actions/checkout@v7",
     "- name: Download story evidence",
     "- name: Download matrix evidence when present",
+    "- name: Download shared-build timing evidence",
     "- name: Validate all five logical matrices and render stability report",
     "- name: Upload final stability report",
     "- name: Require successful qualification dependencies",
@@ -622,7 +623,18 @@ for marker in ordered:
         raise SystemExit(1)
 if "if: always() && needs.matrix-qualification.result != 'skipped'" not in section:
     raise SystemExit(1)
+if "if: always() && needs.qualification-build.result == 'success'" not in section:
+    raise SystemExit(1)
 PY
+rg -Fq 'r0-build-summary-${{ inputs.expected_sha }}-${{ github.run_id }}-${{ github.run_attempt }}' \
+  <<< "${qualification_report_section}" \
+  || fail "the authoritative qualification report must consume exact-run shared-build timing"
+rg -Fq -- '--build-summary downloaded/build/BuildSummary.json' \
+  <<< "${qualification_report_section}" \
+  || fail "the authoritative qualification report must validate shared-build timing"
+rg -q 'BUILD_RESULT.*needs\.qualification-build\.result' \
+  <<< "${qualification_report_section}" \
+  || fail "the authoritative qualification report must inspect the shared-build result"
 rg -q 'STORY_GATE_RESULT.*needs\.story-gate\.result' \
   <<< "${qualification_report_section}" \
   || fail "the authoritative qualification report must inspect the story-gate result"
@@ -632,6 +644,9 @@ rg -q 'MATRIX_RESULT.*needs\.matrix-qualification\.result' \
 rg -Fq 'test "${STORY_GATE_RESULT}" = success' \
   <<< "${qualification_report_section}" \
   || fail "the authoritative qualification report must require a successful story gate"
+rg -Fq 'test "${BUILD_RESULT}" = success' \
+  <<< "${qualification_report_section}" \
+  || fail "the authoritative qualification report must require a successful shared build"
 rg -Fq 'test "${MATRIX_RESULT}" = success' \
   <<< "${qualification_report_section}" \
   || fail "the authoritative qualification report must require a successful matrix stage"

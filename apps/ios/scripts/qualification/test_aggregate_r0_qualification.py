@@ -113,7 +113,8 @@ class QualificationAggregatorTests(unittest.TestCase):
             "attachment-export": 0, "build": 100, "build-provenance": 0,
             "build-reuse": 0, "environment-reuse": 0,
             "readme-comparison": 0, "screenshot-comparison": 0,
-            "simulator": 0, "target-install": 0, "test": 65,
+            "simulator": 0, "simulator-control-plane-reset": 0,
+            "target-install": 0, "target-source-hiding": 0, "test": 65,
             "walkthrough-materialization": 0, "core-fixtures": 2,
             "core-tests": 3, "app-store-renderer": 1,
         }
@@ -133,8 +134,12 @@ class QualificationAggregatorTests(unittest.TestCase):
                                           "reason": "Intentional remediation coverage.",
                                           "approvedBy": "The remediation plan.",
                                           "remediationItems": [
-                                              f"R{index}" for index in range(1, 17)
+                                              f"R{index}" for index in range(17)
                                           ]}}})
+        self.build_summary = self.root / "BuildSummary.json"
+        write_json(self.build_summary, {
+            "schemaVersion": 1, "commit": SHA, "durationSeconds": 20,
+        })
         self.history = self.root / "history.json"
         write_json(self.history, {"schemaVersion": 1, "entries": [{
             "signature": "screenshot:pixel-difference:003-smart-rewind-applied.png",
@@ -195,7 +200,6 @@ class QualificationAggregatorTests(unittest.TestCase):
                     phases = None
                     if story == lane_stories[0]:
                         phases = {phase: 0 for phase in aggregate.STORY_PHASES - {"test"}}
-                        phases["build"] = 20
                     write_story_evidence(
                         matrix_lane_root, self.root, story, artifact,
                         phases=phases)
@@ -255,6 +259,7 @@ class QualificationAggregatorTests(unittest.TestCase):
     def run_aggregate(self):
         return aggregate.main(["--story-input", str(self.story_root),
                                "--matrix-input", str(self.matrix_root),
+                               "--build-summary", str(self.build_summary),
                                "--manifest", str(self.manifest), "--runtime-baseline", str(self.baseline),
                                "--failure-history", str(self.history),
                                "--sha", SHA, "--output", str(self.root / "report")])
@@ -325,13 +330,15 @@ class QualificationAggregatorTests(unittest.TestCase):
 
         baseline = aggregate.validate_baseline(self.baseline, STORIES)
         matrix_result = aggregate.validate_matrices(
-            fragmented_matrices, self.root, STORIES, SHA, 5, baseline
+            fragmented_matrices, self.root, STORIES, SHA, 5, baseline,
+            aggregate.validate_build_summary(self.build_summary, SHA)
         )
         self.assertEqual(matrix_result["errors"], [])
         self.assertEqual(matrix_result["lanes"], 25)
         next(fragmented_matrices.rglob("MatrixLaneSummary.json")).unlink()
         self.assertTrue(aggregate.validate_matrices(
-            fragmented_matrices, self.root, STORIES, SHA, 5, baseline
+            fragmented_matrices, self.root, STORIES, SHA, 5, baseline,
+            aggregate.validate_build_summary(self.build_summary, SHA)
         )["errors"])
 
     def test_least_sampled_plan_focuses_repetition_without_accepting_extra_stories(self):
@@ -374,9 +381,32 @@ class QualificationAggregatorTests(unittest.TestCase):
         self.assertEqual(summary["matrixQualification"]["logicalWallClock"]["referenceSeconds"], 100)
         self.assertEqual(summary["matrixQualification"]["phaseTimings"]["test"]["current"]["median"], 65)
         self.assertEqual(summary["matrixQualification"]["phaseTimings"]["build"]["current"]["count"], 5)
-        self.assertEqual(summary["matrixQualification"]["phaseTimings"]["build"]["current"]["median"], 100)
+        self.assertEqual(summary["matrixQualification"]["phaseTimings"]["build"]["current"]["median"], 20)
         self.assertTrue(summary["failureAccounting"]["rootCauseAccountingComplete"])
         self.assertEqual(len(summary["failureAccounting"]["historical"]), 1)
+
+    def test_requires_exact_sha_shared_build_timing_for_matrix_qualification(self):
+        self.build_summary.unlink()
+        self.assertEqual(self.run_aggregate(), 2)
+
+        for payload in (
+                {"schemaVersion": 1, "commit": "b" * 40, "durationSeconds": 20},
+                {"schemaVersion": 1, "commit": SHA, "durationSeconds": -1},
+                {"schemaVersion": 1, "commit": SHA, "durationSeconds": True},
+                {"schemaVersion": 1, "commit": SHA, "durationSeconds": 20,
+                 "unexpected": True}):
+            with self.subTest(payload=payload):
+                write_json(self.build_summary, payload)
+                self.assertEqual(self.run_aggregate(), 2)
+
+    def test_story_only_qualification_rejects_extraneous_shared_build_timing(self):
+        arguments = [
+            "--story-input", str(self.story_root), "--build-summary", str(self.build_summary),
+            "--manifest", str(self.manifest), "--runtime-baseline", str(self.baseline),
+            "--failure-history", str(self.history), "--sha", SHA,
+            "--story-attempts", "10", "--output", str(self.root / "story-only-report"),
+        ]
+        self.assertEqual(aggregate.main(arguments), 2)
 
     def test_rejects_a_runtime_reference_without_approved_coverage_provenance(self):
         payload = json.loads(self.baseline.read_text())
@@ -625,13 +655,15 @@ class QualificationAggregatorTests(unittest.TestCase):
                     artifact = self.matrix_summary(lane).parent / record["artifact"]
                     rows = (artifact / "PhaseTimings.tsv").read_text().splitlines()
                     (artifact / "PhaseTimings.tsv").write_text(
-                        "\n".join(row for row in rows if not row.startswith("build\t")) + "\n",
+                        "\n".join(row for row in rows
+                                  if not row.startswith("target-source-hiding\t")) + "\n",
                         encoding="utf-8")
                     evidence_module.write_manifest(
                         artifact, self.root / record["story"], record["story"])
         self.assertEqual(self.run_aggregate(), 1)
         errors = json.loads((self.root / "report/QualificationSummary.json").read_text())["errors"]
-        self.assertTrue(any("missing required phases: build" in error for error in errors))
+        self.assertTrue(any("missing required phases: target-source-hiding" in error
+                            for error in errors))
 
     def test_accepts_core_as_a_historical_failure_scope(self):
         payload = json.loads(self.history.read_text())

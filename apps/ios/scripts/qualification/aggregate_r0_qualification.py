@@ -14,12 +14,14 @@ from pathlib import Path
 from evidence_manifest import validate_manifest
 
 STORY_PHASES = {
-    "attachment-export", "build", "build-provenance", "build-reuse",
+    "attachment-export", "build-provenance", "build-reuse",
     "environment-reuse", "readme-comparison", "screenshot-comparison",
-    "simulator", "target-install", "test", "walkthrough-materialization",
+    "simulator", "simulator-control-plane-reset", "target-install",
+    "target-source-hiding", "test", "walkthrough-materialization",
 }
+SHARED_PHASES = {"build"}
 GATE_PHASES = {"core-fixtures", "core-tests", "app-store-renderer"}
-REQUIRED_PHASES = STORY_PHASES | GATE_PHASES
+REQUIRED_PHASES = STORY_PHASES | SHARED_PHASES | GATE_PHASES
 
 
 def load_json(path: Path):
@@ -29,6 +31,17 @@ def load_json(path: Path):
 
 def canonical_stories(manifest: Path):
     return [entry["story"] for entry in load_json(manifest)]
+
+
+def validate_build_summary(path: Path, sha: str):
+    summary = load_json(path)
+    if (not isinstance(summary, dict)
+            or set(summary) != {"schemaVersion", "commit", "durationSeconds"}
+            or summary.get("schemaVersion") != 1
+            or summary.get("commit") != sha
+            or not nonnegative_integer(summary.get("durationSeconds"))):
+        raise ValueError("shared-build summary must bind one nonnegative duration to the exact SHA")
+    return summary
 
 
 def validate_sampling_plan(path: Path, expected_stories):
@@ -520,7 +533,8 @@ def validate_core(lane_root, gate, index, errors):
         errors.append(f"logical matrix {index} does not prove a fully passing PlayerTests run")
 
 
-def validate_matrices(root, canonical_root, expected_stories, sha, requested_matrices, baseline):
+def validate_matrices(root, canonical_root, expected_stories, sha, requested_matrices,
+                      baseline, build_summary):
     errors, durations, signatures, failures = [], [], {}, []
     observed_artifacts = set()
     story_values, phase_matrix_values, wall_values = defaultdict(list), defaultdict(list), []
@@ -705,7 +719,11 @@ def validate_matrices(root, canonical_root, expected_stories, sha, requested_mat
         if len(lane_durations) != 5 or any(not nonnegative_integer(value) for value in lane_durations):
             errors.append(f"logical matrix {index} has invalid lane wall-clock timings")
         else:
-            wall_values.append(max(lane_durations))
+            # The shared build is a predecessor of every matrix lane. Count it
+            # once on the critical path rather than demanding a stale build row
+            # from one arbitrary story.
+            wall_values.append(max(lane_durations) + build_summary["durationSeconds"])
+        phase_matrix_values["build"].append(build_summary["durationSeconds"])
         phase_totals = defaultdict(int)
         observed_phases = set()
         for _, matrix in matrices:
@@ -798,7 +816,7 @@ def validate_baseline(path, expected_stories):
     coverage = reference.get("coverageAdjustment", {})
     if (not isinstance(coverage.get("reason"), str) or not coverage["reason"]
             or not isinstance(coverage.get("approvedBy"), str) or not coverage["approvedBy"]
-            or coverage.get("remediationItems") != [f"R{index}" for index in range(1, 17)]):
+            or coverage.get("remediationItems") != [f"R{index}" for index in range(17)]):
         raise ValueError("qualification reference requires an explicit coverage adjustment")
     required = [baseline.get("appStoreAssetCount"), baseline.get("appStorePixelWidth"),
                 baseline.get("appStorePixelHeight")]
@@ -947,6 +965,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--story-input", type=Path, required=True)
     parser.add_argument("--matrix-input", type=Path)
+    parser.add_argument("--build-summary", type=Path)
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--sampling-plan", type=Path)
     parser.add_argument("--runtime-baseline", type=Path,
@@ -967,6 +986,7 @@ def main(argv=None):
         baseline = validate_baseline(args.runtime_baseline, stories)
         failure_history = validate_failure_history(args.failure_history, stories)
         sampling_plan = None
+        build_summary = None
         qualified_stories = stories
         if args.sampling_plan is not None:
             sampling_plan = validate_sampling_plan(args.sampling_plan, stories)
@@ -976,6 +996,12 @@ def main(argv=None):
             if (args.matrix_input is not None
                     and args.matrix_attempts != sampling_plan["fullMatrixAttempts"]):
                 raise ValueError("requested matrix attempts disagree with the sampling plan")
+        if args.matrix_input is not None:
+            if args.build_summary is None:
+                raise ValueError("matrix qualification requires shared-build timing evidence")
+            build_summary = validate_build_summary(args.build_summary, args.sha)
+        elif args.build_summary is not None:
+            raise ValueError("shared-build timing evidence requires matrix qualification")
     except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError) as error:
         print(f"Invalid qualification contract: {error}", file=sys.stderr)
         return 2
@@ -986,7 +1012,8 @@ def main(argv=None):
     matrix_result = None
     if args.matrix_input is not None:
         matrix_result = validate_matrices(
-            args.matrix_input, canonical_root, stories, args.sha, args.matrix_attempts, baseline)
+            args.matrix_input, canonical_root, stories, args.sha, args.matrix_attempts,
+            baseline, build_summary)
     failure_accounting = build_failure_accounting(failure_history, story_result, matrix_result)
     if not failure_accounting["rootCauseAccountingComplete"]:
         story_result["errors"].append(
