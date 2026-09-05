@@ -4,13 +4,12 @@
 
 ## Goal
 
-Turn a quick App Store glance into five immediate answers:
+Turn a quick App Store glance into four immediate answers:
 
-1. **Can I get my books in?** Yes—from any computer through a private local browser upload.
-2. **Do I need an account or subscription?** No—there is no account, email, or recurring subscription.
-3. **Is there an even faster Mac path?** Yes—drag straight from Finder with iPhone Mirroring.
-4. **What is it?** A beautiful, offline home for audiobooks you own.
-5. **Will it fit me?** Yes—speed, skips, seeking, chapters, and sleep are adjustable.
+1. **Can I get my books in?** Yes—from any computer, with an even faster Finder drag-and-drop path on Mac.
+2. **What is it?** A beautiful, offline home for audiobooks you own.
+3. **Do I need an account or subscription?** No—there is no account, email, or recurring subscription.
+4. **Will it fit me?** Yes—speed, skips, seeking, chapters, and sleep are adjustable.
 
 The first four screenshots carry that whole story. Later images deepen confidence and clearly disclose the 50-hour allowance and one-time Full Unlock.
 
@@ -36,78 +35,69 @@ The first four screenshots carry that whole story. Later images deepen confidenc
 
 | # | Promise | Conversion job | Source |
 | --- | --- | --- | --- |
-| 1 | **Your books. No account.** | Private local import. No email or recurring subscription. | 001-receiver-ready.png |
-| 2 | **Drag. Drop. Done.** | Use iPhone Mirroring to drop books straight from Finder. | 002-mirroring-drop-progress.png |
-| 3 | **Beautifully offline.** | A calm library for every audiobook you own. | 000-library.png |
+| 1 | **Drag. Drop. Done.** | Browser import on Mac, Windows, Linux, or Chromebook. Drag straight from Finder on Mac. | 001-receiver-ready.png + 002-mirroring-drop-progress.png |
+| 2 | **Beautifully offline.** | A calm library for every audiobook you own. | 000-library.png |
+| 3 | **Your story. Your place.** | Your books and listening stay yours. No account, email, or subscription. | 004-now-playing.png |
 | 4 | **Every control, just how you like it.** | Choose speed, skips, and chapter-aware seeking. | 003-playback-settings.png |
-| 5 | **Your story. Your pace.** | Chapters, precise progress, and controls that stay close. | 004-now-playing.png |
-| 6 | **Drift off. Keep your place.** | Stop after a timer, chapter, or track—with a gentle fade. | 005-sleep-timer.png |
-| 7 | **50 hours included. Unlock once.** | Keep listening without a recurring subscription. | 006-full-unlock.png |
+| 5 | **Drift off. Keep your place.** | Stop after a timer, chapter, or track—with a gentle fade. | 005-sleep-timer.png |
+| 6 | **50 hours included. Unlock once.** | Keep listening without a recurring subscription. | 006-full-unlock.png |
 
-The opening sequence is deliberately ordered **account-free any-computer import → fastest Mac path → library → control**. It removes both the setup and sign-up objections before showing the payoff, while keeping Files, AirDrop, the share sheet, and ZIP import as useful secondary paths in the description.
+The opening sequence is deliberately ordered **any-computer import with the fastest Mac path → offline library → private account-free listening → control**. Combining both import routes keeps the first panel focused, while the next two panels show the bookshelf payoff and remove the sign-up objection.
 
 ### 1. Any Computer
 
-- **Eyebrow:** WORKS WITH ANY COMPUTER
-- **Headline:** Your books. / No account.
-- **Supporting line:** Private local import. No email or recurring subscription.
-- **Theme:** paper
-
-<img src="tests/e2e/013-app-store-listing/screenshots/ios/001-receiver-ready.png" width="260" alt="Real Bookshelf E2E source for 01-any-computer">
-
-### 2. iPhone Mirroring
-
-- **Eyebrow:** FASTEST ON A MAC
+- **Eyebrow:** ANY COMPUTER · FASTEST ON A MAC
 - **Headline:** Drag. Drop. / Done.
-- **Supporting line:** Use iPhone Mirroring to drop books straight from Finder.
+- **Supporting line:** Browser import on Mac, Windows, Linux, or Chromebook. Drag straight from Finder on Mac.
 - **Theme:** ember
 
-<img src="tests/e2e/013-app-store-listing/screenshots/ios/002-mirroring-drop-progress.png" width="260" alt="Real Bookshelf E2E source for 02-iphone-mirroring">
+<img src="tests/e2e/013-app-store-listing/screenshots/ios/001-receiver-ready.png" width="260" alt="Real Bookshelf E2E source for 01-any-computer">
+<img src="tests/e2e/013-app-store-listing/screenshots/ios/002-mirroring-drop-progress.png" width="260" alt="Real Bookshelf E2E source for 01-any-computer">
 
-### 3. Library
+### 2. Library
 
-- **Eyebrow:** YOUR BOOKS. YOUR PLACE.
+- **Eyebrow:** A LIBRARY THAT FEELS LIKE YOURS
 - **Headline:** Beautifully / offline.
 - **Supporting line:** A calm library for every audiobook you own.
 - **Theme:** paper
 
-<img src="tests/e2e/013-app-store-listing/screenshots/ios/000-library.png" width="260" alt="Real Bookshelf E2E source for 03-library">
+<img src="tests/e2e/013-app-store-listing/screenshots/ios/000-library.png" width="260" alt="Real Bookshelf E2E source for 02-library">
+
+### 3. Your Story
+
+- **Eyebrow:** PRIVATE BY DESIGN
+- **Headline:** Your story. / Your place.
+- **Supporting line:** Your books and listening stay yours. No account, email, or subscription.
+- **Theme:** night
+
+<img src="tests/e2e/013-app-store-listing/screenshots/ios/004-now-playing.png" width="260" alt="Real Bookshelf E2E source for 03-your-story">
 
 ### 4. Playback Settings
 
 - **Eyebrow:** LISTEN YOUR WAY
 - **Headline:** Every control, / just how you like it.
 - **Supporting line:** Choose speed, skips, and chapter-aware seeking.
-- **Theme:** night
+- **Theme:** ember
 
 <img src="tests/e2e/013-app-store-listing/screenshots/ios/003-playback-settings.png" width="260" alt="Real Bookshelf E2E source for 04-playback-settings">
 
-### 5. Now Playing
-
-- **Eyebrow:** MADE FOR LONG LISTENS
-- **Headline:** Your story. / Your pace.
-- **Supporting line:** Chapters, precise progress, and controls that stay close.
-- **Theme:** paper
-
-<img src="tests/e2e/013-app-store-listing/screenshots/ios/004-now-playing.png" width="260" alt="Real Bookshelf E2E source for 05-now-playing">
-
-### 6. Sleep Timer
+### 5. Sleep Timer
 
 - **Eyebrow:** REST EASY
 - **Headline:** Drift off. / Keep your place.
 - **Supporting line:** Stop after a timer, chapter, or track—with a gentle fade.
-- **Theme:** ember
+- **Theme:** paper
 
-<img src="tests/e2e/013-app-store-listing/screenshots/ios/005-sleep-timer.png" width="260" alt="Real Bookshelf E2E source for 06-sleep-timer">
+<img src="tests/e2e/013-app-store-listing/screenshots/ios/005-sleep-timer.png" width="260" alt="Real Bookshelf E2E source for 05-sleep-timer">
 
-### 7. Unlock
+### 6. Unlock
 
 - **Eyebrow:** NO SUBSCRIPTION
 - **Headline:** 50 hours included. / Unlock once.
 - **Supporting line:** Keep listening without a recurring subscription.
 - **Theme:** night
 
-<img src="tests/e2e/013-app-store-listing/screenshots/ios/006-full-unlock.png" width="260" alt="Real Bookshelf E2E source for 07-unlock">
+<img src="tests/e2e/013-app-store-listing/screenshots/ios/006-full-unlock.png" width="260" alt="Real Bookshelf E2E source for 06-unlock">
 
 ## Listing copy
 
@@ -181,8 +171,8 @@ Record the first 14 and 28 days by acquisition source before changing the galler
 
 After enough traffic arrives, run Product Page Optimization tests in this order:
 
-1. **Account-free import framing:** “Your books. No account.” versus “Any computer. Straight to Bookshelf.” Change only slide 1.
-2. **Mac-speed framing:** “Drag. Drop. Done.” versus “Finder to Bookshelf.” Change only slide 2.
+1. **Import framing:** “Drag. Drop. Done.” versus “Any computer. Straight to Bookshelf.” Change only slide 1.
+2. **Privacy framing:** “Your story. Your place.” versus “Your books stay yours.” Change only slide 3.
 3. **Control framing:** “Every control, just how you like it” versus “Listen exactly your way.” Change only slide 4.
 
 Do not declare a winner before Apple reports at least 90% confidence. Keep screenshots and metadata unchanged while each experiment runs.

@@ -20,35 +20,35 @@
   "slides": [
     {
       "id": "01-any-computer",
-      "theme": "paper",
-      "eyebrow": "WORKS WITH ANY COMPUTER",
-      "headline": "Your books.\nNo account.",
-      "body": "Private local import. No email or recurring subscription.",
-      "layout": "single",
-      "sources": ["001-receiver-ready.png"]
-    },
-    {
-      "id": "02-iphone-mirroring",
-      "title": "iPhone Mirroring",
+      "title": "Any Computer",
       "theme": "ember",
-      "eyebrow": "FASTEST ON A MAC",
+      "eyebrow": "ANY COMPUTER · FASTEST ON A MAC",
       "headline": "Drag. Drop.\nDone.",
-      "body": "Use iPhone Mirroring to drop books straight from Finder.",
-      "layout": "single",
-      "sources": ["002-mirroring-drop-progress.png"]
+      "body": "Browser import on Mac, Windows, Linux, or Chromebook. Drag straight from Finder on Mac.",
+      "layout": "pair",
+      "sources": ["001-receiver-ready.png", "002-mirroring-drop-progress.png"]
     },
     {
-      "id": "03-library",
+      "id": "02-library",
       "theme": "paper",
-      "eyebrow": "YOUR BOOKS. YOUR PLACE.",
+      "eyebrow": "A LIBRARY THAT FEELS LIKE YOURS",
       "headline": "Beautifully\noffline.",
       "body": "A calm library for every audiobook you own.",
       "layout": "single",
       "sources": ["000-library.png"]
     },
     {
-      "id": "04-playback-settings",
+      "id": "03-your-story",
       "theme": "night",
+      "eyebrow": "PRIVATE BY DESIGN",
+      "headline": "Your story.\nYour place.",
+      "body": "Your books and listening stay yours. No account, email, or subscription.",
+      "layout": "single",
+      "sources": ["004-now-playing.png"]
+    },
+    {
+      "id": "04-playback-settings",
+      "theme": "ember",
       "eyebrow": "LISTEN YOUR WAY",
       "headline": "Every control,\njust how you like it.",
       "body": "Choose speed, skips, and chapter-aware seeking.",
@@ -56,17 +56,8 @@
       "sources": ["003-playback-settings.png"]
     },
     {
-      "id": "05-now-playing",
+      "id": "05-sleep-timer",
       "theme": "paper",
-      "eyebrow": "MADE FOR LONG LISTENS",
-      "headline": "Your story.\nYour pace.",
-      "body": "Chapters, precise progress, and controls that stay close.",
-      "layout": "single",
-      "sources": ["004-now-playing.png"]
-    },
-    {
-      "id": "06-sleep-timer",
-      "theme": "ember",
       "eyebrow": "REST EASY",
       "headline": "Drift off.\nKeep your place.",
       "body": "Stop after a timer, chapter, or track—with a gentle fade.",
@@ -74,7 +65,7 @@
       "sources": ["005-sleep-timer.png"]
     },
     {
-      "id": "07-unlock",
+      "id": "06-unlock",
       "theme": "night",
       "eyebrow": "NO SUBSCRIPTION",
       "headline": "50 hours included.\nUnlock once.",

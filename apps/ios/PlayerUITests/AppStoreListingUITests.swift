@@ -1,3 +1,4 @@
+import Foundation
 import XCTest
 
 @MainActor
@@ -15,6 +16,7 @@ final class AppStoreListingUITests: PlayerUITestCase {
       additionalPreconditions: [
         "Every image uses fixed synthetic audiobook metadata and artwork.",
         "Harbor at Dawn uses committed, generated fictional cover artwork made for this marketing fixture.",
+        "The Library capture omits the manually curated Up Next queue so the bookshelf remains prominent.",
         "The listing and website build scripts consume the fresh ActualWalkthrough output from this story.",
         "No marketing screenshot is maintained as a second copied source file.",
       ]
@@ -58,7 +60,7 @@ final class AppStoreListingUITests: PlayerUITestCase {
       ],
       captureReadiness: marketingCaptureReadiness(
         app: library,
-        specification: "At capture, the exact five-book Library and decoded cover shelf are idle at their starts with four recent cards and a paused mini-player",
+        specification: "At capture, the exact five-book Library has no Up Next queue, and its decoded cover shelf is idle at the start with four recent cards and a paused mini-player",
         anchor: recentShelfReadiness
       ) {
         let recentCards = library.descendants(matching: .any)
@@ -454,8 +456,16 @@ final class AppStoreListingUITests: PlayerUITestCase {
       fixture: "synthetic-populated-library",
       extraArguments: ["-e2e-computer-receiver-ready"]
     )
-    app.launchEnvironment["PLAYER_E2E_LIBRARY_DESCRIPTOR_BASE64"] = try fixtureData(
+    let fixtureDescriptor = try fixtureData(
       resource: "synthetic-populated-library-fixture", extension: "json"
+    )
+    var marketingDescriptor = try XCTUnwrap(
+      JSONSerialization.jsonObject(with: fixtureDescriptor) as? [String: Any]
+    )
+    marketingDescriptor["upNext"] = []
+    app.launchEnvironment["PLAYER_E2E_LIBRARY_DESCRIPTOR_BASE64"] = try JSONSerialization.data(
+      withJSONObject: marketingDescriptor,
+      options: [.sortedKeys]
     ).base64EncodedString()
     app.launchEnvironment["PLAYER_E2E_LIBRARY_AUDIO_BASE64"] = try fixtureData(
       resource: "library-book-audio", extension: "m4b"
