@@ -13,6 +13,7 @@
 - Network and clock data: unused by this story
 - Every image uses fixed synthetic audiobook metadata and artwork.
 - Harbor at Dawn uses committed, generated fictional cover artwork made for this marketing fixture.
+- The Library capture omits the manually curated Up Next queue so the bookshelf remains prominent.
 - The listing and website build scripts consume the fresh ActualWalkthrough output from this story.
 - No marketing screenshot is maintained as a second copied source file.
 

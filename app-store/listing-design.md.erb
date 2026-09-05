@@ -4,13 +4,12 @@
 
 ## Goal
 
-Turn a quick App Store glance into five immediate answers:
+Turn a quick App Store glance into four immediate answers:
 
-1. **Can I get my books in?** Yes—from any computer through a private local browser upload.
-2. **Do I need an account or subscription?** No—there is no account, email, or recurring subscription.
-3. **Is there an even faster Mac path?** Yes—drag straight from Finder with iPhone Mirroring.
-4. **What is it?** A beautiful, offline home for audiobooks you own.
-5. **Will it fit me?** Yes—speed, skips, seeking, chapters, and sleep are adjustable.
+1. **Can I get my books in?** Yes—from any computer, with an even faster Finder drag-and-drop path on Mac.
+2. **What is it?** A beautiful, offline home for audiobooks you own.
+3. **Do I need an account or subscription?** No—there is no account, email, or recurring subscription.
+4. **Will it fit me?** Yes—speed, skips, seeking, chapters, and sleep are adjustable.
 
 The first four screenshots carry that whole story. Later images deepen confidence and clearly disclose the 50-hour allowance and one-time Full Unlock.
 
@@ -40,7 +39,7 @@ The first four screenshots carry that whole story. Later images deepen confidenc
 | <%= index + 1 %> | **<%= slide["headline"].gsub("\n", " ") %>** | <%= slide["body"] %> | <%= slide["sources"].join(" + ") %> |
 <% end -%>
 
-The opening sequence is deliberately ordered **account-free any-computer import → fastest Mac path → library → control**. It removes both the setup and sign-up objections before showing the payoff, while keeping Files, AirDrop, the share sheet, and ZIP import as useful secondary paths in the description.
+The opening sequence is deliberately ordered **any-computer import with the fastest Mac path → offline library → private account-free listening → control**. Combining both import routes keeps the first panel focused, while the next two panels show the bookshelf payoff and remove the sign-up objection.
 
 <% slides.each_with_index do |slide, index| -%>
 ### <%= index + 1 %>. <%= slide["title"] || slide["id"].sub(/^\d+-/, "").split("-").map(&:capitalize).join(" ") %>
@@ -96,8 +95,8 @@ Record the first 14 and 28 days by acquisition source before changing the galler
 
 After enough traffic arrives, run Product Page Optimization tests in this order:
 
-1. **Account-free import framing:** “Your books. No account.” versus “Any computer. Straight to Bookshelf.” Change only slide 1.
-2. **Mac-speed framing:** “Drag. Drop. Done.” versus “Finder to Bookshelf.” Change only slide 2.
+1. **Import framing:** “Drag. Drop. Done.” versus “Any computer. Straight to Bookshelf.” Change only slide 1.
+2. **Privacy framing:** “Your story. Your place.” versus “Your books stay yours.” Change only slide 3.
 3. **Control framing:** “Every control, just how you like it” versus “Listen exactly your way.” Change only slide 4.
 
 Do not declare a winner before Apple reports at least 90% confidence. Keep screenshots and metadata unchanged while each experiment runs.
