@@ -22,8 +22,8 @@
       "id": "01-any-computer",
       "theme": "paper",
       "eyebrow": "WORKS WITH ANY COMPUTER",
-      "headline": "Open a browser.\nDrop in a book.",
-      "body": "Private local upload from Mac, Windows, Linux, or Chromebook.",
+      "headline": "Your books.\nNo account.",
+      "body": "Private local import. No email or recurring subscription.",
       "layout": "single",
       "sources": ["001-receiver-ready.png"]
     },

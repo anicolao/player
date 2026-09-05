@@ -4,12 +4,13 @@
 
 ## Goal
 
-Turn a quick App Store glance into four immediate answers:
+Turn a quick App Store glance into five immediate answers:
 
 1. **Can I get my books in?** Yes—from any computer through a private local browser upload.
-2. **Is there an even faster Mac path?** Yes—drag straight from Finder with iPhone Mirroring.
-3. **What is it?** A beautiful, offline home for audiobooks you own.
-4. **Will it fit me?** Yes—speed, skips, seeking, chapters, and sleep are adjustable.
+2. **Do I need an account or subscription?** No—there is no account, email, or recurring subscription.
+3. **Is there an even faster Mac path?** Yes—drag straight from Finder with iPhone Mirroring.
+4. **What is it?** A beautiful, offline home for audiobooks you own.
+5. **Will it fit me?** Yes—speed, skips, seeking, chapters, and sleep are adjustable.
 
 The first four screenshots carry that whole story. Later images deepen confidence and clearly disclose the 50-hour allowance and one-time Full Unlock.
 
@@ -35,7 +36,7 @@ The first four screenshots carry that whole story. Later images deepen confidenc
 
 | # | Promise | Conversion job | Source |
 | --- | --- | --- | --- |
-| 1 | **Open a browser. Drop in a book.** | Private local upload from Mac, Windows, Linux, or Chromebook. | 001-receiver-ready.png |
+| 1 | **Your books. No account.** | Private local import. No email or recurring subscription. | 001-receiver-ready.png |
 | 2 | **Drag. Drop. Done.** | Use iPhone Mirroring to drop books straight from Finder. | 002-mirroring-drop-progress.png |
 | 3 | **Beautifully offline.** | A calm library for every audiobook you own. | 000-library.png |
 | 4 | **Every control, just how you like it.** | Choose speed, skips, and chapter-aware seeking. | 003-playback-settings.png |
@@ -43,13 +44,13 @@ The first four screenshots carry that whole story. Later images deepen confidenc
 | 6 | **Drift off. Keep your place.** | Stop after a timer, chapter, or track—with a gentle fade. | 005-sleep-timer.png |
 | 7 | **50 hours included. Unlock once.** | Keep listening without a recurring subscription. | 006-full-unlock.png |
 
-The opening sequence is deliberately ordered **any-computer upload → fastest Mac path → library → control**. It removes the biggest setup objection before showing the payoff, while keeping Files, AirDrop, the share sheet, and ZIP import as useful secondary paths in the description.
+The opening sequence is deliberately ordered **account-free any-computer import → fastest Mac path → library → control**. It removes both the setup and sign-up objections before showing the payoff, while keeping Files, AirDrop, the share sheet, and ZIP import as useful secondary paths in the description.
 
 ### 1. Any Computer
 
 - **Eyebrow:** WORKS WITH ANY COMPUTER
-- **Headline:** Open a browser. / Drop in a book.
-- **Supporting line:** Private local upload from Mac, Windows, Linux, or Chromebook.
+- **Headline:** Your books. / No account.
+- **Supporting line:** Private local import. No email or recurring subscription.
 - **Theme:** paper
 
 <img src="tests/e2e/013-app-store-listing/screenshots/ios/001-receiver-ready.png" width="260" alt="Real Bookshelf E2E source for 01-any-computer">
@@ -180,7 +181,7 @@ Record the first 14 and 28 days by acquisition source before changing the galler
 
 After enough traffic arrives, run Product Page Optimization tests in this order:
 
-1. **Universal import framing:** “Open a browser. Drop in a book.” versus “Any computer. Straight to Bookshelf.” Change only slide 1.
+1. **Account-free import framing:** “Your books. No account.” versus “Any computer. Straight to Bookshelf.” Change only slide 1.
 2. **Mac-speed framing:** “Drag. Drop. Done.” versus “Finder to Bookshelf.” Change only slide 2.
 3. **Control framing:** “Every control, just how you like it” versus “Listen exactly your way.” Change only slide 4.
 
