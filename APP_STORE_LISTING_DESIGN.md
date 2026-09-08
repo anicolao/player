@@ -35,9 +35,9 @@ The first four screenshots carry that whole story. Later images deepen confidenc
 
 | # | Promise | Conversion job | Source |
 | --- | --- | --- | --- |
-| 1 | **Drag. Drop. Done.** | Browser import on Mac, Windows, Linux, or Chromebook. Drag straight from Finder on Mac. | 001-receiver-ready.png + 002-mirroring-drop-progress.png |
+| 1 | **Drag. Drop. Done.** | Browser import on Mac, Windows, Linux, or Chromebook. Drag directly into the app with iPhone Mirroring. | 001-receiver-ready.png |
 | 2 | **Beautifully offline.** | A calm library for every audiobook you own. | 000-library.png |
-| 3 | **Your story. Your place.** | Your books and listening stay yours. No account, email, or subscription. | 004-now-playing.png |
+| 3 | **No sign-up. No subscription.** | Forever your story. Your place. | 004-now-playing.png |
 | 4 | **Every control, just how you like it.** | Choose speed, skips, and chapter-aware seeking. | 003-playback-settings.png |
 | 5 | **Drift off. Keep your place.** | Stop after a timer, chapter, or track—with a gentle fade. | 005-sleep-timer.png |
 | 6 | **50 hours included. Unlock once.** | Keep listening without a recurring subscription. | 006-full-unlock.png |
@@ -48,11 +48,10 @@ The opening sequence is deliberately ordered **any-computer import with the fast
 
 - **Eyebrow:** ANY COMPUTER · FASTEST ON A MAC
 - **Headline:** Drag. Drop. / Done.
-- **Supporting line:** Browser import on Mac, Windows, Linux, or Chromebook. Drag straight from Finder on Mac.
+- **Supporting line:** Browser import on Mac, Windows, Linux, or Chromebook. Drag directly into the app with iPhone Mirroring.
 - **Theme:** ember
 
 <img src="tests/e2e/013-app-store-listing/screenshots/ios/001-receiver-ready.png" width="260" alt="Real Bookshelf E2E source for 01-any-computer">
-<img src="tests/e2e/013-app-store-listing/screenshots/ios/002-mirroring-drop-progress.png" width="260" alt="Real Bookshelf E2E source for 01-any-computer">
 
 ### 2. Library
 
@@ -66,8 +65,8 @@ The opening sequence is deliberately ordered **any-computer import with the fast
 ### 3. Your Story
 
 - **Eyebrow:** PRIVATE BY DESIGN
-- **Headline:** Your story. / Your place.
-- **Supporting line:** Your books and listening stay yours. No account, email, or subscription.
+- **Headline:** No sign-up. / No subscription.
+- **Supporting line:** Forever your story. Your place.
 - **Theme:** night
 
 <img src="tests/e2e/013-app-store-listing/screenshots/ios/004-now-playing.png" width="260" alt="Real Bookshelf E2E source for 03-your-story">
@@ -111,7 +110,7 @@ The opening sequence is deliberately ordered **any-computer import with the fast
 
 ### Promotional text
 
-Bring books in from any computer with a private browser upload—or drag them straight from Finder with iPhone Mirroring—then listen your way.
+Drag and drop directly into the app from any computer.
 
 ### Description
 
