@@ -121,6 +121,29 @@ func drawPhone(_ image: CGImage, in rect: CGRect, context: CGContext, frameColor
   context.clip()
   context.interpolationQuality = .high
   context.draw(image, in: rect)
+
+  // XCTest's XCUIScreen attachment captures the app framebuffer but omits the
+  // physical display mask. Restore the Dynamic Island used by the iPhone 17
+  // marketing device so these frames match the website's phone treatment.
+  let islandWidth = rect.width * 0.313
+  let islandHeight = rect.height * 0.0332
+  let islandTopInset = rect.height * 0.0122
+  let islandRect = CGRect(
+    x: rect.midX - islandWidth / 2,
+    y: rect.maxY - islandTopInset - islandHeight,
+    width: islandWidth,
+    height: islandHeight
+  )
+  context.setFillColor(color(0x000000))
+  context.addPath(
+    CGPath(
+      roundedRect: islandRect,
+      cornerWidth: islandHeight / 2,
+      cornerHeight: islandHeight / 2,
+      transform: nil
+    )
+  )
+  context.fillPath()
   context.restoreGState()
 }
 
@@ -176,10 +199,10 @@ func render(slide: Slide, input: URL, output: URL) throws {
   )
   drawText(
     slide.body,
-    in: CGRect(x: 92, y: 2120, width: 1120, height: 120),
-    font: font("SFProDisplay-Regular", fallback: .systemFont(ofSize: 42), size: 42),
+    in: CGRect(x: 92, y: 2048, width: 1120, height: 192),
+    font: font("SFProDisplay-Regular", fallback: .systemFont(ofSize: 50), size: 50),
     color: colors.muted,
-    lineSpacing: 4
+    lineSpacing: 6
   )
 
   let images = try slide.sources.map { try loadImage(input.appendingPathComponent($0)) }
