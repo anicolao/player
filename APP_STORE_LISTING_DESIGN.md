@@ -35,7 +35,7 @@ The first four screenshots carry that whole story. Later images deepen confidenc
 
 | # | Promise | Conversion job | Source |
 | --- | --- | --- | --- |
-| 1 | **Drag. Drop. Done.** | Browser import on Mac, Windows, Linux, or Chromebook. Drag directly into the app with iPhone Mirroring. | 001-receiver-ready.png |
+| 1 | **Drag. Drop. Done.** | Browser import on Mac, Windows, Linux, or Chromebook. Drag directly into the app with iPhone Mirroring. | 002-mirroring-drop-progress.png |
 | 2 | **Beautifully offline.** | A calm library for every audiobook you own. | 000-library.png |
 | 3 | **No sign-up. No subscription.** | Forever your story. Your place. | 004-now-playing.png |
 | 4 | **Every control, just how you like it.** | Choose speed, skips, and chapter-aware seeking. | 003-playback-settings.png |
@@ -51,7 +51,7 @@ The opening sequence is deliberately ordered **any-computer import with the fast
 - **Supporting line:** Browser import on Mac, Windows, Linux, or Chromebook. Drag directly into the app with iPhone Mirroring.
 - **Theme:** ember
 
-<img src="tests/e2e/013-app-store-listing/screenshots/ios/001-receiver-ready.png" width="260" alt="Real Bookshelf E2E source for 01-any-computer">
+<img src="tests/e2e/013-app-store-listing/screenshots/ios/002-mirroring-drop-progress.png" width="260" alt="Real Bookshelf E2E source for 01-any-computer">
 
 ### 2. Library
 
