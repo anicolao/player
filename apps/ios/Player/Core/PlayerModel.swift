@@ -888,6 +888,11 @@ final class PlayerModel {
       )
       let chapters = inspected.chapters.map { chapter in
         var mapped = chapter
+        mapped.title = importedChapterTitle(
+          chapter,
+          inspected: inspected,
+          originalFilename: staged.originalFilename
+        )
         mapped.assetID = assetID
         return mapped
       }
@@ -1024,7 +1029,11 @@ final class PlayerModel {
           chapters.append(contentsOf: item.inspected.chapters.map { chapter in
             Chapter(
               id: "\(asset.id.uuidString.lowercased())-\(chapter.id)",
-              title: chapter.title,
+              title: importedChapterTitle(
+                chapter,
+                inspected: item.inspected,
+                originalFilename: asset.originalFilename
+              ),
               startSeconds: chapter.startSeconds + timelineStart,
               durationSeconds: chapter.durationSeconds,
               source: chapter.source,
@@ -3941,7 +3950,11 @@ final class PlayerModel {
         chapters += item.inspected.chapters.map {
           Chapter(
             id: "\(asset.id.uuidString.lowercased())-\($0.id)",
-            title: $0.title,
+            title: importedChapterTitle(
+              $0,
+              inspected: item.inspected,
+              originalFilename: asset.originalFilename
+            ),
             startSeconds: $0.startSeconds + start,
             durationSeconds: $0.durationSeconds,
             source: $0.source,
@@ -4182,6 +4195,16 @@ private func filenameStem(for filename: String) -> (key: String, display: String
     locale: Locale(identifier: "en_US_POSIX")
   )
   return (key, display)
+}
+
+private func importedChapterTitle(
+  _ chapter: Chapter,
+  inspected: InspectedAudio,
+  originalFilename: String
+) -> String {
+  guard chapter.source == .file else { return chapter.title }
+  return inspected.title?.nilIfBlank
+    ?? URL(filePath: originalFilename).deletingPathExtension().lastPathComponent
 }
 
 private func uniqueContributors(_ values: [String]) -> [String] {
