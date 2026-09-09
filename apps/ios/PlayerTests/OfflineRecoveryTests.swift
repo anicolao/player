@@ -201,6 +201,46 @@ final class OfflineRecoveryTests: XCTestCase {
     XCTAssertFalse(FileManager.default.fileExists(atPath: root.appending(path: "Recovery").path))
   }
 
+  @MainActor
+  func testStartupAutomaticallyRetriesOneTransientRestoreFailure() async throws {
+    let root = temporaryDirectory("automatic-retry-success")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = StartupRetryStore(failuresBeforeSuccess: 1)
+    let model = PlayerModel(environment: PlayerEnvironment(
+      persistence: store,
+      media: FileSystemMediaManager(rootURL: root),
+      inspector: DeterministicAudioInspector(result: .failure(.unreadableAudio("unused"))),
+      playback: DeterministicPlaybackController()
+    ))
+
+    await model.restore()
+
+    XCTAssertTrue(model.isRestored)
+    XCTAssertNil(model.startupRecoveryStatus)
+    let loadCount = await store.loadCount()
+    XCTAssertEqual(loadCount, 2)
+  }
+
+  @MainActor
+  func testStartupShowsRecoveryAfterBoundedAutomaticRetryFails() async throws {
+    let root = temporaryDirectory("automatic-retry-exhausted")
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = StartupRetryStore(failuresBeforeSuccess: .max)
+    let model = PlayerModel(environment: PlayerEnvironment(
+      persistence: store,
+      media: FileSystemMediaManager(rootURL: root),
+      inspector: DeterministicAudioInspector(result: .failure(.unreadableAudio("unused"))),
+      playback: DeterministicPlaybackController()
+    ))
+
+    await model.restore()
+
+    XCTAssertFalse(model.isRestored)
+    XCTAssertEqual(model.startupRecoveryStatus?.issue, .unreadableLibrary)
+    let loadCount = await store.loadCount()
+    XCTAssertEqual(loadCount, 2)
+  }
+
   func testStartupStorageReconciliationUsesOwnedIDsAndQuarantinesOrphans() async throws {
     let root = temporaryDirectory("orphans")
     defer { try? FileManager.default.removeItem(at: root) }
@@ -427,6 +467,36 @@ private actor RecoverySupportStore: LibraryPersisting {
   }
 
   func automaticBackupScanCount() -> Int { backupScanCount }
+}
+
+private actor StartupRetryStore: LibraryPersisting {
+  private var remainingFailures: Int
+  private var loads = 0
+
+  init(failuresBeforeSuccess: Int) {
+    remainingFailures = failuresBeforeSuccess
+  }
+
+  func load() throws -> LibrarySnapshot {
+    loads += 1
+    if remainingFailures > 0 {
+      remainingFailures -= 1
+      throw PlayerCoreError.invalidStore
+    }
+    return .empty
+  }
+
+  func save(_ snapshot: LibrarySnapshot) {}
+
+  func startupRecoveryStatus() -> StartupRecoveryStatus {
+    StartupRecoveryStatus(
+      issue: .unreadableLibrary,
+      validAutomaticBackupCount: 0,
+      invalidAutomaticBackupCount: 0
+    )
+  }
+
+  func loadCount() -> Int { loads }
 }
 
 private actor RecordingSupportDiagnosticsManager: SupportDiagnosticsManaging {
