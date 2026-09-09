@@ -1287,6 +1287,95 @@ final class PlayerCoreTests: XCTestCase {
     XCTAssertEqual(inspectedM4B.chapters.map(\.source), [.file])
   }
 
+  func testTaggedMP3ImportDoesNotExposePrivateStagingFilenameAsChapterTitle() async throws {
+    let temporaryRoot = FileManager.default.temporaryDirectory.appending(
+      path: "PlayerTaggedMP3ImportTests-\(UUID().uuidString)",
+      directoryHint: .isDirectory
+    )
+    defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+    try FileManager.default.createDirectory(at: temporaryRoot, withIntermediateDirectories: true)
+    let fixture = try XCTUnwrap(
+      Bundle(for: PlayerCoreTests.self).url(
+        forResource: "01-synthetic-chapter",
+        withExtension: "mp3"
+      )
+    )
+    let originalFilename = "Cabin Pressure - S01 - E01 - Abu Dhabi.mp3"
+    let source = temporaryRoot.appending(path: originalFilename)
+    try FileManager.default.copyItem(at: fixture, to: source)
+    let ids = (1...8).map {
+      UUID(uuidString: String(format: "2a000000-0000-0000-0000-%012d", $0))!
+    }
+    let model = PlayerModel(environment: PlayerEnvironment(
+      persistence: InMemoryLibraryStore(),
+      media: FileSystemMediaManager(rootURL: temporaryRoot.appending(path: "Storage")),
+      inspector: AVFoundationAudioInspector(),
+      playback: DeterministicPlaybackController(),
+      ids: DeterministicPlayerIDGenerator(values: ids)
+    ))
+
+    await model.restore()
+    let importedJobID = await model.importAudioSelection(from: [source])
+    let jobID = try XCTUnwrap(importedJobID)
+    let job = try XCTUnwrap(model.library.importJobs.first(where: { $0.id == jobID }))
+    let proposal = try XCTUnwrap(job.proposal)
+
+    XCTAssertEqual(job.phase, .ready)
+    XCTAssertEqual(proposal.asset.originalFilename, originalFilename)
+    XCTAssertTrue(try XCTUnwrap(job.stagedAssets.first).stagedRelativePath.contains("item-00000"))
+    XCTAssertEqual(proposal.chapters.map(\.title), ["Synthetic MP3 Chapter"])
+    XCTAssertFalse(proposal.chapters.contains { $0.title.hasPrefix("item-") })
+  }
+
+  func testUntaggedImportUsesOriginalFilenameInsteadOfPrivateStagingFilename() async throws {
+    let temporaryRoot = FileManager.default.temporaryDirectory.appending(
+      path: "PlayerUntaggedImportTests-\(UUID().uuidString)",
+      directoryHint: .isDirectory
+    )
+    defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+    try FileManager.default.createDirectory(at: temporaryRoot, withIntermediateDirectories: true)
+    let originalFilename = "Cabin Pressure - S01 - E01 - Abu Dhabi.mp3"
+    let source = temporaryRoot.appending(path: originalFilename)
+    try Data("audio fixture".utf8).write(to: source)
+    let ids = (1...8).map {
+      UUID(uuidString: String(format: "2b000000-0000-0000-0000-%012d", $0))!
+    }
+    let inspected = InspectedAudio(
+      title: nil,
+      authors: [],
+      durationSeconds: 60,
+      artworkData: nil,
+      container: "MP3",
+      chapters: [
+        Chapter(
+          id: "file-0",
+          title: "item-00000",
+          startSeconds: 0,
+          durationSeconds: 60,
+          source: .file,
+          assetID: nil
+        )
+      ]
+    )
+    let model = PlayerModel(environment: PlayerEnvironment(
+      persistence: InMemoryLibraryStore(),
+      media: FileSystemMediaManager(rootURL: temporaryRoot.appending(path: "Storage")),
+      inspector: DeterministicAudioInspector(result: .success(inspected)),
+      playback: DeterministicPlaybackController(),
+      ids: DeterministicPlayerIDGenerator(values: ids)
+    ))
+
+    await model.restore()
+    let importedJobID = await model.importAudioSelection(from: [source])
+    let jobID = try XCTUnwrap(importedJobID)
+    let job = try XCTUnwrap(model.library.importJobs.first(where: { $0.id == jobID }))
+
+    XCTAssertEqual(
+      try XCTUnwrap(job.proposal).chapters.map(\.title),
+      ["Cabin Pressure - S01 - E01 - Abu Dhabi"]
+    )
+  }
+
   func testProductionPlaybackQueueAdvancesBetweenMP3FilesWithoutPausing() async throws {
     let mp3 = try XCTUnwrap(
       Bundle(for: PlayerCoreTests.self).url(
