@@ -26,7 +26,7 @@
       "headline": "Drag. Drop.\nDone.",
       "body": "Browser import on Mac, Windows, Linux, or Chromebook. Drag directly into the app with iPhone Mirroring.",
       "layout": "single",
-      "sources": ["001-receiver-ready.png"]
+      "sources": ["002-mirroring-drop-progress.png"]
     },
     {
       "id": "02-library",
