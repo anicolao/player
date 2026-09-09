@@ -190,7 +190,7 @@ final class LibraryOrganizationTests: XCTestCase {
     XCTAssertEqual(durable.allBooksViewStyle, .list)
   }
 
-  func testAcknowledgedPlaybackEntersContinueListeningWithoutUnfinishingAReplay() async throws {
+  func testFinishingCurrentBookClearsPlayerAndReplayingStartsANewListeningState() async throws {
     let book = makeBook(id: uuid(1), title: "Replayable", duration: 90)
     let store = InMemoryLibraryStore(snapshot: LibrarySnapshot(
       books: [book],
@@ -207,10 +207,61 @@ final class LibraryOrganizationTests: XCTestCase {
 
     let markedFinished = await model.setBookFinished(bookID: book.id, isFinished: true)
     XCTAssertTrue(markedFinished)
+    XCTAssertNil(model.library.currentBookID)
+    XCTAssertNil(model.library.playbackPosition)
+    XCTAssertEqual(model.playbackState, .unloaded)
+
+    let durableFinished = await store.load()
+    XCTAssertNil(durableFinished.currentBookID)
+    XCTAssertNil(durableFinished.playbackPosition)
     await model.play(bookID: book.id, at: 0)
+    XCTAssertEqual(model.library.books.first?.listeningState.status, .unplayed)
+    XCTAssertEqual(model.library.books.first?.listeningState.positionMilliseconds, 0)
+    XCTAssertEqual(model.library.currentBookID, book.id)
+    XCTAssertTrue(model.continueListeningBooks.isEmpty)
+  }
+
+  func testRestoreDiscardsLegacyFinishedBookPlaybackReferences() async throws {
+    let book = makeBook(
+      id: uuid(1),
+      title: "Already Finished",
+      duration: 90,
+      listeningState: BookListeningState(
+        status: .finished,
+        positionMilliseconds: 90_000,
+        lastListenedAt: Date(timeIntervalSince1970: 1_700_000_000),
+        finishedAt: Date(timeIntervalSince1970: 1_700_000_000)
+      )
+    )
+    let position = PlaybackPosition(
+      bookID: book.id,
+      positionMilliseconds: 90_000,
+      sequence: 1,
+      sourceEventID: uuid(80),
+      updatedAt: Date(timeIntervalSince1970: 1_700_000_000)
+    )
+    let store = InMemoryLibraryStore(snapshot: LibrarySnapshot(
+      books: [book],
+      importJobs: [],
+      currentBookID: book.id,
+      playbackPosition: position,
+      upNextBookIDs: [book.id]
+    ))
+    let model = makeModel(store: store)
+
+    await model.restore()
+
+    XCTAssertTrue(model.isRestored)
+    XCTAssertNil(model.library.currentBookID)
+    XCTAssertNil(model.library.playbackPosition)
+    XCTAssertTrue(model.library.upNextBookIDs.isEmpty)
+    XCTAssertEqual(model.playbackState, .unloaded)
     XCTAssertEqual(model.library.books.first?.listeningState.status, .finished)
     XCTAssertEqual(model.library.books.first?.listeningState.positionMilliseconds, 90_000)
-    XCTAssertTrue(model.continueListeningBooks.isEmpty)
+    let durable = await store.load()
+    XCTAssertNil(durable.currentBookID)
+    XCTAssertNil(durable.playbackPosition)
+    XCTAssertTrue(durable.upNextBookIDs.isEmpty)
   }
 
   func testBrowseProjectionsUseStableContributorIdentityAndNaturalSeriesOrder() async {

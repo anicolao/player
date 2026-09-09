@@ -274,7 +274,10 @@ extension LibrarySnapshot {
 
   var upNextBooks: [Book] {
     let byID = Dictionary(uniqueKeysWithValues: books.map { ($0.id, $0) })
-    return upNextBookIDs.compactMap { byID[$0] }
+    return upNextBookIDs.compactMap { id in
+      guard let book = byID[id], book.listeningState.status != .finished else { return nil }
+      return book
+    }
   }
 
   var recentlyAddedBooks: [Book] {

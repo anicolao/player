@@ -195,6 +195,9 @@ struct ContentView: View {
       )
       .dynamicTypeSize(dynamicTypeSize)
     }
+    .onChange(of: currentBook?.id) { _, activeBookID in
+      if activeBookID == nil { presentedPlayerBook = nil }
+    }
     .sheet(isPresented: $model.isFullUnlockPresented) {
       NavigationStack {
         FullUnlockView(model: model)
@@ -350,7 +353,9 @@ struct ContentView: View {
 
   private var currentBook: Book? {
     guard let id = model.library.currentBookID else { return nil }
-    return model.library.books.first(where: { $0.id == id })
+    return model.library.books.first(where: {
+      $0.id == id && $0.listeningState.status != .finished
+    })
   }
 
   private var tabSelection: Binding<AppSection> {
@@ -1494,6 +1499,9 @@ struct BookRow: View {
             .font(.caption)
             .foregroundStyle(PlayerColor.secondary)
         }
+        if book.listeningState.status == .finished {
+          FinishedBookIndicator(bookID: book.id)
+        }
       }
       Spacer()
       Image(systemName: "chevron.right").foregroundStyle(PlayerColor.secondary)
@@ -1538,6 +1546,10 @@ struct BookDetailView: View {
               }
               Text("\(book.assets.count) file · \(duration(book.durationSeconds))")
                 .font(.subheadline).foregroundStyle(PlayerColor.secondary)
+              if book.listeningState.status == .finished {
+                FinishedBookIndicator(bookID: book.id)
+                  .padding(.top, 4)
+              }
             }
             Button { play(book, nil) } label: {
               Label("Play", systemImage: "play.fill").frame(maxWidth: .infinity)

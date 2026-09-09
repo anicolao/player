@@ -4,6 +4,7 @@
   "test": "PlayerUITests/LibraryOrganizationUITests/testOrganizesDailyLibraryAndRestoresATrashedBook",
   "nonvisualTests": [
     "PlayerUITests/LibrarySearchCoverageUITests/testEveryProductionSortAndFilterPersistsClearsAndResets",
+    "PlayerUITests/LibraryOrganizationUITests/testFinishingCurrentBookRemovesItFromNowPlaying",
     "PlayerUITests/TrashDeletionUITests/testPermanentlyDeletesOnlyTheConfirmedCurrentBook"
   ],
   "fixture": "synthetic-populated-library",

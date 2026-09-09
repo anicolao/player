@@ -1,6 +1,22 @@
 import SwiftUI
 import UIKit
 
+struct FinishedBookIndicator: View {
+  let bookID: UUID
+  var compact = false
+
+  var body: some View {
+    Label("Finished", systemImage: "checkmark.circle.fill")
+      .font(compact ? .caption2.weight(.semibold) : .caption.weight(.semibold))
+      .foregroundStyle(PlayerColor.accent)
+      .padding(.horizontal, compact ? 7 : 9)
+      .padding(.vertical, compact ? 3 : 4)
+      .background(PlayerColor.accent.opacity(0.12), in: Capsule())
+      .fixedSize()
+      .accessibilityIdentifier("finished-indicator-\(bookID.uuidString.lowercased())")
+  }
+}
+
 struct LibraryOrganizationHome: View {
   @Environment(\.dynamicTypeSize) private var dynamicTypeSize
   @Bindable var model: PlayerModel
@@ -170,7 +186,9 @@ struct LibraryOrganizationHome: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(book.title), \(book.authors.first ?? "Unknown Author")")
+        .accessibilityLabel(
+          "\(book.title), \(book.authors.first ?? "Unknown Author")\(book.listeningState.status == .finished ? ", Finished" : "")"
+        )
         .accessibilityHint("Opens audiobook details")
         .accessibilityIdentifier("recent-book-\(book.id.uuidString.lowercased())")
       }
@@ -355,6 +373,9 @@ struct UpNextView: View {
           Text(book.authors.first ?? "Unknown Author")
             .font(.caption)
             .foregroundStyle(PlayerColor.secondary)
+          if book.listeningState.status == .finished {
+            FinishedBookIndicator(bookID: book.id, compact: true)
+          }
         }
       }
     }
@@ -527,7 +548,9 @@ struct AllBooksView: View {
     }
       .buttonStyle(.plain)
       .accessibilityElement(children: .combine)
-      .accessibilityLabel("\(book.title), \(book.authors.first ?? "Unknown Author")")
+      .accessibilityLabel(
+        "\(book.title), \(book.authors.first ?? "Unknown Author")\(book.listeningState.status == .finished ? ", Finished" : "")"
+      )
       .accessibilityHint("Opens audiobook details")
       .accessibilityIdentifier(
         identifier ?? "all-books-book-\(book.id.uuidString.lowercased())"
@@ -720,10 +743,14 @@ private struct BookshelfCoverCard: View {
           .font(metrics.scale == .feature ? .caption.weight(.semibold) : .caption2.weight(.semibold))
           .foregroundStyle(PlayerColor.ink)
           .lineLimit(2)
-        Text(book.authors.first ?? "Unknown Author")
-          .font(metrics.scale == .feature ? .caption2 : .system(size: 9.5))
-          .foregroundStyle(PlayerColor.secondary)
-          .lineLimit(1)
+        if book.listeningState.status == .finished {
+          FinishedBookIndicator(bookID: book.id, compact: true)
+        } else {
+          Text(book.authors.first ?? "Unknown Author")
+            .font(metrics.scale == .feature ? .caption2 : .system(size: 9.5))
+            .foregroundStyle(PlayerColor.secondary)
+            .lineLimit(1)
+        }
       }
       .frame(height: metrics.metadataHeight, alignment: .top)
     }
@@ -882,7 +909,12 @@ struct CollectionDetailView: View {
           ForEach(Array(books.enumerated()), id: \.element.id) { index, book in
             HStack(spacing: 12) {
               ArtworkView(data: book.renderedArtworkData, size: 58)
-              Text(book.title).font(.headline)
+              VStack(alignment: .leading, spacing: 4) {
+                Text(book.title).font(.headline)
+                if book.listeningState.status == .finished {
+                  FinishedBookIndicator(bookID: book.id, compact: true)
+                }
+              }
               Spacer()
               Button { move(book.id, offset: -1) } label: { Image(systemName: "arrow.up") }
                 .disabled(index == 0)
@@ -1014,6 +1046,9 @@ struct LibraryTrashView: View {
                 countStyle: .file
               ))
                 .font(.caption).foregroundStyle(PlayerColor.secondary)
+              if book.listeningState.status == .finished {
+                FinishedBookIndicator(bookID: book.id, compact: true)
+              }
             }
             Spacer()
             Button("Restore") {
@@ -1274,6 +1309,9 @@ private struct CompactBookRow: View {
         Text(book.title).font(.headline).foregroundStyle(PlayerColor.ink).lineLimit(1)
         Text(book.authors.first ?? "Unknown Author")
           .font(.caption).foregroundStyle(PlayerColor.secondary).lineLimit(1)
+        if book.listeningState.status == .finished {
+          FinishedBookIndicator(bookID: book.id, compact: true)
+        }
       }
       Spacer(minLength: 0)
     }
