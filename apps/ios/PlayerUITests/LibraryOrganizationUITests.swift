@@ -16,6 +16,36 @@ final class LibraryOrganizationUITests: PlayerUITestCase {
   private let trashID = "90000000-0000-0000-0000-000000000601"
   private var stableCaptureGeometry: [String: CaptureGeometryObservation] = [:]
 
+  func testFinishingCurrentBookRemovesItFromNowPlaying() throws {
+    continueAfterFailure = false
+    let app = try makeApplication(reset: true)
+    app.launch()
+    app.tabBars.buttons["Library"].tap()
+
+    let miniPlayer = app.otherElements["mini-player"]
+    XCTAssertTrue(miniPlayer.waitForExistence(timeout: 2))
+    app.buttons["browse-all-books"].tap()
+    XCTAssertTrue(anyElement(app, "all-books-screen").waitForExistence(timeout: 2))
+    app.buttons["bookshelf-continue-book-\(books[0])"].tap()
+    XCTAssertTrue(anyElement(app, "book-detail-screen").waitForExistence(timeout: 2))
+
+    app.buttons["mark-finished-\(books[0])"].tap()
+    let confirmMatches = app.alerts["Mark as finished?"].buttons.matching(
+      NSPredicate(format: "label == %@", "Mark Finished")
+    ).allElementsBoundByIndex
+    let confirm = try XCTUnwrap(confirmMatches.first(where: { $0.isEnabled && $0.isHittable }))
+    confirm.tap()
+
+    try requireValue(
+      anyElement(app, "book-state-probe"),
+      "book:\(books[0]):finished=true:position=120000"
+    )
+    XCTAssertTrue(
+      anyElement(app, "finished-indicator-\(books[0])").waitForExistence(timeout: 2)
+    )
+    XCTAssertTrue(miniPlayer.waitForNonExistence(timeout: 2))
+  }
+
   func testOrganizesDailyLibraryAndRestoresATrashedBook() throws {
     continueAfterFailure = false
     XCUIDevice.shared.orientation = .portrait
@@ -871,7 +901,7 @@ final class LibraryOrganizationUITests: PlayerUITestCase {
     XCTAssertEqual(Set(visibleSearchResults.map(\.identifier)), Set(expectedSearchResultIDs))
     XCTAssertEqual(Set(visibleSearchResults.map(\.label)), Set([
       "Quiet Maps, Mina Sol",
-      "The Clockwork Orchard, Mina Sol",
+      "The Clockwork Orchard, Mina Sol, Finished",
     ]))
 
     for bookID in [books[4], books[2]] {

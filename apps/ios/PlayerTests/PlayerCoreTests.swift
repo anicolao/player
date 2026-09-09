@@ -2135,21 +2135,21 @@ final class PlayerCoreTests: XCTestCase {
     await harness.model.restore()
     harness.model.configurePlaybackIntegrations()
     await harness.model.play(bookID: harness.book.id)
+    let clearCountBeforeCompletion = harness.nowPlaying.clearCount
 
     await harness.playback.send(.progress(seconds: 120))
     await harness.playback.send(.reachedEnd)
 
-    XCTAssertEqual(harness.model.playbackState.status, .paused)
-    XCTAssertEqual(harness.model.playbackState.elapsedSeconds, 120)
+    XCTAssertEqual(harness.model.playbackState, .unloaded)
     XCTAssertEqual(harness.model.library.positionJournal.map(\.reason), [.play, .completion])
-    XCTAssertEqual(harness.model.library.playbackPosition?.positionMilliseconds, 120_000)
+    XCTAssertNil(harness.model.library.currentBookID)
+    XCTAssertNil(harness.model.library.playbackPosition)
     let completedBook = try XCTUnwrap(
       harness.model.library.books.first(where: { $0.id == harness.book.id })
     )
     XCTAssertEqual(completedBook.listeningState.status, .finished)
     XCTAssertEqual(completedBook.listeningState.positionMilliseconds, 120_000)
-    XCTAssertEqual(harness.nowPlaying.latest?.elapsedSeconds, 120)
-    XCTAssertEqual(harness.nowPlaying.latest?.playbackRate, 0)
+    XCTAssertEqual(harness.nowPlaying.clearCount, clearCountBeforeCompletion + 1)
   }
 
   func testEngineEndLoadsTheNextAssetAndContinuesFromItsBookBoundary() async throws {

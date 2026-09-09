@@ -141,7 +141,14 @@ final class PlayerModel {
         let recoveredInterruptedImports = recoverInterruptedImports()
         let recoveredSleepTimer = recoverInterruptedSleepTimer()
         let storedPosition = library.playbackPosition
-        let recoveredPosition = PositionJournalRecovery.recover(from: library)
+        var recoveredPosition = PositionJournalRecovery.recover(from: library)
+        if let recoveredBookID = recoveredPosition?.bookID,
+          library.books.first(where: {
+            $0.id == recoveredBookID && $0.listeningState.status == .finished
+          }) != nil
+        {
+          recoveredPosition = nil
+        }
         library.playbackPosition = recoveredPosition
         if let recoveredPosition {
           library.currentBookID = recoveredPosition.bookID
@@ -164,11 +171,12 @@ final class PlayerModel {
           loadedAssetID = nil
           loadedAssetTimelineStartSeconds = 0
         }
+        let normalizedFinishedPlayback = normalizeFinishedPlaybackReferences()
         if library.currentBookID != nil {
           try await loadCurrentBookIntoPlayback()
         }
         if loadedLibrary != library || storedPosition != recoveredPosition
-          || recoveredInterruptedImports || recoveredSleepTimer
+          || recoveredInterruptedImports || recoveredSleepTimer || normalizedFinishedPlayback
         {
           try await persist()
         }
@@ -1777,7 +1785,12 @@ final class PlayerModel {
 
   @discardableResult
   func setBookFinished(bookID: UUID, isFinished: Bool) async -> Bool {
-    await applyLibraryOrganizationMutation { candidate in
+    let wasLoaded = playbackState.loadedBookID == bookID
+      || environment.playback.state.loadedBookID == bookID
+    if isFinished, wasLoaded {
+      await checkpointPlaybackMeter(force: true)
+    }
+    let succeeded = await applyLibraryOrganizationMutation { candidate in
       guard let index = candidate.books.firstIndex(where: { $0.id == bookID }) else {
         throw PlayerCoreError.missingBook(bookID)
       }
@@ -1793,6 +1806,9 @@ final class PlayerModel {
           finishedAt: now
         )
         candidate.upNextBookIDs.removeAll { $0 == bookID }
+        if candidate.currentBookID == bookID { candidate.currentBookID = nil }
+        if candidate.playbackPosition?.bookID == bookID { candidate.playbackPosition = nil }
+        if candidate.activeSleepTimer?.bookID == bookID { candidate.activeSleepTimer = nil }
       } else {
         candidate.books[index].listeningState.status =
           candidate.books[index].listeningState.positionMilliseconds > 0
@@ -1800,6 +1816,12 @@ final class PlayerModel {
         candidate.books[index].listeningState.finishedAt = nil
       }
     }
+    if succeeded, isFinished, wasLoaded {
+      clearPlaybackContext()
+    } else if succeeded {
+      publishNowPlaying()
+    }
+    return succeeded
   }
 
   @discardableResult
@@ -3267,15 +3289,15 @@ final class PlayerModel {
     )
 
     library.positionJournal.append(event)
-    library.playbackPosition = position
-    library.currentBookID = bookID
+    library.playbackPosition = marksFinished ? nil : position
+    library.currentBookID = marksFinished ? nil : bookID
     if let bookIndex = library.books.firstIndex(where: { $0.id == bookID }) {
-      if marksFinished || library.books[bookIndex].listeningState.status == .finished {
+      if marksFinished {
         library.books[bookIndex].listeningState.status = .finished
         library.books[bookIndex].listeningState.positionMilliseconds = maximumMilliseconds
-        library.books[bookIndex].listeningState.finishedAt = marksFinished
-          ? event.acknowledgedAt : library.books[bookIndex].listeningState.finishedAt
-        if marksFinished { library.upNextBookIDs.removeAll { $0 == bookID } }
+        library.books[bookIndex].listeningState.finishedAt = event.acknowledgedAt
+        library.upNextBookIDs.removeAll { $0 == bookID }
+        if library.activeSleepTimer?.bookID == bookID { library.activeSleepTimer = nil }
       } else {
         library.books[bookIndex].listeningState.status = safeMilliseconds > 0
           ? .inProgress : .unplayed
@@ -3284,8 +3306,10 @@ final class PlayerModel {
       }
       library.books[bookIndex].listeningState.lastListenedAt = event.acknowledgedAt
     }
-    playbackState.loadedBookID = bookID
-    playbackState.elapsedSeconds = position.seconds
+    if !marksFinished {
+      playbackState.loadedBookID = bookID
+      playbackState.elapsedSeconds = position.seconds
+    }
     if let resumeRewindPlan, let preRewindEventID {
       let transactionID = await environment.ids.next()
       for index in library.resumeRewindTransactions.indices where
@@ -3322,7 +3346,11 @@ final class PlayerModel {
           reason: reason
         )
       #endif
-      publishNowPlaying()
+      if marksFinished {
+        clearPlaybackContext()
+      } else {
+        publishNowPlaying()
+      }
       return event
     } catch {
       library = previousLibrary
@@ -3410,7 +3438,9 @@ final class PlayerModel {
   private func publishNowPlaying() {
     guard
       let bookID = playbackState.loadedBookID ?? library.currentBookID,
-      let book = library.books.first(where: { $0.id == bookID })
+      let book = library.books.first(where: {
+        $0.id == bookID && $0.listeningState.status != .finished
+      })
     else {
       environment.nowPlaying.clear()
       return
@@ -3441,6 +3471,56 @@ final class PlayerModel {
         artworkData: book.renderedArtworkData
       )
     )
+  }
+
+  /// A finished book is library history, not an active transport session.
+  /// Keep its durable listening state and journal while removing every
+  /// projection that would make it appear in the in-app or system player.
+  private func clearPlaybackContext() {
+    environment.playback.unload()
+    playbackMeterLastUptime = nil
+    pendingPlaybackMeterSeconds = 0
+    playbackState = .unloaded
+    loadedAssetID = nil
+    loadedAssetTimelineStartSeconds = 0
+    sleepTimerMonitorTask?.cancel()
+    sleepTimerMonitorTask = nil
+    environment.nowPlaying.clear()
+  }
+
+  @discardableResult
+  private func normalizeFinishedPlaybackReferences() -> Bool {
+    let finishedBookIDs = Set(
+      library.books.lazy
+        .filter { $0.listeningState.status == .finished }
+        .map(\.id)
+    )
+    var changed = false
+    let filteredUpNext = library.upNextBookIDs.filter { !finishedBookIDs.contains($0) }
+    if filteredUpNext != library.upNextBookIDs {
+      library.upNextBookIDs = filteredUpNext
+      changed = true
+    }
+    if let currentBookID = library.currentBookID, finishedBookIDs.contains(currentBookID) {
+      library.currentBookID = nil
+      playbackState = .unloaded
+      loadedAssetID = nil
+      loadedAssetTimelineStartSeconds = 0
+      changed = true
+    }
+    if let positionBookID = library.playbackPosition?.bookID,
+      finishedBookIDs.contains(positionBookID)
+    {
+      library.playbackPosition = nil
+      changed = true
+    }
+    if let timerBookID = library.activeSleepTimer?.bookID,
+      finishedBookIDs.contains(timerBookID)
+    {
+      library.activeSleepTimer = nil
+      changed = true
+    }
+    return changed
   }
 
   private func executeQueuedImport(jobID: UUID, initialURLs: [URL]?) async {
