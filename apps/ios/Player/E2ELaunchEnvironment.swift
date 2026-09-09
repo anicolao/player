@@ -191,6 +191,7 @@ enum E2EFixture: String, CaseIterable {
     case retryRemainsFailed = "retry-remains-failed"
     case freshLibrary = "fresh-library"
     case newerSchema = "newer-schema"
+    case transientStorageUnavailable = "transient-storage-unavailable"
     case storageUnavailable = "storage-unavailable"
     case launchStorageRetry = "launch-storage-retry"
     case supportExport = "support-export"
@@ -2976,7 +2977,7 @@ extension PlayerEnvironment {
           options: .atomic
         )
         try E2EOfflineRecoveryBridge.corruptPrimaryBytes.write(to: libraryURL, options: .atomic)
-      case .retrySucceeds, .storageUnavailable:
+      case .retrySucceeds, .transientStorageUnavailable, .storageUnavailable:
         try validData.write(to: libraryURL, options: .atomic)
       case .newerSchema:
         let newer = E2EOfflineRecoveryEnvelope(
@@ -3012,11 +3013,17 @@ extension PlayerEnvironment {
           issue: .unreadableLibrary,
           failuresBeforeSuccess: 1
         )
-      case .storageUnavailable:
+      case .transientStorageUnavailable:
         persistence = E2ETransientRecoveryStore(
           base: baseStore,
           issue: .storageUnavailable,
           failuresBeforeSuccess: 1
+        )
+      case .storageUnavailable:
+        persistence = E2ETransientRecoveryStore(
+          base: baseStore,
+          issue: .storageUnavailable,
+          failuresBeforeSuccess: .max
         )
       default:
         persistence = baseStore

@@ -124,70 +124,80 @@ final class PlayerModel {
   }
 
   func restore() async {
-    do {
-      try await environment.backups.recoverInterruptedRestores()
-      let loadedLibrary = try await environment.persistence.load()
-      let reconciliation = try await environment.media.reconcileStartupStorage(
-        with: loadedLibrary
-      )
-      library = reconciliation.library
-      startupReconciliation = reconciliation
-      storageSummary = library.storageManifests.isEmpty ? nil : StorageSummaryPlanner.summarize(
-        manifests: library.storageManifests,
-        availableBytes: nil
-      )
-      let recoveredInterruptedImports = recoverInterruptedImports()
-      let recoveredSleepTimer = recoverInterruptedSleepTimer()
-      let storedPosition = library.playbackPosition
-      let recoveredPosition = PositionJournalRecovery.recover(from: library)
-      library.playbackPosition = recoveredPosition
-      if let recoveredPosition {
-        library.currentBookID = recoveredPosition.bookID
-        playbackState = PlaybackState(
-          status: .paused,
-          loadedBookID: recoveredPosition.bookID,
-          elapsedSeconds: recoveredPosition.seconds
+    var attemptsRemaining = 2
+    while attemptsRemaining > 0 {
+      do {
+        try await environment.backups.recoverInterruptedRestores()
+        let loadedLibrary = try await environment.persistence.load()
+        let reconciliation = try await environment.media.reconcileStartupStorage(
+          with: loadedLibrary
         )
-      } else if let currentBookID = library.currentBookID,
-        library.books.contains(where: { $0.id == currentBookID })
-      {
-        playbackState = PlaybackState(
-          status: .paused,
-          loadedBookID: currentBookID,
-          elapsedSeconds: 0
+        library = reconciliation.library
+        startupReconciliation = reconciliation
+        storageSummary = library.storageManifests.isEmpty ? nil : StorageSummaryPlanner.summarize(
+          manifests: library.storageManifests,
+          availableBytes: nil
         )
-      } else {
-        library.currentBookID = nil
-        playbackState = .unloaded
-        loadedAssetID = nil
-        loadedAssetTimelineStartSeconds = 0
+        let recoveredInterruptedImports = recoverInterruptedImports()
+        let recoveredSleepTimer = recoverInterruptedSleepTimer()
+        let storedPosition = library.playbackPosition
+        let recoveredPosition = PositionJournalRecovery.recover(from: library)
+        library.playbackPosition = recoveredPosition
+        if let recoveredPosition {
+          library.currentBookID = recoveredPosition.bookID
+          playbackState = PlaybackState(
+            status: .paused,
+            loadedBookID: recoveredPosition.bookID,
+            elapsedSeconds: recoveredPosition.seconds
+          )
+        } else if let currentBookID = library.currentBookID,
+          library.books.contains(where: { $0.id == currentBookID })
+        {
+          playbackState = PlaybackState(
+            status: .paused,
+            loadedBookID: currentBookID,
+            elapsedSeconds: 0
+          )
+        } else {
+          library.currentBookID = nil
+          playbackState = .unloaded
+          loadedAssetID = nil
+          loadedAssetTimelineStartSeconds = 0
+        }
+        if library.currentBookID != nil {
+          try await loadCurrentBookIntoPlayback()
+        }
+        if loadedLibrary != library || storedPosition != recoveredPosition
+          || recoveredInterruptedImports || recoveredSleepTimer
+        {
+          try await persist()
+        }
+        isRestored = true
+        startupRecoveryStatus = nil
+        applyCurrentTransportConfiguration()
+        publishNowPlaying()
+        scheduleSleepTimerMonitor()
+        let resumableQueueJobIDs = library.importJobs.filter {
+          $0.phase == .failed
+            && $0.failure?.reasonCode == "import-interrupted"
+            && $0.queueCheckpoint != nil
+            && $0.zipStatus == nil
+        }.map(\.id)
+        for jobID in resumableQueueJobIDs {
+          await executeQueuedImport(jobID: jobID, initialURLs: nil)
+        }
+        return
+      } catch {
+        isRestored = false
+        environment.nowPlaying.clear()
+        attemptsRemaining -= 1
+        if attemptsRemaining > 0 {
+          await Task.yield()
+          continue
+        }
+        startupRecoveryStatus = await environment.persistence.startupRecoveryStatus()
+        return
       }
-      if library.currentBookID != nil {
-        try await loadCurrentBookIntoPlayback()
-      }
-      if loadedLibrary != library || storedPosition != recoveredPosition
-        || recoveredInterruptedImports || recoveredSleepTimer
-      {
-        try await persist()
-      }
-      isRestored = true
-      startupRecoveryStatus = nil
-      applyCurrentTransportConfiguration()
-      publishNowPlaying()
-      scheduleSleepTimerMonitor()
-      let resumableQueueJobIDs = library.importJobs.filter {
-        $0.phase == .failed
-          && $0.failure?.reasonCode == "import-interrupted"
-          && $0.queueCheckpoint != nil
-          && $0.zipStatus == nil
-      }.map(\.id)
-      for jobID in resumableQueueJobIDs {
-        await executeQueuedImport(jobID: jobID, initialURLs: nil)
-      }
-    } catch {
-      isRestored = false
-      startupRecoveryStatus = await environment.persistence.startupRecoveryStatus()
-      environment.nowPlaying.clear()
     }
   }
 

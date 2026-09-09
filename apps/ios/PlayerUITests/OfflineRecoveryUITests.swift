@@ -216,8 +216,8 @@ final class OfflineRecoveryUITests: PlayerUITestCase {
   }
 
   private func proveEveryRecoveryChoice() throws {
-    try proveRetrySuccess(scenario: "retry-succeeds", issue: "unreadable-library")
-    try proveRetrySuccess(scenario: "storage-unavailable", issue: "storage-unavailable")
+    try proveAutomaticRetrySuccess(scenario: "retry-succeeds")
+    try proveAutomaticRetrySuccess(scenario: "transient-storage-unavailable")
     try proveRetryRemainsFailedWithoutMutation()
     try proveFreshLibraryPreservesRecoveryMaterial()
     try proveDistinctRecoveryExplanations()
@@ -225,22 +225,18 @@ final class OfflineRecoveryUITests: PlayerUITestCase {
     try proveSupportBundleExportOutcomes()
   }
 
-  private func proveRetrySuccess(scenario: String, issue: String) throws {
-    let app = launchRecoveryApp(scenario: scenario)
-    let recovery = anyElement(app, "startup-recovery-probe")
-    XCTAssertTrue(
-      recovery.waitForStringValue(
-        "recovery:\(issue):valid=0:invalid=0:preserved=true",
-        timeout: 2
-      )
+  private func proveAutomaticRetrySuccess(scenario: String) throws {
+    let app = launchRecoveryApp(
+      scenario: scenario,
+      expectsRecoveryPresentation: false
     )
-    app.buttons["startup-recovery-retry"].tap()
     XCTAssertTrue(
       anyElement(app, "diagnostics-probe").waitForStringValue(
         "diagnostics:sanitized=true:offline=true:quarantined=3",
         timeout: 2
       )
     )
+    XCTAssertFalse(anyElement(app, "startup-recovery-probe").exists)
     XCTAssertTrue(terminateAndWait(app))
   }
 
