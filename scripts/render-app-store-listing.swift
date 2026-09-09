@@ -107,16 +107,33 @@ func drawText(
 }
 
 func drawPhone(_ image: CGImage, in rect: CGRect, context: CGContext, frameColor: CGColor) {
+  // Match the proportions used by the website's current iPhone frame. The
+  // XCTest framebuffer has square outer pixels, so both renderers must restore
+  // the physical display mask themselves.
+  let outerRect = rect.insetBy(dx: -16, dy: -16)
+  let outerCornerRadius = outerRect.width * (38.0 / 325.0)
+  let displayCornerRadius = rect.width * (30.0 / 311.0)
+
   context.saveGState()
   context.setShadow(offset: CGSize(width: 0, height: -22), blur: 44, color: color(0x000000).copy(alpha: 0.28))
   context.setFillColor(frameColor)
-  let outer = CGPath(roundedRect: rect.insetBy(dx: -16, dy: -16), cornerWidth: 70, cornerHeight: 70, transform: nil)
+  let outer = CGPath(
+    roundedRect: outerRect,
+    cornerWidth: outerCornerRadius,
+    cornerHeight: outerCornerRadius,
+    transform: nil
+  )
   context.addPath(outer)
   context.fillPath()
   context.restoreGState()
 
   context.saveGState()
-  let clip = CGPath(roundedRect: rect, cornerWidth: 56, cornerHeight: 56, transform: nil)
+  let clip = CGPath(
+    roundedRect: rect,
+    cornerWidth: displayCornerRadius,
+    cornerHeight: displayCornerRadius,
+    transform: nil
+  )
   context.addPath(clip)
   context.clip()
   context.interpolationQuality = .high
