@@ -425,12 +425,25 @@ private func e2eNotifyRegisterFileDescriptor(
   _ token: UnsafeMutablePointer<Int32>
 ) -> UInt32
 
+@_silgen_name("notify_register_check")
+private func e2eNotifyRegisterCheck(
+  _ name: UnsafePointer<CChar>,
+  _ token: UnsafeMutablePointer<Int32>
+) -> UInt32
+
+@_silgen_name("notify_check")
+private func e2eNotifyCheck(
+  _ token: Int32,
+  _ changed: UnsafeMutablePointer<Int32>
+) -> UInt32
+
 @_silgen_name("notify_cancel")
 private func e2eNotifyCancel(_ token: Int32) -> UInt32
 
 final class DarwinEventReceipt: @unchecked Sendable {
   private var descriptor: Int32 = -1
   private var token: Int32 = 0
+  private var checkToken: Int32 = 0
   private let receipt = XCTestExpectation(description: "Darwin event")
   private let deliveryQueue = DispatchQueue(
     label: "com.spnss.player.uitests.darwin-event-receipt",
@@ -443,6 +456,22 @@ final class DarwinEventReceipt: @unchecked Sendable {
       e2eNotifyRegisterFileDescriptor(notificationName, &descriptor, 0, &token)
     }
     guard status == 0, descriptor >= 0 else { return nil }
+    let checkStatus = name.withCString { notificationName in
+      e2eNotifyRegisterCheck(notificationName, &checkToken)
+    }
+    guard checkStatus == 0 else {
+      _ = e2eNotifyCancel(token)
+      return nil
+    }
+    // notify_check reports true on its first call by contract. Drain that
+    // registration-time value now so a later true value can only acknowledge a
+    // post made after this receipt was armed.
+    var initialValue: Int32 = 0
+    guard e2eNotifyCheck(checkToken, &initialValue) == 0 else {
+      _ = e2eNotifyCancel(checkToken)
+      _ = e2eNotifyCancel(token)
+      return nil
+    }
 
     // Arm the descriptor before the physical action. Text-input focus can be
     // acknowledged while XCUIElement.tap() is still returning, so the event
@@ -467,6 +496,7 @@ final class DarwinEventReceipt: @unchecked Sendable {
 
   deinit {
     source?.cancel()
+    _ = e2eNotifyCancel(checkToken)
     _ = e2eNotifyCancel(token)
   }
 
@@ -476,7 +506,14 @@ final class DarwinEventReceipt: @unchecked Sendable {
     // interaction completes. The dedicated descriptor queue drains and records
     // delivery independently, while XCTWaiter lets XCTest advance a pending
     // SpringBoard transaction on the main run loop.
-    return XCTWaiter.wait(for: [receipt], timeout: timeout) == .completed
+    if XCTWaiter.wait(for: [receipt], timeout: timeout) == .completed {
+      return true
+    }
+    // A post can race the dispatch source at the deadline even though Darwin
+    // has already recorded it. The independently registered check token keeps
+    // that exact production event observable without extending the deadline.
+    var changed: Int32 = 0
+    return e2eNotifyCheck(checkToken, &changed) == 0 && changed != 0
   }
 }
 
