@@ -2,6 +2,12 @@
   "id": "011-offline-recovery",
   "platform": "ios",
   "test": "PlayerUITests/OfflineRecoveryUITests/testRecoversStartupAndExportsOnlySanitizedOfflineDiagnostics",
+  "nonvisualTests": [
+    "PlayerUITests/OfflineRecoveryRetryUITests/testAutomaticRetryAndPersistentFailureRemainSafe",
+    "PlayerUITests/OfflineRecoveryChoiceUITests/testFreshLibraryAndDistinctRecoveryExplanations",
+    "PlayerUITests/OfflineRecoveryStorageUITests/testProtectedStorageCanBeRetriedAtLaunch",
+    "PlayerUITests/OfflineRecoverySupportUITests/testSupportBundleSaveCancelAndPreparationFailure"
+  ],
   "fixture": "offline-recovery",
   "screenshots": [
     "000-startup-recovery.png",

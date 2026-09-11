@@ -1,8 +1,10 @@
 import XCTest
 
+protocol OfflineRecoveryTestSupport: AnyObject {}
+
 @MainActor
-final class OfflineRecoveryUITests: PlayerUITestCase {
-  func testRecoversStartupAndExportsOnlySanitizedOfflineDiagnostics() throws {
+extension OfflineRecoveryTestSupport where Self: PlayerUITestCase {
+  func proveCanonicalRecoveryAndSanitizedDiagnostics() throws {
     continueAfterFailure = false
     XCUIDevice.shared.orientation = .portrait
     let app = bookshelfApplication()
@@ -211,21 +213,10 @@ final class OfflineRecoveryUITests: PlayerUITestCase {
     )
 
     XCTAssertTrue(terminateAndWait(app))
-    try proveEveryRecoveryChoice()
     tester.generateDocs()
   }
 
-  private func proveEveryRecoveryChoice() throws {
-    try proveAutomaticRetrySuccess(scenario: "retry-succeeds")
-    try proveAutomaticRetrySuccess(scenario: "transient-storage-unavailable")
-    try proveRetryRemainsFailedWithoutMutation()
-    try proveFreshLibraryPreservesRecoveryMaterial()
-    try proveDistinctRecoveryExplanations()
-    try proveLaunchStorageRetry()
-    try proveSupportBundleExportOutcomes()
-  }
-
-  private func proveAutomaticRetrySuccess(scenario: String) throws {
+  func proveAutomaticRetrySuccess(scenario: String) throws {
     let app = launchRecoveryApp(
       scenario: scenario,
       expectsRecoveryPresentation: false
@@ -240,8 +231,15 @@ final class OfflineRecoveryUITests: PlayerUITestCase {
     XCTAssertTrue(terminateAndWait(app))
   }
 
-  private func proveRetryRemainsFailedWithoutMutation() throws {
+  func proveRetryRemainsFailedWithoutMutation() throws {
     let app = launchRecoveryApp(scenario: "retry-remains-failed")
+    XCTAssertTrue(
+      exactStaticText(
+        app,
+        label:
+          "Bookshelf could not validate the local catalog. Your audio and every recovery copy remain untouched."
+      ).waitForExistence(timeout: 2)
+    )
     let evidence = anyElement(app, "offline-recovery-action-probe")
     let expected =
       "recovery-evidence:primary=corrupt:catalog=0:orphans=0:audio=true:"
@@ -264,7 +262,7 @@ final class OfflineRecoveryUITests: PlayerUITestCase {
     XCTAssertTrue(terminateAndWait(app))
   }
 
-  private func proveFreshLibraryPreservesRecoveryMaterial() throws {
+  func proveFreshLibraryPreservesRecoveryMaterial() throws {
     let app = launchRecoveryApp(scenario: "fresh-library")
     app.buttons["startup-recovery-fresh"].tap()
     let confirmation = app.buttons["Preserve Old Database and Start Fresh"]
@@ -286,17 +284,7 @@ final class OfflineRecoveryUITests: PlayerUITestCase {
     XCTAssertTrue(terminateAndWait(app))
   }
 
-  private func proveDistinctRecoveryExplanations() throws {
-    let corrupt = launchRecoveryApp(scenario: "retry-remains-failed")
-    XCTAssertTrue(
-      exactStaticText(
-        corrupt,
-        label:
-          "Bookshelf could not validate the local catalog. Your audio and every recovery copy remain untouched."
-      ).waitForExistence(timeout: 2)
-    )
-    XCTAssertTrue(terminateAndWait(corrupt))
-
+  func proveDistinctRecoveryExplanations() throws {
     let newer = launchRecoveryApp(scenario: "newer-schema")
     XCTAssertTrue(
       exactStaticText(
@@ -324,7 +312,7 @@ final class OfflineRecoveryUITests: PlayerUITestCase {
     XCTAssertTrue(terminateAndWait(unavailable))
   }
 
-  private func proveLaunchStorageRetry() throws {
+  func proveLaunchStorageRetry() throws {
     let app = launchRecoveryApp(
       scenario: "launch-storage-retry",
       expectsRecoveryPresentation: false
@@ -346,7 +334,7 @@ final class OfflineRecoveryUITests: PlayerUITestCase {
     XCTAssertTrue(terminateAndWait(app))
   }
 
-  private func proveSupportBundleExportOutcomes() throws {
+  func proveSupportBundleExportOutcomes() throws {
     var app = launchRecoveryApp(scenario: "support-export")
     try tapRecoveryAction("startup-recovery-diagnostics", in: app)
     XCTAssertTrue(
@@ -420,7 +408,7 @@ final class OfflineRecoveryUITests: PlayerUITestCase {
     XCTAssertTrue(terminateAndWait(app))
   }
 
-  private func tapRecoveryAction(
+  func tapRecoveryAction(
     _ identifier: String,
     in app: XCUIApplication
   ) throws {
@@ -449,7 +437,7 @@ final class OfflineRecoveryUITests: PlayerUITestCase {
     }
   }
 
-  private func launchRecoveryApp(
+  func launchRecoveryApp(
     scenario: String,
     expectsRecoveryPresentation: Bool = true
   ) -> XCUIApplication {
@@ -486,19 +474,19 @@ final class OfflineRecoveryUITests: PlayerUITestCase {
     return app
   }
 
-  private func anyElement(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {
+  func anyElement(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {
     uniquelyIdentifiedElement(app, identifier)
   }
 
-  private func exactStaticText(_ container: XCUIElement, label: String) -> XCUIElement {
+  func exactStaticText(_ container: XCUIElement, label: String) -> XCUIElement {
     container.staticTexts.matching(NSPredicate(format: "label == %@", label)).element
   }
 
-  private func exactStaticText(_ app: XCUIApplication, label: String) -> XCUIElement {
+  func exactStaticText(_ app: XCUIApplication, label: String) -> XCUIElement {
     app.staticTexts.matching(NSPredicate(format: "label == %@", label)).element
   }
 
-  private func offlineCaptureReadiness(
+  func offlineCaptureReadiness(
     app: XCUIApplication,
     specification: String,
     anchor: XCUIElement,
@@ -512,10 +500,23 @@ final class OfflineRecoveryUITests: PlayerUITestCase {
     }
   }
 
-  private func hasExactValue(_ element: XCUIElement, _ expected: String) -> Bool {
+  func hasExactValue(_ element: XCUIElement, _ expected: String) -> Bool {
     element.exists && element.value.map(String.init(describing:)) == expected
   }
 }
+
+@MainActor
+final class OfflineRecoveryUITests: PlayerUITestCase {
+  func testRecoversStartupAndExportsOnlySanitizedOfflineDiagnostics() throws {
+    try proveCanonicalRecoveryAndSanitizedDiagnostics()
+  }
+}
+
+extension OfflineRecoveryUITests: OfflineRecoveryTestSupport {}
+extension OfflineRecoveryRetryUITests: OfflineRecoveryTestSupport {}
+extension OfflineRecoveryChoiceUITests: OfflineRecoveryTestSupport {}
+extension OfflineRecoveryStorageUITests: OfflineRecoveryTestSupport {}
+extension OfflineRecoverySupportUITests: OfflineRecoveryTestSupport {}
 
 private enum OfflineRecoveryTestError: Error {
   case semanticStateUnavailable

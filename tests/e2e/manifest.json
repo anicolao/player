@@ -55,7 +55,13 @@
     "PlayerUITests/BackupUITests/testExportsClearsAndRestoresAVerifiedPortableLibrary",
     "PlayerUITests/BackupUITests/testProductionBackupCancellationKindsAndFailuresPreserveTheLibrary"
   ]},
-  {"story":"011-offline-recovery","tests":["PlayerUITests/OfflineRecoveryUITests/testRecoversStartupAndExportsOnlySanitizedOfflineDiagnostics"]},
+  {"story":"011-offline-recovery","tests":[
+    "PlayerUITests/OfflineRecoveryUITests/testRecoversStartupAndExportsOnlySanitizedOfflineDiagnostics",
+    "PlayerUITests/OfflineRecoveryRetryUITests/testAutomaticRetryAndPersistentFailureRemainSafe",
+    "PlayerUITests/OfflineRecoveryChoiceUITests/testFreshLibraryAndDistinctRecoveryExplanations",
+    "PlayerUITests/OfflineRecoveryStorageUITests/testProtectedStorageCanBeRetriedAtLaunch",
+    "PlayerUITests/OfflineRecoverySupportUITests/testSupportBundleSaveCancelAndPreparationFailure"
+  ]},
   {"story":"012-monetization","tests":["PlayerUITests/MonetizationUITests/testExplainsExhaustionAndCompletesAOneTimeUnlock"]},
   {"story":"013-app-store-listing","tests":["PlayerUITests/AppStoreListingUITests/testCapturesCanonicalMarketingSurfaces"]}
 ]
