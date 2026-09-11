@@ -432,6 +432,10 @@ final class DarwinEventReceipt: @unchecked Sendable {
   private var descriptor: Int32 = -1
   private var token: Int32 = 0
   private let receipt = XCTestExpectation(description: "Darwin event")
+  private let deliveryQueue = DispatchQueue(
+    label: "com.spnss.player.uitests.darwin-event-receipt",
+    qos: .userInitiated
+  )
   private var source: DispatchSourceRead?
 
   init?(name: String) {
@@ -444,11 +448,17 @@ final class DarwinEventReceipt: @unchecked Sendable {
     // acknowledged while XCUIElement.tap() is still returning, so the event
     // source and expectation must already be able to record that completion
     // before the caller enters wait().
+    let registeredDescriptor = descriptor
     let source = DispatchSource.makeReadSource(
       fileDescriptor: descriptor,
-      queue: .main
+      queue: deliveryQueue
     )
     source.setEventHandler { [receipt] in
+      var deliveredToken: Int32 = 0
+      let byteCount = withUnsafeMutableBytes(of: &deliveredToken) { buffer in
+        Darwin.read(registeredDescriptor, buffer.baseAddress, buffer.count)
+      }
+      guard byteCount == MemoryLayout<Int32>.size else { return }
       receipt.fulfill()
     }
     self.source = source
@@ -463,9 +473,9 @@ final class DarwinEventReceipt: @unchecked Sendable {
   @MainActor
   func wait(timeout: TimeInterval) -> Bool {
     // Keep the XCTest runner's run loop available while the physical system
-    // interaction completes. A synchronous poll here can prevent XCTest from
-    // advancing a pending SpringBoard Home transaction, manufacturing the
-    // lifecycle timeout that this receipt is intended to measure.
+    // interaction completes. The dedicated descriptor queue drains and records
+    // delivery independently, while XCTWaiter lets XCTest advance a pending
+    // SpringBoard transaction on the main run loop.
     return XCTWaiter.wait(for: [receipt], timeout: timeout) == .completed
   }
 }

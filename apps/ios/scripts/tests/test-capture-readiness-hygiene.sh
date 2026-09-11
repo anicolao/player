@@ -799,6 +799,16 @@ rg -Fq 'DispatchSource.makeReadSource(' \
   echo 'Darwin receipt hygiene requires an event-driven descriptor source' >&2
   exit 1
 }
+rg -Fq 'queue: deliveryQueue' \
+  "${ui_test_root}/TestStepHelper.swift" || {
+  echo 'Darwin receipt hygiene requires delivery independent of the UI-test main queue' >&2
+  exit 1
+}
+rg -Fq 'Darwin.read(registeredDescriptor' \
+  "${ui_test_root}/TestStepHelper.swift" || {
+  echo 'Darwin receipt hygiene requires each delivered descriptor token to be drained' >&2
+  exit 1
+}
 rg -Fq 'self.source = source' \
   "${ui_test_root}/TestStepHelper.swift" || {
   echo 'Darwin receipt hygiene requires the descriptor source to be retained before synthesis' >&2
