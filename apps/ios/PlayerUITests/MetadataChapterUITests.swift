@@ -69,11 +69,28 @@ final class MetadataChapterUITests: PlayerUITestCase {
     XCTAssertTrue(harborSlider.contains("0 percent"))
 
     XCTAssertTrue(tapHittableButton("e2e-engine-reached-end", in: app))
+    XCTAssertTrue(nowPlaying.waitForNonExistence(timeout: 2))
+    let organizer = app.descendants(matching: .any)["library-organizer-probe"]
     XCTAssertTrue(
-      nowPlaying.waitForStringValue("player:paused:\(bookID):2:120000", timeout: 2)
+      waitForPredicate(
+        NSPredicate(
+          format: "exists == true AND value CONTAINS %@ AND value CONTAINS %@",
+          "finished=\(bookID)",
+          "current=none"
+        ),
+        on: organizer,
+        timeout: 2
+      )
     )
-    XCTAssertTrue(app.staticTexts["player-elapsed-time"].waitForStringValue("0m45s", timeout: 2))
-    XCTAssertTrue(app.staticTexts["player-remaining-time"].waitForStringValue("0m00s", timeout: 2))
+    let completedBook = app.descendants(matching: .any)["recent-book-\(bookID)"]
+    XCTAssertTrue(
+      waitForPredicate(
+        NSPredicate(format: "exists == true AND label CONTAINS %@", "Finished"),
+        on: completedBook,
+        timeout: 2
+      )
+    )
+    XCTAssertTrue(app.otherElements["mini-player"].waitForNonExistence(timeout: 2))
   }
 
   func testShowsEmbeddedMetadataAndStartsAChapter() throws {
