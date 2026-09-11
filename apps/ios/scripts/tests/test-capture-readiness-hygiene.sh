@@ -427,6 +427,10 @@ if receipt_count != qualified_receipt_count or receipt_count == 0:
 for required in (
     'private let e2eEventNamespaceEnvironmentKey = "PLAYER_E2E_EVENT_NAMESPACE"',
     'application.launchEnvironment[e2eEventNamespaceEnvironmentKey]',
+    '@_silgen_name("notify_register_check")',
+    '@_silgen_name("notify_check")',
+    'e2eNotifyCheck(checkToken, &initialValue)',
+    'e2eNotifyCheck(checkToken, &changed) == 0 && changed != 0',
 ):
     if required not in ui_source:
         raise SystemExit(f"the UI runner does not assign isolated event names: {required}")
