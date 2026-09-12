@@ -44,9 +44,22 @@ final class MetadataChapterUITests: PlayerUITestCase {
     miniPlayer.tap()
     let nowPlaying = app.otherElements["now-playing-screen"]
     XCTAssertTrue(nowPlaying.waitForExistence(timeout: 2))
-    XCTAssertTrue(tapHittableButton("e2e-engine-progress-45", in: app))
+    let initialPlayback = NSPredicate(
+      format: "exists == true AND value == %@",
+      "player:playing:\(bookID):0:0"
+    )
+    let crossingPlayback = NSPredicate(
+      format: "exists == true AND value == %@",
+      "player:playing:\(bookID):1:45000"
+    )
     XCTAssertTrue(
-      nowPlaying.waitForStringValue("player:playing:\(bookID):1:45000", timeout: 2)
+      deliverPhysicalActionAcknowledgedByStateTransition(
+        app.buttons["e2e-engine-progress-45"],
+        from: initialPlayback,
+        until: crossingPlayback,
+        receipt: nowPlaying,
+        in: app
+      )
     )
     XCTAssertTrue(app.staticTexts["Crossing the Bar"].exists)
     XCTAssertTrue(app.staticTexts["Chapter 2 of 3"].exists)
@@ -56,9 +69,18 @@ final class MetadataChapterUITests: PlayerUITestCase {
     XCTAssertTrue(crossingSlider.contains("Crossing the Bar"))
     XCTAssertTrue(crossingSlider.contains("33 percent"))
 
-    XCTAssertTrue(tapHittableButton("e2e-engine-progress-75", in: app))
+    let harborPlayback = NSPredicate(
+      format: "exists == true AND value == %@",
+      "player:playing:\(bookID):2:75000"
+    )
     XCTAssertTrue(
-      nowPlaying.waitForStringValue("player:playing:\(bookID):2:75000", timeout: 2)
+      deliverPhysicalActionAcknowledgedByStateTransition(
+        app.buttons["e2e-engine-progress-75"],
+        from: crossingPlayback,
+        until: harborPlayback,
+        receipt: nowPlaying,
+        in: app
+      )
     )
     XCTAssertTrue(app.staticTexts["Safe Harbor"].exists)
     XCTAssertTrue(app.staticTexts["Chapter 3 of 3"].exists)
@@ -68,8 +90,15 @@ final class MetadataChapterUITests: PlayerUITestCase {
     XCTAssertTrue(harborSlider.contains("Safe Harbor"))
     XCTAssertTrue(harborSlider.contains("0 percent"))
 
-    XCTAssertTrue(tapHittableButton("e2e-engine-reached-end", in: app))
-    XCTAssertTrue(nowPlaying.waitForNonExistence(timeout: 2))
+    XCTAssertTrue(
+      deliverPhysicalActionAcknowledgedByStateTransition(
+        app.buttons["e2e-engine-reached-end"],
+        from: harborPlayback,
+        until: NSPredicate(format: "exists == false"),
+        receipt: nowPlaying,
+        in: app
+      )
+    )
     let organizer = app.descendants(matching: .any)["library-organizer-probe"]
     XCTAssertTrue(
       waitForPredicate(
@@ -220,12 +249,5 @@ final class MetadataChapterUITests: PlayerUITestCase {
 
   private func hasExactValue(_ element: XCUIElement, _ expected: String) -> Bool {
     element.exists && element.value.map(String.init(describing:)) == expected
-  }
-
-  private func tapHittableButton(_ identifier: String, in app: XCUIApplication) -> Bool {
-    let query = app.buttons.matching(identifier: identifier)
-    guard let button = query.allElementsBoundByIndex.first(where: \.isHittable) else { return false }
-    button.tap()
-    return true
   }
 }
