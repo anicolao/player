@@ -1,5 +1,8 @@
 # Bookshelf
 
+[![iOS CI](https://github.com/anicolao/player/actions/workflows/ios.yml/badge.svg?branch=main)](https://github.com/anicolao/player/actions/workflows/ios.yml?query=branch%3Amain)
+[![GitHub Pages](https://github.com/anicolao/player/actions/workflows/pages.yml/badge.svg?branch=main)](https://github.com/anicolao/player/actions/workflows/pages.yml?query=branch%3Amain)
+
 > A local-first audiobook player for iPhone that turns scattered, imperfect audio files into a clean, dependable library.
 
 **Bookshelf** is an iOS app for people who bring their own DRM-free audiobooks. Its defining feature is not another play button: it is a forgiving path from “these files are somewhere on my phone or cloud drive” to “this is one correctly ordered, beautifully presented book.”
